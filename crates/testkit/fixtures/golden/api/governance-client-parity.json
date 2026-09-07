@@ -1,75 +1,7 @@
 {
-  "schema": "pij/governance-client-parity/v1",
-  "classification": "Executed actual native binary and actual TS CLI captures; not production acceptance",
-  "source_base": "e22833b0d0caf00d95346008dab1587005d0173d",
-  "native_binary_sha256": "a292c174965721db806c9f82c23b8bdc12de58696715ab5485524b5ee3e0dd41",
-  "source_snapshot": {
-    ".pi/extensions/pij/adapters/daemon-http.test.ts": "920519d1dbb90907df36c3687cd053afcf0d030f803126349f3028a598cd9c4a",
-    ".pi/extensions/pij/adapters/generation-router.test.ts": "8fd24d69084dda6736100456cce50976d8bb6586c41bf02f4c4c84309edbf8ce",
-    ".pi/extensions/pij/adapters/generation-router.ts": "c82315b427a0326c50be7ce622651150331af326df1c0f3b371df8c5239b6a22",
-    ".pi/extensions/pij/adapters/generation-seam.test.ts": "1e5e00e9970e5684e2336c56de62548a1c3ac906db4848a8a869afb950284627",
-    ".pi/extensions/pij/body-file.integration.test.ts": "1fb27b0eaf46b60a02e73d880e1262b2dc8950b0da0179544648b5f086bb4539",
-    ".pi/extensions/pij/cli.integration.test.ts": "14b836c4ad71608b6f0c088e08e4e0ee55e4a00e7fa9461bf8be0fb0a9b9c0a0",
-    ".pi/extensions/pij/cli.ts": "478b092ee31f290136076742d649c228437e584dc13555f27c51d2f48d5bb039",
-    ".pi/extensions/pij/core/daemon-wire.test.ts": "9ac7b21f459c334fbc1d9f49025a297c455e8a45e0eec2721a4cb9f0fb580e70",
-    ".pi/extensions/pij/core/daemon-wire.ts": "ab2b3fbbb7bf071da96c85e1cb8fc69c92de178fbfb0c764559d6f4d20200366",
-    ".pi/extensions/pij/core/generation-routing.test.ts": "ed23f38543f06f4328c43abe996eb6a6f37d8e09111f09874a8dc62f4b1a2456",
-    ".pi/extensions/pij/core/generation-routing.ts": "fbc832fdce1b805b2b89e46f71340c8d5328dadcb1077db3e6a228abd3c47c8f",
-    ".pi/extensions/pij/core/orchestration/pa-capability.test.ts": "5b90d243f5519c9273533df0a220b4e19fbfc828e50b861b482d82e1b15d91cb",
-    ".pi/extensions/pij/core/usage-flags.test.ts": "993ce1396a725475277b442075dec52b0fb286b226d927e19055babecb25a576",
-    "crates/cli/src/client.rs": "58f4ceff6f1ff6d2f1a65894b405a79af2bd1a89f2b72c6f43454a2ac44afd31",
-    "crates/cli/src/decisions.rs": "f36e4ab611c47f6caeb3e373528979abdf3a2248cc090ac485320340c2a69d35",
-    "crates/cli/src/governance.rs": "f46cf59da9c8abc432110ac3af83e97fe4ddcf428b8e5d4f614b6178ff4e9c7c",
-    "crates/cli/src/lib.rs": "c6a1ea9503ab47997677d50bb90b54a3652264f8d974c9c4e8a825461a33e86d",
-    "crates/cli/src/main.rs": "3d677742bd062f75b50544f802b578b18af1f695065c3d3205ee5f97bf14760d",
-    "crates/cli/src/role.rs": "209a16ee4547242989ca2c1814fbc8759424f889c673fdf4546812bbb5eb8462",
-    "crates/cli/tests/commit_trailers.rs": "89905972817ea71c379a9a9a69c251914e9b7e10a75e3abdbdb5952dc45bd3da",
-    "crates/cli/tests/governance_boot.rs": "d3f732969283debe6d7c6daf41d617798672df8d0c9623295e311db010e79f56",
-    "crates/cli/tests/lifecycle.rs": "3c96945e523a8df18b8ced402bd155facfb0287931791cb5871d9b39767ae563",
-    "crates/cli/tests/render_golden.rs": "3fb20b0e04c8c9abfd578906791e6f371c8d30d31ffd54b433338a1f252ec3f7",
-    "crates/core/src/anomalies.rs": "59f6b3a7f3573d5f3b86f462d7471b614afa7b75a50a590eab405c18f1f90e2e",
-    "crates/core/src/model.rs": "37ff0202f5aca8d25a58854f159fae899172d8f31f2dd39b733d907582de3dfb",
-    "crates/core/tests/orchestration.rs": "70c0c62a4a7d73f1f75b149f0ef0414bacc34b805a79feeaca34fe9ff0e5ba0b",
-    "crates/daemon/src/events/governance_cancellation_tests.rs": "c3200981e8703909cbfdc7c70f6634c5b9ee7fa20e95663e75af02735d96a125",
-    "crates/daemon/src/events/governance_http_tests.rs": "b3e23668ae784fbfdc3a718df6707fb44ab8aac38608c2f518791e2799df57be",
-    "crates/daemon/src/events/governance_tests.rs": "dcbb2e5bb12632a4337424a687bcc108961779795e9b87fddd3b9bf955cf8950",
-    "crates/daemon/src/http/decisions.rs": "58b66ddd68733b5a6fa254dccdc089c39801ec21ff9806a4d7c8cdfb27ca7c77",
-    "crates/daemon/src/http/governance.rs": "f26fddaafa1db068a49cdebba530739215ad37e078711bebea3b2a507e0fcb4e",
-    "crates/daemon/src/http/identity.rs": "f6983c4a24a13375bdfca0a0824049265ccf1a010a7525719654c60f035c9c5b",
-    "crates/daemon/src/http/mod.rs": "54fac74d3879bd9853691e29158238ecf19e2d1ad7a452145fd6197761712d68",
-    "crates/daemon/src/http/role.rs": "ec1915ff420a77a794250ff1e0ec15ce6cd0b0368237a11e73c27c716eebf301",
-    "crates/daemon/src/http/role_tests.rs": "2e53a2e595d92e618eab33c00343a50c8a53ab18bd89e1ebb0185d51b48ef2f9",
-    "crates/daemon/src/reaper_tests.rs": "b1822189a83aeb17d2ab6c62c717a24cba23f333baa2038e9672e13d4c955367",
-    "crates/daemon/tests/governance_canary.rs": "ee4898711527992a3751e5bd48a609cbfcfa5cdddfbfd768b5d1d8ddbae41f1c",
-    "crates/daemon/tests/governance_composition.rs": "999eb616b71c4a826aa16f9f8a1979e9748449ce671e2645394b47d696ecd4c6",
-    "crates/daemon/tests/retired_identity_http.rs": "90a4d41fdb8a4e4606e7b76fbb4611230b5f6e5873d6d909261239ea7bafd7cf",
-    "crates/daemon/tests/role_http.rs": "152e1e7fd437bbd5ff4780880405b2032dccec79a40c079f665e086dcedde913",
-    "crates/daemon/tests/support/governance_http.rs": "3997a57587c5879f64e846e590a286a8600345a33fa550a74548a3428a2f5e3c",
-    "crates/store/src/decisions.rs": "297bd92ada213f2769f0bbcc60aa0f3a10f51ea7edeb68e949f4e9e3d576f687",
-    "crates/store/tests/governance.rs": "870d7a042507591b33ab1405f74fb3ae66b61ce22f73c5bdaa88d504c142cca9",
-    "crates/store/tests/orchestration.rs": "fa9856b3b6fe3b2ce39e5163799897420ca07dddd7f6c3c389c9ca3e2c13d4c2",
-    ".pi/extensions/pij/adapters/generation-cutover.test.ts": "5684f47a931c3b6faceec7d523147be64a1025dddba43c73a504078d58128a1d",
-    ".pi/extensions/pij/core/generation-skill-coverage.test.ts": "955e7589529e5e8843f5ae0bee3fe56ad9a4799de1adbabd4ff69b08fca0b61b",
-    "crates/core/tests/envelope_wire.rs": "89576685550fc54b273d2f42ba08f5f6ade8da6a4bff4f5358c85a59f888456c"
-  },
-  "comparison": "Raw UTF-8 stdout bytes, no JSON normalization. Final LF appended only if absent. Exit-code equality is not AC4.",
-  "counts": {
-    "shared_mutations": 29,
-    "named_refusals": 9,
-    "same_daemon_cli_pairs": 18,
-    "live_http_pairs": 4,
-    "shared_error_exit_pairs": 6,
-    "matched_pairs": 66,
-    "non_shared_capability_probes": 2
-  },
-  "rulings": {
-    "mutations": "Identical deterministic HTTP responses; these prove client boundary, not domain mutations.",
-    "reads": "Same actual private all-real daemon; anomalies/decisions are empty and no dynamic age row is claimed.",
-    "sessions": "No native CLI subcommand; live GET /v1/shim/sessions is the baseline.",
-    "register": "Native/HTTP-only; shim named E-RS-UNPORTED is expected, not fallback.",
-    "exit": "Preserve existing native/shim error policies; see docs/how/pij-rs-api.md#exit-policy.",
-    "did_evidence": "Separate native CLI workflow, live event fanout and actual OMP nonce/SHA canary receipts prove domain behavior."
-  },
+  "schema": "pij/governance-client-parity/v2",
+  "source_base": "78531a0ba2f22469ab72289ba9ff6c1635e863e7",
+  "comparison": "Original UTF-8 stdout, no normalization; final LF only when absent; exit policies remain distinct",
   "scripted_pairs": [
     {
       "id": "project-create",
@@ -78,8 +10,8 @@
         "create",
         "Governance port"
       ],
-      "path": "/v1/project",
       "method": "identical-scripted-http-response",
+      "path": "/v1/project",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij project\",\"v\":2,\"data\":{\"project\":{\"slug\":\"governance-port\",\"description\":\"Governance port\",\"repo\":\"/work/project\",\"plan_path\":null,\"prime_id\":null,\"created_by\":\"pij-parent\",\"created_at\":1788739200000},\"seq\":101}}",
       "native": {
@@ -108,8 +40,8 @@
         "--prime",
         "pij-parent"
       ],
-      "path": "/v1/project",
       "method": "identical-scripted-http-response",
+      "path": "/v1/project",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij project\",\"v\":2,\"data\":{\"project\":{\"slug\":\"governance-port\",\"description\":\"Governance port\",\"repo\":\"/work/project\",\"plan_path\":\"docs/plans/139-rs-governance-port/plan.dd.json\",\"prime_id\":\"pij-parent\",\"created_by\":\"pij-parent\",\"created_at\":1788739200000},\"seq\":101}}",
       "native": {
@@ -141,8 +73,8 @@
         "--ordinal",
         "139"
       ],
-      "path": "/v1/stream",
       "method": "identical-scripted-http-response",
+      "path": "/v1/stream",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij stream\",\"v\":2,\"data\":{\"stream\":{\"id\":\"governance-port:contracts\",\"project\":\"governance-port\",\"ordinal\":139,\"slug\":\"contracts\",\"branch\":\"s139/contracts\",\"worktree\":\"/work/project/s139-contracts\",\"base_ref\":\"main\",\"created_by\":\"pij-parent\",\"created_at\":1788739200000,\"state\":\"created\"},\"seq\":101}}",
       "native": {
@@ -167,8 +99,8 @@
         "close",
         "governance-port:contracts"
       ],
-      "path": "/v1/stream",
       "method": "identical-scripted-http-response",
+      "path": "/v1/stream",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij stream\",\"v\":2,\"data\":{\"stream\":{\"id\":\"governance-port:contracts\",\"project\":\"governance-port\",\"ordinal\":139,\"slug\":\"contracts\",\"branch\":\"s139/contracts\",\"worktree\":\"/work/project/s139-contracts\",\"base_ref\":\"main\",\"created_by\":\"pij-parent\",\"created_at\":1788739200000,\"state\":\"closed\"},\"seq\":101}}",
       "native": {
@@ -197,8 +129,8 @@
         "--shared",
         "crates/core/src/lib.rs"
       ],
-      "path": "/v1/fence",
       "method": "identical-scripted-http-response",
+      "path": "/v1/fence",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij fence\",\"v\":2,\"data\":{\"fence\":{\"id\":\"fence-governance-port-contracts\",\"stream\":\"governance-port:contracts\",\"paths\":[\"crates/core/**\"],\"shared\":[\"crates/core/src/lib.rs\"],\"declared_by\":\"pij-parent\",\"declared_at\":1788739200000},\"seq\":101}}",
       "native": {
@@ -224,8 +156,8 @@
         "--packet",
         "/work/packet.dd.md"
       ],
-      "path": "/v1/dispatch",
       "method": "identical-scripted-http-response",
+      "path": "/v1/dispatch",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij dispatch\",\"v\":2,\"data\":{\"dispatch\":{\"id\":\"dispatch-139-proof\",\"from\":\"pij-parent\",\"to\":\"pij-worker\",\"packet_path\":\"/work/packet.dd.md\",\"packet_sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"msg_id\":\"dispatch-139-proof\",\"state\":\"queued\",\"created_at\":1788739200000,\"delivered_at\":null,\"acknowledged_at\":null},\"seq\":101}}",
       "native": {
@@ -251,8 +183,8 @@
         "--packet-sha",
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       ],
-      "path": "/v1/ack",
       "method": "identical-scripted-http-response",
+      "path": "/v1/ack",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij ack\",\"v\":2,\"data\":{\"dispatch\":{\"id\":\"dispatch-139-proof\",\"from\":\"pij-parent\",\"to\":\"pij-worker\",\"packet_path\":\"/work/packet.dd.md\",\"packet_sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"msg_id\":\"dispatch-139-proof\",\"state\":\"acked\",\"created_at\":1788739200000,\"delivered_at\":1788739200001,\"acknowledged_at\":1788739200002,\"ack\":{\"seat\":\"pij-worker\",\"packet_sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"at\":1788739200002}},\"seq\":101}}",
       "native": {
@@ -279,8 +211,8 @@
         "github-copilot/gpt-6-astra-1m",
         "--wait=5000"
       ],
-      "path": "/v1/canary",
       "method": "identical-scripted-http-response",
+      "path": "/v1/canary",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij canary\",\"v\":2,\"data\":{\"dispatch\":{\"id\":\"dispatch-139-proof\",\"from\":\"pij-parent\",\"to\":\"pij-worker\",\"packet_path\":\"/work/packet.dd.md\",\"packet_sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"msg_id\":\"dispatch-139-proof\",\"state\":\"acked\",\"created_at\":1788739200000,\"delivered_at\":1788739200001,\"acknowledged_at\":1788739200002,\"ack\":{\"seat\":\"pij-worker\",\"packet_sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"at\":1788739200002},\"canary\":{\"nonce\":\"nonce-139-proof\",\"model\":\"github-copilot/gpt-6-astra-1m\",\"passed_at\":1788739200003,\"evaluator\":\"pij-parent\"}},\"seq\":101}}",
       "native": {
@@ -306,8 +238,8 @@
         "--plan-id",
         "139"
       ],
-      "path": "/v1/attest",
       "method": "identical-scripted-http-response",
+      "path": "/v1/attest",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij attest\",\"v\":2,\"data\":{\"attestation\":{\"seat\":\"pij-worker\",\"plan_id\":\"139\",\"attested_by\":\"pij-parent\",\"attested_at\":1788739200000},\"seq\":101}}",
       "native": {
@@ -335,8 +267,8 @@
         "--project",
         "governance-port"
       ],
-      "path": "/v1/task",
       "method": "identical-scripted-http-response",
+      "path": "/v1/task",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij task\",\"v\":2,\"data\":{\"task\":{\"id\":\"assignment-139-proof\",\"node_id\":\"pij-worker\",\"task\":\"Implement governance unit\",\"project\":\"governance-port\",\"opened_by\":\"pij-parent\",\"opened_at\":1788739200000,\"closed_at\":null,\"close_reason\":null},\"seq\":101}}",
       "native": {
@@ -363,8 +295,8 @@
         "--reason",
         "done"
       ],
-      "path": "/v1/task",
       "method": "identical-scripted-http-response",
+      "path": "/v1/task",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij task\",\"v\":2,\"data\":{\"task\":{\"id\":\"assignment-139-proof\",\"node_id\":\"pij-worker\",\"task\":\"Implement governance unit\",\"project\":\"governance-port\",\"opened_by\":\"pij-parent\",\"opened_at\":1788739200000,\"closed_at\":1788739200001,\"close_reason\":\"done\"},\"seq\":101}}",
       "native": {
@@ -394,8 +326,8 @@
         "--repo",
         "/work/project"
       ],
-      "path": "/v1/orchestration",
       "method": "identical-scripted-http-response",
+      "path": "/v1/orchestration",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"baton\":{\"name\":\"merge\",\"description\":\"branch:main\",\"resource\":\"branch:main\",\"probe\":null,\"repo\":\"/work/project\",\"created_by\":\"pij-parent\",\"created_at\":1788739200000},\"seq\":101}}",
       "native": {
@@ -427,21 +359,21 @@
         "--evidence",
         "unit gate receipt"
       ],
-      "path": "/v1/orchestration",
       "method": "identical-scripted-http-response",
+      "path": "/v1/orchestration",
       "http_status": 200,
-      "wire_response": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"request\":{\"id\":\"request-139-proof\",\"baton\":\"merge\",\"requester\":\"pij-worker\",\"purpose\":\"Integrate reviewed unit\",\"pin\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"evidence\":\"unit gate receipt\",\"requested_at\":1788739200000,\"state\":\"requested\"},\"seq\":101}}",
+      "wire_response": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"request\":{\"id\":\"request-139-proof\",\"baton\":\"merge\",\"requester\":\"pij-worker\",\"purpose\":\"Integrate reviewed unit\",\"pin\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"evidence\":\"unit gate receipt\",\"requested_at\":1788739200000,\"state\":\"requested\"},\"notice\":\"queued\",\"seq\":101}}",
       "native": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"request\":{\"id\":\"request-139-proof\",\"baton\":\"merge\",\"requester\":\"pij-worker\",\"purpose\":\"Integrate reviewed unit\",\"pin\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"evidence\":\"unit gate receipt\",\"requested_at\":1788739200000,\"state\":\"requested\"},\"seq\":101}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"request\":{\"id\":\"request-139-proof\",\"baton\":\"merge\",\"requester\":\"pij-worker\",\"purpose\":\"Integrate reviewed unit\",\"pin\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"evidence\":\"unit gate receipt\",\"requested_at\":1788739200000,\"state\":\"requested\"},\"notice\":\"queued\",\"seq\":101}}\n",
         "stderr": "",
-        "stdout_sha256": "1bd708991360bb6365f8b5c6f3befcaa3039fcc068fd8ef35d079a3fa2c24bb3"
+        "stdout_sha256": "c451ba19b6942a5890803dca488759ce60a2e2c940cb2aff15d75cdc88757424"
       },
       "shim": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"request\":{\"id\":\"request-139-proof\",\"baton\":\"merge\",\"requester\":\"pij-worker\",\"purpose\":\"Integrate reviewed unit\",\"pin\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"evidence\":\"unit gate receipt\",\"requested_at\":1788739200000,\"state\":\"requested\"},\"seq\":101}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"request\":{\"id\":\"request-139-proof\",\"baton\":\"merge\",\"requester\":\"pij-worker\",\"purpose\":\"Integrate reviewed unit\",\"pin\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"evidence\":\"unit gate receipt\",\"requested_at\":1788739200000,\"state\":\"requested\"},\"notice\":\"queued\",\"seq\":101}}\n",
         "stderr": "",
-        "stdout_sha256": "1bd708991360bb6365f8b5c6f3befcaa3039fcc068fd8ef35d079a3fa2c24bb3"
+        "stdout_sha256": "c451ba19b6942a5890803dca488759ce60a2e2c940cb2aff15d75cdc88757424"
       },
       "byte_equal": true,
       "exit_equal": true
@@ -456,8 +388,8 @@
         "--to",
         "request-139-proof"
       ],
-      "path": "/v1/orchestration",
       "method": "identical-scripted-http-response",
+      "path": "/v1/orchestration",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"lease\":{\"baton\":\"merge\",\"holder\":\"pij-worker\",\"lease_id\":\"lease-139-proof\",\"request_id\":\"request-139-proof\",\"acquired_at\":1788739200000},\"seq\":101}}",
       "native": {
@@ -487,8 +419,8 @@
         "--evidence",
         "integration complete"
       ],
-      "path": "/v1/orchestration",
       "method": "identical-scripted-http-response",
+      "path": "/v1/orchestration",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"baton\":\"merge\",\"released\":true,\"seq\":101}}",
       "native": {
@@ -518,8 +450,8 @@
         "--evidence",
         "holder confirmed gone"
       ],
-      "path": "/v1/orchestration",
       "method": "identical-scripted-http-response",
+      "path": "/v1/orchestration",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"baton\":\"merge\",\"released\":true,\"seq\":101}}",
       "native": {
@@ -545,8 +477,8 @@
         "set",
         "pij-parent"
       ],
-      "path": "/v1/orchestration",
       "method": "identical-scripted-http-response",
+      "path": "/v1/orchestration",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"prime\":{\"seat\":\"pij-parent\",\"designated_by\":\"pij-parent\",\"designated_at\":1788739200000,\"state\":\"current\"},\"seq\":101}}",
       "native": {
@@ -572,8 +504,8 @@
         "retire",
         "pij-parent"
       ],
-      "path": "/v1/orchestration",
       "method": "identical-scripted-http-response",
+      "path": "/v1/orchestration",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"prime\":{\"seat\":\"pij-parent\",\"designated_by\":\"pij-parent\",\"designated_at\":1788739200000,\"state\":\"retired\"},\"seq\":101}}",
       "native": {
@@ -599,8 +531,8 @@
         "unset",
         "pij-parent"
       ],
-      "path": "/v1/orchestration",
       "method": "identical-scripted-http-response",
+      "path": "/v1/orchestration",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"prime\":null,\"seq\":101}}",
       "native": {
@@ -627,8 +559,8 @@
         "pij-worker",
         "worker"
       ],
-      "path": "/v1/orchestration",
       "method": "identical-scripted-http-response",
+      "path": "/v1/orchestration",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"role\":{\"seat\":\"pij-worker\",\"role\":\"worker\",\"assigned_by\":\"pij-parent\",\"assigned_at\":1788739200000},\"seq\":101}}",
       "native": {
@@ -654,8 +586,8 @@
         "unset",
         "pij-worker"
       ],
-      "path": "/v1/orchestration",
       "method": "identical-scripted-http-response",
+      "path": "/v1/orchestration",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"role\":{\"seat\":\"pij-worker\",\"role\":null,\"assigned_by\":\"pij-parent\",\"assigned_at\":1788739200000},\"seq\":101}}",
       "native": {
@@ -680,8 +612,8 @@
         "pij-worker",
         "reviewer"
       ],
-      "path": "/v1/role",
       "method": "identical-scripted-http-response",
+      "path": "/v1/role",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij role\",\"v\":2,\"data\":{\"seat\":\"pij-worker\",\"role\":\"reviewer\",\"assigned_by\":\"pij-parent\",\"assigned_at\":1788739200000,\"seq\":101}}",
       "native": {
@@ -706,8 +638,8 @@
         "question",
         "Which branch owns the shared migration?"
       ],
-      "path": "/v1/report",
       "method": "identical-scripted-http-response",
+      "path": "/v1/report",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij report\",\"v\":2,\"data\":{\"seat\":\"pij-worker\",\"seq\":101,\"decision\":{\"id\":\"decision-139-proof\",\"asked_by\":\"pij-worker\",\"parent\":\"pij-parent\",\"question\":\"Which branch owns the shared migration?\",\"state\":\"open\",\"asked_at\":1788739200000,\"question_seq\":101,\"answer\":null,\"answered_by\":null,\"answered_at\":null,\"answer_msg_id\":null},\"line\":\"question recorded: decision-139-proof\"}}",
       "native": {
@@ -732,8 +664,8 @@
         "verify",
         "pij-worker"
       ],
-      "path": "/v1/report",
       "method": "identical-scripted-http-response",
+      "path": "/v1/report",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij report\",\"v\":2,\"data\":{\"seat\":\"pij-worker\",\"verified_by\":\"pij-parent\",\"done_seq\":100,\"seq\":101,\"line\":\"verified pij-worker done at spine 100\"}}",
       "native": {
@@ -758,8 +690,8 @@
         "decision-139-proof",
         "u3 owns migration 0014"
       ],
-      "path": "/v1/answer",
       "method": "identical-scripted-http-response",
+      "path": "/v1/answer",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij answer\",\"v\":2,\"data\":{\"decision\":{\"id\":\"decision-139-proof\",\"asked_by\":\"pij-worker\",\"parent\":\"pij-parent\",\"question\":\"Which branch owns the shared migration?\",\"state\":\"answered\",\"asked_at\":1788739200000,\"question_seq\":101,\"answer\":\"u3 owns migration 0014\",\"answered_by\":\"pij-parent\",\"answered_at\":1788739200005,\"answer_msg_id\":\"decision-139-proof-answer\"},\"seq\":102}}",
       "native": {
@@ -785,8 +717,8 @@
         "decision-139-proof",
         "u4 owns recovery; u3 retains migration 0014"
       ],
-      "path": "/v1/answer",
       "method": "identical-scripted-http-response",
+      "path": "/v1/answer",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij answer\",\"v\":2,\"data\":{\"decision\":{\"id\":\"decision-139-proof\",\"asked_by\":\"pij-worker\",\"parent\":\"pij-previous-parent\",\"question\":\"Which branch owns the shared migration?\",\"state\":\"answered\",\"asked_at\":1788739200000,\"question_seq\":101,\"answer\":\"u4 owns recovery; u3 retains migration 0014\",\"answered_by\":\"pij-parent\",\"answered_at\":1788739200006,\"answer_msg_id\":\"decision-139-proof-answer-102\"},\"seq\":103}}",
       "native": {
@@ -810,8 +742,8 @@
         "close",
         "pij-worker"
       ],
-      "path": "/v1/close",
       "method": "identical-scripted-http-response",
+      "path": "/v1/close",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij close\",\"v\":2,\"data\":{\"seat\":\"pij-worker\",\"tombstoned_at\":1788739200000,\"reason\":\"owner-close\",\"seq\":101}}",
       "native": {
@@ -839,8 +771,8 @@
         "--refs",
         "plan:139"
       ],
-      "path": "/v1/spine",
       "method": "identical-scripted-http-response",
+      "path": "/v1/spine",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij spine\",\"v\":2,\"data\":{\"seq\":101,\"event\":{\"v\":1,\"at\":1788739200000,\"kind\":\"plan139.control\",\"seat\":\"pij-parent\",\"payload\":\"{\\\"refs\\\":[\\\"plan:139\\\"],\\\"actor\\\":\\\"pij-parent\\\"}\"}}}",
       "native": {
@@ -870,8 +802,8 @@
         "--role",
         "reviewer"
       ],
-      "path": "/v1/adopt",
       "method": "identical-scripted-http-response",
+      "path": "/v1/adopt",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij adopt\",\"v\":2,\"data\":{\"id\":\"pij-worker\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%11\",\"proc\":{\"pid\":12345,\"proc_start\":20260907090000},\"folder\":\"/work/rs-governance-port\",\"state\":\"idle\",\"semantic_state\":null,\"role\":\"reviewer\",\"parent\":\"pij-parent\",\"relay\":false,\"native_extension_delivery\":false}}",
       "native": {
@@ -895,8 +827,8 @@
         "close",
         "pij-worker"
       ],
-      "path": "/v1/close",
       "method": "identical-scripted-http-response",
+      "path": "/v1/close",
       "http_status": 403,
       "wire_response": "{\"ok\":false,\"command\":\"pij role\",\"v\":2,\"error\":\"refused\",\"meta\":\"E-RS-OWNERSHIP role: pij-outsider is neither pij-worker nor its recorded parent\",\"details\":{\"code\":\"E-RS-OWNERSHIP\",\"operation\":\"role\",\"caller\":\"pij-outsider\",\"seat\":\"pij-worker\",\"parent\":\"pij-parent\"}}",
       "native": {
@@ -926,8 +858,8 @@
         "--evidence",
         "integration complete"
       ],
-      "path": "/v1/orchestration",
       "method": "identical-scripted-http-response",
+      "path": "/v1/orchestration",
       "http_status": 409,
       "wire_response": "{\"ok\":false,\"command\":\"pij orchestration\",\"v\":2,\"error\":\"refused\",\"meta\":\"E-RS-LEASE-STALE: current lease is lease-139-current; read baton show and retry with --lease-id <observed lease>\",\"details\":{\"code\":\"E-RS-LEASE-STALE\",\"baton\":\"merge\",\"current_lease\":\"lease-139-current\",\"supplied_lease\":\"lease-139-proof\"}}",
       "native": {
@@ -953,8 +885,8 @@
         "--packet-sha",
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       ],
-      "path": "/v1/ack",
       "method": "identical-scripted-http-response",
+      "path": "/v1/ack",
       "http_status": 400,
       "wire_response": "{\"ok\":false,\"command\":\"pij ack\",\"v\":2,\"error\":\"refused\",\"meta\":\"E-RS-PACKET-SHA ack: packet digest does not match dispatch\",\"details\":{\"code\":\"E-RS-PACKET-SHA\",\"dispatch\":\"dispatch-139-proof\"}}",
       "native": {
@@ -980,8 +912,8 @@
         "decision-139-proof",
         "u4 owns recovery; u3 retains migration 0014"
       ],
-      "path": "/v1/answer",
       "method": "identical-scripted-http-response",
+      "path": "/v1/answer",
       "http_status": 409,
       "wire_response": "{\"ok\":false,\"command\":\"pij answer\",\"v\":2,\"error\":\"refused\",\"meta\":\"E-RS-ANSWER-IN-TRANSIT an answer in transit cannot be withdrawn; wait for its terminal outcome\",\"details\":{\"decision\":\"decision-139-proof\",\"answer_msg_id\":\"decision-139-proof-answer\",\"job_state\":\"pending\",\"code\":\"E-RS-ANSWER-IN-TRANSIT\"}}",
       "native": {
@@ -1007,8 +939,8 @@
         "decision-139-proof",
         "u4 owns recovery; u3 retains migration 0014"
       ],
-      "path": "/v1/answer",
       "method": "identical-scripted-http-response",
+      "path": "/v1/answer",
       "http_status": 409,
       "wire_response": "{\"ok\":false,\"command\":\"pij answer\",\"v\":2,\"error\":\"refused\",\"meta\":\"E-RS-ANSWER-IN-TRANSIT an answer in transit cannot be withdrawn; wait for its terminal outcome\",\"details\":{\"decision\":\"decision-139-proof\",\"answer_msg_id\":\"decision-139-proof-answer\",\"job_state\":\"running\",\"code\":\"E-RS-ANSWER-IN-TRANSIT\"}}",
       "native": {
@@ -1034,8 +966,8 @@
         "decision-139-proof",
         "u4 owns recovery; u3 retains migration 0014"
       ],
-      "path": "/v1/answer",
       "method": "identical-scripted-http-response",
+      "path": "/v1/answer",
       "http_status": 409,
       "wire_response": "{\"ok\":false,\"command\":\"pij answer\",\"v\":2,\"error\":\"refused\",\"meta\":\"E-RS-ANSWER-DELIVERED a delivered or acknowledged answer cannot be superseded\",\"details\":{\"decision\":\"decision-139-proof\",\"answer_msg_id\":\"decision-139-proof-answer\",\"job_state\":\"delivered\",\"code\":\"E-RS-ANSWER-DELIVERED\"}}",
       "native": {
@@ -1061,8 +993,8 @@
         "decision-139-proof",
         "u4 owns recovery; u3 retains migration 0014"
       ],
-      "path": "/v1/answer",
       "method": "identical-scripted-http-response",
+      "path": "/v1/answer",
       "http_status": 409,
       "wire_response": "{\"ok\":false,\"command\":\"pij answer\",\"v\":2,\"error\":\"refused\",\"meta\":\"E-RS-ANSWER-AUTHORITY-SPLIT answer supersession requires shared SQLite queue and spine authority: {\\\"decision\\\":\\\"decision-139-proof\\\",\\\"queue_backend\\\":\\\"real\\\",\\\"spine_backend\\\":\\\"fake\\\"}\",\"details\":{\"decision\":\"decision-139-proof\",\"queue_backend\":\"real\",\"spine_backend\":\"fake\",\"code\":\"E-RS-ANSWER-AUTHORITY-SPLIT\"}}",
       "native": {
@@ -1088,8 +1020,8 @@
         "decision-139-proof",
         "u4 owns recovery; u3 retains migration 0014"
       ],
-      "path": "/v1/answer",
       "method": "identical-scripted-http-response",
+      "path": "/v1/answer",
       "http_status": 409,
       "wire_response": "{\"ok\":false,\"command\":\"pij answer\",\"v\":2,\"error\":\"refused\",\"meta\":\"E-RS-ANSWER-AUTHORITY-SPLIT answer supersession requires shared SQLite queue and spine authority: {\\\"decision\\\":\\\"decision-139-proof\\\",\\\"queue_backend\\\":\\\"fake\\\",\\\"spine_backend\\\":\\\"real\\\"}\",\"details\":{\"decision\":\"decision-139-proof\",\"queue_backend\":\"fake\",\"spine_backend\":\"real\",\"code\":\"E-RS-ANSWER-AUTHORITY-SPLIT\"}}",
       "native": {
@@ -1115,8 +1047,8 @@
         "decision-139-proof",
         "u4 owns recovery; u3 retains migration 0014"
       ],
-      "path": "/v1/answer",
       "method": "identical-scripted-http-response",
+      "path": "/v1/answer",
       "http_status": 409,
       "wire_response": "{\"ok\":false,\"command\":\"pij answer\",\"v\":2,\"error\":\"refused\",\"meta\":\"E-RS-ANSWER-AUTHORITY-SPLIT answer supersession requires shared SQLite queue and spine authority: {\\\"decision\\\":\\\"decision-139-proof\\\",\\\"queue_backend\\\":\\\"fake\\\",\\\"spine_backend\\\":\\\"fake\\\"}\",\"details\":{\"decision\":\"decision-139-proof\",\"queue_backend\":\"fake\",\"spine_backend\":\"fake\",\"code\":\"E-RS-ANSWER-AUTHORITY-SPLIT\"}}",
       "native": {
@@ -1145,15 +1077,15 @@
       "method": "live-same-daemon",
       "native": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij project\",\"v\":2,\"data\":{\"projects\":[{\"created_at\":1788772095266,\"created_by\":\"pij-forthcoming-dove\",\"description\":\"Governance port\",\"plan_path\":null,\"prime_id\":null,\"repo\":\"/private/tmp/p139-live-parity.jkhclJ/work\",\"slug\":\"governance-port\"}]}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij project\",\"v\":2,\"data\":{\"projects\":[{\"created_at\":1788789114059,\"created_by\":\"pij-polite-eva\",\"description\":\"Governance port\",\"plan_path\":null,\"prime_id\":null,\"repo\":\"/private/tmp/p139-8tKAXQ/repo\",\"slug\":\"governance-port\"}]}}\n",
         "stderr": "",
-        "stdout_sha256": "865a7b1769f1d830fa1f81a27602d445f37b03914de8b87e64e02ebd63c73e72"
+        "stdout_sha256": "5b0f371843d0a0052aa5cb1b1ed9acbe9ad7b77c04f3f08ebd65118c9101ac7b"
       },
       "shim": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij project\",\"v\":2,\"data\":{\"projects\":[{\"created_at\":1788772095266,\"created_by\":\"pij-forthcoming-dove\",\"description\":\"Governance port\",\"plan_path\":null,\"prime_id\":null,\"repo\":\"/private/tmp/p139-live-parity.jkhclJ/work\",\"slug\":\"governance-port\"}]}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij project\",\"v\":2,\"data\":{\"projects\":[{\"created_at\":1788789114059,\"created_by\":\"pij-polite-eva\",\"description\":\"Governance port\",\"plan_path\":null,\"prime_id\":null,\"repo\":\"/private/tmp/p139-8tKAXQ/repo\",\"slug\":\"governance-port\"}]}}\n",
         "stderr": "",
-        "stdout_sha256": "865a7b1769f1d830fa1f81a27602d445f37b03914de8b87e64e02ebd63c73e72"
+        "stdout_sha256": "5b0f371843d0a0052aa5cb1b1ed9acbe9ad7b77c04f3f08ebd65118c9101ac7b"
       },
       "byte_equal": true,
       "exit_equal": true
@@ -1168,15 +1100,15 @@
       "method": "live-same-daemon",
       "native": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij project\",\"v\":2,\"data\":{\"project\":{\"created_at\":1788772095266,\"created_by\":\"pij-forthcoming-dove\",\"description\":\"Governance port\",\"plan_path\":null,\"prime_id\":null,\"repo\":\"/private/tmp/p139-live-parity.jkhclJ/work\",\"slug\":\"governance-port\"}}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij project\",\"v\":2,\"data\":{\"project\":{\"created_at\":1788789114059,\"created_by\":\"pij-polite-eva\",\"description\":\"Governance port\",\"plan_path\":null,\"prime_id\":null,\"repo\":\"/private/tmp/p139-8tKAXQ/repo\",\"slug\":\"governance-port\"}}}\n",
         "stderr": "",
-        "stdout_sha256": "ae53e053330233734c7b583b1408d829afbfcf6953112f5bc48808276accfa4d"
+        "stdout_sha256": "310f4170d355eacd122819e95599626694ef2fa3b32dc93937ff1e2bf5137c79"
       },
       "shim": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij project\",\"v\":2,\"data\":{\"project\":{\"created_at\":1788772095266,\"created_by\":\"pij-forthcoming-dove\",\"description\":\"Governance port\",\"plan_path\":null,\"prime_id\":null,\"repo\":\"/private/tmp/p139-live-parity.jkhclJ/work\",\"slug\":\"governance-port\"}}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij project\",\"v\":2,\"data\":{\"project\":{\"created_at\":1788789114059,\"created_by\":\"pij-polite-eva\",\"description\":\"Governance port\",\"plan_path\":null,\"prime_id\":null,\"repo\":\"/private/tmp/p139-8tKAXQ/repo\",\"slug\":\"governance-port\"}}}\n",
         "stderr": "",
-        "stdout_sha256": "ae53e053330233734c7b583b1408d829afbfcf6953112f5bc48808276accfa4d"
+        "stdout_sha256": "310f4170d355eacd122819e95599626694ef2fa3b32dc93937ff1e2bf5137c79"
       },
       "byte_equal": true,
       "exit_equal": true
@@ -1192,15 +1124,15 @@
       "method": "live-same-daemon",
       "native": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij stream\",\"v\":2,\"data\":{\"streams\":[{\"base_ref\":\"main\",\"branch\":\"s139/contracts\",\"created_at\":1788772768962,\"created_by\":\"pij-forthcoming-dove\",\"id\":\"governance-port:contracts\",\"ordinal\":139,\"project\":\"governance-port\",\"slug\":\"contracts\",\"state\":\"created\",\"worktree\":\"/private/tmp/p139-live-parity.jkhclJ/work/s139-contracts\"}]}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij stream\",\"v\":2,\"data\":{\"streams\":[{\"base_ref\":\"main\",\"branch\":\"s139/contracts\",\"created_at\":1788789114065,\"created_by\":\"pij-polite-eva\",\"id\":\"governance-port:contracts\",\"ordinal\":139,\"project\":\"governance-port\",\"slug\":\"contracts\",\"state\":\"created\",\"worktree\":\"/private/tmp/p139-8tKAXQ/repo/s139-contracts\"}]}}\n",
         "stderr": "",
-        "stdout_sha256": "b80e28cc21b51274e4633d17f4f1cc523e71aba21962602c4dab397549f997f5"
+        "stdout_sha256": "b1617ec9bcafb40404d9faf107ea3e27e0428bf3a7638363e5384dcec7511185"
       },
       "shim": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij stream\",\"v\":2,\"data\":{\"streams\":[{\"base_ref\":\"main\",\"branch\":\"s139/contracts\",\"created_at\":1788772768962,\"created_by\":\"pij-forthcoming-dove\",\"id\":\"governance-port:contracts\",\"ordinal\":139,\"project\":\"governance-port\",\"slug\":\"contracts\",\"state\":\"created\",\"worktree\":\"/private/tmp/p139-live-parity.jkhclJ/work/s139-contracts\"}]}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij stream\",\"v\":2,\"data\":{\"streams\":[{\"base_ref\":\"main\",\"branch\":\"s139/contracts\",\"created_at\":1788789114065,\"created_by\":\"pij-polite-eva\",\"id\":\"governance-port:contracts\",\"ordinal\":139,\"project\":\"governance-port\",\"slug\":\"contracts\",\"state\":\"created\",\"worktree\":\"/private/tmp/p139-8tKAXQ/repo/s139-contracts\"}]}}\n",
         "stderr": "",
-        "stdout_sha256": "b80e28cc21b51274e4633d17f4f1cc523e71aba21962602c4dab397549f997f5"
+        "stdout_sha256": "b1617ec9bcafb40404d9faf107ea3e27e0428bf3a7638363e5384dcec7511185"
       },
       "byte_equal": true,
       "exit_equal": true
@@ -1215,15 +1147,15 @@
       "method": "live-same-daemon",
       "native": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij stream\",\"v\":2,\"data\":{\"stream\":{\"base_ref\":\"main\",\"branch\":\"s139/contracts\",\"created_at\":1788772768962,\"created_by\":\"pij-forthcoming-dove\",\"id\":\"governance-port:contracts\",\"ordinal\":139,\"project\":\"governance-port\",\"slug\":\"contracts\",\"state\":\"created\",\"worktree\":\"/private/tmp/p139-live-parity.jkhclJ/work/s139-contracts\"}}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij stream\",\"v\":2,\"data\":{\"stream\":{\"base_ref\":\"main\",\"branch\":\"s139/contracts\",\"created_at\":1788789114065,\"created_by\":\"pij-polite-eva\",\"id\":\"governance-port:contracts\",\"ordinal\":139,\"project\":\"governance-port\",\"slug\":\"contracts\",\"state\":\"created\",\"worktree\":\"/private/tmp/p139-8tKAXQ/repo/s139-contracts\"}}}\n",
         "stderr": "",
-        "stdout_sha256": "09427df2f8742afb453c2369a715167e21fb90b7d44352289a6ec7a8ff32e19d"
+        "stdout_sha256": "b6083c4e34bebf7005edee1dad2dfeb2ee95ea41d012f805694de9c0da39f339"
       },
       "shim": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij stream\",\"v\":2,\"data\":{\"stream\":{\"base_ref\":\"main\",\"branch\":\"s139/contracts\",\"created_at\":1788772768962,\"created_by\":\"pij-forthcoming-dove\",\"id\":\"governance-port:contracts\",\"ordinal\":139,\"project\":\"governance-port\",\"slug\":\"contracts\",\"state\":\"created\",\"worktree\":\"/private/tmp/p139-live-parity.jkhclJ/work/s139-contracts\"}}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij stream\",\"v\":2,\"data\":{\"stream\":{\"base_ref\":\"main\",\"branch\":\"s139/contracts\",\"created_at\":1788789114065,\"created_by\":\"pij-polite-eva\",\"id\":\"governance-port:contracts\",\"ordinal\":139,\"project\":\"governance-port\",\"slug\":\"contracts\",\"state\":\"created\",\"worktree\":\"/private/tmp/p139-8tKAXQ/repo/s139-contracts\"}}}\n",
         "stderr": "",
-        "stdout_sha256": "09427df2f8742afb453c2369a715167e21fb90b7d44352289a6ec7a8ff32e19d"
+        "stdout_sha256": "b6083c4e34bebf7005edee1dad2dfeb2ee95ea41d012f805694de9c0da39f339"
       },
       "byte_equal": true,
       "exit_equal": true
@@ -1239,15 +1171,15 @@
       "method": "live-same-daemon",
       "native": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij fence\",\"v\":2,\"data\":{\"fences\":[{\"declared_at\":1788772769055,\"declared_by\":\"pij-forthcoming-dove\",\"id\":\"fence-5e26764d650ec05813a840f3521829b5\",\"paths\":[\"crates/core/**\"],\"shared\":[\"crates/core/src/lib.rs\"],\"stream\":\"governance-port:contracts\"}]}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij fence\",\"v\":2,\"data\":{\"fences\":[{\"declared_at\":1788789114119,\"declared_by\":\"pij-polite-eva\",\"id\":\"fence-1af7fcc5d651f10fdd7b70a88f6f56c5\",\"paths\":[\"crates/core/**\"],\"shared\":[\"crates/core/src/lib.rs\"],\"stream\":\"governance-port:contracts\"}]}}\n",
         "stderr": "",
-        "stdout_sha256": "b1f8887cd280a969393147515a531592335719c380b8db2e5194578d331c2dfa"
+        "stdout_sha256": "42f70b9c64e64598d4c9dc8614ed7ac83bd11757e6fb197bdc0f1e0ed6b6d73b"
       },
       "shim": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij fence\",\"v\":2,\"data\":{\"fences\":[{\"declared_at\":1788772769055,\"declared_by\":\"pij-forthcoming-dove\",\"id\":\"fence-5e26764d650ec05813a840f3521829b5\",\"paths\":[\"crates/core/**\"],\"shared\":[\"crates/core/src/lib.rs\"],\"stream\":\"governance-port:contracts\"}]}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij fence\",\"v\":2,\"data\":{\"fences\":[{\"declared_at\":1788789114119,\"declared_by\":\"pij-polite-eva\",\"id\":\"fence-1af7fcc5d651f10fdd7b70a88f6f56c5\",\"paths\":[\"crates/core/**\"],\"shared\":[\"crates/core/src/lib.rs\"],\"stream\":\"governance-port:contracts\"}]}}\n",
         "stderr": "",
-        "stdout_sha256": "b1f8887cd280a969393147515a531592335719c380b8db2e5194578d331c2dfa"
+        "stdout_sha256": "42f70b9c64e64598d4c9dc8614ed7ac83bd11757e6fb197bdc0f1e0ed6b6d73b"
       },
       "byte_equal": true,
       "exit_equal": true
@@ -1257,20 +1189,20 @@
       "argv": [
         "node",
         "show",
-        "pij-forthcoming-dove"
+        "pij-polite-eva"
       ],
       "method": "live-same-daemon",
       "native": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij node\",\"v\":2,\"data\":{\"cursor\":9,\"node\":{\"assignments\":[],\"children\":[],\"dispatches\":[],\"id\":\"pij-forthcoming-dove\",\"parent\":null,\"plan_id\":null,\"role\":\"prime\"}}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij node\",\"v\":2,\"data\":{\"cursor\":9,\"node\":{\"assignments\":[],\"children\":[],\"dispatches\":[],\"id\":\"pij-polite-eva\",\"parent\":null,\"plan_id\":null,\"role\":\"prime\"}}}\n",
         "stderr": "",
-        "stdout_sha256": "317df8a1f602004891661e9e422cd0c003076eac0bbf9332916c705b0ed8b75b"
+        "stdout_sha256": "cf05a025a938dc5528b6e359856489c8fd23e5889d7473f3557a7b0ba07e9932"
       },
       "shim": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij node\",\"v\":2,\"data\":{\"cursor\":9,\"node\":{\"assignments\":[],\"children\":[],\"dispatches\":[],\"id\":\"pij-forthcoming-dove\",\"parent\":null,\"plan_id\":null,\"role\":\"prime\"}}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij node\",\"v\":2,\"data\":{\"cursor\":9,\"node\":{\"assignments\":[],\"children\":[],\"dispatches\":[],\"id\":\"pij-polite-eva\",\"parent\":null,\"plan_id\":null,\"role\":\"prime\"}}}\n",
         "stderr": "",
-        "stdout_sha256": "317df8a1f602004891661e9e422cd0c003076eac0bbf9332916c705b0ed8b75b"
+        "stdout_sha256": "cf05a025a938dc5528b6e359856489c8fd23e5889d7473f3557a7b0ba07e9932"
       },
       "byte_equal": true,
       "exit_equal": true
@@ -1285,15 +1217,15 @@
       "method": "live-same-daemon",
       "native": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"batons\":[{\"created_at\":1788772769097,\"created_by\":\"pij-forthcoming-dove\",\"description\":\"branch:main\",\"name\":\"merge\",\"probe\":null,\"repo\":\"/private/tmp/p139-live-parity.jkhclJ/work\",\"resource\":\"branch:main\"}]}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"batons\":[{\"created_at\":1788789114125,\"created_by\":\"pij-polite-eva\",\"description\":\"branch:main\",\"name\":\"merge\",\"probe\":null,\"repo\":\"/tmp/p139-8tKAXQ/repo\",\"resource\":\"branch:main\"}]}}\n",
         "stderr": "",
-        "stdout_sha256": "46d2d1aed16b1ee5cb47c074c77b064a6dbcb785539f5a05483a24ab823d81d3"
+        "stdout_sha256": "ec3510e756adcf12061e6159ddb1dbfdda74434bef9431fc282a677d18e292a8"
       },
       "shim": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"batons\":[{\"created_at\":1788772769097,\"created_by\":\"pij-forthcoming-dove\",\"description\":\"branch:main\",\"name\":\"merge\",\"probe\":null,\"repo\":\"/private/tmp/p139-live-parity.jkhclJ/work\",\"resource\":\"branch:main\"}]}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"batons\":[{\"created_at\":1788789114125,\"created_by\":\"pij-polite-eva\",\"description\":\"branch:main\",\"name\":\"merge\",\"probe\":null,\"repo\":\"/tmp/p139-8tKAXQ/repo\",\"resource\":\"branch:main\"}]}}\n",
         "stderr": "",
-        "stdout_sha256": "46d2d1aed16b1ee5cb47c074c77b064a6dbcb785539f5a05483a24ab823d81d3"
+        "stdout_sha256": "ec3510e756adcf12061e6159ddb1dbfdda74434bef9431fc282a677d18e292a8"
       },
       "byte_equal": true,
       "exit_equal": true
@@ -1309,15 +1241,15 @@
       "method": "live-same-daemon",
       "native": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"baton\":{\"created_at\":1788772769097,\"created_by\":\"pij-forthcoming-dove\",\"description\":\"branch:main\",\"name\":\"merge\",\"probe\":null,\"repo\":\"/private/tmp/p139-live-parity.jkhclJ/work\",\"resource\":\"branch:main\"},\"lease\":null,\"requests\":[]}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"baton\":{\"created_at\":1788789114125,\"created_by\":\"pij-polite-eva\",\"description\":\"branch:main\",\"name\":\"merge\",\"probe\":null,\"repo\":\"/tmp/p139-8tKAXQ/repo\",\"resource\":\"branch:main\"},\"lease\":null,\"requests\":[]}}\n",
         "stderr": "",
-        "stdout_sha256": "da0f552054bfbb5896ed5ef250339b488cb62a0fea370d994d92e28d0ba22059"
+        "stdout_sha256": "5ee2b6ff5f4427e3bfc1b18775c958a689532e1dce666935f66a088a31cb1528"
       },
       "shim": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"baton\":{\"created_at\":1788772769097,\"created_by\":\"pij-forthcoming-dove\",\"description\":\"branch:main\",\"name\":\"merge\",\"probe\":null,\"repo\":\"/private/tmp/p139-live-parity.jkhclJ/work\",\"resource\":\"branch:main\"},\"lease\":null,\"requests\":[]}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij orchestration\",\"v\":2,\"data\":{\"baton\":{\"created_at\":1788789114125,\"created_by\":\"pij-polite-eva\",\"description\":\"branch:main\",\"name\":\"merge\",\"probe\":null,\"repo\":\"/tmp/p139-8tKAXQ/repo\",\"resource\":\"branch:main\"},\"lease\":null,\"requests\":[]}}\n",
         "stderr": "",
-        "stdout_sha256": "da0f552054bfbb5896ed5ef250339b488cb62a0fea370d994d92e28d0ba22059"
+        "stdout_sha256": "5ee2b6ff5f4427e3bfc1b18775c958a689532e1dce666935f66a088a31cb1528"
       },
       "byte_equal": true,
       "exit_equal": true
@@ -1365,6 +1297,28 @@
       "exit_equal": true
     },
     {
+      "id": "reap-dry-run",
+      "argv": [
+        "reap",
+        "--dry-run"
+      ],
+      "method": "live-same-daemon",
+      "native": {
+        "exit": 0,
+        "stdout": "{\"ok\":true,\"command\":\"pij reap\",\"v\":2,\"data\":{\"dry_run\":true,\"before\":1,\"after\":1,\"candidates\":[],\"reaped\":[],\"unverifiable\":[]}}\n",
+        "stderr": "",
+        "stdout_sha256": "0c8d92bba8a59695e71f2c079536783c919200f31931b3f5be248a57049a2f74"
+      },
+      "shim": {
+        "exit": 0,
+        "stdout": "{\"ok\":true,\"command\":\"pij reap\",\"v\":2,\"data\":{\"dry_run\":true,\"before\":1,\"after\":1,\"candidates\":[],\"reaped\":[],\"unverifiable\":[]}}\n",
+        "stderr": "",
+        "stdout_sha256": "0c8d92bba8a59695e71f2c079536783c919200f31931b3f5be248a57049a2f74"
+      },
+      "byte_equal": true,
+      "exit_equal": true
+    },
+    {
       "id": "spine-events",
       "argv": [
         "spine",
@@ -1397,100 +1351,15 @@
       "method": "live-same-daemon",
       "native": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij spine\",\"v\":2,\"data\":{\"cursor\":9,\"text\":\"1 config.claude-inbound-ensured -\\n2 config.claude-hook-ensured -\\n3 config.claude-statusline-ensured -\\n4 seat.put pij-forthcoming-dove\\n5 role-set pij-forthcoming-dove\\n6 project-created pij-forthcoming-dove\\n7 allocation pij-forthcoming-dove\\n8 fence pij-forthcoming-dove\\n9 baton.defined pij-forthcoming-dove\"}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij spine\",\"v\":2,\"data\":{\"cursor\":9,\"text\":\"1 config.claude-inbound-ensured -\\n2 config.claude-hook-ensured -\\n3 config.claude-statusline-ensured -\\n4 seat.put pij-polite-eva\\n5 role-set pij-polite-eva\\n6 project-created pij-polite-eva\\n7 allocation pij-polite-eva\\n8 fence pij-polite-eva\\n9 baton.defined pij-polite-eva\"}}\n",
         "stderr": "",
-        "stdout_sha256": "3a5ac0c14d55cdcef3398b37747a8fda5740658c9ca93e2dd287e3faa7b72665"
+        "stdout_sha256": "7ff745a45e7a895d54e4f9d8e01a762ae86a8be2954e34e89d81dc1c5ef88dc7"
       },
       "shim": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij spine\",\"v\":2,\"data\":{\"cursor\":9,\"text\":\"1 config.claude-inbound-ensured -\\n2 config.claude-hook-ensured -\\n3 config.claude-statusline-ensured -\\n4 seat.put pij-forthcoming-dove\\n5 role-set pij-forthcoming-dove\\n6 project-created pij-forthcoming-dove\\n7 allocation pij-forthcoming-dove\\n8 fence pij-forthcoming-dove\\n9 baton.defined pij-forthcoming-dove\"}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij spine\",\"v\":2,\"data\":{\"cursor\":9,\"text\":\"1 config.claude-inbound-ensured -\\n2 config.claude-hook-ensured -\\n3 config.claude-statusline-ensured -\\n4 seat.put pij-polite-eva\\n5 role-set pij-polite-eva\\n6 project-created pij-polite-eva\\n7 allocation pij-polite-eva\\n8 fence pij-polite-eva\\n9 baton.defined pij-polite-eva\"}}\n",
         "stderr": "",
-        "stdout_sha256": "3a5ac0c14d55cdcef3398b37747a8fda5740658c9ca93e2dd287e3faa7b72665"
-      },
-      "byte_equal": true,
-      "exit_equal": true
-    },
-    {
-      "id": "list-live",
-      "argv": [
-        "list"
-      ],
-      "method": "live-same-daemon",
-      "native": {
-        "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij seats\",\"v\":2,\"data\":{\"seats\":[{\"id\":\"pij-forthcoming-dove\",\"machine\":\"JordansacStudio.localdomain\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%0\",\"proc\":{\"pid\":1821,\"proc_start\":20260907190207},\"folder\":\"/private/tmp/p139-live-parity.jkhclJ/work\",\"state\":\"idle\",\"semantic_state\":null,\"role\":\"prime\",\"parent\":null,\"relay\":false,\"native_extension_delivery\":false,\"generation\":\"rs\"}],\"unavailable\":[]}}\n",
-        "stderr": "",
-        "stdout_sha256": "6d54c63824b6e8a0b75a729f7190efef41a52a6c60e4e1de8873031bbf028106"
-      },
-      "shim": {
-        "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij seats\",\"v\":2,\"data\":{\"seats\":[{\"id\":\"pij-forthcoming-dove\",\"machine\":\"JordansacStudio.localdomain\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%0\",\"proc\":{\"pid\":1821,\"proc_start\":20260907190207},\"folder\":\"/private/tmp/p139-live-parity.jkhclJ/work\",\"state\":\"idle\",\"semantic_state\":null,\"role\":\"prime\",\"parent\":null,\"relay\":false,\"native_extension_delivery\":false,\"generation\":\"rs\"}],\"unavailable\":[]}}\n",
-        "stderr": "",
-        "stdout_sha256": "6d54c63824b6e8a0b75a729f7190efef41a52a6c60e4e1de8873031bbf028106"
-      },
-      "byte_equal": true,
-      "exit_equal": true
-    },
-    {
-      "id": "whoami-live",
-      "argv": [
-        "whoami"
-      ],
-      "method": "live-same-daemon",
-      "native": {
-        "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij whoami\",\"v\":2,\"data\":{\"id\":\"pij-forthcoming-dove\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%0\",\"proc\":{\"pid\":1821,\"proc_start\":20260907190207},\"folder\":\"/private/tmp/p139-live-parity.jkhclJ/work\",\"state\":\"idle\",\"semantic_state\":null,\"role\":\"prime\",\"parent\":null,\"relay\":false,\"native_extension_delivery\":false}}\n",
-        "stderr": "",
-        "stdout_sha256": "d409090cfba6ce3f15d28ffef363ac86ef1df96584c673e69b5426157d6a8924"
-      },
-      "shim": {
-        "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij whoami\",\"v\":2,\"data\":{\"id\":\"pij-forthcoming-dove\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%0\",\"proc\":{\"pid\":1821,\"proc_start\":20260907190207},\"folder\":\"/private/tmp/p139-live-parity.jkhclJ/work\",\"state\":\"idle\",\"semantic_state\":null,\"role\":\"prime\",\"parent\":null,\"relay\":false,\"native_extension_delivery\":false}}\n",
-        "stderr": "",
-        "stdout_sha256": "d409090cfba6ce3f15d28ffef363ac86ef1df96584c673e69b5426157d6a8924"
-      },
-      "byte_equal": true,
-      "exit_equal": true
-    },
-    {
-      "id": "state-live",
-      "argv": [
-        "state",
-        "pij-forthcoming-dove"
-      ],
-      "method": "live-same-daemon",
-      "native": {
-        "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij state\",\"v\":2,\"data\":{\"id\":\"pij-forthcoming-dove\",\"state\":\"idle\",\"liveness\":\"active\",\"pid\":1821,\"procStart\":20260907190207,\"cwd\":\"/private/tmp/p139-live-parity.jkhclJ/work\",\"harness\":\"omp\",\"role\":\"prime\",\"parent\":null,\"boundModel\":null,\"effort\":null,\"pane\":\"%0\",\"provider\":null,\"semanticState\":null,\"machine\":\"JordansacStudio.localdomain\",\"tombstonedAt\":null,\"tombstoneReason\":null,\"statusPrev\":null,\"statusNext\":null,\"statusAt\":null,\"statusSeq\":null,\"statusStale\":null,\"stateNote\":null,\"held\":[],\"unsupported\":[{\"field\":\"lifecycle\",\"why\":\"rs seats have no pending/bound/dissolved lifecycle field; binding evidence lives in `proc` and is reported through `liveness`\"},{\"field\":\"activity\",\"why\":\"the done-vs-idle split needs `lastEventAt`, which the rs descriptor does not carry; `state` reports the working/idle half\"},{\"field\":\"lastEventAt\",\"why\":\"not on the rs descriptor — deriving it needs a full spine scan per read\"},{\"field\":\"ageMs\",\"why\":\"derived from `lastEventAt`, which rs does not carry\"},{\"field\":\"liveness:stale\",\"why\":\"TS reports `stale` for a seat that claims to be working and has gone quiet; that needs event age. An rs `active` therefore covers BOTH the TS `active` and the TS `stale` case — it is a weaker claim, not the same one\"},{\"field\":\"daemonLastTickAt\",\"why\":\"no per-seat daemon tick is recorded in the rs store\"},{\"field\":\"daemonTickAgeMs\",\"why\":\"derived from the tick rs does not record\"},{\"field\":\"daemonTickStale\",\"why\":\"derived from the tick rs does not record\"},{\"field\":\"failureReason\",\"why\":\"rs records no per-seat failure reason on the descriptor\"},{\"field\":\"bindHealth\",\"why\":\"the TS pre-bind health classifier has no rs counterpart\"},{\"field\":\"degraded\",\"why\":\"derived from `bindHealth`\"},{\"field\":\"degradedReason\",\"why\":\"derived from `bindHealth`\"},{\"field\":\"terminal\",\"why\":\"rs records termination as `tombstonedAt` + `tombstoneReason`, which this card DOES carry — a different shape, not a missing fact\"},{\"field\":\"watchdog\",\"why\":\"rs has no watchdog block on the seat row\"}],\"session\":null,\"generation\":\"rs\"}}\n",
-        "stderr": "",
-        "stdout_sha256": "37b39737c77792a70ec623f850e6a3b32cedb0f31c81338c08a5a534e92e6c8a"
-      },
-      "shim": {
-        "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij state\",\"v\":2,\"data\":{\"id\":\"pij-forthcoming-dove\",\"state\":\"idle\",\"liveness\":\"active\",\"pid\":1821,\"procStart\":20260907190207,\"cwd\":\"/private/tmp/p139-live-parity.jkhclJ/work\",\"harness\":\"omp\",\"role\":\"prime\",\"parent\":null,\"boundModel\":null,\"effort\":null,\"pane\":\"%0\",\"provider\":null,\"semanticState\":null,\"machine\":\"JordansacStudio.localdomain\",\"tombstonedAt\":null,\"tombstoneReason\":null,\"statusPrev\":null,\"statusNext\":null,\"statusAt\":null,\"statusSeq\":null,\"statusStale\":null,\"stateNote\":null,\"held\":[],\"unsupported\":[{\"field\":\"lifecycle\",\"why\":\"rs seats have no pending/bound/dissolved lifecycle field; binding evidence lives in `proc` and is reported through `liveness`\"},{\"field\":\"activity\",\"why\":\"the done-vs-idle split needs `lastEventAt`, which the rs descriptor does not carry; `state` reports the working/idle half\"},{\"field\":\"lastEventAt\",\"why\":\"not on the rs descriptor — deriving it needs a full spine scan per read\"},{\"field\":\"ageMs\",\"why\":\"derived from `lastEventAt`, which rs does not carry\"},{\"field\":\"liveness:stale\",\"why\":\"TS reports `stale` for a seat that claims to be working and has gone quiet; that needs event age. An rs `active` therefore covers BOTH the TS `active` and the TS `stale` case — it is a weaker claim, not the same one\"},{\"field\":\"daemonLastTickAt\",\"why\":\"no per-seat daemon tick is recorded in the rs store\"},{\"field\":\"daemonTickAgeMs\",\"why\":\"derived from the tick rs does not record\"},{\"field\":\"daemonTickStale\",\"why\":\"derived from the tick rs does not record\"},{\"field\":\"failureReason\",\"why\":\"rs records no per-seat failure reason on the descriptor\"},{\"field\":\"bindHealth\",\"why\":\"the TS pre-bind health classifier has no rs counterpart\"},{\"field\":\"degraded\",\"why\":\"derived from `bindHealth`\"},{\"field\":\"degradedReason\",\"why\":\"derived from `bindHealth`\"},{\"field\":\"terminal\",\"why\":\"rs records termination as `tombstonedAt` + `tombstoneReason`, which this card DOES carry — a different shape, not a missing fact\"},{\"field\":\"watchdog\",\"why\":\"rs has no watchdog block on the seat row\"}],\"session\":null,\"generation\":\"rs\"}}\n",
-        "stderr": "",
-        "stdout_sha256": "37b39737c77792a70ec623f850e6a3b32cedb0f31c81338c08a5a534e92e6c8a"
-      },
-      "byte_equal": true,
-      "exit_equal": true
-    },
-    {
-      "id": "commit-trailers-live",
-      "argv": [
-        "commit-trailers"
-      ],
-      "method": "live-same-daemon",
-      "native": {
-        "exit": 0,
-        "stdout": "Pij-Prime: pij-forthcoming-dove\n",
-        "stderr": "# Pij-Prime derivation: role=prime\n",
-        "stdout_sha256": "ea19b0b575ba7d7f1a7e99cf137f24304d56cb7ea005f3bf9f8151bbd0c43952"
-      },
-      "shim": {
-        "exit": 0,
-        "stdout": "Pij-Prime: pij-forthcoming-dove\n",
-        "stderr": "# Pij-Prime derivation: role=prime\n",
-        "stdout_sha256": "ea19b0b575ba7d7f1a7e99cf137f24304d56cb7ea005f3bf9f8151bbd0c43952"
+        "stdout_sha256": "7ff745a45e7a895d54e4f9d8e01a762ae86a8be2954e34e89d81dc1c5ef88dc7"
       },
       "byte_equal": true,
       "exit_equal": true
@@ -1506,37 +1375,100 @@
       "method": "live-same-daemon",
       "native": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij spine\",\"v\":2,\"data\":{\"cursor\":9,\"events\":[{\"at\":1788771778968,\"kind\":\"config.claude-inbound-ensured\",\"payload\":\"{\\\"after\\\":\\\"accept\\\",\\\"before\\\":null,\\\"home\\\":\\\"/private/tmp/p139-live-parity.jkhclJ/home/.claude\\\"}\",\"seat\":null,\"seq\":1,\"v\":1},{\"at\":1788771778971,\"kind\":\"config.claude-hook-ensured\",\"payload\":\"{\\\"after\\\":\\\"/private/tmp/p139-live-parity.jkhclJ/home/.pij-rs/claude-session-start-pij.sh\\\",\\\"before\\\":null,\\\"home\\\":\\\"/private/tmp/p139-live-parity.jkhclJ/home/.claude\\\"}\",\"seat\":null,\"seq\":2,\"v\":1},{\"at\":1788771778972,\"kind\":\"config.claude-statusline-ensured\",\"payload\":\"{\\\"after\\\":\\\"/private/tmp/p139-live-parity.jkhclJ/home/.pij-rs/claude-statusline-pij.sh\\\",\\\"before\\\":null,\\\"home\\\":\\\"/private/tmp/p139-live-parity.jkhclJ/home/.claude\\\"}\",\"seat\":null,\"seq\":3,\"v\":1},{\"at\":1788771970263,\"kind\":\"seat.put\",\"payload\":\"{\\\"id\\\":\\\"pij-forthcoming-dove\\\",\\\"harness\\\":\\\"omp\\\",\\\"session\\\":null,\\\"pane\\\":\\\"%0\\\",\\\"proc\\\":{\\\"pid\\\":1821,\\\"proc_start\\\":20260907190207},\\\"folder\\\":\\\"/private/tmp/p139-live-parity.jkhclJ/work\\\",\\\"state\\\":\\\"idle\\\",\\\"semantic_state\\\":null,\\\"role\\\":null,\\\"parent\\\":null,\\\"relay\\\":false,\\\"native_extension_delivery\\\":false}\",\"seat\":\"pij-forthcoming-dove\",\"seq\":4,\"v\":1},{\"at\":1788771970263,\"kind\":\"role-set\",\"payload\":\"{\\\"action\\\":\\\"assigned\\\",\\\"actor\\\":\\\"pij-forthcoming-dove\\\",\\\"record\\\":{\\\"assigned_at\\\":1788771970263,\\\"assigned_by\\\":\\\"pij-forthcoming-dove\\\",\\\"role\\\":\\\"prime\\\",\\\"seat\\\":\\\"pij-forthcoming-dove\\\"}}\",\"seat\":\"pij-forthcoming-dove\",\"seq\":5,\"v\":1},{\"at\":1788772095266,\"kind\":\"project-created\",\"payload\":\"{\\\"action\\\":\\\"created\\\",\\\"actor\\\":\\\"pij-forthcoming-dove\\\",\\\"record\\\":{\\\"created_at\\\":1788772095266,\\\"created_by\\\":\\\"pij-forthcoming-dove\\\",\\\"description\\\":\\\"Governance port\\\",\\\"plan_path\\\":null,\\\"prime_id\\\":null,\\\"repo\\\":\\\"/private/tmp/p139-live-parity.jkhclJ/work\\\",\\\"slug\\\":\\\"governance-port\\\"}}\",\"seat\":\"pij-forthcoming-dove\",\"seq\":6,\"v\":1},{\"at\":1788772768962,\"kind\":\"allocation\",\"payload\":\"{\\\"action\\\":\\\"created\\\",\\\"actor\\\":\\\"pij-forthcoming-dove\\\",\\\"record\\\":{\\\"base_ref\\\":\\\"main\\\",\\\"branch\\\":\\\"s139/contracts\\\",\\\"created_at\\\":1788772768962,\\\"created_by\\\":\\\"pij-forthcoming-dove\\\",\\\"id\\\":\\\"governance-port:contracts\\\",\\\"ordinal\\\":139,\\\"project\\\":\\\"governance-port\\\",\\\"slug\\\":\\\"contracts\\\",\\\"state\\\":\\\"created\\\",\\\"worktree\\\":\\\"/private/tmp/p139-live-parity.jkhclJ/work/s139-contracts\\\"}}\",\"seat\":\"pij-forthcoming-dove\",\"seq\":7,\"v\":1},{\"at\":1788772769055,\"kind\":\"fence\",\"payload\":\"{\\\"action\\\":\\\"declared\\\",\\\"actor\\\":\\\"pij-forthcoming-dove\\\",\\\"record\\\":{\\\"declared_at\\\":1788772769055,\\\"declared_by\\\":\\\"pij-forthcoming-dove\\\",\\\"id\\\":\\\"fence-5e26764d650ec05813a840f3521829b5\\\",\\\"paths\\\":[\\\"crates/core/**\\\"],\\\"shared\\\":[\\\"crates/core/src/lib.rs\\\"],\\\"stream\\\":\\\"governance-port:contracts\\\"}}\",\"seat\":\"pij-forthcoming-dove\",\"seq\":8,\"v\":1},{\"at\":1788772769097,\"kind\":\"baton.defined\",\"payload\":\"{\\\"action\\\":\\\"defined\\\",\\\"actor\\\":\\\"pij-forthcoming-dove\\\",\\\"record\\\":{\\\"created_at\\\":1788772769097,\\\"created_by\\\":\\\"pij-forthcoming-dove\\\",\\\"description\\\":\\\"branch:main\\\",\\\"name\\\":\\\"merge\\\",\\\"probe\\\":null,\\\"repo\\\":\\\"/private/tmp/p139-live-parity.jkhclJ/work\\\",\\\"resource\\\":\\\"branch:main\\\"}}\",\"seat\":\"pij-forthcoming-dove\",\"seq\":9,\"v\":1}]}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij spine\",\"v\":2,\"data\":{\"cursor\":9,\"events\":[{\"at\":1788789113861,\"kind\":\"config.claude-inbound-ensured\",\"payload\":\"{\\\"after\\\":\\\"accept\\\",\\\"before\\\":null,\\\"home\\\":\\\"/tmp/p139-8tKAXQ/home/.claude\\\"}\",\"seat\":null,\"seq\":1,\"v\":1},{\"at\":1788789113863,\"kind\":\"config.claude-hook-ensured\",\"payload\":\"{\\\"after\\\":\\\"/tmp/p139-8tKAXQ/home/.pij-rs/claude-session-start-pij.sh\\\",\\\"before\\\":null,\\\"home\\\":\\\"/tmp/p139-8tKAXQ/home/.claude\\\"}\",\"seat\":null,\"seq\":2,\"v\":1},{\"at\":1788789113865,\"kind\":\"config.claude-statusline-ensured\",\"payload\":\"{\\\"after\\\":\\\"/tmp/p139-8tKAXQ/home/.pij-rs/claude-statusline-pij.sh\\\",\\\"before\\\":null,\\\"home\\\":\\\"/tmp/p139-8tKAXQ/home/.claude\\\"}\",\"seat\":null,\"seq\":3,\"v\":1},{\"at\":1788789114018,\"kind\":\"seat.put\",\"payload\":\"{\\\"id\\\":\\\"pij-polite-eva\\\",\\\"harness\\\":\\\"omp\\\",\\\"session\\\":null,\\\"pane\\\":\\\"%0\\\",\\\"proc\\\":{\\\"pid\\\":57179,\\\"proc_start\\\":20260907235152},\\\"folder\\\":\\\"/private/tmp/p139-8tKAXQ/repo\\\",\\\"state\\\":\\\"idle\\\",\\\"semantic_state\\\":null,\\\"role\\\":null,\\\"parent\\\":null,\\\"relay\\\":false,\\\"native_extension_delivery\\\":false}\",\"seat\":\"pij-polite-eva\",\"seq\":4,\"v\":1},{\"at\":1788789114019,\"kind\":\"role-set\",\"payload\":\"{\\\"action\\\":\\\"assigned\\\",\\\"actor\\\":\\\"pij-polite-eva\\\",\\\"record\\\":{\\\"assigned_at\\\":1788789114019,\\\"assigned_by\\\":\\\"pij-polite-eva\\\",\\\"role\\\":\\\"prime\\\",\\\"seat\\\":\\\"pij-polite-eva\\\"}}\",\"seat\":\"pij-polite-eva\",\"seq\":5,\"v\":1},{\"at\":1788789114059,\"kind\":\"project-created\",\"payload\":\"{\\\"action\\\":\\\"created\\\",\\\"actor\\\":\\\"pij-polite-eva\\\",\\\"record\\\":{\\\"created_at\\\":1788789114059,\\\"created_by\\\":\\\"pij-polite-eva\\\",\\\"description\\\":\\\"Governance port\\\",\\\"plan_path\\\":null,\\\"prime_id\\\":null,\\\"repo\\\":\\\"/private/tmp/p139-8tKAXQ/repo\\\",\\\"slug\\\":\\\"governance-port\\\"}}\",\"seat\":\"pij-polite-eva\",\"seq\":6,\"v\":1},{\"at\":1788789114065,\"kind\":\"allocation\",\"payload\":\"{\\\"action\\\":\\\"created\\\",\\\"actor\\\":\\\"pij-polite-eva\\\",\\\"record\\\":{\\\"base_ref\\\":\\\"main\\\",\\\"branch\\\":\\\"s139/contracts\\\",\\\"created_at\\\":1788789114065,\\\"created_by\\\":\\\"pij-polite-eva\\\",\\\"id\\\":\\\"governance-port:contracts\\\",\\\"ordinal\\\":139,\\\"project\\\":\\\"governance-port\\\",\\\"slug\\\":\\\"contracts\\\",\\\"state\\\":\\\"created\\\",\\\"worktree\\\":\\\"/private/tmp/p139-8tKAXQ/repo/s139-contracts\\\"}}\",\"seat\":\"pij-polite-eva\",\"seq\":7,\"v\":1},{\"at\":1788789114119,\"kind\":\"fence\",\"payload\":\"{\\\"action\\\":\\\"declared\\\",\\\"actor\\\":\\\"pij-polite-eva\\\",\\\"record\\\":{\\\"declared_at\\\":1788789114119,\\\"declared_by\\\":\\\"pij-polite-eva\\\",\\\"id\\\":\\\"fence-1af7fcc5d651f10fdd7b70a88f6f56c5\\\",\\\"paths\\\":[\\\"crates/core/**\\\"],\\\"shared\\\":[\\\"crates/core/src/lib.rs\\\"],\\\"stream\\\":\\\"governance-port:contracts\\\"}}\",\"seat\":\"pij-polite-eva\",\"seq\":8,\"v\":1},{\"at\":1788789114125,\"kind\":\"baton.defined\",\"payload\":\"{\\\"action\\\":\\\"defined\\\",\\\"actor\\\":\\\"pij-polite-eva\\\",\\\"record\\\":{\\\"created_at\\\":1788789114125,\\\"created_by\\\":\\\"pij-polite-eva\\\",\\\"description\\\":\\\"branch:main\\\",\\\"name\\\":\\\"merge\\\",\\\"probe\\\":null,\\\"repo\\\":\\\"/tmp/p139-8tKAXQ/repo\\\",\\\"resource\\\":\\\"branch:main\\\"}}\",\"seat\":\"pij-polite-eva\",\"seq\":9,\"v\":1}]}}\n",
         "stderr": "",
-        "stdout_sha256": "2ff06ebff4e78f01f41ab1aa38352733d018709eadf3c6148348bcba20f5ec0e"
+        "stdout_sha256": "e0fe9780411d294ec5b05c5c8be32531b1226bad7731c2abc88074a9045bc092"
       },
       "shim": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij spine\",\"v\":2,\"data\":{\"cursor\":9,\"events\":[{\"at\":1788771778968,\"kind\":\"config.claude-inbound-ensured\",\"payload\":\"{\\\"after\\\":\\\"accept\\\",\\\"before\\\":null,\\\"home\\\":\\\"/private/tmp/p139-live-parity.jkhclJ/home/.claude\\\"}\",\"seat\":null,\"seq\":1,\"v\":1},{\"at\":1788771778971,\"kind\":\"config.claude-hook-ensured\",\"payload\":\"{\\\"after\\\":\\\"/private/tmp/p139-live-parity.jkhclJ/home/.pij-rs/claude-session-start-pij.sh\\\",\\\"before\\\":null,\\\"home\\\":\\\"/private/tmp/p139-live-parity.jkhclJ/home/.claude\\\"}\",\"seat\":null,\"seq\":2,\"v\":1},{\"at\":1788771778972,\"kind\":\"config.claude-statusline-ensured\",\"payload\":\"{\\\"after\\\":\\\"/private/tmp/p139-live-parity.jkhclJ/home/.pij-rs/claude-statusline-pij.sh\\\",\\\"before\\\":null,\\\"home\\\":\\\"/private/tmp/p139-live-parity.jkhclJ/home/.claude\\\"}\",\"seat\":null,\"seq\":3,\"v\":1},{\"at\":1788771970263,\"kind\":\"seat.put\",\"payload\":\"{\\\"id\\\":\\\"pij-forthcoming-dove\\\",\\\"harness\\\":\\\"omp\\\",\\\"session\\\":null,\\\"pane\\\":\\\"%0\\\",\\\"proc\\\":{\\\"pid\\\":1821,\\\"proc_start\\\":20260907190207},\\\"folder\\\":\\\"/private/tmp/p139-live-parity.jkhclJ/work\\\",\\\"state\\\":\\\"idle\\\",\\\"semantic_state\\\":null,\\\"role\\\":null,\\\"parent\\\":null,\\\"relay\\\":false,\\\"native_extension_delivery\\\":false}\",\"seat\":\"pij-forthcoming-dove\",\"seq\":4,\"v\":1},{\"at\":1788771970263,\"kind\":\"role-set\",\"payload\":\"{\\\"action\\\":\\\"assigned\\\",\\\"actor\\\":\\\"pij-forthcoming-dove\\\",\\\"record\\\":{\\\"assigned_at\\\":1788771970263,\\\"assigned_by\\\":\\\"pij-forthcoming-dove\\\",\\\"role\\\":\\\"prime\\\",\\\"seat\\\":\\\"pij-forthcoming-dove\\\"}}\",\"seat\":\"pij-forthcoming-dove\",\"seq\":5,\"v\":1},{\"at\":1788772095266,\"kind\":\"project-created\",\"payload\":\"{\\\"action\\\":\\\"created\\\",\\\"actor\\\":\\\"pij-forthcoming-dove\\\",\\\"record\\\":{\\\"created_at\\\":1788772095266,\\\"created_by\\\":\\\"pij-forthcoming-dove\\\",\\\"description\\\":\\\"Governance port\\\",\\\"plan_path\\\":null,\\\"prime_id\\\":null,\\\"repo\\\":\\\"/private/tmp/p139-live-parity.jkhclJ/work\\\",\\\"slug\\\":\\\"governance-port\\\"}}\",\"seat\":\"pij-forthcoming-dove\",\"seq\":6,\"v\":1},{\"at\":1788772768962,\"kind\":\"allocation\",\"payload\":\"{\\\"action\\\":\\\"created\\\",\\\"actor\\\":\\\"pij-forthcoming-dove\\\",\\\"record\\\":{\\\"base_ref\\\":\\\"main\\\",\\\"branch\\\":\\\"s139/contracts\\\",\\\"created_at\\\":1788772768962,\\\"created_by\\\":\\\"pij-forthcoming-dove\\\",\\\"id\\\":\\\"governance-port:contracts\\\",\\\"ordinal\\\":139,\\\"project\\\":\\\"governance-port\\\",\\\"slug\\\":\\\"contracts\\\",\\\"state\\\":\\\"created\\\",\\\"worktree\\\":\\\"/private/tmp/p139-live-parity.jkhclJ/work/s139-contracts\\\"}}\",\"seat\":\"pij-forthcoming-dove\",\"seq\":7,\"v\":1},{\"at\":1788772769055,\"kind\":\"fence\",\"payload\":\"{\\\"action\\\":\\\"declared\\\",\\\"actor\\\":\\\"pij-forthcoming-dove\\\",\\\"record\\\":{\\\"declared_at\\\":1788772769055,\\\"declared_by\\\":\\\"pij-forthcoming-dove\\\",\\\"id\\\":\\\"fence-5e26764d650ec05813a840f3521829b5\\\",\\\"paths\\\":[\\\"crates/core/**\\\"],\\\"shared\\\":[\\\"crates/core/src/lib.rs\\\"],\\\"stream\\\":\\\"governance-port:contracts\\\"}}\",\"seat\":\"pij-forthcoming-dove\",\"seq\":8,\"v\":1},{\"at\":1788772769097,\"kind\":\"baton.defined\",\"payload\":\"{\\\"action\\\":\\\"defined\\\",\\\"actor\\\":\\\"pij-forthcoming-dove\\\",\\\"record\\\":{\\\"created_at\\\":1788772769097,\\\"created_by\\\":\\\"pij-forthcoming-dove\\\",\\\"description\\\":\\\"branch:main\\\",\\\"name\\\":\\\"merge\\\",\\\"probe\\\":null,\\\"repo\\\":\\\"/private/tmp/p139-live-parity.jkhclJ/work\\\",\\\"resource\\\":\\\"branch:main\\\"}}\",\"seat\":\"pij-forthcoming-dove\",\"seq\":9,\"v\":1}]}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij spine\",\"v\":2,\"data\":{\"cursor\":9,\"events\":[{\"at\":1788789113861,\"kind\":\"config.claude-inbound-ensured\",\"payload\":\"{\\\"after\\\":\\\"accept\\\",\\\"before\\\":null,\\\"home\\\":\\\"/tmp/p139-8tKAXQ/home/.claude\\\"}\",\"seat\":null,\"seq\":1,\"v\":1},{\"at\":1788789113863,\"kind\":\"config.claude-hook-ensured\",\"payload\":\"{\\\"after\\\":\\\"/tmp/p139-8tKAXQ/home/.pij-rs/claude-session-start-pij.sh\\\",\\\"before\\\":null,\\\"home\\\":\\\"/tmp/p139-8tKAXQ/home/.claude\\\"}\",\"seat\":null,\"seq\":2,\"v\":1},{\"at\":1788789113865,\"kind\":\"config.claude-statusline-ensured\",\"payload\":\"{\\\"after\\\":\\\"/tmp/p139-8tKAXQ/home/.pij-rs/claude-statusline-pij.sh\\\",\\\"before\\\":null,\\\"home\\\":\\\"/tmp/p139-8tKAXQ/home/.claude\\\"}\",\"seat\":null,\"seq\":3,\"v\":1},{\"at\":1788789114018,\"kind\":\"seat.put\",\"payload\":\"{\\\"id\\\":\\\"pij-polite-eva\\\",\\\"harness\\\":\\\"omp\\\",\\\"session\\\":null,\\\"pane\\\":\\\"%0\\\",\\\"proc\\\":{\\\"pid\\\":57179,\\\"proc_start\\\":20260907235152},\\\"folder\\\":\\\"/private/tmp/p139-8tKAXQ/repo\\\",\\\"state\\\":\\\"idle\\\",\\\"semantic_state\\\":null,\\\"role\\\":null,\\\"parent\\\":null,\\\"relay\\\":false,\\\"native_extension_delivery\\\":false}\",\"seat\":\"pij-polite-eva\",\"seq\":4,\"v\":1},{\"at\":1788789114019,\"kind\":\"role-set\",\"payload\":\"{\\\"action\\\":\\\"assigned\\\",\\\"actor\\\":\\\"pij-polite-eva\\\",\\\"record\\\":{\\\"assigned_at\\\":1788789114019,\\\"assigned_by\\\":\\\"pij-polite-eva\\\",\\\"role\\\":\\\"prime\\\",\\\"seat\\\":\\\"pij-polite-eva\\\"}}\",\"seat\":\"pij-polite-eva\",\"seq\":5,\"v\":1},{\"at\":1788789114059,\"kind\":\"project-created\",\"payload\":\"{\\\"action\\\":\\\"created\\\",\\\"actor\\\":\\\"pij-polite-eva\\\",\\\"record\\\":{\\\"created_at\\\":1788789114059,\\\"created_by\\\":\\\"pij-polite-eva\\\",\\\"description\\\":\\\"Governance port\\\",\\\"plan_path\\\":null,\\\"prime_id\\\":null,\\\"repo\\\":\\\"/private/tmp/p139-8tKAXQ/repo\\\",\\\"slug\\\":\\\"governance-port\\\"}}\",\"seat\":\"pij-polite-eva\",\"seq\":6,\"v\":1},{\"at\":1788789114065,\"kind\":\"allocation\",\"payload\":\"{\\\"action\\\":\\\"created\\\",\\\"actor\\\":\\\"pij-polite-eva\\\",\\\"record\\\":{\\\"base_ref\\\":\\\"main\\\",\\\"branch\\\":\\\"s139/contracts\\\",\\\"created_at\\\":1788789114065,\\\"created_by\\\":\\\"pij-polite-eva\\\",\\\"id\\\":\\\"governance-port:contracts\\\",\\\"ordinal\\\":139,\\\"project\\\":\\\"governance-port\\\",\\\"slug\\\":\\\"contracts\\\",\\\"state\\\":\\\"created\\\",\\\"worktree\\\":\\\"/private/tmp/p139-8tKAXQ/repo/s139-contracts\\\"}}\",\"seat\":\"pij-polite-eva\",\"seq\":7,\"v\":1},{\"at\":1788789114119,\"kind\":\"fence\",\"payload\":\"{\\\"action\\\":\\\"declared\\\",\\\"actor\\\":\\\"pij-polite-eva\\\",\\\"record\\\":{\\\"declared_at\\\":1788789114119,\\\"declared_by\\\":\\\"pij-polite-eva\\\",\\\"id\\\":\\\"fence-1af7fcc5d651f10fdd7b70a88f6f56c5\\\",\\\"paths\\\":[\\\"crates/core/**\\\"],\\\"shared\\\":[\\\"crates/core/src/lib.rs\\\"],\\\"stream\\\":\\\"governance-port:contracts\\\"}}\",\"seat\":\"pij-polite-eva\",\"seq\":8,\"v\":1},{\"at\":1788789114125,\"kind\":\"baton.defined\",\"payload\":\"{\\\"action\\\":\\\"defined\\\",\\\"actor\\\":\\\"pij-polite-eva\\\",\\\"record\\\":{\\\"created_at\\\":1788789114125,\\\"created_by\\\":\\\"pij-polite-eva\\\",\\\"description\\\":\\\"branch:main\\\",\\\"name\\\":\\\"merge\\\",\\\"probe\\\":null,\\\"repo\\\":\\\"/tmp/p139-8tKAXQ/repo\\\",\\\"resource\\\":\\\"branch:main\\\"}}\",\"seat\":\"pij-polite-eva\",\"seq\":9,\"v\":1}]}}\n",
         "stderr": "",
-        "stdout_sha256": "2ff06ebff4e78f01f41ab1aa38352733d018709eadf3c6148348bcba20f5ec0e"
+        "stdout_sha256": "e0fe9780411d294ec5b05c5c8be32531b1226bad7731c2abc88074a9045bc092"
       },
       "byte_equal": true,
       "exit_equal": true
     },
     {
-      "id": "reap-dry-run-live",
+      "id": "list-live",
       "argv": [
-        "reap",
-        "--dry-run"
+        "list"
       ],
       "method": "live-same-daemon",
       "native": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij reap\",\"v\":2,\"data\":{\"dry_run\":true,\"before\":1,\"after\":1,\"candidates\":[],\"reaped\":[],\"unverifiable\":[]}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij seats\",\"v\":2,\"data\":{\"seats\":[{\"id\":\"pij-polite-eva\",\"machine\":\"JordansacStudio.localdomain\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%0\",\"proc\":{\"pid\":57179,\"proc_start\":20260907235152},\"folder\":\"/private/tmp/p139-8tKAXQ/repo\",\"state\":\"idle\",\"semantic_state\":null,\"role\":\"prime\",\"parent\":null,\"relay\":false,\"native_extension_delivery\":false,\"generation\":\"rs\"}],\"unavailable\":[]}}\n",
         "stderr": "",
-        "stdout_sha256": "0c8d92bba8a59695e71f2c079536783c919200f31931b3f5be248a57049a2f74"
+        "stdout_sha256": "c3e337401d9b0fc2ea4bc9a3b1af0a87c0c67bf5d18492f88975f809d4cfc253"
       },
       "shim": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij reap\",\"v\":2,\"data\":{\"dry_run\":true,\"before\":1,\"after\":1,\"candidates\":[],\"reaped\":[],\"unverifiable\":[]}}\n",
+        "stdout": "{\"ok\":true,\"command\":\"pij seats\",\"v\":2,\"data\":{\"seats\":[{\"id\":\"pij-polite-eva\",\"machine\":\"JordansacStudio.localdomain\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%0\",\"proc\":{\"pid\":57179,\"proc_start\":20260907235152},\"folder\":\"/private/tmp/p139-8tKAXQ/repo\",\"state\":\"idle\",\"semantic_state\":null,\"role\":\"prime\",\"parent\":null,\"relay\":false,\"native_extension_delivery\":false,\"generation\":\"rs\"}],\"unavailable\":[]}}\n",
         "stderr": "",
-        "stdout_sha256": "0c8d92bba8a59695e71f2c079536783c919200f31931b3f5be248a57049a2f74"
+        "stdout_sha256": "c3e337401d9b0fc2ea4bc9a3b1af0a87c0c67bf5d18492f88975f809d4cfc253"
+      },
+      "byte_equal": true,
+      "exit_equal": true
+    },
+    {
+      "id": "whoami-live",
+      "argv": [
+        "whoami"
+      ],
+      "method": "live-same-daemon",
+      "native": {
+        "exit": 0,
+        "stdout": "{\"ok\":true,\"command\":\"pij whoami\",\"v\":2,\"data\":{\"id\":\"pij-polite-eva\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%0\",\"proc\":{\"pid\":57179,\"proc_start\":20260907235152},\"folder\":\"/private/tmp/p139-8tKAXQ/repo\",\"state\":\"idle\",\"semantic_state\":null,\"role\":\"prime\",\"parent\":null,\"relay\":false,\"native_extension_delivery\":false}}\n",
+        "stderr": "",
+        "stdout_sha256": "d94355ecc815b7bd7b3683f5439840f80af6d31f61e009d88e4347e25aae6a27"
+      },
+      "shim": {
+        "exit": 0,
+        "stdout": "{\"ok\":true,\"command\":\"pij whoami\",\"v\":2,\"data\":{\"id\":\"pij-polite-eva\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%0\",\"proc\":{\"pid\":57179,\"proc_start\":20260907235152},\"folder\":\"/private/tmp/p139-8tKAXQ/repo\",\"state\":\"idle\",\"semantic_state\":null,\"role\":\"prime\",\"parent\":null,\"relay\":false,\"native_extension_delivery\":false}}\n",
+        "stderr": "",
+        "stdout_sha256": "d94355ecc815b7bd7b3683f5439840f80af6d31f61e009d88e4347e25aae6a27"
+      },
+      "byte_equal": true,
+      "exit_equal": true
+    },
+    {
+      "id": "state-live",
+      "argv": [
+        "state",
+        "pij-polite-eva"
+      ],
+      "method": "live-same-daemon",
+      "native": {
+        "exit": 0,
+        "stdout": "{\"ok\":true,\"command\":\"pij state\",\"v\":2,\"data\":{\"id\":\"pij-polite-eva\",\"state\":\"idle\",\"liveness\":\"active\",\"pid\":57179,\"procStart\":20260907235152,\"cwd\":\"/private/tmp/p139-8tKAXQ/repo\",\"harness\":\"omp\",\"role\":\"prime\",\"parent\":null,\"boundModel\":null,\"effort\":null,\"pane\":\"%0\",\"provider\":null,\"semanticState\":null,\"machine\":\"JordansacStudio.localdomain\",\"tombstonedAt\":null,\"tombstoneReason\":null,\"statusPrev\":null,\"statusNext\":null,\"statusAt\":null,\"statusSeq\":null,\"statusStale\":null,\"stateNote\":null,\"held\":[],\"unsupported\":[{\"field\":\"lifecycle\",\"why\":\"rs seats have no pending/bound/dissolved lifecycle field; binding evidence lives in `proc` and is reported through `liveness`\"},{\"field\":\"activity\",\"why\":\"the done-vs-idle split needs `lastEventAt`, which the rs descriptor does not carry; `state` reports the working/idle half\"},{\"field\":\"lastEventAt\",\"why\":\"not on the rs descriptor — deriving it needs a full spine scan per read\"},{\"field\":\"ageMs\",\"why\":\"derived from `lastEventAt`, which rs does not carry\"},{\"field\":\"liveness:stale\",\"why\":\"TS reports `stale` for a seat that claims to be working and has gone quiet; that needs event age. An rs `active` therefore covers BOTH the TS `active` and the TS `stale` case — it is a weaker claim, not the same one\"},{\"field\":\"daemonLastTickAt\",\"why\":\"no per-seat daemon tick is recorded in the rs store\"},{\"field\":\"daemonTickAgeMs\",\"why\":\"derived from the tick rs does not record\"},{\"field\":\"daemonTickStale\",\"why\":\"derived from the tick rs does not record\"},{\"field\":\"failureReason\",\"why\":\"rs records no per-seat failure reason on the descriptor\"},{\"field\":\"bindHealth\",\"why\":\"the TS pre-bind health classifier has no rs counterpart\"},{\"field\":\"degraded\",\"why\":\"derived from `bindHealth`\"},{\"field\":\"degradedReason\",\"why\":\"derived from `bindHealth`\"},{\"field\":\"terminal\",\"why\":\"rs records termination as `tombstonedAt` + `tombstoneReason`, which this card DOES carry — a different shape, not a missing fact\"},{\"field\":\"watchdog\",\"why\":\"rs has no watchdog block on the seat row\"}],\"session\":null,\"generation\":\"rs\"}}\n",
+        "stderr": "",
+        "stdout_sha256": "531c8df1caed375ed4b64eaf36b4f9cc1b291bd22b7fc82be3d8272aaa9abe56"
+      },
+      "shim": {
+        "exit": 0,
+        "stdout": "{\"ok\":true,\"command\":\"pij state\",\"v\":2,\"data\":{\"id\":\"pij-polite-eva\",\"state\":\"idle\",\"liveness\":\"active\",\"pid\":57179,\"procStart\":20260907235152,\"cwd\":\"/private/tmp/p139-8tKAXQ/repo\",\"harness\":\"omp\",\"role\":\"prime\",\"parent\":null,\"boundModel\":null,\"effort\":null,\"pane\":\"%0\",\"provider\":null,\"semanticState\":null,\"machine\":\"JordansacStudio.localdomain\",\"tombstonedAt\":null,\"tombstoneReason\":null,\"statusPrev\":null,\"statusNext\":null,\"statusAt\":null,\"statusSeq\":null,\"statusStale\":null,\"stateNote\":null,\"held\":[],\"unsupported\":[{\"field\":\"lifecycle\",\"why\":\"rs seats have no pending/bound/dissolved lifecycle field; binding evidence lives in `proc` and is reported through `liveness`\"},{\"field\":\"activity\",\"why\":\"the done-vs-idle split needs `lastEventAt`, which the rs descriptor does not carry; `state` reports the working/idle half\"},{\"field\":\"lastEventAt\",\"why\":\"not on the rs descriptor — deriving it needs a full spine scan per read\"},{\"field\":\"ageMs\",\"why\":\"derived from `lastEventAt`, which rs does not carry\"},{\"field\":\"liveness:stale\",\"why\":\"TS reports `stale` for a seat that claims to be working and has gone quiet; that needs event age. An rs `active` therefore covers BOTH the TS `active` and the TS `stale` case — it is a weaker claim, not the same one\"},{\"field\":\"daemonLastTickAt\",\"why\":\"no per-seat daemon tick is recorded in the rs store\"},{\"field\":\"daemonTickAgeMs\",\"why\":\"derived from the tick rs does not record\"},{\"field\":\"daemonTickStale\",\"why\":\"derived from the tick rs does not record\"},{\"field\":\"failureReason\",\"why\":\"rs records no per-seat failure reason on the descriptor\"},{\"field\":\"bindHealth\",\"why\":\"the TS pre-bind health classifier has no rs counterpart\"},{\"field\":\"degraded\",\"why\":\"derived from `bindHealth`\"},{\"field\":\"degradedReason\",\"why\":\"derived from `bindHealth`\"},{\"field\":\"terminal\",\"why\":\"rs records termination as `tombstonedAt` + `tombstoneReason`, which this card DOES carry — a different shape, not a missing fact\"},{\"field\":\"watchdog\",\"why\":\"rs has no watchdog block on the seat row\"}],\"session\":null,\"generation\":\"rs\"}}\n",
+        "stderr": "",
+        "stdout_sha256": "531c8df1caed375ed4b64eaf36b4f9cc1b291bd22b7fc82be3d8272aaa9abe56"
+      },
+      "byte_equal": true,
+      "exit_equal": true
+    },
+    {
+      "id": "commit-trailers-live",
+      "argv": [
+        "commit-trailers"
+      ],
+      "method": "live-same-daemon",
+      "native": {
+        "exit": 0,
+        "stdout": "Pij-Prime: pij-polite-eva\n",
+        "stderr": "# Pij-Prime derivation: role=prime\n",
+        "stdout_sha256": "f363e99fa370cce3d861800f94bbdccacb42abc73a910ffe12994f2fa34b42dc"
+      },
+      "shim": {
+        "exit": 0,
+        "stdout": "Pij-Prime: pij-polite-eva\n",
+        "stderr": "# Pij-Prime derivation: role=prime\n",
+        "stdout_sha256": "f363e99fa370cce3d861800f94bbdccacb42abc73a910ffe12994f2fa34b42dc"
       },
       "byte_equal": true,
       "exit_equal": true
@@ -1545,26 +1477,25 @@
   "http_pairs": [
     {
       "id": "sessions-live-http",
-      "method": "live-http-vs-shim",
       "path": "/v1/shim/sessions",
       "argv": [
         "sessions"
       ],
+      "method": "live-http-vs-shim",
       "http": {
         "status": 200,
-        "body": "{\"ok\":true,\"command\":\"pij sessions\",\"v\":2,\"data\":{\"rows\":[{\"pijId\":\"pij-forthcoming-dove\",\"harness\":\"omp\",\"harnessSessionId\":null,\"gitCommonDir\":\"/private/tmp/p139-live-parity.jkhclJ/work/.git\",\"lifecycle\":null,\"boundModel\":null,\"spawnedBy\":null,\"transcriptPath\":null,\"generation\":\"rs\"}]}}"
+        "body": "{\"ok\":true,\"command\":\"pij sessions\",\"v\":2,\"data\":{\"rows\":[{\"pijId\":\"pij-polite-eva\",\"harness\":\"omp\",\"harnessSessionId\":null,\"gitCommonDir\":\"/private/tmp/p139-8tKAXQ/repo/.git\",\"lifecycle\":null,\"boundModel\":null,\"spawnedBy\":null,\"transcriptPath\":null,\"generation\":\"rs\"}]}}"
       },
       "shim": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij sessions\",\"v\":2,\"data\":{\"rows\":[{\"pijId\":\"pij-forthcoming-dove\",\"harness\":\"omp\",\"harnessSessionId\":null,\"gitCommonDir\":\"/private/tmp/p139-live-parity.jkhclJ/work/.git\",\"lifecycle\":null,\"boundModel\":null,\"spawnedBy\":null,\"transcriptPath\":null,\"generation\":\"rs\"}]}}\n",
-        "stderr": ""
+        "stdout": "{\"ok\":true,\"command\":\"pij sessions\",\"v\":2,\"data\":{\"rows\":[{\"pijId\":\"pij-polite-eva\",\"harness\":\"omp\",\"harnessSessionId\":null,\"gitCommonDir\":\"/private/tmp/p139-8tKAXQ/repo/.git\",\"lifecycle\":null,\"boundModel\":null,\"spawnedBy\":null,\"transcriptPath\":null,\"generation\":\"rs\"}]}}\n",
+        "stderr": "",
+        "stdout_sha256": "d94016f542756da01026b0da4e621566e5b089af901c6f7a32bf01384c4a5836"
       },
-      "byte_equal": true,
-      "newline_contract": "append LF only if absent"
+      "byte_equal": true
     },
     {
       "id": "list-live-filters",
-      "method": "live-http-vs-shim",
       "path": "/v1/seats?harness=omp&scope=local",
       "argv": [
         "list",
@@ -1573,25 +1504,26 @@
         "--scope",
         "local"
       ],
+      "method": "live-http-vs-shim",
       "http": {
         "status": 200,
-        "body": "{\"ok\":true,\"command\":\"pij seats\",\"v\":2,\"data\":{\"seats\":[{\"id\":\"pij-forthcoming-dove\",\"machine\":\"JordansacStudio.localdomain\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%0\",\"proc\":{\"pid\":1821,\"proc_start\":20260907190207},\"folder\":\"/private/tmp/p139-live-parity.jkhclJ/work\",\"state\":\"idle\",\"semantic_state\":null,\"role\":\"prime\",\"parent\":null,\"relay\":false,\"native_extension_delivery\":false,\"generation\":\"rs\"}],\"unavailable\":[]}}"
+        "body": "{\"ok\":true,\"command\":\"pij seats\",\"v\":2,\"data\":{\"seats\":[{\"id\":\"pij-polite-eva\",\"machine\":\"JordansacStudio.localdomain\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%0\",\"proc\":{\"pid\":57179,\"proc_start\":20260907235152},\"folder\":\"/private/tmp/p139-8tKAXQ/repo\",\"state\":\"idle\",\"semantic_state\":null,\"role\":\"prime\",\"parent\":null,\"relay\":false,\"native_extension_delivery\":false,\"generation\":\"rs\"}],\"unavailable\":[]}}"
       },
       "shim": {
         "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij seats\",\"v\":2,\"data\":{\"seats\":[{\"id\":\"pij-forthcoming-dove\",\"machine\":\"JordansacStudio.localdomain\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%0\",\"proc\":{\"pid\":1821,\"proc_start\":20260907190207},\"folder\":\"/private/tmp/p139-live-parity.jkhclJ/work\",\"state\":\"idle\",\"semantic_state\":null,\"role\":\"prime\",\"parent\":null,\"relay\":false,\"native_extension_delivery\":false,\"generation\":\"rs\"}],\"unavailable\":[]}}\n",
-        "stderr": ""
+        "stdout": "{\"ok\":true,\"command\":\"pij seats\",\"v\":2,\"data\":{\"seats\":[{\"id\":\"pij-polite-eva\",\"machine\":\"JordansacStudio.localdomain\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%0\",\"proc\":{\"pid\":57179,\"proc_start\":20260907235152},\"folder\":\"/private/tmp/p139-8tKAXQ/repo\",\"state\":\"idle\",\"semantic_state\":null,\"role\":\"prime\",\"parent\":null,\"relay\":false,\"native_extension_delivery\":false,\"generation\":\"rs\"}],\"unavailable\":[]}}\n",
+        "stderr": "",
+        "stdout_sha256": "c3e337401d9b0fc2ea4bc9a3b1af0a87c0c67bf5d18492f88975f809d4cfc253"
       },
-      "byte_equal": true,
-      "newline_contract": "append LF only if absent"
+      "byte_equal": true
     },
     {
       "id": "anomalies-live-get",
-      "method": "live-http-vs-shim",
       "path": "/v1/anomalies",
       "argv": [
         "anomalies"
       ],
+      "method": "live-http-vs-shim",
       "http": {
         "status": 200,
         "body": "{\"ok\":true,\"command\":\"pij anomalies\",\"v\":2,\"data\":{\"anomalies\":[],\"cursor\":9}}"
@@ -1599,18 +1531,18 @@
       "shim": {
         "exit": 0,
         "stdout": "{\"ok\":true,\"command\":\"pij anomalies\",\"v\":2,\"data\":{\"anomalies\":[],\"cursor\":9}}\n",
-        "stderr": ""
+        "stderr": "",
+        "stdout_sha256": "a826cebc439cc184ee7709e658c3a3246ba22181d6b347d54b40886269c566f5"
       },
-      "byte_equal": true,
-      "newline_contract": "append LF only if absent"
+      "byte_equal": true
     },
     {
       "id": "decisions-live-get",
-      "method": "live-http-vs-shim",
       "path": "/v1/decisions",
       "argv": [
         "decisions"
       ],
+      "method": "live-http-vs-shim",
       "http": {
         "status": 200,
         "body": "{\"ok\":true,\"command\":\"pij decisions\",\"v\":2,\"data\":{\"cursor\":9,\"decisions\":[]}}"
@@ -1618,22 +1550,23 @@
       "shim": {
         "exit": 0,
         "stdout": "{\"ok\":true,\"command\":\"pij decisions\",\"v\":2,\"data\":{\"cursor\":9,\"decisions\":[]}}\n",
-        "stderr": ""
+        "stderr": "",
+        "stdout_sha256": "9b16af242939199847c6c03d8dfcd390fab1d92aa13dccab72d2105893267228"
       },
-      "byte_equal": true,
-      "newline_contract": "append LF only if absent"
+      "byte_equal": true
     }
   ],
   "exit_policy_pairs": [
     {
       "id": "exit-refused",
-      "error": "refused",
-      "method": "identical-scripted-http-response",
       "argv": [
         "role",
         "pij-worker",
         "reviewer"
       ],
+      "method": "identical-scripted-http-response",
+      "path": "/v1/role",
+      "http_status": 409,
       "wire_response": "{\"ok\":false,\"command\":\"pij role\",\"v\":2,\"meta\":\"E-RS-OWNERSHIP role: pij-outsider is neither pij-worker nor its recorded parent\",\"error\":\"refused\",\"details\":{\"code\":\"E-RS-OWNERSHIP\",\"operation\":\"role\",\"target\":\"pij-worker\",\"actor\":\"pij-outsider\"}}",
       "native": {
         "exit": 2,
@@ -1647,17 +1580,19 @@
         "stderr": "",
         "stdout_sha256": "271cd0e25b97e18c92e27cec4e2764416d2ddc7d9abe45862a65ee9f15ff7baf"
       },
-      "byte_equal": true
+      "byte_equal": true,
+      "exit_equal": false
     },
     {
       "id": "exit-not_found",
-      "error": "not_found",
-      "method": "identical-scripted-http-response",
       "argv": [
         "role",
         "pij-worker",
         "reviewer"
       ],
+      "method": "identical-scripted-http-response",
+      "path": "/v1/role",
+      "http_status": 409,
       "wire_response": "{\"ok\":false,\"command\":\"pij state\",\"v\":2,\"meta\":\"seat pij-absent does not exist\",\"error\":\"not_found\"}",
       "native": {
         "exit": 3,
@@ -1671,17 +1606,19 @@
         "stderr": "",
         "stdout_sha256": "1e87cfeb72a284d506b042940f7aaad9b78c4bd18b7fa00414ad76025b93f8b4"
       },
-      "byte_equal": true
+      "byte_equal": true,
+      "exit_equal": false
     },
     {
       "id": "exit-auth",
-      "error": "auth",
-      "method": "identical-scripted-http-response",
       "argv": [
         "role",
         "pij-worker",
         "reviewer"
       ],
+      "method": "identical-scripted-http-response",
+      "path": "/v1/role",
+      "http_status": 401,
       "wire_response": "{\"ok\":false,\"command\":\"pij whoami\",\"v\":2,\"meta\":\"missing or wrong bearer token\",\"error\":\"auth\"}",
       "native": {
         "exit": 4,
@@ -1695,17 +1632,19 @@
         "stderr": "",
         "stdout_sha256": "8b0dda8580d45c45575e85dec8621904e89b6b559f5564c89adaaa05a89f16e7"
       },
-      "byte_equal": true
+      "byte_equal": true,
+      "exit_equal": true
     },
     {
       "id": "exit-skew",
-      "error": "skew",
-      "method": "identical-scripted-http-response",
       "argv": [
         "role",
         "pij-worker",
         "reviewer"
       ],
+      "method": "identical-scripted-http-response",
+      "path": "/v1/role",
+      "http_status": 409,
       "wire_response": "{\"ok\":false,\"command\":\"pij events\",\"v\":2,\"meta\":\"unsupported envelope version\",\"error\":\"skew\"}",
       "native": {
         "exit": 1,
@@ -1719,17 +1658,19 @@
         "stderr": "",
         "stdout_sha256": "9610b42e1cf46796ace9603ae759e40ad9d3ee6aaf6fdb228a1233877447b302"
       },
-      "byte_equal": true
+      "byte_equal": true,
+      "exit_equal": false
     },
     {
       "id": "exit-cursor_reset",
-      "error": "cursor_reset",
-      "method": "identical-scripted-http-response",
       "argv": [
         "role",
         "pij-worker",
         "reviewer"
       ],
+      "method": "identical-scripted-http-response",
+      "path": "/v1/role",
+      "http_status": 409,
       "wire_response": "{\"ok\":false,\"command\":\"pij events\",\"v\":2,\"data\":{\"requested\":7,\"newest\":2},\"meta\":\"cursor 7 is beyond spine 2\",\"error\":\"cursor_reset\"}",
       "native": {
         "exit": 5,
@@ -1743,17 +1684,19 @@
         "stderr": "",
         "stdout_sha256": "ef39b97a3e007f9641a1cdd4bfd390f5e461b4cba18a110db98dc9742417f2ef"
       },
-      "byte_equal": true
+      "byte_equal": true,
+      "exit_equal": false
     },
     {
       "id": "exit-adapter",
-      "error": "adapter",
-      "method": "identical-scripted-http-response",
       "argv": [
         "role",
         "pij-worker",
         "reviewer"
       ],
+      "method": "identical-scripted-http-response",
+      "path": "/v1/role",
+      "http_status": 409,
       "wire_response": "{\"ok\":false,\"command\":\"pij spawn\",\"v\":2,\"meta\":\"tmux adapter unavailable\",\"error\":\"adapter\"}",
       "native": {
         "exit": 1,
@@ -1767,10 +1710,32 @@
         "stderr": "",
         "stdout_sha256": "74b824756a6ab84b1605fceb4769ba0660201eb4ef5fd4dd3f3d5ef7840bcd24"
       },
-      "byte_equal": true
+      "byte_equal": true,
+      "exit_equal": false
     }
   ],
   "capability_probes": [
+    {
+      "id": "sessions-native-command-absent",
+      "argv": [
+        "sessions"
+      ],
+      "method": "declared-nonshared-capability",
+      "native": {
+        "exit": 2,
+        "stdout": "",
+        "stderr": "error: unrecognized subcommand 'sessions'\n\n  tip: a similar subcommand exists: 'decisions'\n\nUsage: pij-rs [OPTIONS] <COMMAND>\n\nFor more information, try '--help'.\n",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "shim": {
+        "exit": 0,
+        "stdout": "{\"ok\":true,\"command\":\"pij sessions\",\"v\":2,\"data\":{\"rows\":[{\"pijId\":\"pij-polite-eva\",\"harness\":\"omp\",\"harnessSessionId\":null,\"gitCommonDir\":\"/private/tmp/p139-8tKAXQ/repo/.git\",\"lifecycle\":null,\"boundModel\":null,\"spawnedBy\":null,\"transcriptPath\":null,\"generation\":\"rs\"}]}}\n",
+        "stderr": "",
+        "stdout_sha256": "d94016f542756da01026b0da4e621566e5b089af901c6f7a32bf01384c4a5836"
+      },
+      "byte_equal": false,
+      "exit_equal": false
+    },
     {
       "id": "register-with-role",
       "argv": [
@@ -1791,41 +1756,84 @@
         "--role",
         "reviewer"
       ],
-      "path": "/v1/register",
       "method": "identical-scripted-http-response",
+      "path": "/v1/register",
       "http_status": 200,
       "wire_response": "{\"ok\":true,\"command\":\"pij register\",\"v\":2,\"data\":{\"id\":\"pij-worker\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%11\",\"proc\":{\"pid\":12345,\"proc_start\":20260907090000},\"folder\":\"/work/rs-governance-port\",\"state\":\"idle\",\"semantic_state\":null,\"role\":\"reviewer\",\"parent\":\"pij-parent\",\"relay\":false,\"native_extension_delivery\":false}}",
       "native": {
         "exit": 0,
         "stdout": "{\"ok\":true,\"command\":\"pij register\",\"v\":2,\"data\":{\"id\":\"pij-worker\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%11\",\"proc\":{\"pid\":12345,\"proc_start\":20260907090000},\"folder\":\"/work/rs-governance-port\",\"state\":\"idle\",\"semantic_state\":null,\"role\":\"reviewer\",\"parent\":\"pij-parent\",\"relay\":false,\"native_extension_delivery\":false}}\n",
-        "stderr": ""
+        "stderr": "",
+        "stdout_sha256": "834b57625118df767385d1c9d5936857bf26ec60e1cb047e7dffd6bfacfb9fa2"
       },
       "shim": {
         "exit": 4,
-        "stdout": "{\"ok\":false,\"command\":\"pij register\",\"v\":2,\"error\":\"refused\",\"meta\":\"E-RS-UNPORTED register: unknown command register pij-worker; see docs/how/pij-rs-api.md#unsupported-status (rs at 127.0.0.1:61861)\",\"details\":{\"code\":\"E-RS-UNPORTED\",\"verb\":\"register\",\"ledger_item\":\"docs/how/pij-rs-api.md#unsupported-status\"}}\n",
-        "stderr": ""
-      },
-      "byte_equal": false,
-      "exit_equal": false
-    },
-    {
-      "id": "sessions-live",
-      "argv": [
-        "sessions"
-      ],
-      "method": "live-same-daemon",
-      "native": {
-        "exit": 2,
-        "stdout": "",
-        "stderr": "error: unrecognized subcommand 'sessions'\n\n  tip: a similar subcommand exists: 'decisions'\n\nUsage: pij-rs [OPTIONS] <COMMAND>\n\nFor more information, try '--help'.\n"
-      },
-      "shim": {
-        "exit": 0,
-        "stdout": "{\"ok\":true,\"command\":\"pij sessions\",\"v\":2,\"data\":{\"rows\":[{\"pijId\":\"pij-forthcoming-dove\",\"harness\":\"omp\",\"harnessSessionId\":null,\"gitCommonDir\":\"/private/tmp/p139-live-parity.jkhclJ/work/.git\",\"lifecycle\":null,\"boundModel\":null,\"spawnedBy\":null,\"transcriptPath\":null,\"generation\":\"rs\"}]}}\n",
-        "stderr": ""
+        "stdout": "{\"ok\":false,\"command\":\"pij register\",\"v\":2,\"error\":\"refused\",\"meta\":\"E-RS-UNPORTED register: unknown command register pij-worker; see docs/how/pij-rs-api.md#unsupported-status (rs at 127.0.0.1:56133)\",\"details\":{\"code\":\"E-RS-UNPORTED\",\"verb\":\"register\",\"ledger_item\":\"docs/how/pij-rs-api.md#unsupported-status\"}}\n",
+        "stderr": "",
+        "stdout_sha256": "ec28543d9cd7eae8efe088f6d0aad0aedc2cbedcfb6ee380d701a1dd509896ae"
       },
       "byte_equal": false,
       "exit_equal": false
     }
-  ]
+  ],
+  "native_binary_sha256": "43ca12839d2db6fa8398db2a0a0d061dca2936c53fbe0a00cf65245c6135a15a",
+  "scope": {
+    "mutations": "Client boundary only: identical deterministic responses, not domain execution",
+    "reads": "Same real isolated Rust daemon; empty anomaly/decision collections declared",
+    "sessions": "Live HTTP baseline; native subcommand absent by ruling",
+    "register": "Native/HTTP-only; generic shim refuses by name",
+    "did_evidence": "Separate real CLI workflow, native keeper-notice persistence/delivery and paneless smoke; authenticated OMP canary is separate",
+    "production": "Unclaimed, prime-owned"
+  },
+  "counts": {
+    "shared_mutations": 29,
+    "named_refusals": 9,
+    "same_daemon_cli_pairs": 18,
+    "live_http_pairs": 4,
+    "shared_error_exit_pairs": 6,
+    "matched_pairs": 66,
+    "non_shared_capability_probes": 2
+  },
+  "teardown": {
+    "verified": true,
+    "fixture_root": "/tmp/p139-8tKAXQ",
+    "contract": "Owned clients/daemon/tmux stopped, private socket/root removed, listener absent; fixture.close completed"
+  },
+  "source_snapshot": {
+    ".pi/extensions/pij/acceptance-sweep.test.ts": "ea5092ee0b26b606d78184f6cb3e694a5c0c3881dd699d18d38931cbb03aefe4",
+    ".pi/extensions/pij/adapters/generation-router.test.ts": "a9ff619de24c4551271fe88a6ed4926090a0da68d3c22cb31584c9898e55cb85",
+    ".pi/extensions/pij/adapters/generation-router.ts": "6e0de175d82da70fa92705702c6f41bd2fd2a0ce3bb3712ec397d6e39ebeed79",
+    ".pi/extensions/pij/adapters/generation-seam.test.ts": "6dc7a112ae0f38eeaae7d5559154ee67eaa343ce6c47730a9cadedfacbcc3ab7",
+    ".pi/extensions/pij/cli.inbox.integration.test.ts": "0f1af7977a207da28e6ed33b0e214c61f81e8b5848fcbea81b0ef0bd604a414a",
+    ".pi/extensions/pij/cli.ts": "8fbbc344d5c8508a297cb201f926e144c533ee507d44325de45a6cfeee425be4",
+    ".pi/extensions/pij/core/chores/drive.test.ts": "b9408b5858b7c53139a38ae05185e3c44c3c58a381d4216c5869eb034b9f9d27",
+    ".pi/extensions/pij/core/cli.test.ts": "b9915531ea925d245ab7f38fc8428633bfa7f300694c416da60cfd806e7cf402",
+    ".pi/extensions/pij/core/daemon-wire.ts": "795ffd8c814cbedc5586592d847b2c44e2b2ccbc1acbdc128f43e26cce0d507a",
+    ".pi/extensions/pij/core/generation-routing.test.ts": "f991ef95f1881031d0281399fce830e9a5a1ef52cc7bafc09642580223b30d0b",
+    ".pi/extensions/pij/core/generation-routing.ts": "a27a9b6a470bba411f3841821c5489b5e1ee7def208e2ac4b349aa93f487c105",
+    ".pi/extensions/pij/core/liveness-cost.test.ts": "f97cb04196b01f6fb4297ab1465b1ca79c6b6ff927904177b1f97e81950fff48",
+    ".pi/extensions/pij/daemon.bootstrap.test.ts": "c613290441318b49f434f574984685c3f6d77fcb9b58a2a281820a74639b4c88",
+    ".pi/extensions/pij/orchestration-notice.integration.test.ts": "518eb21375fc0d25069ffe35868b129f964d10e56661fe76b7ead3a0aab9e521",
+    "crates/cli/src/client.rs": "9daf8f2c138d1dcb56ea84737e2b2965770b1fdb26359d83c7a31fab91750391",
+    "crates/daemon/src/delivery/mod.rs": "49230e30683d2dad5739e031452fb4031a0be94eccb8af67326924f3357077d0",
+    "crates/daemon/src/http/governance.rs": "30807635a5fd399bc14fe83521b58640157512aff0a9f704dd3e81e03df33651",
+    "crates/daemon/src/http/mod.rs": "ba900aa3cb0ff499ba235863896ae1d8c054db47ff078001de170321a7e4fa8b",
+    "crates/daemon/src/http/native_tests.rs": "a218e5fdf5e00583de7175dc630ae9f2661d6656035cb69356b4ad72b3624990",
+    "crates/daemon/src/http/shim.rs": "7423a5def2e37d9a8dd1378da7019758e6d95cadd2382664a6fc7c8413caf6d7",
+    "crates/daemon/src/http/tests.rs": "953892c7258cb3a1ef26f4b661cce31d1b4afc7b1f6ea8c80b9f3d6a8b175c2d",
+    "crates/daemon/src/http/types.rs": "6faf7624d02935310240311c7a1e7bb735859e0386df230f3dfb955e58bd14e0",
+    "crates/daemon/src/registration.rs": "55724ab8e3317e84858bd38650a2c4222b5825c3687a1901b482602dccac3fff",
+    "crates/daemon/tests/governance_notices.rs": "09978de27bb1f286ba9ee60a5a4e8547e0544587b7ab6f8761b77a62bd0a02ae",
+    "crates/daemon/tests/shim_http.rs": "a7fbd6ef2fee582214c38b45938467b40c4f95176fb154a611f01ece85658137",
+    "harness/driver/governance-external.ts": "bb66a2e3c5831e0507549f02767fead45d2a19e8a2c5bcea89bd4f221f527141",
+    "harness/driver/governance-fixture.ts": "7418cb650040674581610863b4ec563d3df894e7192187d586d9235245532f9a",
+    "harness/driver/governance-host.mjs": "0287092210334c11fd8ddbb1db5722370ad99183a0c31c7e4e0fec2b15a3ad47",
+    "harness/scripts/smoke.test.ts": "49201e1c005b0dcb7c5b9688a28cb222e01b419abd3a542b00dabf56aa853dd9",
+    "harness/scripts/smoke.ts": "1bdbd87461e1296b3d827c9fb3ce560d2ed255676b944ab7086d17ec1bc38551"
+  },
+  "history": {
+    "previous_capture_commit": "78531a0ba2f22469ab72289ba9ff6c1635e863e7",
+    "previous_corpus_sha256": "acc298253130983221f5995a459ec8406cef0e9c50fe9d635aad873be6469370",
+    "refreshed_for": "Verified paneless admission and required honest keeper notice behavior, including current baton-request notice field"
+  }
 }

@@ -34,7 +34,7 @@ export interface HealthPayload {
 export interface Registration {
 	readonly supersedes?: string;
 	readonly id: string;
-	readonly harness: "pi" | "omp";
+	readonly harness: "pi" | "omp" | "claude" | "copilot" | "codex";
 	readonly harness_session?: string;
 	readonly folder: string;
 	readonly pane?: string;

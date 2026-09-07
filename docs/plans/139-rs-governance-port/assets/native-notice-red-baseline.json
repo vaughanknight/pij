@@ -1,0 +1,10 @@
+{
+  "base": "78531a0ba2f22469ab72289ba9ff6c1635e863e7",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-gate-red",
+  "overlay": [
+    "crates/daemon/tests/governance_notices.rs",
+    "crates/testkit/fixtures/golden/api/governance-routes.json"
+  ],
+  "production_source": "Unchanged78531 governance.rs; no sender fix or paneless source overlaid",
+  "intent": "Behavioral RED of required native keeper notice; missing fixture or compiler failure is not RED"
+}

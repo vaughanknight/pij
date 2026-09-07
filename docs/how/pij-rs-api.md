@@ -49,6 +49,51 @@ Self or the target's **current recorded parent** may assert/unset its role; an u
 
 Sources: [`identity.rs`](../../crates/daemon/src/http/identity.rs), [`role.rs`](../../crates/daemon/src/http/role.rs), [`types.rs`](../../crates/daemon/src/http/types.rs), [`governance.rs`](../../crates/daemon/src/http/governance.rs).
 
+## Verified paneless external admission
+
+`pij inbox register --json` is served through Rust authority for external
+Claude/Copilot/Codex callers without `TMUX` or `TMUX_PANE`. The accepted address
+is `data.id` in the complete v2 envelope, not a top-level id. The bridge validates
+`CLAUDE_CODE_SESSION_ID`, or `COPILOT_AGENT_SESSION_ID` plus its matching UUID
+session-state directory, or `CODEX_THREAD_ID` plus its matching readable native
+rollout. It never allocates a name or writes a legacy registry/channel.
+
+Native `/v1/register` receives an empty id, exact harness/session, folder and
+requesting CLI process tuple. The daemon observes the nearest matching live
+external harness ancestor, checks process incarnations and conflicting session
+arguments, and allocates/reuses the canonical address under the shared registry
+lock. The stored and returned `data.proc` belongs to that **host**, never the
+short-lived CLI. Unchanged repeat admission returns `binding:"same"` without a
+registry/event mutation. Inherited stale ids do not override verified native
+identity; absent/conflicting host evidence refuses. Ordinary native registration
+and extension-owned Copilot admission retain their separate protections.
+
+From the same verified native host/session, no manual `PIJ_SESSION_ID` export is
+needed for the shim's whoami, phonehome, send or inbox paths. `PEER_ID` below is
+another peer's actual registration `data.id`; `MSG_ID` is the message being answered:
+
+```bash
+pij inbox register --json
+pij whoami --json
+pij phonehome --json
+pij send "$PEER_ID" 'literal text' --json
+pij inbox --wait 30000 --json
+pij send "$PEER_ID" 'reply text' --in-reply-to "$MSG_ID" --json
+```
+
+`inbox --wait` without milliseconds waits indefinitely; a positive finite timeout
+returns an empty claims array when no mail arrives. Success remains the complete
+v2 envelope with `data:[...]`; claims contain `job_id` and the original `message`,
+including reply correlation. The CLI acknowledges only after successful output.
+Self-send remains refused. Paneless pull has `pane:null` and
+`native_extension_delivery:false`: it is not extension push attestation or a
+model canary, and pushed/extension-owned seats must not run a competing wait.
+Bare native clients still need the explicit registered identity their API takes.
+
+Sources: [`registration.rs`](../../crates/daemon/src/registration.rs),
+[`shim.rs`](../../crates/daemon/src/http/shim.rs),
+[`generation-router.ts`](../../.pi/extensions/pij/adapters/generation-router.ts).
+
 ## Seat roster rows and absence
 
 `GET /v1/seats` returns the v2 `pij seats` envelope with `data: {seats: [...], unavailable: [...]}`, not a bare row array. Each unavailable peer is `{machine, reason}`; retained rows from that peer are stale last-known data, so an empty `unavailable` list and an empty roster are different facts. Active results exclude tombstoned rows. Local rows are role-joined, stamped with the serving machine alias, and projected with `generation: "rs"`.
@@ -194,6 +239,12 @@ pij orchestration baton reclaim merge --lease-id <observed-lease-id> --evidence 
 
 Return/reclaim **require** the observed `--lease-id`. Missing or stale ids return `E-RS-LEASE-STALE`, naming the current lease and remediation; a shim must not resolve a fresh lease on the caller's behalf. One holder, request purpose, pin re-verification and authorization remain enforced. An asserted role is not a lease grant. These are shared-store records/events, not legacy atomic lease files. The book can annotate evidence; it is not another lease authority.
 
+`baton request` persists the request and publishes `baton.requested` before calling the existing delivery service, from the requester to the definition's `created_by` keeper. Its complete response includes `data: {request, seq, notice}`. The exact legacy notice text is pinned by `baton_notice_body_template` in the stable route corpus.
+
+`notice` is `queued` for Pi/OMP extension-stream admission until ReaderRead; `delivered` requires actual transport confirmation. `unverified` uses existing `Dead`/`Recycled` process-incarnation evidence, not a new heartbeat-age rule. A missing or dissolved keeper yields `notice: null` and no send. The eight retained host cases keep their message/no-write counts; idle Pi's expected value was explicitly corrected from delivered to queued under the honest-receipt rule.
+
+Send/probe errors or Held/Refused transport outcomes cannot be presented as success or erase the committed request. `E-RS-PARTIAL` retains `committed`, `event_published`, `request` and `seq` evidence. A publication failure prevents the notice send. A later reader acknowledgement may prove delivery without creating a second notice message; self-send still uses the existing refusal path.
+
 ## Retirement and conservative reaping
 
 `pij close <seat>` is a self-or-recorded-parent tombstone, **not process termination or pane teardown**. The active roster excludes tombstones; history retains the reason/sequence. A parent repeat-close returns existing evidence. Retired self identity still refuses, naming tombstone evidence; it is not an authentication exception. There is no `--force` bypass.
@@ -230,9 +281,9 @@ This anchor is permanent; refusals and shipped consumers must not depend on an a
 
 - **Shim-only gaps / different meanings:** `spawn`, `revive`, `tail` and `daemon` refuse `E-RS-UNPORTED`; native capability is not a grammar-compatible shim port. Use the documented native forms in the [peer](../../skills/pij/references/routes/peer.md) and [ops](../../skills/pij/references/routes/ops.md) routes where available. Native tail is an event stream, not a transcript. Native revive requires a tombstoned id; no `--print`, `--attach` or `--assume-dead`. Native spawn has no legacy layout/task/branch/plan-id flags.
 - **List/sessions filters:** shim `pij list` forwards declared `harness`, `folder`, `parent` and `scope=local` query values to GET `/v1/seats`; this is exact query forwarding, not a second Rust parser. Native `pij-rs list` is still bare/`--json`. `pij sessions` routes GET `/v1/shim/sessions` with no query flags or legacy union. Unsupported `--role`, `--here`, `--prime`, `--archived` and tree semantics refuse instead of being dropped. Prime designation has no dedicated list/getter projection here: use actual designation receipts/events and authoritative government/human evidence; role assertion or an empty filtered view cannot prove absence.
-- **Baton projections/notices:** request/grant handlers expose durable records/events, not a blocked-time field or an automatic keeper-push receipt. Use returned request/lease ids and timestamps; notify the keeper by the supported message channel and verify actual delivery rather than claiming it from a mutation receipt. Source: `governance.rs::orchestration_command`.
+- **Baton projection limits:** a blocked-time field is not provided. Automatic request notices and their honest delivered/queued/unverified/null projection are supported as described under [Baton leases](#baton-leases); a durable request alone still does not prove recipient observation.
 - **Unported command surfaces:** `agent`, `path`, `telegram`, `models`, `watch`, `unwatch`, `chore`, `watchdog`, `focus`, `tree` and `link` refuse through the shim. This does not remove already composed sidecar internals; it does not advertise those old administrative grammars as a native port. In particular, there is no rs reparent/root-placement command equivalent to link.
-- **Inbox/admission:** shim `inbox register`, unlisted inbox leaves and legacy wait/attachment semantics are not a fallback registration channel. Paneless adopt cannot derive bind evidence and refuses. Native `register` needs verified process identity; never fabricate it from the CLI. Existing extension-owned registration/receive paths stay owned by that extension.
+- **Inbox/admission:** verified external `inbox register` and `inbox --wait [ms]` are [supported](#verified-paneless-external-admission), not gaps. Paneless adopt, unlisted inbox leaves, generic shim `register`, send `--wait` and attachment semantics remain refused. Never fabricate host process evidence or use a legacy fallback; extension-owned registration/receive stays owned by that extension.
 - **Control and bg are supported, not gaps:** remote compact/new/reload, compact-self and bg create/list/tail/kill remain shipped. Controls carry no body; acceptance is not execution. Copilot and paneless controls refuse; new/reload require self or recorded parent plus target arming, not a prime role. Never replace refusal with slash text or sendkeys. bg remains daemon-owned detached execution with durable completion injection, bounded server-side log reads and owner/parent authorization; it introduces no answer queue cancellation.
 - **Native commit-trailers data gap:** forwarding is supported, but `commit_trailers::run` currently calls `derive` with no repository-designation input and does not query current assignment. It reads role-joined self/local seats, then uses a complete recorded-parent root as the explicit interim fallback. `Pij-Plan` derives from worktree path, branch or local flow context. Do not claim designation/current-assignment lookup or use stale legacy rows to fill either gap.
 - **StateCard:** inspect its `unsupported` notes instead of manufacturing missing telemetry/lifecycle fields. Optional/null role is absence of assertion, not proof that the role port is unavailable.

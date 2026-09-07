@@ -328,17 +328,17 @@ impl DaemonClient {
     pub async fn tail(
         &self,
         since: &BTreeMap<String, u64>,
-    ) -> std::result::Result<TailStream, Envelope<Value>> {
+    ) -> std::result::Result<TailStream, Box<Envelope<Value>>> {
         let mut request = self.auth(self.http.get(format!("{}/v1/events", self.base_url)));
         if !since.is_empty() {
             let encoded = match serde_json::to_string(since) {
                 Ok(encoded) => encoded,
                 Err(error) => {
-                    return Err(refusal(
+                    return Err(Box::new(refusal(
                         "pij tail",
                         ErrorKind::Adapter,
                         format!("could not encode cursor map: {error}"),
-                    ));
+                    )));
                 }
             };
             request = request.query(&[("since", encoded)]);
@@ -346,25 +346,25 @@ impl DaemonClient {
         let response = match request.send().await {
             Ok(response) => response,
             Err(error) => {
-                return Err(refusal(
+                return Err(Box::new(refusal(
                     "pij tail",
                     ErrorKind::Adapter,
                     format!("could not reach the daemon: {error}"),
-                ));
+                )));
             }
         };
         if !response.status().is_success() {
             let body = match response.text().await {
                 Ok(body) => body,
                 Err(error) => {
-                    return Err(refusal(
+                    return Err(Box::new(refusal(
                         "pij tail",
                         ErrorKind::Adapter,
                         format!("could not read the daemon's refusal: {error}"),
-                    ));
+                    )));
                 }
             };
-            return Err(decode_response("pij tail", body));
+            return Err(Box::new(decode_response("pij tail", body)));
         }
         Ok(TailStream {
             response,

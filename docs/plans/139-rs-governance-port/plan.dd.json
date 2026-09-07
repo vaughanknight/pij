@@ -70,7 +70,8 @@
           "claim": "governance records round-trip on rs",
           "text": "On the isolated daemon: `pij-rs project create` → `stream create` → `fence show` → `dispatch <seat> --packet <file>` (three-state receipt: queued/delivered/acked) → recipient `ack` → `canary` → `attest` → `task set` → `node show` renders the tree with every row from the rs spine (seqs cited); the same sequence typed as legacy `pij <verb>` serves from rs (shim) with identical JSON. Also append one caller-attributed literal-kind event with spine append, observe it on both live subscribers, and show it in spine events/render without legacy writes. For every ported governance verb, native and legacy-shim --json output must be byte-identical on equivalent deterministic state, pinned as goldens.",
           "state": "unchecked",
-          "pressure": "assets/backpressure.dd.json#rows/bp-0004"
+          "pressure": "assets/backpressure.dd.json#rows/bp-0004",
+          "note": "Prime receipt refinements: baton request must persist/publish before an automatic keeper notice through existing DeliveryService, with all eight host cases/message counts retained. Notice uses actual strength: Pi/OMP extension-stream queued until ReaderRead, socket/native delivered only on confirmation, unverified only existing Dead/Recycled incarnation evidence, null/no send for missing/dissolved; durable request evidence survives notice failure. AC4 JSON parity uses actual clients against identical deterministic responses for mutations and the same live private daemon for reads, without normalization. Sessions uses its actual HTTP surface; generic register stays native/HTTP-only. Refusal exit policies intentionally remain client-specific."
         },
         {
           "id": "AC5",
@@ -98,7 +99,8 @@
           "claim": "legacy shim: serve or refuse, never silent legacy",
           "text": "For every verb in skills/pij's CLI-verb table, `pij <verb> …` either serves from rs (routed) or exits non-zero with `E-RS-UNPORTED <verb>: …` naming the ledger item; an enforcement test enumerates the table against RS_ROUTE_TABLE so a new verb cannot fall through; `pij anomalies` no longer answers from the legacy spine.",
           "state": "unchecked",
-          "pressure": "assets/backpressure.dd.json#rows/bp-0008"
+          "pressure": "assets/backpressure.dd.json#rows/bp-0008",
+          "note": "Required success exception to unported administration: verified external/paneless pij inbox register is served by Rust (no TMUX/PANE), using established Claude/Copilot/Codex native evidence and the real host incarnation, never the exited CLI wrapper pid. Registration, inbox --wait, send, receive/reply and output-before-ack must round-trip on Rust. chore/watchdog may refuse by name; paneless registration may not."
         },
         {
           "id": "AC9",

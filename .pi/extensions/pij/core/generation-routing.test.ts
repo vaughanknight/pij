@@ -364,13 +364,13 @@ describe("the shim has no minter (ac-1147)", () => {
 });
 
 describe("mailbox leaf boundaries", () => {
-	it("registration refuses by name without denying read siblings", () => {
+	it("registration uses native HTTP admission without changing read siblings", () => {
 		expect(findRoute("inbox", "register")).toMatchObject({
-			unported: expect.stringContaining("bind evidence"),
+			rsPath: "/v1/register",
+			method: "POST",
 		});
 		expect(pre({ verb: "inbox", leaf: "register" })).toMatchObject({
-			kind: "rs-error",
-			code: "E-RS-UNPORTED",
+			kind: "try-rs",
 		});
 		for (const leaf of [undefined, "check"]) {
 			expect(findRoute("inbox", leaf)).toMatchObject({

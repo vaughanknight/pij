@@ -16,6 +16,7 @@ import {
 
 const SEND_USAGE = `pij send <id> <text> [--json]
   pij send <id> --body-file <path|-> [--json]
+  --in-reply-to <msg-id> preserves reply correlation without changing the body.
   --body-file reads literal UTF-8 text from a path or stdin, without shell evaluation.
   Backticks and $(...) substitute in YOUR shell before pij starts: quoted relay text is UNSAFE.
   Use a file or a quoted heredoc: pij send <id> --body-file - <<'PIJ'
@@ -26,6 +27,12 @@ const LIST_USAGE = `pij list [--harness <h>] [--folder <path>] [--parent <id>] [
   Forwards declared filters to GET /v1/seats without client-side projection.
   --role and --here are unsupported and refused.
   Native pij-rs list accepts no filters; this query mapping belongs to the shim.`;
+
+const INBOX_USAGE = `pij inbox register [--json]
+  Register a verified external Claude/Copilot/Codex host through rs; existing panes are read back.
+  pij inbox [check] [--wait [ms]] [--json]
+  Paneless pull only for --wait; omit ms to wait for mail, or set a finite timeout.
+  JSON is the complete v2 envelope; received claims are acknowledged only after output.`;
 
 function routeDescription(row: RsRouteRow): string {
 	const label = `pij ${row.verb}${row.leaf === undefined ? "" : ` ${row.leaf}`}`;
@@ -42,6 +49,7 @@ function usage(): string {
 		"HTTP --json preserves the complete validated v2 response envelope.",
 		"commit-trailers preserves native output even with --json.",
 		LIST_USAGE,
+		INBOX_USAGE,
 		"sessions accepts only bare invocation or --json; all filters are refused.",
 		"pij generation [verb] [--json] — read-only routing diagnostic",
 		"pij --version",
@@ -123,7 +131,13 @@ async function bootThroughGenerationRouting(): Promise<void> {
 		argv[1] === "--help" && (argv.length === 2 || (argv.length === 3 && argv[2] === "--json"));
 	if (localHelp && helpRow !== undefined && "rsPath" in helpRow) {
 		await writeOutput(
-			verb === "send" ? SEND_USAGE : verb === "list" ? LIST_USAGE : routeDescription(helpRow),
+			verb === "send"
+				? SEND_USAGE
+				: verb === "list"
+					? LIST_USAGE
+					: verb === "inbox"
+						? INBOX_USAGE
+						: routeDescription(helpRow),
 		);
 		return;
 	}

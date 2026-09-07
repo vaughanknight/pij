@@ -1,17 +1,30 @@
 /** I/O for the closed rs routing inventory. No legacy registry is consulted. */
 import { spawn } from "node:child_process";
-import { readFile as readFd } from "node:fs";
+import {
+	accessSync,
+	constants as fsConstants,
+	readdirSync,
+	readFile as readFd,
+	statSync,
+} from "node:fs";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { homedir, constants as osConstants } from "node:os";
 import { join } from "node:path";
+import {
+	type AmbientNativeIdentity,
+	resolveAmbientNativeIdentity,
+} from "../core/current-session.js";
 import {
 	DaemonRefusalError,
 	decodeEnvelope,
 	PijNoDaemonError,
 	PijWireSkewError,
+	type Registration,
+	type RustSeatDescriptor,
 } from "../core/daemon-wire.js";
 import {
 	buildCallerContext,
+	type CallerContext,
 	classifyRsResponse,
 	decidePreCall,
 	describeOutcome,
@@ -24,6 +37,12 @@ import {
 	routingRefusalEnvelope,
 	unported,
 } from "../core/generation-routing.js";
+import {
+	codexRolloutForSession,
+	codexTranscriptRoot,
+	listCodexRollouts,
+} from "../core/harness/codex.js";
+import { resolveCopilotCurrentSession } from "../core/harness/copilot.js";
 import {
 	type DaemonLocation,
 	daemonLocation,
@@ -40,6 +59,8 @@ export interface GenerationRouterDeps {
 	readonly cwd?: (() => string) | undefined;
 	readonly pid?: (() => number) | undefined;
 	readonly procStart?: ((pid: number) => number) | undefined;
+	/** Validated native session files, never a legacy registry or an inferred host PID. */
+	readonly ambientIdentity?: (() => AmbientNativeIdentity | null) | undefined;
 	/** Only the explicitly declared native row may call this; streams are inherited. */
 	readonly runNative?: ((args: readonly string[]) => Promise<number>) | undefined;
 }
@@ -63,7 +84,66 @@ export function defaultRouterDeps(): GenerationRouterDeps {
 		cwd: () => process.cwd(),
 		pid: () => process.pid,
 		procStart: observedProcessStart,
+		ambientIdentity: () => ambientIdentity(process.env, homedir()),
 	};
+}
+
+function ambientIdentity(env: NodeJS.ProcessEnv, home: string): AmbientNativeIdentity | null {
+	const readDir = (path: string): string[] => {
+		try {
+			return readdirSync(path);
+		} catch {
+			return [];
+		}
+	};
+	let copilotCurrentSessionId: string | undefined;
+	if (env.COPILOT_AGENT_SESSION_ID?.trim()) {
+		const resolved = resolveCopilotCurrentSession(
+			env.COPILOT_AGENT_SESSION_ID,
+			(root) =>
+				readDir(root).flatMap((name) => {
+					try {
+						const entry = statSync(join(root, name));
+						return [{ name, mtimeMs: entry.mtimeMs, isDirectory: entry.isDirectory() }];
+					} catch {
+						return [];
+					}
+				}),
+			home,
+		);
+		if (!resolved.ok) throw new Error(`E-AMBIG: ${resolved.message}`);
+		copilotCurrentSessionId = resolved.sessionId;
+	}
+	let codexCurrentSession: { threadId: string; transcriptPath: string } | undefined;
+	const threadId = env.CODEX_THREAD_ID?.trim().toLowerCase();
+	if (threadId) {
+		const transcriptPath = codexRolloutForSession(
+			listCodexRollouts(readDir, codexTranscriptRoot(home)),
+			threadId,
+			(path) => {
+				try {
+					accessSync(path, fsConstants.R_OK);
+					return statSync(path).isFile();
+				} catch {
+					return false;
+				}
+			},
+		);
+		if (transcriptPath === null)
+			throw new Error("E-AMBIG: CODEX_THREAD_ID has no matching readable native rollout");
+		codexCurrentSession = { threadId, transcriptPath };
+	}
+	const resolved = resolveAmbientNativeIdentity({
+		...(env.CLAUDE_CODE_SESSION_ID === undefined
+			? {}
+			: { claudeCodeSessionId: env.CLAUDE_CODE_SESSION_ID }),
+		...(copilotCurrentSessionId === undefined ? {} : { copilotCurrentSessionId }),
+		...(codexCurrentSession === undefined ? {} : { codexCurrentSession }),
+	});
+	if (!resolved.ok) throw new Error(`${resolved.code}: ${resolved.message}`);
+	if (threadId && resolved.value?.harness !== "codex")
+		throw new Error("E-AMBIG: CODEX_THREAD_ID is not a valid native session id");
+	return resolved.value;
 }
 
 export interface RouteResult {
@@ -276,7 +356,119 @@ export async function routeVerb(
 		return probe.rawEnvelope === undefined
 			? refused(failure, row)
 			: { outcome: failure, row, rawEnvelope: probe.rawEnvelope };
-	return callRs(verb, row, argv, location, deps, force === "rs", query);
+	let caller = buildCallerContext(deps.env, callerProcessFacts(deps));
+	const register = verb === "inbox" && leaf === "register";
+	if (register && argv.filter((arg) => arg !== "--json").join(" ") !== "inbox register")
+		return refused(
+			{ kind: "rs-error", verb, addr: location.addr, detail: "inbox register takes only --json" },
+			row,
+		);
+	if (!caller.tmuxPane && ["inbox", "send", "whoami", "phonehome"].includes(verb)) {
+		const identity = deps.ambientIdentity?.();
+		if (identity) {
+			const registerRow = findRoute("inbox", "register", table);
+			if (registerRow === undefined || !("rsPath" in registerRow))
+				return refused(
+					unported(
+						verb,
+						location.addr,
+						"native ambient registration is not in this routing inventory",
+					),
+					row,
+				);
+			if (caller.pid === undefined || caller.procStart === undefined || !caller.cwd)
+				return refused(
+					{
+						kind: "rs-error",
+						verb,
+						addr: location.addr,
+						detail: "ambient registration requires observed caller process start and cwd",
+					},
+					row,
+				);
+			const registration: Registration = {
+				id: "",
+				harness: identity.harness,
+				harness_session: identity.harnessSessionId,
+				folder: caller.cwd,
+				pid: caller.pid,
+				proc_start: caller.procStart,
+				relay: false,
+				...(caller.pijParentId === undefined ? {} : { parent: caller.pijParentId }),
+			};
+			const registered = await callRs(
+				"inbox",
+				registerRow,
+				["inbox", "register"],
+				location,
+				deps,
+				force === "rs",
+				caller,
+				undefined,
+				registration,
+			);
+			if (registered.outcome.kind !== "rs") return registered;
+			const descriptor = registered.payload as RustSeatDescriptor | undefined;
+			const host = descriptor?.proc;
+			if (
+				!descriptor?.id ||
+				descriptor.harness !== identity.harness ||
+				descriptor.pane != null ||
+				!host ||
+				!Number.isSafeInteger(host.pid) ||
+				host.pid <= 0 ||
+				!Number.isSafeInteger(host.proc_start) ||
+				host.proc_start <= 0
+			)
+				return refused(
+					{
+						kind: "rs-unreadable",
+						verb,
+						addr: location.addr,
+						detail: "native registration returned no matching paneless host identity",
+					},
+					row,
+				);
+			if (register) return registered;
+			// The daemon observed this host; an inherited PIJ_SESSION_ID never overrides it.
+			caller = {
+				...caller,
+				pijSessionId: descriptor.id,
+				pid: host.pid,
+				procStart: host.proc_start,
+			};
+			if (identity.harness === "claude")
+				caller = { ...caller, claudeCodeSessionId: identity.harnessSessionId };
+			else if (identity.harness === "copilot")
+				caller = { ...caller, copilotAgentSessionId: identity.harnessSessionId };
+			else caller = { ...caller, codexThreadId: identity.harnessSessionId };
+		}
+	}
+	if (register) {
+		if (!caller.tmuxPane && !caller.pijSessionId)
+			return refused(
+				{
+					kind: "rs-error",
+					verb,
+					addr: location.addr,
+					code: "E-AMBIG",
+					detail:
+						"cannot detect a current Claude, Copilot, or Codex session; run inside an agent tool shell",
+				},
+				row,
+			);
+		// Already-admitted panes/IDs are reads, not a second registration or a client minter.
+		return callRs(
+			verb,
+			{ ...row, rsPath: "/v1/whoami" },
+			["whoami"],
+			location,
+			deps,
+			force === "rs",
+			caller,
+		);
+	}
+	return callRs(verb, row, argv, location, deps, force === "rs", caller, query);
 }
 
 async function callRs(
@@ -286,7 +478,9 @@ async function callRs(
 	location: DaemonLocation,
 	deps: GenerationRouterDeps,
 	forced: boolean,
+	caller: CallerContext,
 	query?: URLSearchParams,
+	registration?: Registration,
 ): Promise<RouteResult> {
 	const { addr, stateDir } = location;
 	let key: string;
@@ -300,7 +494,6 @@ async function callRs(
 	const suffix = query?.toString();
 	const url = `http://${addr}${row.rsPath}${suffix ? `?${suffix}` : ""}`;
 	const headers = { Authorization: `Bearer ${key}` };
-	const caller = buildCallerContext(deps.env, callerProcessFacts(deps));
 	let bodyLiteral: string | undefined;
 	const bodyFileAt = row.readsBodyFile ? argv.indexOf("--body-file") : -1;
 	if (bodyFileAt !== -1) {
@@ -335,9 +528,10 @@ async function callRs(
 						method: "POST",
 						headers: { ...headers, "Content-Type": "application/json" },
 						body: JSON.stringify(
-							bodyLiteral === undefined
-								? { argv, caller }
-								: { argv, caller, body_literal: bodyLiteral },
+							registration ??
+								(bodyLiteral === undefined
+									? { argv, caller }
+									: { argv, caller, body_literal: bodyLiteral }),
 						),
 					},
 		);
@@ -380,7 +574,7 @@ async function callRs(
 	const acknowledge =
 		row.acknowledgePath === undefined
 			? undefined
-			: buildAcknowledge(row.acknowledgePath, payload, url, headers, deps);
+			: buildAcknowledge(row.acknowledgePath, payload, url, headers, deps, caller);
 	return {
 		outcome,
 		payload,
@@ -396,6 +590,7 @@ function buildAcknowledge(
 	url: string,
 	headers: Record<string, string>,
 	deps: GenerationRouterDeps,
+	caller: CallerContext,
 ): (() => Promise<string | undefined>) | undefined {
 	const claims: unknown[] = Array.isArray(payload) ? payload : [];
 	const jobIds = claims
@@ -405,7 +600,6 @@ function buildAcknowledge(
 		);
 	if (jobIds.length === 0) return undefined;
 	const ackUrl = new URL(path, url).href;
-	const caller = buildCallerContext(deps.env, callerProcessFacts(deps));
 	return async () => {
 		for (const jobId of jobIds) {
 			try {

@@ -1407,7 +1407,7 @@ async fn paneless_registration_returns_the_identity_export_it_requires() {
     assert_eq!(
         registered.meta.as_deref(),
         Some(
-            "export PIJ_SESSION_ID=pij-paneless — this paneless seat has no observable pane, so subsequent commands require the registered id"
+            "verified external shim callers resolve this paneless seat from their native host/session automatically; other clients must pass id pij-paneless explicitly or export PIJ_SESSION_ID=pij-paneless"
         )
     );
 

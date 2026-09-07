@@ -18,7 +18,8 @@ pub struct Registration {
     /// impostor naming someone else's seat is exactly what #19 is about.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supersedes: Option<SeatId>,
-    /// Claimed seat id. An empty native Copilot claim requests canonical allocation.
+    /// Claimed seat id. Empty requests canonical allocation for native Copilot
+    /// extension delivery or a verified paneless external harness ancestor.
     pub id: String,
     /// Claimed harness spelling; admission refuses unknown values rather than guessing.
     pub harness: String,
@@ -27,7 +28,8 @@ pub struct Registration {
     /// Claimed tmux pane, when the seat has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pane: Option<String>,
-    /// Claimed process id; must travel with `proc_start`.
+    /// Claimed process id; must travel with `proc_start`. Empty-ID paneless
+    /// claims identify the requesting CLI; the daemon binds its observed host ancestor.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pid: Option<u32>,
     /// Claimed process start time; must travel with `pid`.

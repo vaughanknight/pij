@@ -1,0 +1,20 @@
+diff --git a/.pi/extensions/pij/orchestration-notice.integration.test.ts b/.pi/extensions/pij/orchestration-notice.integration.test.ts
+--- a/.pi/extensions/pij/orchestration-notice.integration.test.ts
++++ b/.pi/extensions/pij/orchestration-notice.integration.test.ts
+@@ -48,12 +48,14 @@
+ 
+ describe("baton keeper notice caller parity — scripted rs wire, native delivery separately required", () => {
+ 	it.each<{ readonly label: string; readonly target?: SessionDescriptor; readonly notice: Notice }>([
+-		{ label: "delivered for an idle live pi target", target: descriptor({ state: "idle", pid: process.pid }), notice: "delivered" },
++		// #374 honest-receipt rule: an idle Pi extension stream stays queued until ReaderRead.
++		{ label: "queued for an idle live pi target until ReaderRead", target: descriptor({ state: "idle", pid: process.pid }), notice: "queued" },
+ 		{ label: "queued for a working live pi target", target: descriptor({ state: "working", pid: process.pid }), notice: "queued" },
+ 		{ label: "queued for a live control-plane target with a fresh heartbeat", target: descriptor({
+ 			state: "idle", pid: process.pid, harness: "codex", lastTickAt: new Date(AT + 60_000).toISOString(),
+ 		}), notice: "queued" },
+-		{ label: "unverified for a live control-plane target with a stale heartbeat", target: descriptor({
++		// Native stale evidence is Dead/Recycled (proc_start-aware), never heartbeat age; this legacy metadata is only a decoy.
++		{ label: "unverified for a stale native incarnation (legacy control-plane case)", target: descriptor({
+ 			state: "idle", pid: process.pid, harness: "copilot", lastTickAt: "2026-01-01T00:00:00.000Z",
+ 		}), notice: "unverified" },
+ 		{ label: "unverified for a dead target", target: descriptor({ state: "idle", pid: 2_147_483_647 }), notice: "unverified" },

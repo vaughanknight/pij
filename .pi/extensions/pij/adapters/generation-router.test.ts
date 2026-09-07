@@ -309,7 +309,7 @@ describe("routeVerb end to end", () => {
 	it.each([
 		["adopt", undefined, { PIJ_DAEMON_GENERATION: "legacy" }],
 		["spawn", undefined, {}],
-		["inbox", "register", {}],
+		["register", undefined, {}],
 		["unknown-command", undefined, {}],
 	] as const)("%s %s refuses before reading credentials or making a request", async (verb, leaf, env) => {
 		const calls: Call[] = [];
@@ -763,5 +763,239 @@ describe("mailbox rendering precedes acknowledgement", () => {
 		);
 		expect(await result.acknowledge?.()).toMatch(/acknowledgement failed.*may be read again/);
 		expect(acks).toBe(1);
+	});
+});
+
+describe("verified ambient native admission bridge", () => {
+	const host = { pid: 9001, proc_start: 20260907120000 };
+	const callerStart = 20260907120100;
+	const fixtureIdentity = (harness: "claude" | "copilot" | "codex") => ({
+		harness,
+		harnessSessionId: "native-session",
+	});
+	const registered = (harness: string) =>
+		JSON.stringify({
+			ok: true,
+			command: "pij register",
+			v: 2,
+			data: {
+				id: "pij-ambient-host",
+				harness,
+				session: "native-session",
+				pane: null,
+				proc: host,
+				native_extension_delivery: false,
+				binding: "same",
+			},
+		});
+
+	it.each([
+		"claude",
+		"copilot",
+		"codex",
+	] as const)("%s registration forwards evidence to the native allocator and retains the complete envelope", async (harness) => {
+		const requests: unknown[] = [];
+		const raw = registered(harness);
+		const result = await routeVerb(
+			"inbox",
+			"register",
+			["inbox", "register", "--json"],
+			deps(
+				(url, init) => {
+					if (url.endsWith("/health")) return new Response(HEALTH);
+					expect(new URL(url).pathname).toBe("/v1/register");
+					requests.push(JSON.parse(String(init?.body)));
+					return new Response(raw);
+				},
+				{
+					ambientIdentity: () => fixtureIdentity(harness),
+					cwd: () => "/work/external",
+					pid: () => 9002,
+					procStart: () => callerStart,
+					env: { PIJ_SESSION_ID: "pij-stale", PIJ_PARENT_ID: "pij-parent" },
+				},
+			),
+		);
+		expect(result.outcome.kind).toBe("rs");
+		expect(requests).toEqual([
+			{
+				id: "",
+				harness,
+				harness_session: "native-session",
+				folder: "/work/external",
+				pid: 9002,
+				proc_start: callerStart,
+				relay: false,
+				parent: "pij-parent",
+			},
+		]);
+		expect(
+			renderRsAnswer(
+				result.row,
+				result.payload,
+				["inbox", "register", "--json"],
+				result.rawEnvelope,
+			),
+		).toEqual({ kind: "json", text: raw });
+		expect(result.acknowledge).toBeUndefined();
+	});
+
+	it("a repaired ambient identity and observed HOST tuple survive claim and post-output ack", async () => {
+		const requests: { path: string; body: unknown }[] = [];
+		const env = { PIJ_SESSION_ID: "pij-stale", COPILOT_AGENT_SESSION_ID: "native-session" };
+		const claims = [
+			{
+				job_id: 71,
+				message: {
+					from: "pij-sender",
+					body: "literal `$(text)`\nreply",
+					msg_id: "m1",
+					in_reply_to: "m0",
+				},
+			},
+		];
+		const result = await routeVerb(
+			"inbox",
+			undefined,
+			["inbox", "--wait", "10", "--json"],
+			deps(
+				(url, init) => {
+					const path = new URL(url).pathname;
+					if (path === "/health") return new Response(HEALTH);
+					requests.push({ path, body: JSON.parse(String(init?.body)) });
+					if (path === "/v1/register") return new Response(registered("copilot"));
+					return new Response(
+						JSON.stringify({
+							ok: true,
+							command: "pij inbox",
+							v: 2,
+							data: path.endsWith("/ack") ? 72 : claims,
+						}),
+					);
+				},
+				{
+					env,
+					ambientIdentity: () => fixtureIdentity("copilot"),
+					cwd: () => "/work/external",
+					pid: () => 9002,
+					procStart: () => callerStart,
+				},
+			),
+		);
+		expect(result.outcome.kind).toBe("rs");
+		expect(result.payload).toEqual(claims);
+		expect(requests.map(({ path }) => path)).toEqual(["/v1/register", "/v1/shim/inbox"]);
+		expect(await result.acknowledge?.()).toBeUndefined();
+		const caller = {
+			pijSessionId: "pij-ambient-host",
+			copilotAgentSessionId: "native-session",
+			cwd: "/work/external",
+			pid: host.pid,
+			procStart: host.proc_start,
+		};
+		expect(requests[1]?.body).toEqual({ argv: ["inbox", "--wait", "10", "--json"], caller });
+		expect(requests[2]).toEqual({ path: "/v1/shim/inbox/ack", body: { caller, job_id: 71 } });
+		expect(env.PIJ_SESSION_ID).toBe("pij-stale");
+	});
+
+	it.each([
+		"send",
+		"whoami",
+		"phonehome",
+	])("%s resolves ambient identity before forwarding its untouched argv", async (verb) => {
+		const argv = verb === "send" ? [verb, "pij-other", "body text", "--in-reply-to", "m0"] : [verb];
+		let request: unknown;
+		const result = await routeVerb(
+			verb,
+			undefined,
+			argv,
+			deps(
+				(url, init) => {
+					if (url.endsWith("/health")) return new Response(HEALTH);
+					if (url.endsWith("/register")) return new Response(registered("claude"));
+					request = JSON.parse(String(init?.body));
+					return new Response(JSON.stringify({ ok: true, command: `pij ${verb}`, v: 2, data: {} }));
+				},
+				{
+					ambientIdentity: () => fixtureIdentity("claude"),
+					cwd: () => "/work/external",
+					pid: () => 9002,
+					procStart: () => callerStart,
+				},
+			),
+		);
+		expect(result.outcome.kind).toBe("rs");
+		expect(request).toEqual({
+			argv,
+			caller: {
+				pijSessionId: "pij-ambient-host",
+				claudeCodeSessionId: "native-session",
+				cwd: "/work/external",
+				pid: host.pid,
+				procStart: host.proc_start,
+			},
+		});
+	});
+
+	it("native admission refusal is terminal and preserved rather than using an inherited seat", async () => {
+		const calls: Call[] = [];
+		const raw =
+			'{"ok":false,"command":"pij register","v":2,"error":"refused","meta":"host/session conflict"}\n';
+		const result = await routeVerb(
+			"send",
+			undefined,
+			["send", "pij-other", "hello"],
+			deps(
+				answering(raw, 400),
+				{
+					ambientIdentity: () => fixtureIdentity("claude"),
+					env: { PIJ_SESSION_ID: "pij-stale" },
+					cwd: () => "/work",
+					pid: () => 9002,
+					procStart: () => callerStart,
+				},
+				calls,
+			),
+		);
+		expect(result.outcome.kind).toBe("rs-error");
+		expect(result.rawEnvelope).toBe(raw);
+		expect(calls.map(({ url }) => new URL(url).pathname)).toEqual(["/health", "/v1/register"]);
+	});
+
+	it("already registered panes read whoami without ambient discovery or native allocation", async () => {
+		const calls: Call[] = [];
+		const raw =
+			'{"ok":true,"command":"pij whoami","v":2,"data":{"id":"pij-pane","harness":"omp","pane":"%44"}}';
+		const result = await routeVerb(
+			"inbox",
+			"register",
+			["inbox", "register"],
+			deps(
+				answering(raw),
+				{
+					env: { TMUX_PANE: "%44" },
+					ambientIdentity: () => {
+						throw new Error("pane must not discover ambient files");
+					},
+				},
+				calls,
+			),
+		);
+		expect(result.outcome.kind).toBe("rs");
+		expect(result.rawEnvelope).toBe(raw);
+		expect(calls.map(({ url }) => new URL(url).pathname)).toEqual(["/health", "/v1/whoami"]);
+		expect(renderRsAnswer(result.row, result.payload, ["inbox", "register"]).kind).toBe("rendered");
+	});
+
+	it("register without ambient or registered identity refuses instead of posting an empty native claim", async () => {
+		const calls: Call[] = [];
+		const result = await routeVerb(
+			"inbox",
+			"register",
+			["inbox", "register", "--json"],
+			deps(answering("{}"), { ambientIdentity: () => null }, calls),
+		);
+		expect(result.outcome).toMatchObject({ kind: "rs-error", code: "E-AMBIG" });
+		expect(calls.map(({ url }) => new URL(url).pathname)).toEqual(["/health"]);
 	});
 });

@@ -13,8 +13,9 @@ use axum::http::StatusCode;
 use axum::response::Response;
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
+use pij_core::liveness::alive;
 use pij_core::model::{
-    DeliveryOutcome, Envelope, ErrorKind, Event, Msg, SeatDescriptor, SeatId, Seq,
+    DeliveryOutcome, Envelope, ErrorKind, Event, Liveness, Msg, SeatDescriptor, SeatId, Seq,
 };
 use pij_core::orchestration::{
     BatonDefinition, BatonRequest, BatonRequestState, Dispatch, DispatchCanary, DispatchState,
@@ -1096,7 +1097,7 @@ async fn orchestration_command(
             "lease": store.lease(name).await?, "requests": store.list_baton_requests(name).await?}),
         ),
         "baton.request" => {
-            required(store.baton(name).await?, "baton", name)?;
+            let baton = required(store.baton(name).await?, "baton", name)?;
             let request = BatonRequest {
                 id: mint("request")?,
                 baton: name.to_string(),
@@ -1118,7 +1119,17 @@ async fn orchestration_command(
                     at,
                 )
                 .await?;
-            Ok(json!({"request": request, "seq": seq}))
+            // Publication has completed before entering the existing sender.
+            // A notice failure must still expose the committed request and seq.
+            let notice = notify_baton_keeper(state, &baton, &request).await.map_err(|error| {
+                GovernanceError {
+                    code: "E-RS-PARTIAL".into(),
+                    status: StatusCode::INTERNAL_SERVER_ERROR,
+                    message: format!("request committed but keeper notice failed: {error}"),
+                    details: json!({"committed": true, "event_published": true, "request": request, "seq": seq}),
+                }
+            })?;
+            Ok(json!({"request": request, "seq": seq, "notice": notice}))
         }
         "baton.grant" => {
             let baton = required(store.baton(name).await?, "baton", name)?;
@@ -1313,6 +1324,51 @@ async fn orchestration_command(
             "unknown orchestration leaf",
         )),
     }
+}
+
+async fn notify_baton_keeper(
+    state: &AppState,
+    baton: &BatonDefinition,
+    request: &BatonRequest,
+) -> Result<Option<&'static str>> {
+    let Some(keeper) = state.services.registry.get(&baton.created_by).await? else {
+        return Ok(None);
+    };
+    if keeper.tombstoned_at.is_some() {
+        return Ok(None);
+    }
+    let receipt = state
+        .services
+        .delivery
+        .send(
+            request.requester.clone(),
+            keeper.id.clone(),
+            format!(
+                "[pij orchestration] baton '{}' requested by {}: {} (request {})",
+                baton.name, request.requester, request.purpose, request.id
+            ),
+        )
+        .await?;
+    let outcome = match receipt.outcome {
+        DeliveryOutcome::Delivered { .. } => "delivered",
+        DeliveryOutcome::Queued { .. } => "queued",
+        DeliveryOutcome::Held { reason } => {
+            return Err(adapter(format!("keeper notice held: {reason}")));
+        }
+        DeliveryOutcome::Refused { reason } => {
+            return Err(adapter(format!("keeper notice refused: {reason}")));
+        }
+    };
+    // Reuse process-incarnation evidence; a heartbeat age is not a native
+    // liveness verdict, and admission is never delivery.
+    let unverified = match keeper.proc {
+        Some(proc) => matches!(
+            alive(proc, state.services.liveness.as_ref()).await?,
+            Liveness::Dead { .. } | Liveness::Recycled { .. }
+        ),
+        None => false,
+    };
+    Ok(Some(if unverified { "unverified" } else { outcome }))
 }
 
 fn lease_stale(name: &str, current: Option<&str>, provided: Option<&str>) -> GovernanceError {

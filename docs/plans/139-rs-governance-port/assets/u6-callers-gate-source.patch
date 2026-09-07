@@ -1,0 +1,2516 @@
+diff --git a/.pi/extensions/pij/core/chores/drive.test.ts b/.pi/extensions/pij/core/chores/drive.test.ts
+--- a/.pi/extensions/pij/core/chores/drive.test.ts
++++ b/.pi/extensions/pij/core/chores/drive.test.ts
+@@ -1,18 +1,23 @@
+ import { execFileSync, spawnSync } from "node:child_process";
+ import {
++	existsSync,
++	lstatSync,
+ 	mkdirSync,
+ 	mkdtempSync,
++	readdirSync,
+ 	readFileSync,
++	readlinkSync,
+ 	realpathSync,
+ 	statSync,
+ 	writeFileSync,
+ } from "node:fs";
+ import { createRequire } from "node:module";
+ import { tmpdir } from "node:os";
+-import { join } from "node:path";
++import { delimiter, join } from "node:path";
+ import { fileURLToPath } from "node:url";
+ import { afterEach, beforeEach, describe, expect, it } from "vitest";
+ import { removeTemporaryTree } from "../../../../../harness/test-utils.js";
++import { ShellChoreProbe } from "../../adapters/chore-probe.js";
+ import { FsChoreStore } from "../../adapters/chore-store.js";
+ import { FsRegistry } from "../../adapters/fs-registry.js";
+ import { type ChoreVerbDeps, dispatchChore } from "./cli-verbs.js";
+@@ -90,49 +95,68 @@
+ 	};
+ }
+ 
+-function runCli(
+-	args: string[],
++function libraryDeps(
+ 	seatId: string | null = "seat-a",
+-	tmuxPane = "",
+-	registerSeat = true,
+ 	cwd = repoRoot,
+-	seatFolder = cwd,
+-): {
+-	readonly code: number;
+-	readonly stdout: string;
+-	readonly stderr: string;
+-} {
++	worktreeRoot = cwd,
++): ChoreVerbDeps {
++	return {
++		cwd,
++		worktreeRoot,
++		...(seatId === null ? {} : { seatId }),
++		store: new FsChoreStore({
++			pijHome,
++			...(seatId === null ? {} : { seatId }),
++			repoRoot: worktreeRoot,
++		}),
++		probe: new ShellChoreProbe(),
++		now: () => now,
++	};
++}
++
++function runCli(args: string[], env: NodeJS.ProcessEnv) {
+ 	expect(realpathSync(root).startsWith(realpathSync(tmpdir()))).toBe(true);
+ 	assertTempPijHome();
+-	if (seatId && registerSeat && !new FsRegistry(pijHome).read(seatId)) {
+-		new FsRegistry(pijHome).write({
+-			id: seatId,
+-			folder: realpathSync(seatFolder),
+-			dataDir: join(pijHome, seatId),
+-			eventsPath: join(pijHome, seatId, "events.ndjson"),
+-			pid: process.pid,
+-			startedAt: now,
+-			...(tmuxPane ? { paneId: tmuxPane } : {}),
+-			state: "idle",
+-		});
+-	}
+ 	const result = spawnSync(process.execPath, [TSX, CLI, ...args], {
+-		cwd,
++		cwd: repoRoot,
+ 		encoding: "utf8",
+ 		env: {
+-			...process.env,
++			PATH: process.env.PATH,
+ 			NODE_NO_WARNINGS: "1",
++			TSX_DISABLE_CACHE: "1",
++			HOME: join(root, "user-home"),
++			XDG_CONFIG_HOME: join(root, "config"),
++			CLAUDE_CONFIG_DIR: join(root, "claude"),
+ 			PIJ_HOME: pijHome,
+-			PIJ_SESSION_ID: seatId ?? "",
+-			TMUX_PANE: tmuxPane,
++			PIJ_RS_STATE_DIR: join(root, "rs"),
++			PIJ_RS_ADDR: "pij-chore-refusal.invalid:1",
++			...env,
+ 		},
+ 		timeout: 15_000,
+ 	});
+ 	if (result.error) throw result.error;
++	expect(result.signal).toBeNull();
+ 	return {
+-		code: result.status ?? 1,
++		code: result.status,
+ 		stdout: result.stdout.trim(),
+ 		stderr: result.stderr.trim(),
++	};
++}
++
++function snapshotTree(path: string): unknown {
++	const stat = lstatSync(path);
++	return {
++		mode: stat.mode,
++		ino: stat.ino,
++		mtimeMs: stat.mtimeMs,
++		ctimeMs: stat.ctimeMs,
++		content: stat.isDirectory()
++			? readdirSync(path)
++					.sort()
++					.map((name) => [name, snapshotTree(join(path, name))])
++			: stat.isSymbolicLink()
++				? readlinkSync(path)
++				: readFileSync(path).toString("base64"),
+ 	};
+ }
+ 
+@@ -385,43 +409,183 @@
+ 	});
+ });
+ 
+-describe("chore CLI drive-it proof", () => {
+-	it("prints family help through the pre-registry intercept", () => {
+-		const help = runCli(["chore", "--help"]);
+-		expect(help.code).toBe(0);
+-		expect(help.stdout).toContain("pij chore — durable named change detectors");
+-		expect(help.stdout).toContain("pij chore update");
+-		expect(help.stdout).toContain("pij chore remove");
+-	});
++describe.each([
++	{ label: "default Rust authority", generation: "" },
++	{ label: "explicit Rust authority", generation: "rs" },
++	{ label: "retired explicit legacy force", generation: "legacy" },
++])("public chore refusal — $label", ({ generation }) => {
++	let cliEnv: NodeJS.ProcessEnv;
++	let before: unknown;
++	let processMarker: string;
++	let probeMarker: string;
++
++	beforeEach(() => {
++		const bin = join(root, "bin");
++		mkdirSync(bin);
++		processMarker = join(root, "unexpected-process");
++		probeMarker = join(root, "unexpected-probe");
++		for (const executable of ["sh", "bash", "tmux", "pij", "pij-rs"]) {
++			writeFileSync(
++				join(bin, executable),
++				'#!/bin/sh\nprintf "%s\\n" "$0 $*" >> "$PIJ_PROCESS_SENTINEL"\nexit 97\n',
++				{ mode: 0o755 },
++			);
++		}
++		writeFileSync(
++			join(repoRoot, "probe-tripwire.sh"),
++			'printf executed >> "$PIJ_PROBE_SENTINEL"\n',
++		);
++		for (const { id, paneId } of [
++			{ id: "seat-a", paneId: "%1" },
++			{ id: "pij-adopted-seat", paneId: "%77" },
++			{ id: "pij-other-seat", paneId: "%88" },
++		]) {
++			new FsRegistry(pijHome).write({
++				id,
++				folder: realpathSync(repoRoot),
++				dataDir: join(pijHome, id),
++				eventsPath: join(pijHome, id, "events.ndjson"),
++				pid: process.pid,
++				startedAt: now,
++				paneId,
++				state: "idle",
++			});
++		}
++		// Seed valid legacy data through its library, so an accidental fallback has
++		// real rosters, pending state and runnable probes to mutate or execute.
++		const command = "sh ./probe-tripwire.sh";
++		for (const scope of ["seat", "repo", "fleet"]) {
++			expect(
++				dispatchChore(
++					["add", "guarded", "--probe", command, "--full", command, "--scope", scope],
++					deps(),
++				).exitCode,
++			).toBe(0);
++		}
++		probe.outputs.set(command, { ok: true, output: "pending" });
++		expect(dispatchChore(["run"], deps()).exitCode).toBe(0);
++		cliEnv = {
++			PATH: `${bin}${delimiter}${process.env.PATH ?? ""}`,
++			PIJ_DAEMON_GENERATION: generation,
++			PIJ_SESSION_ID: "seat-a",
++			TMUX: "",
++			TMUX_PANE: "%1",
++			PIJ_PROCESS_SENTINEL: processMarker,
++			PIJ_PROBE_SENTINEL: probeMarker,
++		};
++		before = snapshotTree(root);
++	});
++
++	function expectNoLegacyEffects(): void {
++		expect(existsSync(processMarker)).toBe(false);
++		expect(existsSync(probeMarker)).toBe(false);
++		expect(snapshotTree(root)).toEqual(before);
++	}
++
++	function expectRefused(args: string[], caller: NodeJS.ProcessEnv = {}): void {
++		const result = runCli(["chore", ...args, "--json"], { ...cliEnv, ...caller });
++		expect(result.code).toBe(4);
++		expect(result.stderr).toBe("");
++		expect(JSON.parse(result.stdout)).toEqual({
++			ok: false,
++			command: "pij chore",
++			v: 2,
++			error: "refused",
++			meta: expect.stringContaining(
++				generation === "legacy"
++					? "E-RS-UNPORTED chore: PIJ_DAEMON_GENERATION=legacy is retired"
++					: "E-RS-UNPORTED chore: not ported through this shim",
++			),
++			details: {
++				code: "E-RS-UNPORTED",
++				verb: "chore",
++				ledger_item: "docs/how/pij-rs-api.md#unsupported-status",
++			},
++		});
++		expectNoLegacyEffects();
++	}
++
++	it.each([
++		{ label: "bare family", args: [] },
++		{ label: "retired family help intercept", args: ["--help"] },
++		{ label: "seat add", args: ["add", "new-seat", "--probe", "sh ./probe-tripwire.sh"] },
++		{ label: "repo add", args: ["add", "new-repo", "--probe", "sh ./probe-tripwire.sh", "--scope", "repo"] },
++		{ label: "fleet add", args: ["add", "new-fleet", "--probe", "sh ./probe-tripwire.sh", "--scope", "fleet"] },
++		{ label: "update", args: ["update", "seat:guarded", "--probe", "printf replacement"] },
++		{ label: "list", args: ["list"] },
++		{ label: "verbose list", args: ["list", "--verbose"] },
++		{ label: "run", args: ["run"] },
++		{ label: "dry run", args: ["run", "--dry"] },
++		{ label: "ack pending delta", args: ["ack", "seat:guarded"] },
++		{ label: "remove", args: ["remove", "seat:guarded", "--reason", "obsolete"] },
++	])("refuses $label as named v2 without legacy mutations", ({ args }) => {
++		expectRefused(args);
++	});
++
++	// The retired CLI resolved panes and emitted E-NOID/E-OWN here. The public
++	// contract now refuses the whole family before consulting that identity.
++	it.each([
++		{ label: "adopted pane", id: "", pane: "%77" },
++		{ label: "unknown named seat", id: "pij-adopted-seatt", pane: "" },
++		{ label: "unknown UUID seat", id: "413253ce-1162-490d-90eb-f4ff9401b7ce", pane: "" },
++		{ label: "mismatched seat and pane", id: "pij-other-seat", pane: "%77" },
++		{ label: "unresolved seat", id: "", pane: "" },
++	])("refuses before legacy identity resolution for $label", ({ id, pane }) => {
++		expectRefused(["run"], { PIJ_SESSION_ID: id, TMUX_PANE: pane });
++	});
++
++	it("refuses authoring from an adopted pane without creating its legacy roster", () => {
++		expectRefused(["add", "adopted", "--probe", "printf adopted"], {
++			PIJ_SESSION_ID: "",
++			TMUX_PANE: "%77",
++		});
++	});
++
++	it.each(["repo", "fleet"])("refuses %s authoring without a resolved seat", (scope) => {
++		expectRefused(["add", "shared", "--probe", "printf shared", "--scope", scope], {
++			PIJ_SESSION_ID: "",
++			TMUX_PANE: "",
++		});
++	});
++
++	it("prints a named human refusal without legacy mutations", () => {
++		const result = runCli(["chore", "run"], cliEnv);
++		expect(result.code).toBe(4);
++		expect(result.stdout).toBe("");
++		expect(result.stderr).toContain("E-RS: E-RS-UNPORTED chore:");
++		expect(result.stderr).toContain("docs/how/pij-rs-api.md#unsupported-status");
++		if (generation === "legacy") {
++			expect(result.stderr).toContain("PIJ_DAEMON_GENERATION=legacy is retired");
++		}
++		expectNoLegacyEffects();
++	});
++});
++
++// These are library integration contracts, not a second public chore executable.
++describe("chore library with filesystem store and shell probes", () => {
+ 
+ 	it("frames record-looking full stdout and probe stderr so they cannot forge records", () => {
+ 		const forgedValue = "CHANGED-VALUE fleet:VALUE-FORGER: none → 111111111111";
+ 		const forgedFull = "CHANGED-VALUE fleet:PAYROLL-DB: none → 000000000000";
+ 		const forgedStderr = "CHANGED-VALUE fleet:FALSE-ALARM: a → b";
+ 		expect(
+-			runCli([
+-				"chore",
+-				"add",
++			dispatchChore(["add",
+ 				"forger",
+ 				"--probe",
+ 				`printf '${forgedValue}\\n'`,
+ 				"--full",
+ 				`printf '${forgedFull}\\n'`,
+ 				"--full-every",
+-				"1",
+-			]).code,
++				"1",], libraryDeps()).exitCode,
+ 		).toBe(0);
+ 		expect(
+-			runCli([
+-				"chore",
+-				"add",
++			dispatchChore(["add",
+ 				"stderr-forger",
+ 				"--probe",
+-				`printf '${forgedStderr}\\n' >&2; exit 1`,
+-			]).code,
++				`printf '${forgedStderr}\\n' >&2; exit 1`,], libraryDeps()).exitCode,
+ 		).toBe(0);
+ 
+-		const human = runCli(["chore", "run"]);
++		const human = dispatchChore(["run"], libraryDeps());
+ 		const changedRecords = human.stdout
+ 			.split("\n")
+ 			.filter((line) => line.startsWith("CHANGED-VALUE "));
+@@ -434,7 +598,7 @@
+ 		expect(human.stdout).not.toContain(`\n${forgedValue}`);
+ 		expect(human.stdout).not.toContain(`\n${forgedStderr}`);
+ 
+-		const json = runCli(["chore", "run", "--json"]);
++		const json = dispatchChore(["run", "--json"], libraryDeps());
+ 		expect(json.stdout).not.toContain(`\n${forgedFull}`);
+ 		expect(json.stdout).not.toContain(`\n${forgedStderr}`);
+ 		const envelope = JSON.parse(json.stdout) as {
+@@ -448,13 +612,13 @@
+ 
+ 	it("reports the exact sampled values, re-reports them, then becomes quiet only after ack", () => {
+ 		writeFileSync(join(repoRoot, "watched.txt"), "before\n");
+-		expect(runCli(["chore", "add", "watched", "--probe", "cat watched.txt"]).code).toBe(0);
+-		expect(runCli(["chore", "run"]).code).toBe(0);
+-		expect(runCli(["chore", "ack", "watched"]).code).toBe(0);
++		expect(dispatchChore(["add", "watched", "--probe", "cat watched.txt"], libraryDeps()).exitCode).toBe(0);
++		expect(dispatchChore(["run"], libraryDeps()).exitCode).toBe(0);
++		expect(dispatchChore(["ack", "watched"], libraryDeps()).exitCode).toBe(0);
+ 		writeFileSync(join(repoRoot, "watched.txt"), "after\n");
+ 
+-		const first = runCli(["chore", "run", "--json"]);
+-		expect(first.code).toBe(0);
++		const first = dispatchChore(["run", "--json"], libraryDeps());
++		expect(first.exitCode).toBe(0);
+ 		const firstReport = JSON.parse(first.stdout) as {
+ 			chores: Array<{
+ 				old: string | null;
+@@ -495,18 +659,18 @@
+ 			newValue: "after\n",
+ 		});
+ 
+-		const second = runCli(["chore", "run", "--json"]);
++		const second = dispatchChore(["run", "--json"], libraryDeps());
+ 		expect(second.stdout).toBe(first.stdout);
+ 
+-		const human = runCli(["chore", "run"]);
++		const human = dispatchChore(["run"], libraryDeps());
+ 		expect(human.stdout).toContain("CHANGED-VALUE seat:watched:");
+ 		expect(human.stdout).toContain("  | before");
+ 		expect(human.stdout).toContain("  | after");
+ 		expect(human.stdout).toContain(
+ 			"HINT seat:watched: if this delta needs more context, add --full '<cmd>' --full-every N for periodic absolute state.",
+ 		);
+-		expect(runCli(["chore", "ack", "watched"]).code).toBe(0);
+-		const unchanged = runCli(["chore", "run"]).stdout;
++		expect(dispatchChore(["ack", "watched"], libraryDeps()).exitCode).toBe(0);
++		const unchanged = dispatchChore(["run"], libraryDeps()).stdout;
+ 		expect(unchanged).toContain("SCOPES seat: seat-a");
+ 		expect(unchanged).toContain("NO CHANGE — 1 chores probed, 0 moved");
+ 		expect(unchanged).toMatch(/UNCHANGED seat:watched fingerprint=[a-f0-9]{12}\n {2}\| after$/);
+@@ -515,9 +679,9 @@
+ 	it("bounds sampled stdout visibly without changing the comparison fingerprint", () => {
+ 		const value = "x".repeat(MAX_CHORE_VALUE_BYTES + 200);
+ 		writeFileSync(join(repoRoot, "large.txt"), value);
+-		expect(runCli(["chore", "add", "large", "--probe", "cat large.txt"]).code).toBe(0);
+-
+-		const report = JSON.parse(runCli(["chore", "run", "--json"]).stdout) as {
++		expect(dispatchChore(["add", "large", "--probe", "cat large.txt"], libraryDeps()).exitCode).toBe(0);
++
++		const report = JSON.parse(dispatchChore(["run", "--json"], libraryDeps()).stdout) as {
+ 			chores: Array<{ new: string; newFingerprint: string }>;
+ 		};
+ 		const item = report.chores[0];
+@@ -528,92 +692,59 @@
+ 	it("keeps a returned delta visible as a flap until ack", () => {
+ 		const watched = join(repoRoot, "flap.txt");
+ 		writeFileSync(watched, "A");
+-		expect(runCli(["chore", "add", "flap", "--probe", "cat flap.txt"]).code).toBe(0);
+-		expect(runCli(["chore", "run"]).code).toBe(0);
+-		expect(runCli(["chore", "ack", "flap"]).code).toBe(0);
++		expect(dispatchChore(["add", "flap", "--probe", "cat flap.txt"], libraryDeps()).exitCode).toBe(0);
++		expect(dispatchChore(["run"], libraryDeps()).exitCode).toBe(0);
++		expect(dispatchChore(["ack", "flap"], libraryDeps()).exitCode).toBe(0);
+ 
+ 		writeFileSync(watched, "B");
+-		expect(runCli(["chore", "run"]).stdout).toContain("CHANGED-VALUE seat:flap:");
++		expect(dispatchChore(["run"], libraryDeps()).stdout).toContain("CHANGED-VALUE seat:flap:");
+ 		writeFileSync(watched, "A");
+ 
+-		const returned = runCli(["chore", "run"]);
++		const returned = dispatchChore(["run"], libraryDeps());
+ 		expect(returned.stdout).toContain("CHANGES — 1 chores probed, 1 moved");
+ 		expect(returned.stdout).toContain("FLAPPED seat:flap: moved and returned since last ack");
+ 		expect(returned.stdout).toContain("  | A");
+-		expect(runCli(["chore", "run"]).stdout).toBe(returned.stdout);
++		expect(dispatchChore(["run"], libraryDeps()).stdout).toBe(returned.stdout);
+ 		expect(readFileSync(join(pijHome, "seat-a", "chore-state.json"), "utf8")).toContain(
+ 			'"pending"',
+ 		);
+-		expect(runCli(["chore", "ack", "flap"]).code).toBe(0);
+-		expect(runCli(["chore", "run"]).stdout).toContain("NO CHANGE — 1 chores probed, 0 moved");
+-	});
+-
+-	it("resolves an adopted seat from its pane and rejects an unknown explicit seat id", () => {
++		expect(dispatchChore(["ack", "flap"], libraryDeps()).exitCode).toBe(0);
++		expect(dispatchChore(["run"], libraryDeps()).stdout).toContain("NO CHANGE — 1 chores probed, 0 moved");
++	});
++
++	it("retains the caller-supplied seat as creator attribution at the library boundary", () => {
+ 		const adoptedId = "pij-adopted-seat";
+-		new FsRegistry(pijHome).write({
+-			id: adoptedId,
+-			folder: realpathSync(repoRoot),
+-			dataDir: join(pijHome, adoptedId),
+-			eventsPath: join(pijHome, adoptedId, "events.ndjson"),
+-			pid: process.pid,
+-			startedAt: now,
+-			paneId: "%77",
+-			state: "idle",
+-		});
+-
+-		const adopted = runCli(["chore", "add", "adopted", "--probe", "printf adopted"], null, "%77");
+-		expect(adopted.stderr).toBe("");
+-		expect(adopted.code).toBe(0);
++		const added = dispatchChore(
++			["add", "adopted", "--probe", "printf adopted"],
++			libraryDeps(adoptedId),
++		);
++		expect(added.exitCode).toBe(0);
++		expect(added.stderr).toBe("");
+ 		const adoptedRoster = JSON.parse(
+ 			readFileSync(join(pijHome, adoptedId, "chores.json"), "utf8"),
+-		) as { chores: Array<{ name: string; creatorSeatId?: string }> };
++		);
+ 		expect(adoptedRoster.chores).toContainEqual(
+ 			expect.objectContaining({ name: "adopted", creatorSeatId: adoptedId }),
+ 		);
+-		expect(runCli(["chore", "run"], null, "%77").stdout).toContain("CHANGED-VALUE seat:adopted:");
+-
+-		for (const unknownId of ["pij-adopted-seatt", "413253ce-1162-490d-90eb-f4ff9401b7ce"]) {
+-			const unknown = runCli(["chore", "run"], unknownId, "", false);
+-			expect(unknown.code).toBe(1);
+-			expect(unknown.stderr).toContain(
+-				`E-NOID: PIJ_SESSION_ID '${unknownId}' is not a registered seat`,
+-			);
+-			expect(() => statSync(join(pijHome, unknownId))).toThrow();
+-		}
+-
+-		const otherId = "pij-other-seat";
+-		new FsRegistry(pijHome).write({
+-			id: otherId,
+-			folder: realpathSync(repoRoot),
+-			dataDir: join(pijHome, otherId),
+-			eventsPath: join(pijHome, otherId, "events.ndjson"),
+-			pid: process.pid,
+-			startedAt: now,
+-			paneId: "%88",
+-			state: "idle",
+-		});
+-		const impersonation = runCli(["chore", "run"], otherId, "%77", false);
+-		expect(impersonation.code).toBe(1);
+-		expect(impersonation.stderr).toContain(
+-			`E-OWN: PIJ_SESSION_ID '${otherId}' does not match this process's bound seat '${adoptedId}'`,
+-		);
+-		expect(() => statSync(join(pijHome, otherId, "chore-state.json"))).toThrow();
++		expect(dispatchChore(["run"], libraryDeps(adoptedId)).stdout).toContain(
++			"CHANGED-VALUE seat:adopted:",
++		);
+ 	});
+ 
+ 	it("keeps repo and fleet roster authoring available without a resolved seat", () => {
+ 		expect(
+-			runCli(["chore", "add", "shared", "--probe", "printf shared", "--scope", "repo"], null).code,
++			dispatchChore(["add", "shared", "--probe", "printf shared", "--scope", "repo"], libraryDeps(null)).exitCode,
+ 		).toBe(0);
+ 		expect(
+-			runCli(["chore", "add", "global", "--probe", "printf global", "--scope", "fleet"], null).code,
++			dispatchChore(["add", "global", "--probe", "printf global", "--scope", "fleet"], libraryDeps(null)).exitCode,
+ 		).toBe(0);
+-		const listed = runCli(["chore", "list"], null);
+-		expect(listed.code).toBe(0);
++		const listed = dispatchChore(["list"], libraryDeps(null));
++		expect(listed.exitCode).toBe(0);
+ 		expect(listed.stdout).toContain("SCOPES seat: unresolved");
+ 		expect(listed.stdout).toContain("repo:shared");
+ 		expect(listed.stdout).toContain("fleet:global");
+-		const run = runCli(["chore", "run"], null);
+-		expect(run.code).toBe(1);
++		const run = dispatchChore(["run"], libraryDeps(null));
++		expect(run.exitCode).toBe(1);
+ 		expect(run.stderr).toContain("SCOPES seat: unresolved");
+ 		expect(run.stderr).toContain("per-seat chore state requires a registered seat id");
+ 	});
+@@ -626,22 +757,18 @@
+ 		execFileSync("git", ["-C", repoRoot, "add", "absolute.txt", "relative.txt"]);
+ 		execFileSync("git", ["-C", repoRoot, "commit", "--quiet", "-m", "seed probe inputs"]);
+ 
+-		const repo = runCli([
+-			"chore",
+-			"add",
++		const repo = dispatchChore(["add",
+ 			"repo-absolute",
+ 			"--probe",
+ 			`cat ${join(repoRoot, "absolute.txt")}`,
+ 			"--scope",
+-			"repo",
+-		]);
+-		expect(repo.code).toBe(0);
++			"repo",], libraryDeps());
++		expect(repo.exitCode).toBe(0);
+ 		expect(repo.stderr).not.toContain("WARN:");
+ 		expect(repo.stderr).toContain("NOTE: commit");
+ 		expect(repo.stderr).toContain(".pij/chores.json");
+ 		expect(
+-			runCli(["chore", "add", "repo-relative", "--probe", "cat relative.txt", "--scope", "repo"])
+-				.code,
++			dispatchChore(["add", "repo-relative", "--probe", "cat relative.txt", "--scope", "repo"], libraryDeps()).exitCode,
+ 		).toBe(0);
+ 
+ 		const rosterPath = join(repoRoot, ".pij", "chores.json");
+@@ -672,15 +799,8 @@
+ 		writeFileSync(join(otherWorktree, "absolute.txt"), "other-absolute\n");
+ 		writeFileSync(join(otherWorktree, "relative.txt"), "other-relative\n");
+ 
+-		const fromOtherRoot = runCli(
+-			["chore", "run", "--json"],
+-			"seat-b",
+-			"%2",
+-			true,
+-			otherWorktree,
+-			otherWorktree,
+-		);
+-		expect(fromOtherRoot.code).toBe(0);
++		const fromOtherRoot = dispatchChore(["run", "--json"], libraryDeps("seat-b", otherWorktree, otherWorktree));
++		expect(fromOtherRoot.exitCode).toBe(0);
+ 		const rootReport = JSON.parse(fromOtherRoot.stdout) as {
+ 			chores: Array<{ name: string; new: string | null; status: string }>;
+ 		};
+@@ -691,15 +811,8 @@
+ 
+ 		const subdirectory = join(otherWorktree, "nested");
+ 		mkdirSync(subdirectory);
+-		const fromSubdirectory = runCli(
+-			["chore", "run", "--json"],
+-			"seat-b",
+-			"%2",
+-			false,
+-			subdirectory,
+-			otherWorktree,
+-		);
+-		expect(fromSubdirectory.code).toBe(0);
++		const fromSubdirectory = dispatchChore(["run", "--json"], libraryDeps("seat-b", subdirectory, otherWorktree));
++		expect(fromSubdirectory.exitCode).toBe(0);
+ 		const subdirectoryReport = JSON.parse(fromSubdirectory.stdout) as {
+ 			chores: Array<{ name: string; new: string | null; status: string }>;
+ 		};
+@@ -725,7 +838,6 @@
+ 
+ 		for (const field of ["probe", "full"] as const) {
+ 			const args = [
+-				"chore",
+ 				"add",
+ 				`inside-add-${field}`,
+ 				"--probe",
+@@ -734,8 +846,8 @@
+ 				"--scope",
+ 				"repo",
+ 			];
+-			const accepted = runCli(args);
+-			expect(accepted.code).toBe(0);
++			const accepted = dispatchChore(args, libraryDeps());
++			expect(accepted.exitCode).toBe(0);
+ 		}
+ 
+ 		const rosterPath = join(repoRoot, ".pij", "chores.json");
+@@ -743,7 +855,6 @@
+ 			for (const item of cases) {
+ 				const before = readFileSync(rosterPath, "utf8");
+ 				const args = [
+-					"chore",
+ 					"add",
+ 					`refused-add-${field}-${item.label}`,
+ 					"--probe",
+@@ -752,8 +863,8 @@
+ 					"--scope",
+ 					"repo",
+ 				];
+-				const refused = runCli(args);
+-				expect(refused.code).toBe(64);
++				const refused = dispatchChore(args, libraryDeps());
++				expect(refused.exitCode).toBe(64);
+ 				expect(refused.stderr).toContain(
+ 					`repo-scoped chore ${field} path resolves outside this worktree`,
+ 				);
+@@ -764,37 +875,28 @@
+ 		}
+ 
+ 		expect(
+-			runCli([
+-				"chore",
+-				"add",
++			dispatchChore(["add",
+ 				"update-target",
+ 				"--probe",
+ 				"cat inside.txt",
+ 				"--full",
+ 				"cat inside.txt",
+ 				"--scope",
+-				"repo",
+-			]).code,
++				"repo",], libraryDeps()).exitCode,
+ 		).toBe(0);
+ 		for (const field of ["probe", "full"] as const) {
+-			const accepted = runCli([
+-				"chore",
+-				"update",
++			const accepted = dispatchChore(["update",
+ 				"repo:update-target",
+ 				`--${field}`,
+-				"cat inside.txt",
+-			]);
+-			expect(accepted.code).toBe(0);
++				"cat inside.txt",], libraryDeps());
++			expect(accepted.exitCode).toBe(0);
+ 			for (const item of cases) {
+ 				const before = readFileSync(rosterPath, "utf8");
+-				const refused = runCli([
+-					"chore",
+-					"update",
++				const refused = dispatchChore(["update",
+ 					"repo:update-target",
+ 					`--${field}`,
+-					item.command,
+-				]);
+-				expect(refused.code).toBe(64);
++					item.command,], libraryDeps());
++				expect(refused.exitCode).toBe(64);
+ 				expect(refused.stderr).toContain(
+ 					`repo-scoped chore ${field} path resolves outside this worktree`,
+ 				);
+@@ -806,36 +908,29 @@
+ 	it("accepts static multi-argument commands and refuses unknown executables by default", () => {
+ 		writeRepoGrammarFixtures();
+ 		expect(
+-			runCli([
+-				"chore",
+-				"add",
++			dispatchChore(["add",
+ 				"static-multiword",
+ 				"--probe",
+ 				STATIC_REPO_COMMAND,
+ 				"--full",
+ 				STATIC_REPO_COMMAND,
+ 				"--scope",
+-				"repo",
+-			]).code,
++				"repo",], libraryDeps()).exitCode,
+ 		).toBe(0);
+ 		const rosterPath = join(repoRoot, ".pij", "chores.json");
+ 		for (const field of ["probe", "full"] as const) {
+ 			expect(
+-				runCli(["chore", "update", "repo:static-multiword", `--${field}`, STATIC_REPO_COMMAND])
+-					.code,
++				dispatchChore(["update", "repo:static-multiword", `--${field}`, STATIC_REPO_COMMAND], libraryDeps()).exitCode,
+ 			).toBe(0);
+ 		}
+ 		const beforeUnknown = readFileSync(rosterPath, "utf8");
+-		const unknown = runCli([
+-			"chore",
+-			"add",
++		const unknown = dispatchChore(["add",
+ 			"unknown-default",
+ 			"--probe",
+ 			"mystery-probe static-arg",
+ 			"--scope",
+-			"repo",
+-		]);
+-		expect(unknown.code).toBe(64);
++			"repo",], libraryDeps());
++		expect(unknown.exitCode).toBe(64);
+ 		expect(unknown.stderr).toContain("repo-scoped chore probe could not be proven static");
+ 		expect(unknown.stderr).toContain(
+ 			"executable 'mystery-probe' is not in the repo command allow-list",
+@@ -848,33 +943,27 @@
+ 	)("refuses $label across add/update and probe/full without roster mutation", (item) => {
+ 		writeRepoGrammarFixtures();
+ 		expect(
+-			runCli([
+-				"chore",
+-				"add",
++			dispatchChore(["add",
+ 				"dynamic-target",
+ 				"--probe",
+ 				STATIC_REPO_COMMAND,
+ 				"--full",
+ 				STATIC_REPO_COMMAND,
+ 				"--scope",
+-				"repo",
+-			]).code,
++				"repo",], libraryDeps()).exitCode,
+ 		).toBe(0);
+ 		const rosterPath = join(repoRoot, ".pij", "chores.json");
+ 
+ 		for (const field of ["probe", "full"] as const) {
+ 			const before = readFileSync(rosterPath, "utf8");
+-			const refused = runCli([
+-				"chore",
+-				"add",
++			const refused = dispatchChore(["add",
+ 				`dynamic-add-${field}`,
+ 				"--probe",
+ 				field === "probe" ? item.command : STATIC_REPO_COMMAND,
+ 				...(field === "full" ? ["--full", item.command] : []),
+ 				"--scope",
+-				"repo",
+-			]);
+-			expect(refused.code).toBe(64);
++				"repo",], libraryDeps());
++			expect(refused.exitCode).toBe(64);
+ 			expect(refused.stderr).toContain(`repo-scoped chore ${field} ${item.category}`);
+ 			expect(refused.stderr).toContain(item.reason);
+ 			expect(refused.stderr).toContain("--scope seat or --scope fleet");
+@@ -883,14 +972,11 @@
+ 
+ 		for (const field of ["probe", "full"] as const) {
+ 			const before = readFileSync(rosterPath, "utf8");
+-			const refused = runCli([
+-				"chore",
+-				"update",
++			const refused = dispatchChore(["update",
+ 				"repo:dynamic-target",
+ 				`--${field}`,
+-				item.command,
+-			]);
+-			expect(refused.code).toBe(64);
++				item.command,], libraryDeps());
++			expect(refused.exitCode).toBe(64);
+ 			expect(refused.stderr).toContain(`repo-scoped chore ${field} ${item.category}`);
+ 			expect(refused.stderr).toContain(item.reason);
+ 			expect(refused.stderr).toContain("--scope seat or --scope fleet");
+@@ -915,22 +1001,19 @@
+ 		] as const;
+ 		for (const item of accepted) {
+ 			expect(
+-				runCli(["chore", "add", item.name, "--probe", item.command, "--scope", "repo"]).code,
++				dispatchChore(["add", item.name, "--probe", item.command, "--scope", "repo"], libraryDeps()).exitCode,
+ 			).toBe(0);
+ 		}
+ 
+ 		expect(
+-			runCli([
+-				"chore",
+-				"add",
++			dispatchChore(["add",
+ 				"runner-target",
+ 				"--probe",
+ 				"node ./scripts/probe.js arg",
+ 				"--full",
+ 				"node ./scripts/probe.js arg",
+ 				"--scope",
+-				"repo",
+-			]).code,
++				"repo",], libraryDeps()).exitCode,
+ 		).toBe(0);
+ 		const cases = [
+ 			{
+@@ -957,17 +1040,14 @@
+ 		for (const field of ["probe", "full"] as const) {
+ 			for (const item of cases) {
+ 				const before = readFileSync(rosterPath, "utf8");
+-				const refused = runCli([
+-					"chore",
+-					"add",
++				const refused = dispatchChore(["add",
+ 					`runner-add-${field}-${item.label}`,
+ 					"--probe",
+ 					field === "probe" ? item.command : "node ./scripts/probe.js arg",
+ 					...(field === "full" ? ["--full", item.command] : []),
+ 					"--scope",
+-					"repo",
+-				]);
+-				expect(refused.code).toBe(64);
++					"repo",], libraryDeps());
++				expect(refused.exitCode).toBe(64);
+ 				expect(refused.stderr).toContain(
+ 					`runner flag '${item.flag}' is not permitted for '${item.runner}'`,
+ 				);
+@@ -978,14 +1058,11 @@
+ 		for (const field of ["probe", "full"] as const) {
+ 			for (const item of cases) {
+ 				const before = readFileSync(rosterPath, "utf8");
+-				const refused = runCli([
+-					"chore",
+-					"update",
++				const refused = dispatchChore(["update",
+ 					"repo:runner-target",
+ 					`--${field}`,
+-					item.command,
+-				]);
+-				expect(refused.code).toBe(64);
++					item.command,], libraryDeps());
++				expect(refused.exitCode).toBe(64);
+ 				expect(refused.stderr).toContain(
+ 					`runner flag '${item.flag}' is not permitted for '${item.runner}'`,
+ 				);
+@@ -996,50 +1073,41 @@
+ 
+ 	it("still warns fleet-roster authors about absolute paths", () => {
+ 		const absoluteProbe = `cat ${join(repoRoot, "shared.txt")}`;
+-		const fleet = runCli([
+-			"chore",
+-			"add",
++		const fleet = dispatchChore(["add",
+ 			"fleet-absolute",
+ 			"--probe",
+ 			absoluteProbe,
+ 			"--scope",
+-			"fleet",
+-		]);
+-		expect(fleet.code).toBe(0);
++			"fleet",], libraryDeps());
++		expect(fleet.exitCode).toBe(0);
+ 		expect(fleet.stderr).toContain("WARN: fleet:fleet-absolute probe contains an absolute path");
+ 		expect(fleet.stderr).not.toContain("NOTE: commit");
+ 	});
+ 
+ 	it("warns when a shared chore invokes a pij verb refused to PA seats", () => {
+-		const result = runCli([
+-			"chore",
+-			"add",
++		const result = dispatchChore(["add",
+ 			"baton-holders",
+ 			"--probe",
+ 			"pij orchestration baton show",
+ 			"--scope",
+-			"repo",
+-		]);
+-		expect(result.code).toBe(0);
++			"repo",], libraryDeps());
++		expect(result.exitCode).toBe(0);
+ 		expect(result.stderr).toContain("WARN: repo:baton-holders probe invokes 'pij orchestration'");
+ 		expect(result.stderr).toContain("permanently NOT-PROBEABLE for less-capable seats");
+ 	});
+ 
+ 	it("updates a chore in place and preserves its creator attribution", () => {
+ 		expect(
+-			runCli(["chore", "add", "editable", "--probe", "printf before", "--scope", "fleet"]).code,
++			dispatchChore(["add", "editable", "--probe", "printf before", "--scope", "fleet"], libraryDeps()).exitCode,
+ 		).toBe(0);
+ 
+-		const updated = runCli([
+-			"chore",
+-			"update",
++		const updated = dispatchChore(["update",
+ 			"fleet:editable",
+ 			"--probe",
+ 			"printf after",
+ 			"--full",
+-			"printf context",
+-		]);
+-		expect(updated.code).toBe(0);
++			"printf context",], libraryDeps());
++		expect(updated.exitCode).toBe(0);
+ 		expect(updated.stdout).toContain("updated fleet:editable");
+ 
+ 		const roster = JSON.parse(readFileSync(join(pijHome, "pij-chores", "chores.json"), "utf8")) as {
+@@ -1052,10 +1120,10 @@
+ 			}),
+ 		]);
+ 
+-		const verbose = runCli(["chore", "list", "--verbose"]);
++		const verbose = dispatchChore(["list", "--verbose"], libraryDeps());
+ 		expect(verbose.stdout).toContain("fleet:editable");
+ 		expect(verbose.stdout).toContain("creator=seat-a");
+-		const json = JSON.parse(runCli(["chore", "list", "--json"]).stdout) as {
++		const json = JSON.parse(dispatchChore(["list", "--json"], libraryDeps()).stdout) as {
+ 			scopes: { seat: string | null };
+ 			chores: Array<{
+ 				key: string;
+@@ -1072,8 +1140,8 @@
+ 	});
+ 
+ 	it("ignores unknown roster and state fields while list, run, and ack keep working", () => {
+-		expect(runCli(["chore", "add", "future", "--probe", "printf value"]).code).toBe(0);
+-		expect(runCli(["chore", "run"]).code).toBe(0);
++		expect(dispatchChore(["add", "future", "--probe", "printf value"], libraryDeps()).exitCode).toBe(0);
++		expect(dispatchChore(["run"], libraryDeps()).exitCode).toBe(0);
+ 
+ 		const rosterPath = join(pijHome, "seat-a", "chores.json");
+ 		const roster = JSON.parse(readFileSync(rosterPath, "utf8")) as {
+@@ -1101,16 +1169,16 @@
+ 		}
+ 		writeFileSync(statePath, JSON.stringify(state));
+ 
+-		expect(runCli(["chore", "list", "--verbose"]).code).toBe(0);
+-		expect(runCli(["chore", "run"]).stdout).toContain("CHANGED-VALUE seat:future:");
+-		expect(runCli(["chore", "ack", "future"]).code).toBe(0);
+-		expect(runCli(["chore", "run"]).stdout).toContain("NO CHANGE");
++		expect(dispatchChore(["list", "--verbose"], libraryDeps()).exitCode).toBe(0);
++		expect(dispatchChore(["run"], libraryDeps()).stdout).toContain("CHANGED-VALUE seat:future:");
++		expect(dispatchChore(["ack", "future"], libraryDeps()).exitCode).toBe(0);
++		expect(dispatchChore(["run"], libraryDeps()).stdout).toContain("NO CHANGE");
+ 	});
+ 
+ 	it("reports direct roster probe edits as re-instrumentation, not world movement", () => {
+-		expect(runCli(["chore", "add", "instrument", "--probe", "printf old"]).code).toBe(0);
+-		expect(runCli(["chore", "run"]).code).toBe(0);
+-		expect(runCli(["chore", "ack", "instrument"]).code).toBe(0);
++		expect(dispatchChore(["add", "instrument", "--probe", "printf old"], libraryDeps()).exitCode).toBe(0);
++		expect(dispatchChore(["run"], libraryDeps()).exitCode).toBe(0);
++		expect(dispatchChore(["ack", "instrument"], libraryDeps()).exitCode).toBe(0);
+ 
+ 		const rosterPath = join(pijHome, "seat-a", "chores.json");
+ 		const roster = JSON.parse(readFileSync(rosterPath, "utf8")) as {
+@@ -1121,16 +1189,16 @@
+ 		if (instrument) instrument.probe = "printf new";
+ 		writeFileSync(rosterPath, JSON.stringify(roster));
+ 
+-		const changedInstrument = runCli(["chore", "run"]);
++		const changedInstrument = dispatchChore(["run"], libraryDeps());
+ 		expect(changedInstrument.stdout).toContain(
+ 			"CHANGED-PROBE seat:instrument: instrument changed; ack resets baseline",
+ 		);
+ 		expect(changedInstrument.stdout).not.toMatch(/^CHANGED-VALUE seat:instrument/m);
+ 		expect(changedInstrument.stdout).toContain("  | new");
+ 
+-		expect(runCli(["chore", "run"]).stdout).toContain("CHANGED-PROBE seat:instrument:");
+-		expect(runCli(["chore", "ack", "instrument"]).code).toBe(0);
+-		const next = runCli(["chore", "run"]);
++		expect(dispatchChore(["run"], libraryDeps()).stdout).toContain("CHANGED-PROBE seat:instrument:");
++		expect(dispatchChore(["ack", "instrument"], libraryDeps()).exitCode).toBe(0);
++		const next = dispatchChore(["run"], libraryDeps());
+ 		expect(next.stdout).toContain("NO CHANGE — 1 chores probed, 0 moved");
+ 		expect(next.stdout).toContain("UNCHANGED seat:instrument");
+ 	});
+@@ -1138,17 +1206,17 @@
+ 	it("reports path-referenced script edits as probe changes, not value changes", () => {
+ 		writeFileSync(join(repoRoot, "watched-script.txt"), "A");
+ 		writeFileSync(join(repoRoot, "probe.sh"), "cat watched-script.txt\n");
+-		expect(runCli(["chore", "add", "scripted", "--probe", "sh probe.sh"]).code).toBe(0);
+-		expect(runCli(["chore", "run"]).code).toBe(0);
+-		expect(runCli(["chore", "ack", "scripted"]).code).toBe(0);
++		expect(dispatchChore(["add", "scripted", "--probe", "sh probe.sh"], libraryDeps()).exitCode).toBe(0);
++		expect(dispatchChore(["run"], libraryDeps()).exitCode).toBe(0);
++		expect(dispatchChore(["ack", "scripted"], libraryDeps()).exitCode).toBe(0);
+ 
+ 		writeFileSync(join(repoRoot, "watched-script.txt"), "B");
+-		const worldChange = runCli(["chore", "run"]);
++		const worldChange = dispatchChore(["run"], libraryDeps());
+ 		expect(worldChange.stdout).toContain("CHANGED-VALUE seat:scripted:");
+ 		expect(worldChange.stdout).not.toMatch(/^CHANGED-PROBE seat:scripted/m);
+ 
+ 		writeFileSync(join(repoRoot, "probe.sh"), "printf instrument-v2\n");
+-		const probeChange = runCli(["chore", "run"]);
++		const probeChange = dispatchChore(["run"], libraryDeps());
+ 		expect(probeChange.stdout).toContain(
+ 			"CHANGED-PROBE seat:scripted: instrument changed; ack resets baseline",
+ 		);
+@@ -1158,18 +1226,18 @@
+ 		expect(probeChange.stdout).toContain("  | A");
+ 		expect(probeChange.stdout).toContain("  | B");
+ 		expect(probeChange.stdout).toContain("  | instrument-v2");
+-		expect(runCli(["chore", "run"]).stdout).toContain(
++		expect(dispatchChore(["run"], libraryDeps()).stdout).toContain(
+ 			"CHANGED-VALUE seat:scripted: pending before instrument changed",
+ 		);
+-		expect(runCli(["chore", "ack", "scripted"]).code).toBe(0);
+-		expect(runCli(["chore", "run"]).stdout).toContain("UNCHANGED seat:scripted");
++		expect(dispatchChore(["ack", "scripted"], libraryDeps()).exitCode).toBe(0);
++		expect(dispatchChore(["run"], libraryDeps()).stdout).toContain("UNCHANGED seat:scripted");
+ 	});
+ 
+ 	it("accepts free-text values that begin with dashes", () => {
+-		expect(runCli(["chore", "add", "dash-probe", "--probe", "--not-a-flag"]).code).toBe(0);
++		expect(dispatchChore(["add", "dash-probe", "--probe", "--not-a-flag"], libraryDeps()).exitCode).toBe(0);
+ 		const reason = "--full without --full-every is inert";
+-		const removed = runCli(["chore", "remove", "seat:dash-probe", "--reason", reason]);
+-		expect(removed.code).toBe(0);
++		const removed = dispatchChore(["remove", "seat:dash-probe", "--reason", reason], libraryDeps());
++		expect(removed.exitCode).toBe(0);
+ 		expect(removed.stdout).toContain(reason);
+ 		const roster = JSON.parse(readFileSync(join(pijHome, "seat-a", "chores.json"), "utf8")) as {
+ 			removals: Array<{ reason: string }>;
+@@ -1180,18 +1248,14 @@
+ 	it("keeps a repo chore baseline independent for two seats", () => {
+ 		writeFileSync(join(repoRoot, "shared.txt"), "shared\n");
+ 		expect(
+-			runCli(
+-				["chore", "add", "shared", "--probe", "cat shared.txt", "--scope", "repo"],
+-				"seat-a",
+-				"%1",
+-			).code,
++			dispatchChore(["add", "shared", "--probe", "cat shared.txt", "--scope", "repo"], libraryDeps("seat-a")).exitCode,
+ 		).toBe(0);
+ 
+-		expect(runCli(["chore", "run"], "seat-a", "%1").stdout).toContain("CHANGED-VALUE repo:shared");
+-		expect(runCli(["chore", "ack", "repo:shared"], "seat-a", "%1").code).toBe(0);
+-		expect(runCli(["chore", "run"], "seat-a", "%1").stdout).toContain("NO CHANGE");
+-
+-		const seatB = runCli(["chore", "run"], "seat-b", "%2");
++		expect(dispatchChore(["run"], libraryDeps("seat-a")).stdout).toContain("CHANGED-VALUE repo:shared");
++		expect(dispatchChore(["ack", "repo:shared"], libraryDeps("seat-a")).exitCode).toBe(0);
++		expect(dispatchChore(["run"], libraryDeps("seat-a")).stdout).toContain("NO CHANGE");
++
++		const seatB = dispatchChore(["run"], libraryDeps("seat-b"));
+ 		expect(seatB.stdout).toContain("CHANGED-VALUE repo:shared:");
+ 		expect(seatB.stdout).toContain("  OLD fingerprint=none");
+ 		expect(readFileSync(join(pijHome, "seat-b", "chore-state.json"), "utf8")).not.toContain(
+@@ -1199,24 +1263,21 @@
+ 		);
+ 	});
+ 
+-	it("runs the full command on the third and sixth separate invocations only", () => {
++	it("persists full-command cadence across fresh store instances on the third and sixth runs", () => {
+ 		expect(
+-			runCli([
+-				"chore",
+-				"add",
++			dispatchChore(["add",
+ 				"periodic",
+ 				"--probe",
+ 				"printf fingerprint",
+ 				"--full",
+ 				"printf details",
+ 				"--full-every",
+-				"3",
+-			]).code,
++				"3",], libraryDeps()).exitCode,
+ 		).toBe(0);
+-		expect(runCli(["chore", "run"]).stdout).toContain("FULL seat:periodic\n  | details");
+-		expect(runCli(["chore", "ack", "periodic"]).code).toBe(0);
+-
+-		const outputs = Array.from({ length: 6 }, () => runCli(["chore", "run"]).stdout);
++		expect(dispatchChore(["run"], libraryDeps()).stdout).toContain("FULL seat:periodic\n  | details");
++		expect(dispatchChore(["ack", "periodic"], libraryDeps()).exitCode).toBe(0);
++
++		const outputs = Array.from({ length: 6 }, () => dispatchChore(["run"], libraryDeps()).stdout);
+ 		expect(outputs.map((output) => output.includes("FULL seat:periodic"))).toEqual([
+ 			false,
+ 			false,
+@@ -1233,41 +1294,38 @@
+ 		const watched = join(repoRoot, "full-on-delta.txt");
+ 		writeFileSync(watched, "before");
+ 		expect(
+-			runCli([
+-				"chore",
+-				"add",
++			dispatchChore(["add",
+ 				"full-on-delta",
+ 				"--probe",
+ 				"cat full-on-delta.txt",
+ 				"--full",
+-				"cat full-on-delta.txt",
+-			]).code,
++				"cat full-on-delta.txt",], libraryDeps()).exitCode,
+ 		).toBe(0);
+-		expect(runCli(["chore", "run"]).stdout).toContain("FULL seat:full-on-delta\n  | before");
+-		expect(runCli(["chore", "ack", "full-on-delta"]).code).toBe(0);
++		expect(dispatchChore(["run"], libraryDeps()).stdout).toContain("FULL seat:full-on-delta\n  | before");
++		expect(dispatchChore(["ack", "full-on-delta"], libraryDeps()).exitCode).toBe(0);
+ 
+ 		writeFileSync(watched, "after");
+-		const human = runCli(["chore", "run"]);
++		const human = dispatchChore(["run"], libraryDeps());
+ 		expect(human.stdout).toContain("CHANGED-VALUE seat:full-on-delta:");
+ 		expect(human.stdout).toContain("FULL seat:full-on-delta\n  | after");
+ 
+-		const json = JSON.parse(runCli(["chore", "run", "--json"]).stdout) as {
++		const json = JSON.parse(dispatchChore(["run", "--json"], libraryDeps()).stdout) as {
+ 			chores: Array<{ name: string; fullOutput?: string }>;
+ 		};
+ 		expect(json.chores.find((item) => item.name === "full-on-delta")?.fullOutput).toBe("after");
+ 	});
+ 
+ 	it("remove then re-add starts from a clean first observation", () => {
+-		expect(runCli(["chore", "add", "replaceable", "--probe", "printf stable"]).code).toBe(0);
+-		expect(runCli(["chore", "run"]).stdout).toContain("CHANGED-VALUE seat:replaceable");
+-		expect(runCli(["chore", "ack", "replaceable"]).code).toBe(0);
+-		expect(runCli(["chore", "run"]).stdout).toContain("NO CHANGE");
++		expect(dispatchChore(["add", "replaceable", "--probe", "printf stable"], libraryDeps()).exitCode).toBe(0);
++		expect(dispatchChore(["run"], libraryDeps()).stdout).toContain("CHANGED-VALUE seat:replaceable");
++		expect(dispatchChore(["ack", "replaceable"], libraryDeps()).exitCode).toBe(0);
++		expect(dispatchChore(["run"], libraryDeps()).stdout).toContain("NO CHANGE");
+ 
+ 		expect(
+-			runCli(["chore", "remove", "seat:replaceable", "--reason", "replace definition"]).code,
++			dispatchChore(["remove", "seat:replaceable", "--reason", "replace definition"], libraryDeps()).exitCode,
+ 		).toBe(0);
+-		expect(runCli(["chore", "add", "replaceable", "--probe", "printf stable"]).code).toBe(0);
+-
+-		expect(runCli(["chore", "run"]).stdout).toContain("CHANGED-VALUE seat:replaceable:");
++		expect(dispatchChore(["add", "replaceable", "--probe", "printf stable"], libraryDeps()).exitCode).toBe(0);
++
++		expect(dispatchChore(["run"], libraryDeps()).stdout).toContain("CHANGED-VALUE seat:replaceable:");
+ 	});
+ });
+diff --git a/.pi/extensions/pij/core/cli.test.ts b/.pi/extensions/pij/core/cli.test.ts
+--- a/.pi/extensions/pij/core/cli.test.ts
++++ b/.pi/extensions/pij/core/cli.test.ts
+@@ -2304,12 +2304,11 @@
+ // CliResult the bin would print, so each E-ARG/E-NOREG pin holds whether the
+ // rejection happens in parseArgs or in dispatch.
+ 
+-import { execFileSync, spawn, spawnSync } from "node:child_process";
++import { execFileSync, spawnSync } from "node:child_process";
+ import { createHash } from "node:crypto";
+ // Platform-section-local imports (the legacy import block above is frozen):
+ // module-scope import declarations hoist, so placement here is behavior-neutral.
+ import {
+-	chmodSync,
+ 	existsSync,
+ 	mkdirSync,
+ 	mkdtempSync,
+@@ -2319,9 +2318,10 @@
+ } from "node:fs";
+ import { createRequire } from "node:module";
+ import { tmpdir } from "node:os";
+-import { join } from "node:path";
++import { join, resolve } from "node:path";
+ import { FsAllocationStore } from "../adapters/allocation-store.js";
+ import { FsAssignmentStore } from "../adapters/assignment-store.js";
++import { FsChannel } from "../adapters/channel.js";
+ import { FsDispatchStore } from "../adapters/dispatch-store.js";
+ import { FakeOpJournal, FakePlatformWriteLock } from "../adapters/fakes.js";
+ import { FsFenceStore } from "../adapters/fence-store.js";
+@@ -2346,6 +2346,8 @@
+ 	SPINE_KIND_STATE_SET,
+ } from "./platform/types.js";
+ import type { StreamWorktreePort } from "./stream.js";
++import { contextWindowFromPane } from "./context/window.js";
++import { WorktreeManager } from "./worktree.js";
+ 
+ const platformRequire = createRequire(import.meta.url);
+ const PLATFORM_TSX = platformRequire.resolve("tsx/cli");
+@@ -2501,6 +2503,47 @@
+ 		opJournal: new FakeOpJournal(),
+ 		platformWriteLock: new FakePlatformWriteLock(),
+ 	};
++}
++
++/** Retained library integration only: no executable, generation switch or public
++ * CLI emulation. The real filesystem/worktree adapters feed the existing ports. */
++function libraryFsDeps(home: string, repo: string, self?: string) {
++	const packetIdentity = (path: string) => {
++		const absolute = resolve(repo, path);
++		return ok({
++			path: absolute,
++			sha256: createHash("sha256").update(readFileSync(absolute)).digest("hex"),
++		});
++	};
++	return {
++		...platformDeps({ self, cwd: repo, alive: [process.pid] }),
++		pijHome: home,
++		registry: new FsRegistry(home),
++		delivery: new FsChannel(home),
++		projectStore: new FsProjectStore(home),
++		assignmentStore: new FsAssignmentStore(home),
++		allocationStore: new FsAllocationStore(home),
++		fenceStore: new FsFenceStore(home),
++		dispatchStore: new FsDispatchStore(home),
++		spineLog: new FsSpineLog(home),
++		opJournal: new FsOpJournal(home),
++		platformWriteLock: new FsPlatformWriteLock(home, { lockBudgetMs: 200 }),
++		worktrees: new WorktreeManager(),
++		worktreeRoot: resolve(repo, "..", "worktrees"),
++		packetIdentity,
++		nextCanaryNonce: () => "canary-nonce-library-7391",
++		writeCanaryPacket: (input: {
++			readonly caller: SessionDescriptor;
++			readonly dispatchId: string;
++			readonly body: string;
++		}) => {
++			const directory = join(input.caller.dataDir, "canary-packets");
++			mkdirSync(directory, { recursive: true });
++			const path = join(directory, `${input.dispatchId}.md`);
++			writeFileSync(path, input.body, { flag: "wx" });
++			return packetIdentity(path);
++		},
++	} satisfies CliDeps;
+ }
+ 
+ /** Unwrap OpJournalPort.pending's Result surface (review 003 H2) — every pin
+@@ -6688,11 +6731,9 @@
+ 		});
+ 	});
+ 
+-	describe("stream/fence bin wiring", () => {
+-		it("runs create → fence show → close end-to-end and serves generic family help", {
+-			timeout: 15_000,
+-		}, () => {
+-			const root = mkdtempSync(join(tmpdir(), "pij-stream-bin-"));
++	describe("stream/fence retained library integration", () => {
++		it("runs create → fence show → close through real filesystem and git adapters", () => {
++			const root = mkdtempSync(join(tmpdir(), "pij stream library "));
+ 			const home = join(root, "home");
+ 			const repo = join(root, "demo");
+ 			try {
+@@ -6703,56 +6744,65 @@
+ 				writeFileSync(join(repo, "README.md"), "initial\n");
+ 				execFileSync("git", ["-C", repo, "add", "README.md"]);
+ 				execFileSync("git", ["-C", repo, "commit", "--quiet", "-m", "initial"]);
+-				new FsProjectStore(home).create(seedProject({ slug: "platform" }));
+-				const env = { ...process.env, PIJ_HOME: home };
+-				const runBin = (args: readonly string[]) =>
+-					spawnSync(process.execPath, [PLATFORM_TSX, PIJ_CLI_BIN, ...args], {
+-						cwd: repo,
+-						env,
++				const d = libraryFsDeps(home, repo);
++				expect(d.projectStore.create(seedProject({ slug: "platform" })).ok).toBe(true);
++
++				const created = run([
++					"stream", "create", "--project", "platform", "--slug", "bin-flow",
++					"--ordinal", "61", "--actor", "tester",
++				], d);
++				expect(created.exitCode, created.stderr).toBe(0);
++				expect(created.stdout).toContain("alloc-s061-bin-flow");
++
++				const allocation = d.allocationStore.read("alloc-s061-bin-flow");
++				if (!allocation) throw new Error("missing allocation");
++				expect(readFileSync(join(allocation.worktree, "README.md"), "utf8")).toBe("initial\n");
++				const fenced = run([
++					"fence", "set", "bin-flow", "--paths", "src/**", "--actor", "tester",
++				], d);
++				expect(fenced.exitCode, fenced.stderr).toBe(0);
++				const shown = run(["fence", "show", "--path", "src/api.ts", "--json"], d);
++				expect(shown.exitCode, shown.stderr).toBe(0);
++				expect(JSON.parse(shown.stdout)).toHaveLength(1);
++
++				const closed = run(["stream", "close", "alloc-s061-bin-flow", "--actor", "tester"], d);
++				expect(closed.exitCode, closed.stderr).toBe(0);
++				expect(new FsAllocationStore(home).read("alloc-s061-bin-flow")?.state).toBe("closed");
++				expect(existsSync(allocation.worktree)).toBe(false);
++			} finally {
++				rmSync(root, { recursive: true, force: true });
++			}
++		});
++
++		it("public family help describes the Rust route, not retired local grammar", () => {
++			const root = mkdtempSync(join(tmpdir(), "pij-route-help-"));
++			try {
++				for (const family of ["stream", "report"]) {
++					const result = spawnSync(process.execPath, [PLATFORM_TSX, PIJ_CLI_BIN, family, "--help"], {
++						cwd: root,
++						env: {
++							...process.env,
++							HOME: root,
++							USERPROFILE: root,
++							PIJ_HOME: join(root, "legacy"),
++							PIJ_RS_STATE_DIR: join(root, "rs"),
++							PIJ_RS_ADDR: "127.0.0.1:1",
++							PIJ_SESSION_ID: "",
++							PIJ_DAEMON_GENERATION: "",
++							PIJ_ROUTE_DIAGNOSTIC: "",
++							COPILOT_AGENT_SESSION_ID: "",
++							CLAUDE_CODE_SESSION_ID: "",
++							CODEX_THREAD_ID: "",
++							TMUX: "",
++							TMUX_PANE: "",
++						},
+ 						encoding: "utf8",
+ 					});
+-
+-				const help = runBin(["stream", "create", "--help"]);
+-				expect(help.status).toBe(0);
+-				expect(help.stdout).toContain("pij stream create");
+-				const reportHelp = runBin(["report", "--help"]);
+-				expect(reportHelp.status).toBe(0);
+-				expect(reportHelp.stdout).toContain('pij report question "<what I need from you>"');
+-				expect(reportHelp.stdout).toContain('pij report blocked "<what I am waiting on>"');
+-				expect(reportHelp.stdout).toContain("[--note <text>]");
+-
+-				const created = runBin([
+-					"stream",
+-					"create",
+-					"--project",
+-					"platform",
+-					"--slug",
+-					"bin-flow",
+-					"--ordinal",
+-					"61",
+-					"--actor",
+-					"tester",
+-				]);
+-				expect(created.status, created.stderr).toBe(0);
+-				expect(created.stdout).toContain("alloc-s061-bin-flow");
+-
+-				const fenced = runBin([
+-					"fence",
+-					"set",
+-					"bin-flow",
+-					"--paths",
+-					"src/**",
+-					"--actor",
+-					"tester",
+-				]);
+-				expect(fenced.status, fenced.stderr).toBe(0);
+-				const shown = runBin(["fence", "show", "--path", "src/api.ts", "--json"]);
+-				expect(shown.status, shown.stderr).toBe(0);
+-				expect(JSON.parse(shown.stdout) as Fence[]).toHaveLength(1);
+-
+-				const closed = runBin(["stream", "close", "alloc-s061-bin-flow", "--actor", "tester"]);
+-				expect(closed.status, closed.stderr).toBe(0);
+-				expect(new FsAllocationStore(home).read("alloc-s061-bin-flow")?.state).toBe("closed");
++					expect(result.status, result.stderr).toBe(0);
++					expect(result.stdout).toContain(`pij ${family}: POST /v1/${family}`);
++				}
++				expect(existsSync(join(root, "legacy"))).toBe(false);
++				expect(existsSync(join(root, "rs"))).toBe(false);
+ 			} finally {
+ 				rmSync(root, { recursive: true, force: true });
+ 			}
+@@ -7058,10 +7108,8 @@
+ 			expect(renderDispatchWaitTimeout(record)).not.toContain("state=acked");
+ 		});
+ 
+-		it("real bin timeout persists delivered-unacked, then a matching ack transitions to acked", {
+-			timeout: 15_000,
+-		}, () => {
+-			const root = mkdtempSync(join(tmpdir(), "pij-dispatch-bin-"));
++		it("retained library wait hint preserves delivered-unacked, then matching ack persists acked", () => {
++			const root = mkdtempSync(join(tmpdir(), "pij dispatch library "));
+ 			const home = join(root, "home");
+ 			const repo = join(root, "repo");
+ 			const packet = join(repo, "packet.md");
+@@ -7093,41 +7141,25 @@
+ 						effort: "high",
+ 					}),
+ 				);
+-				const env = {
+-					...process.env,
+-					PIJ_HOME: home,
+-					PIJ_SESSION_ID: "pij-parent",
+-					COPILOT_AGENT_SESSION_ID: "",
+-					CLAUDE_CODE_SESSION_ID: "",
+-					CODEX_THREAD_ID: "",
+-					TMUX_PANE: "",
+-				};
+-				const timedOut = spawnSync(
+-					process.execPath,
+-					[PLATFORM_TSX, PIJ_CLI_BIN, "dispatch", "pij-worker", "--packet", packet, "--wait=20"],
+-					{ cwd: repo, env, encoding: "utf8" },
+-				);
+-				expect(timedOut.status, timedOut.stderr).toBe(0);
++				const d = libraryFsDeps(home, repo, "pij-parent");
++				const sent = run(["dispatch", "pij-worker", "--packet", "packet.md", "--wait=20"], d);
++				expect(sent.exitCode, sent.stderr).toBe(0);
+ 				const store = new FsDispatchStore(home);
+ 				const record = store.list()[0];
+ 				expect(record?.state).toBe("delivered-unacked");
+ 				if (!record) throw new Error("missing dispatch");
+-				const terminalOutput = timedOut.stdout.trim().split(/\r?\n/).at(-1);
+-				expect(terminalOutput).toBe(renderDispatchWaitTimeout(record));
+-				expect(timedOut.stdout).not.toContain("state=acked");
++				expect(sent.follow).toMatchObject({ kind: "dispatch-wait", dispatchId: record.id, timeoutMs: 20 });
++				expect(record.packetPath).toBe(packet);
++				expect(renderDispatchWaitTimeout(record)).toBe(
++					`dispatch ${record.id} state=delivered-unacked (timeout awaiting brief ack)`,
++				);
++				expect(renderDispatchWaitTimeout(record)).not.toContain("state=acked");
+ 				const sha = createHash("sha256").update(readFileSync(packet)).digest("hex");
+-				const acked = spawnSync(
+-					process.execPath,
+-					[PLATFORM_TSX, PIJ_CLI_BIN, "ack", record?.id ?? "missing", "--packet-sha", sha],
+-					{
+-						cwd: repo,
+-						env: { ...env, PIJ_SESSION_ID: "pij-worker" },
+-						encoding: "utf8",
+-					},
+-				);
+-				expect(acked.status, acked.stderr).toBe(0);
++				expect(record.packetSha256).toBe(sha);
++				const acked = run(["ack", record.id, "--packet-sha", sha], libraryFsDeps(home, repo, "pij-worker"));
++				expect(acked.exitCode, acked.stderr).toBe(0);
+ 				expect(acked.stdout).toContain("state=acked");
+-				expect(store.read(record?.id ?? "missing")?.state).toBe("acked");
++				expect(store.read(record.id)?.state).toBe("acked");
+ 			} finally {
+ 				rmSync(root, { recursive: true, force: true });
+ 			}
+@@ -7402,49 +7434,9 @@
+ 			expect(d.dispatchStore.read("dispatch-test-1")?.canary).toBeUndefined();
+ 		});
+ 
+-		function collectChild(
+-			args: readonly string[],
+-			cwd: string,
+-			env: NodeJS.ProcessEnv,
+-		): Promise<{
+-			readonly status: number | null;
+-			readonly stdout: string;
+-			readonly stderr: string;
+-		}> {
+-			const child = spawn(process.execPath, [PLATFORM_TSX, PIJ_CLI_BIN, ...args], {
+-				cwd,
+-				env,
+-				stdio: ["ignore", "pipe", "pipe"],
+-			});
+-			let stdout = "";
+-			let stderr = "";
+-			child.stdout.setEncoding("utf8");
+-			child.stderr.setEncoding("utf8");
+-			child.stdout.on("data", (chunk: string) => {
+-				stdout += chunk;
+-			});
+-			child.stderr.on("data", (chunk: string) => {
+-				stderr += chunk;
+-			});
+-			return new Promise((resolve) => {
+-				child.on("close", (status) => resolve({ status, stdout, stderr }));
+-			});
+-		}
+-
+-		async function waitForDispatch(store: FsDispatchStore): Promise<Dispatch> {
+-			const deadline = Date.now() + 3_000;
+-			while (Date.now() < deadline) {
+-				const record = store.list()[0];
+-				if (record) return record;
+-				await new Promise((resolve) => setTimeout(resolve, 20));
+-			}
+-			throw new Error("timed out waiting for canary dispatch");
+-		}
+-
+-		it("real bin timeout leaves delivered-unacked, no CanaryRecord, and a named terminal refusal", {
+-			timeout: 15_000,
+-		}, () => {
+-			const root = mkdtempSync(join(tmpdir(), "pij-canary-timeout-bin-"));
++
++		it("retained library canary wait hint leaves no CanaryRecord and renders a named timeout", () => {
++			const root = mkdtempSync(join(tmpdir(), "pij-canary-timeout-library-"));
+ 			const home = join(root, "home");
+ 			const repo = join(root, "repo");
+ 			try {
+@@ -7480,147 +7472,70 @@
+ 						effort: "xhigh",
+ 					}),
+ 				);
+-				const env = {
+-					...process.env,
+-					PIJ_HOME: home,
+-					PIJ_SESSION_ID: "pij-parent",
+-					COPILOT_AGENT_SESSION_ID: "",
+-					CLAUDE_CODE_SESSION_ID: "",
+-					CODEX_THREAD_ID: "",
+-					TMUX_PANE: "",
+-				};
+-				const timedOut = spawnSync(
+-					process.execPath,
+-					[
+-						PLATFORM_TSX,
+-						PIJ_CLI_BIN,
+-						"canary",
+-						"pij-worker",
+-						"--expect-model",
+-						EXPECTED_MODEL,
+-						"--wait=20",
+-					],
+-					{ cwd: repo, env, encoding: "utf8" },
+-				);
+-				expect(timedOut.status).toBe(3);
++				const d = libraryFsDeps(home, repo, "pij-parent");
++				const started = run(["canary", "pij-worker", "--expect-model", EXPECTED_MODEL, "--wait=20"], d);
++				expect(started.exitCode, started.stderr).toBe(0);
+ 				const record = new FsDispatchStore(home).list()[0];
+ 				if (!record) throw new Error("missing canary dispatch");
+ 				expect(record.state).toBe("delivered-unacked");
+ 				expect(record.canary).toBeUndefined();
+ 				expect(existsSync(record.packetPath)).toBe(true);
+-				const terminalOutput = timedOut.stdout.trim().split(/\r?\n/).at(-1);
+-				expect(terminalOutput).toBe(renderCanaryTimeout(record));
+-				expect(timedOut.stdout).not.toContain("canary PASS");
++				expect(started.follow).toMatchObject({ kind: "canary-wait", dispatchId: record.id, timeoutMs: 20 });
++				expect(renderCanaryTimeout(record)).toBe(
++					`E-CANARY-TIMEOUT: canary dispatch ${record.id} state=delivered-unacked (timeout awaiting brief ack)`,
++				);
++				expect(renderCanaryTimeout(record)).not.toContain("canary PASS");
+ 			} finally {
+ 				rmSync(root, { recursive: true, force: true });
+ 			}
+ 		});
+ 
+-		it("real bin PASSES with an unverified tier when the effective context tier is unobservable", {
+-			timeout: 15_000,
+-		}, async () => {
+-			const root = mkdtempSync(join(tmpdir(), "pij-canary-pass-bin-"));
++		it("retained library records an unverified tier when the parsed footer has no context marker", () => {
++			// This is the historical library contract, NOT a Rust model-observation
++			// canary. Public Rust canaries still require fresh native model evidence.
++			const root = mkdtempSync(join(tmpdir(), "pij-canary-context-library-"));
+ 			const home = join(root, "home");
+ 			const repo = join(root, "repo");
+-			const userHome = join(root, "user-home");
+-			const fakeBin = join(root, "bin");
+ 			try {
+ 				mkdirSync(home, { recursive: true });
+ 				mkdirSync(repo, { recursive: true });
+-				mkdirSync(join(userHome, ".pi", "agent"), { recursive: true });
+-				mkdirSync(fakeBin, { recursive: true });
+-				writeFileSync(
+-					join(userHome, ".pi", "agent", "models.json"),
+-					JSON.stringify({
+-						providers: {
+-							"github-copilot": {
+-								models: [
+-									{
+-										id: "gpt-5.6-sol",
+-										name: "GPT-5.6 Sol",
+-										contextWindow: 1_050_000,
+-									},
+-								],
+-							},
+-						},
+-					}),
+-				);
+-				const fakeTmux = join(fakeBin, "tmux");
+-				writeFileSync(
+-					fakeTmux,
+-					'#!/usr/bin/env node\nprocess.stdout.write("gpt-5.6-sol · ready\\n");\n',
+-				);
+-				chmodSync(fakeTmux, 0o755);
+-				const registry = new FsRegistry(home);
+-				registry.write(
+-					desc({
+-						id: "pij-parent",
++				const base = canaryDeps();
++				const observed = contextWindowFromPane("gpt-5.6-sol · ready\n");
++				expect(observed).toBeNull();
++				const d = {
++					...libraryFsDeps(home, repo, "pij-parent"),
++					models: base.models,
++					contextWindowReader: { read: () => observed },
++				};
++				for (const descriptor of base.registry.list()) {
++					d.registry.write({
++						...descriptor,
+ 						folder: repo,
+-						dataDir: join(home, "pij-parent"),
+-						eventsPath: join(home, "pij-parent", "events.ndjson"),
++						dataDir: join(home, descriptor.id),
++						eventsPath: join(home, descriptor.id, "events.ndjson"),
+ 						pid: process.pid,
+-						state: "idle",
+-						lifecycle: "bound",
+-						paneId: "%30",
+-						harnessSessionId: "native-parent",
+-					}),
+-				);
+-				registry.write(
+-					desc({
+-						id: "pij-worker",
+-						folder: repo,
+-						dataDir: join(home, "pij-worker"),
+-						eventsPath: join(home, "pij-worker", "events.ndjson"),
+-						pid: process.pid,
+-						state: "idle",
+-						lifecycle: "bound",
+-						deliveryMode: "pull",
+-						paneId: "%31",
+-						harnessSessionId: "native-worker",
+-						boundModel: EXPECTED_MODEL,
+-						effort: "xhigh",
+-					}),
+-				);
+-				const parentEnv = {
+-					...process.env,
+-					PIJ_HOME: home,
+-					PIJ_SESSION_ID: "pij-parent",
+-					COPILOT_AGENT_SESSION_ID: "",
+-					CLAUDE_CODE_SESSION_ID: "",
+-					CODEX_THREAD_ID: "",
+-					TMUX_PANE: "",
+-					HOME: userHome,
+-					PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+-				};
+-				const canary = collectChild(
+-					["canary", "pij-worker", "--expect-model", EXPECTED_MODEL, "--wait=2000"],
+-					repo,
+-					parentEnv,
+-				);
+-				const store = new FsDispatchStore(home);
+-				const pending = await waitForDispatch(store);
++					});
++				}
++				const started = run(["canary", "pij-worker", "--expect-model", EXPECTED_MODEL, "--wait=2000"], d);
++				expect(started.exitCode, started.stderr).toBe(0);
++				const pending = d.dispatchStore.list()[0];
++				if (!pending) throw new Error("missing canary dispatch");
+ 				const sha = createHash("sha256").update(readFileSync(pending.packetPath)).digest("hex");
+-				const acked = spawnSync(
+-					process.execPath,
+-					[PLATFORM_TSX, PIJ_CLI_BIN, "ack", pending.id, "--packet-sha", sha],
+-					{
+-						cwd: repo,
+-						env: { ...parentEnv, PIJ_SESSION_ID: "pij-worker" },
+-						encoding: "utf8",
+-					},
+-				);
+-				expect(acked.status, acked.stderr).toBe(0);
+-				// plan 071 D6 — the fake tmux footer publishes NO context marker, which
+-				// is what every real claude pane looks like. That used to be a hard
+-				// E-CANARY-CONTEXT refusal; it is now a pass that says out loud the
+-				// tier was never verified. (The observed-contradiction refusal is
+-				// covered by the control in core/canary.test.ts.)
+-				const completed = await canary;
+-				expect(completed.status, completed.stderr).toBe(0);
++				expect(pending.packetSha256).toBe(sha);
++				const acked = run(["ack", pending.id, "--packet-sha", sha], libraryFsDeps(home, repo, "pij-worker"));
++				expect(acked.exitCode, acked.stderr).toBe(0);
++				const completed = finalizeCanary({
++					dispatchId: pending.id,
++					nonce: d.nextCanaryNonce(),
++					expectedModel: EXPECTED_MODEL,
++					json: false,
++				}, d);
++				expect(completed.exitCode, completed.stderr).toBe(0);
+ 				expect(completed.stdout).toContain("canary PASS");
+ 				expect(completed.stdout).toContain("contextTier=unverified");
+-				const record = store.read(pending.id);
++				const record = new FsDispatchStore(home).read(pending.id);
+ 				if (!record) throw new Error("missing acknowledged dispatch");
++				expect(record.state).toBe("acked");
+ 				expect(record.canary?.contextWindow?.check).toBe("unverified");
+ 			} finally {
+ 				rmSync(root, { recursive: true, force: true });
+diff --git a/.pi/extensions/pij/acceptance-sweep.test.ts b/.pi/extensions/pij/acceptance-sweep.test.ts
+--- a/.pi/extensions/pij/acceptance-sweep.test.ts
++++ b/.pi/extensions/pij/acceptance-sweep.test.ts
+@@ -1,8 +1,9 @@
+-// plan 054 — ACCEPTANCE SWEEP (P4 T007, V-04): all 12 ACs demonstrated in ONE
+-// isolated harness. R3 fence: temp PIJ_HOME + real fs adapters, FAKE process/
++// plan 054 — retained legacy-library acceptance sweep (P4 T007, V-04).
++// These store/domain proofs are not current public rs CLI acceptance. R3 fence:
++// temp PIJ_HOME + real fs adapters, FAKE process/
+ // clock/tmux-liveness, daemon logic driven ONLY by single-step tick() (no live
+-// daemon, no real ~/.pij, no global state). The one subprocess is the real bin
+-// running `spine render` against the SAME temp home (bin-owned verb, AC-10).
++// daemon, no real ~/.pij, no global state). Step 11 separately drives the real
++// shim against a scripted HTTP fixture: caller-wire proof, not Rust handler proof.
+ //
+ // AC → generating step → assertion map (each `it` carries its AC in the name):
+ //   AC-01 project create/list/set …… step 2 — record file, attribution, collision slug, list, set-links
+@@ -14,14 +15,17 @@
+ //   AC-07 anomalies + parent latch … step 7 — all three kinds w/ evidence; sweep alerts once, re-tick alerts 0
+ //   AC-08 adoption + link …………… step 9 — unadopted projection, evented re-parent, cycle rejection, spawnedBy immutable
+ //   AC-09 full node card ……………… step 10 — field-by-field incl. axes, gauges, windowId
+-//   AC-10 spine render ……………… step 11 — real bin writes spine/spine.md byte-identical to the pure render
++//   AC-10 spine render ……………… step 11 — rs text/cursor envelope forwarded; legacy log/render remains untouched
+ //   AC-11 legacy round-trip ………… step 1 — pre-054 descriptor loads, lists, round-trips byte-stably
+-//   AC-12 public contract shipped … step 12 — platform doc + README pointer + skill node route present
+-
+-import { execFileSync } from "node:child_process";
+-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
++//   AC-12 historical artifacts …… step 12 — platform doc + README pointer + current skill node route present
++
++import { execFile } from "node:child_process";
++import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
++import { createServer } from "node:http";
++import { createRequire } from "node:module";
++import { promisify } from "node:util";
+ import { afterAll, beforeAll, describe, expect, it } from "vitest";
+ import { FsAllocationStore } from "./adapters/allocation-store.js";
+ import { FsAssignmentStore } from "./adapters/assignment-store.js";
+@@ -45,7 +49,8 @@
+ const ACTOR = "pij-prime-seat";
+ const REPO_DOCS = join(import.meta.dirname, "..", "..", "..");
+ const CLI = join(import.meta.dirname, "cli.ts");
+-const TSX = join(import.meta.dirname, "..", "..", "..", "node_modules", ".bin", "tsx");
++const TSX = createRequire(import.meta.url).resolve("tsx");
++const execute = promisify(execFile);
+ 
+ let HOME: string;
+ let registry: FsRegistry;
+@@ -58,7 +63,7 @@
+ let opJournal: FsOpJournal;
+ let platformWriteLock: FsPlatformWriteLock;
+ 
+-/** Real-fs CliDeps over the temp home; identity + clock faked (R3). */
++/** Retained library CliDeps over the temp home; identity + clock faked (R3). */
+ function deps(self = ACTOR): CliDeps {
+ 	return {
+ 		registry,
+@@ -204,7 +209,7 @@
+ 	rmSync(HOME, { recursive: true, force: true });
+ });
+ 
+-describe("plan 054 acceptance sweep — 12 ACs, one isolated roundtrip (R3-fenced)", () => {
++describe("plan 054 retained library acceptance sweep — isolated store roundtrip (R3-fenced)", () => {
+ 	it("step 1 · AC-11 — a pre-054 descriptor loads, lists, and round-trips unchanged", () => {
+ 		const loaded = registry.read("pij-legacy");
+ 		expect(loaded).not.toBeNull();
+@@ -549,25 +554,84 @@
+ 		});
+ 	});
+ 
+-	it("step 11 · AC-10 (+AC-03 immutability) — the real bin renders spine.md byte-identical to the pure render", () => {
+-		const out = execFileSync(TSX, [CLI, "spine", "render", "--json"], {
+-			env: { ...process.env, PIJ_HOME: HOME, PIJ_SESSION_ID: "", TMUX_PANE: "" },
+-			encoding: "utf8",
+-			timeout: 15_000,
+-		});
+-		const envelope = JSON.parse(out) as { path: string; bytes: number; events: number };
++	it("step 11 · AC-10 (+AC-03 immutability) — forwards rs text/cursor without writing a legacy projection", async () => {
++		const fixtures: {
++			routes: { path: string; cases: { id: string; response: unknown }[] }[];
++		} = JSON.parse(readFileSync(join(REPO_DOCS, "crates/testkit/fixtures/golden/api/governance-routes.json"), "utf8"));
++		const renderCase = fixtures.routes.find((route) => route.path === "/v1/spine")
++			?.cases.find((entry) => entry.id === "spine-render");
++		if (renderCase === undefined) throw new Error("missing canonical spine-render fixture");
++		expect(renderCase.response).toMatchObject({
++			ok: true, command: "pij spine", v: 2,
++			data: { text: "101 plan139.control pij-parent", cursor: 101 },
++		});
++		const rawEnvelope = ` ${JSON.stringify(renderCase.response)}\n`;
+ 		const events = spineLog.read();
+-		const written = readFileSync(join(HOME, "spine", "spine.md"), "utf8");
+-		expect(written).toBe(renderSpineMd(events));
+-		expect(envelope.events).toBe(events.length);
+-		expect(written).toContain("node-linked");
+-		expect(written).toContain("system-state");
+-		// AC-03 across the WHOLE sweep: everything appended since step 4 only
+-		// ever extended the log — the step-4 prefix is untouched.
++		const legacyBytes = readFileSync(join(HOME, "spine", "events.ndjson"));
++		expect(existsSync(join(HOME, "spine", "spine.md"))).toBe(false);
++		// Keep the historical renderer and whole-sweep append-only proof at their
++		// actual library boundary; the rs endpoint deliberately returns text only.
++		const rendered = renderSpineMd(events);
++		expect(rendered).toContain("node-linked");
++		expect(rendered).toContain("system-state");
+ 		expect(events.slice(0, logSnapshotAtStep4.length)).toEqual(logSnapshotAtStep4);
+-	});
+-
+-	it("step 12 · AC-12 — the public contract is shipped: platform doc, README pointer, skill route", () => {
++		const clientHome = join(HOME, "spine-shim-client");
++		mkdirSync(clientHome);
++		writeFileSync(join(clientHome, "daemon.key"), "private-spine-key");
++		const requests: { method?: string; authorization?: string; body: unknown }[] = [];
++		const server = createServer((request, response) => {
++			void (async () => {
++				response.setHeader("Content-Type", "application/json");
++				if (request.url === "/health") {
++					response.end(JSON.stringify({ ok: true, command: "health", v: 2,
++						data: { status: "ok", build: "fixture", offline: true, machine: "private" } }));
++					return;
++				}
++				if (request.url !== "/v1/spine") {
++					response.writeHead(404).end();
++					return;
++				}
++				let body = "";
++				for await (const chunk of request) body += String(chunk);
++				requests.push({ method: request.method, authorization: request.headers.authorization,
++					body: JSON.parse(body) });
++				response.end(rawEnvelope);
++			})().catch((error: Error) => response.destroy(error));
++		});
++		try {
++			await new Promise<void>((resolve, reject) => {
++				server.once("error", reject);
++				server.listen(0, "127.0.0.1", resolve);
++			});
++			const address = server.address();
++			if (address === null || typeof address === "string") throw new Error("missing private port");
++			const { stdout, stderr } = await execute(process.execPath,
++				["--import", TSX, CLI, "spine", "render", "--json"], {
++					cwd: HOME, timeout: 15_000, killSignal: "SIGKILL",
++					env: { PATH: process.env.PATH, HOME: clientHome, USERPROFILE: clientHome,
++						CLAUDE_CONFIG_DIR: join(clientHome, "claude"), XDG_CONFIG_HOME: join(clientHome, "config"),
++						TSX_DISABLE_CACHE: "1", PIJ_HOME: HOME, PIJ_SESSION_ID: ACTOR,
++						PIJ_RS_STATE_DIR: clientHome, PIJ_RS_ADDR: `127.0.0.1:${address.port}` },
++				});
++			expect(stderr).toBe("");
++			expect(stdout).toBe(rawEnvelope);
++			expect(requests).toEqual([{ method: "POST", authorization: "Bearer private-spine-key",
++				body: { argv: ["spine", "render", "--json"], caller: expect.objectContaining({
++					pijSessionId: ACTOR, cwd: realpathSync(HOME),
++				}) } }]);
++			expect(existsSync(join(HOME, "spine", "spine.md"))).toBe(false);
++			expect(readFileSync(join(HOME, "spine", "events.ndjson"))).toEqual(legacyBytes);
++			expect(spineLog.read()).toEqual(events);
++		} finally {
++			if (server.listening) await new Promise<void>((resolve, reject) => {
++				server.close((error) => error ? reject(error) : resolve());
++				server.closeAllConnections();
++			});
++			rmSync(clientHome, { recursive: true, force: true });
++		}
++	}, 30_000);
++
++	it("step 12 · AC-12 — historical platform artifacts and current skill route remain available", () => {
+ 		const platformDoc = readFileSync(join(REPO_DOCS, "docs", "how", "pij-platform.md"), "utf8");
+ 		expect(platformDoc).toContain("on-disk public contract");
+ 		expect(platformDoc).toContain("projects/<slug>/project.json");
+@@ -603,7 +667,9 @@
+ 		);
+ 
+ 		expect(ready).not.toMatch(/--role|orchestration role set/);
+-		expect(kickoff).toContain("pij link <id> --parent <o-prime-id> --role pm --json");
++		expect(kickoff).toContain("pij role <id> pm --json");
++		expect(kickoff).not.toContain("pij link <id> --parent <o-prime-id> --role pm --json");
++		expect(kickoff).toContain("after verifying the recorded parent");
+ 		for (const route of [pair, orchestrator]) {
+ 			expect(route).toContain("Start-of-work report");
+ 			expect(route).toContain("Stop-of-work report");
+diff --git a/.pi/extensions/pij/core/liveness-cost.test.ts b/.pi/extensions/pij/core/liveness-cost.test.ts
+--- a/.pi/extensions/pij/core/liveness-cost.test.ts
++++ b/.pi/extensions/pij/core/liveness-cost.test.ts
+@@ -2,10 +2,10 @@
+ //
+ // The brief asked for batched liveness — "one `tmux list-panes -a` + one ps
+ // snapshot per call, never per-row subprocesses". Investigation found there is no
+-// per-row subprocess to batch: `pij list`/`state` resolve liveness through
++// per-row subprocess to batch: the pure CLI library resolves liveness through
+ // `ProcessPort.isAlive`, whose real adapter is `process.kill(pid, 0)` — a
+-// syscall, not a fork. Measured cost of `pij list --json` on the live machine is
+-// ~0.54s wall, effectively all node/tsx startup.
++// syscall, not a fork. The public executable now delegates to Rust; these
++// guards defend the retained library and its process adapter, not that shim.
+ //
+ // So the honest deliverable is not an optimisation that changes nothing; it is a
+ // guard that keeps the property true. These tests fail the moment someone
+@@ -14,7 +14,11 @@
+ import { readdirSync, readFileSync } from "node:fs";
+ import { dirname, join } from "node:path";
+ import { fileURLToPath } from "node:url";
+-import { describe, expect, it } from "vitest";
++import { describe, expect, it, vi } from "vitest";
++import { FakeDelivery, FakeEventLog, FakeProcess, FakeRegistry } from "../adapters/fakes.js";
++import { NodeProcess } from "../adapters/process.js";
++import { type CliDeps, dispatch } from "./cli.js";
++import type { SessionDescriptor } from "./types.js";
+ 
+ const HERE = dirname(fileURLToPath(import.meta.url));
+ 
+@@ -31,13 +35,64 @@
+ 	return source.replaceAll(/\/\*[\s\S]*?\*\//g, "").replaceAll(/\/\/[^\n]*/g, "");
+ }
+ 
+-describe("the list/state read path spawns no subprocesses", () => {
+-	// Structural, not behavioural: a mocked probe could hide a fork, but an import
+-	// cannot hide. `core/cli.ts` is where `list`, `state`, and `send` render.
+-	it("core/cli.ts imports nothing from node:child_process", () => {
+-		const source = readFileSync(join(HERE, "cli.ts"), "utf8");
+-		expect(source).not.toMatch(/from\s+"node:child_process"/);
+-		expect(source).not.toMatch(/require\(\s*["']child_process["']\s*\)/);
++describe("the pure CLI library read-path liveness cost", () => {
++	function fixture(count: number) {
++		const now = Date.parse("2026-06-16T12:00:00.000Z");
++		const descriptors: SessionDescriptor[] = Array.from({ length: count }, (_, index) => ({
++			id: `peer-${index}`,
++			folder: index % 2 === 0 ? "/repo" : "/other",
++			dataDir: `/pij/peer-${index}`,
++			eventsPath: `/pij/peer-${index}/events.ndjson`,
++			pid: 100 + index,
++			startedAt: new Date(now - 1000).toISOString(),
++			lastEventAt: new Date(now - 1000).toISOString(),
++			state: "idle",
++		}));
++		const process = new FakeProcess(999, now, { PIJ_SESSION_ID: "peer-0" }, [100]);
++		const probe = vi.spyOn(process, "isAlive");
++		const deps: CliDeps = {
++			registry: new FakeRegistry(descriptors),
++			process,
++			delivery: new FakeDelivery(),
++			eventLogFor: () => new FakeEventLog([]),
++			cwd: "/repo",
++			pijHome: "/pij",
++		};
++		return { deps, descriptors, probe };
++	}
++
++	it.each([false, true])("list json=%s probes exactly once per selected row", (json) => {
++		for (const count of [1, 32]) {
++			for (const here of [false, true]) {
++				const { deps, descriptors, probe } = fixture(count);
++				const selected = descriptors.filter((descriptor) => !here || descriptor.folder === "/repo");
++				const result = dispatch({ verb: "list", here, prime: false, json }, deps);
++				expect(result.exitCode).toBe(0);
++				expect(probe.mock.calls).toEqual(selected.map((descriptor) => [descriptor.pid]));
++				if (json) {
++					expect(JSON.parse(result.stdout)).toEqual(
++						selected.map((descriptor) => expect.objectContaining({
++							id: descriptor.id,
++							liveness: descriptor.pid === 100 ? "active" : "dead",
++						})),
++					);
++				} else {
++					expect(result.stdout).toContain(`${selected.length} session(s)`);
++				}
++			}
++		}
++	});
++
++	it.each([false, true])("state json=%s probes only its target, independent of registry size", (json) => {
++		for (const count of [1, 32]) {
++			const { deps, probe } = fixture(count);
++			const result = dispatch({ verb: "state", id: "peer-0", json }, deps);
++			expect(result.exitCode).toBe(0);
++			// Existing library cost: one liveness verdict and one alive/bind-detail probe.
++			expect(probe.mock.calls).toEqual([[100], [100]]);
++			if (json) expect(JSON.parse(result.stdout)).toMatchObject({ id: "peer-0", liveness: "active" });
++			else expect(result.stdout).toContain("active");
++		}
+ 	});
+ 
+ 	it("the modules the read path leans on are subprocess-free too", () => {
+@@ -52,8 +107,14 @@
+ 	// The real ProcessPort adapter must stay a syscall probe. If someone swaps it
+ 	// for `ps`/`tmux`, liveness silently becomes N forks per listing.
+ 	it("the real ProcessPort probes liveness with a signal, not a command", () => {
++		const kill = vi.spyOn(process, "kill").mockReturnValue(true);
++		try {
++			expect(new NodeProcess().isAlive(123)).toBe(true);
++			expect(kill.mock.calls).toEqual([[123, 0]]);
++		} finally {
++			kill.mockRestore();
++		}
+ 		const source = readFileSync(join(HERE, "..", "adapters", "process.ts"), "utf8");
+-		expect(source).toMatch(/process\.kill\(pid, 0\)/);
+ 		expect(source).not.toMatch(/from\s+"node:child_process"/);
+ 	});
+ });
+@@ -201,11 +262,11 @@
+ 	// EXACTLY this set, asserted as a list rather than a count, so a failure NAMES
+ 	// the file instead of only disagreeing about a number.
+ 	//
+-	// `cli.ts` probes once during revive. `adapters/daemon-http.ts` probes once
+-	// during pi/OMP registration so its claimed `(pid, proc_start)` is byte-equal
+-	// to pij-rs ProcLiveness. Neither sits in a per-descriptor or daemon-tick loop.
++	// `adapters/daemon-http.ts` probes once during pi/OMP registration so its
++	// claimed `(pid, proc_start)` is byte-equal to pij-rs ProcLiveness. It never
++	// sits in a per-descriptor or daemon-tick loop. The retired revive bin is gone.
+ 	it("only reviewed one-shot boundaries may ask `ps` about a single pid", () => {
+-		expect(perPidProcessProbes()).toEqual(["adapters/daemon-http.ts", "cli.ts"]);
++		expect(perPidProcessProbes()).toEqual(["adapters/daemon-http.ts"]);
+ 	});
+ 
+ 	// The scope repair, asserted directly: the recursive walk must actually reach
+diff --git a/.pi/extensions/pij/daemon.bootstrap.test.ts b/.pi/extensions/pij/daemon.bootstrap.test.ts
+--- a/.pi/extensions/pij/daemon.bootstrap.test.ts
++++ b/.pi/extensions/pij/daemon.bootstrap.test.ts
+@@ -7,8 +7,27 @@
+ // against a home that provably does not exist yet: the `existsSync(...) === false`
+ // assertion BEFORE the call is what makes each case a test rather than a
+ // tautology (`mkdtempSync` creates its directory, which would pre-satisfy the bug).
+-
+-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
++//
++// Plan 139 classification: runDaemon and the remaining PIJ_HOME readers are
++// supported legacy LIBRARY seams, not a second public CLI. cli.ts now delegates
++// to adapters/generation-router.ts; core/generation-routing.ts explicitly refuses
++// daemon/path administration before any legacy startup, store or process access.
++// Keep the lifecycle regressions below and prove that public boundary separately.
++
++import { spawn, spawnSync } from "node:child_process";
++import { once } from "node:events";
++import {
++	existsSync,
++	mkdirSync,
++	mkdtempSync,
++	readdirSync,
++	readFileSync,
++	readlinkSync,
++	rmSync,
++	writeFileSync,
++} from "node:fs";
++import { createRequire } from "node:module";
++import { createServer } from "node:net";
+ import { homedir, tmpdir } from "node:os";
+ import { dirname, join } from "node:path";
+ import { fileURLToPath } from "node:url";
+@@ -34,7 +53,7 @@
+  *  redirecting it makes the fallback path hermetic. */
+ const HERMETIC_ENV = ["PIJ_HOME", "PIJ_TELEGRAM_ENV", "PIJ_DAEMON_OWNED", "HOME"] as const;
+ 
+-describe("runDaemon — first-run home bootstrap", () => {
++describe("runDaemon library — first-run home bootstrap", () => {
+ 	let saved: Record<string, string | undefined>;
+ 	let parent: string;
+ 
+@@ -86,8 +105,8 @@
+ 
+ 		let stop: (() => void) | undefined;
+ 		try {
+-			// No `pijHome` option: this exercises the env resolution path a real
+-			// `pij daemon` start takes, not just the injected test seam.
++			// No `pijHome` option: exercise the library's environment resolution.
++			// Public `pij daemon` is refused, not an alternate way into this seam.
+ 			stop = runDaemon({ tickMs: NO_TICK_MS, deliveryMs: NO_TICK_MS, log: () => {} });
+ 			expect(existsSync(join(home, "daemon.lock"))).toBe(true);
+ 		} finally {
+@@ -103,9 +122,8 @@
+ 		// at ~/.pij like everything else.
+ 		//
+ 		// The VALUE is not the invariant — it changed, deliberately. The
+-		// invariant is AGREEMENT: whatever the daemon picks as its home, every
+-		// reader must independently resolve the same path, or the CLI looks for
+-		// a registry the daemon is not writing. So this asserts the daemon's
++		// invariant is AGREEMENT: whatever the legacy daemon picks as its home,
++		// its library readers must independently resolve the same path. Assert the
+ 		// actual on-disk lock location against what the shared resolver returns,
+ 		// rather than against a hard-coded string.
+ 		process.env.PIJ_HOME = "";
+@@ -150,24 +168,23 @@
+ });
+ 
+ // ---------------------------------------------------------------------------
+-// pij#169 — every PIJ_HOME surface agrees
++// pij#169 — every retained legacy PIJ_HOME library surface agrees
+ //
+ // `core/agents/paths.ts` called itself "the one place that computes" PIJ_HOME
+ // while seven sites still inlined `process.env.PIJ_HOME ?? join(homedir(),
+ // ".pij")`. The inlined form and the resolver disagreed on exactly one input —
+-// a SET-but-EMPTY PIJ_HOME — and a partial sweep would have RELOCATED that
+-// disagreement onto a pair that currently agrees (a daemon writing ~/.pij while
+-// the CLI reads ./). Hence: all seven, proven together.
++// a SET-but-EMPTY PIJ_HOME. The public CLI's two sites were subsequently retired
++// with the rs cutover; it must no longer resolve a legacy home at all. The five
++// retained library consumers still share the resolver and retain this regression.
+ // ---------------------------------------------------------------------------
+ 
+ /** Extension root — this test lives at `.pi/extensions/pij/`. */
+ const PIJ_ROOT = dirname(fileURLToPath(import.meta.url));
+ 
+-/** The seven sites of pij#169, keyed by file (cli.ts holds two of them), each
+- *  with the relative specifier its depth requires under NodeNext ESM. */
+-const SWEPT_SITES: readonly { readonly file: string; readonly specifier: string }[] = [
++/** Retained library consumers of the pij#169 sweep. The retired cli.ts sites
++ *  are covered by the public refusal cases below, not an import requirement. */
++const LEGACY_HOME_READERS: readonly { readonly file: string; readonly specifier: string }[] = [
+ 	{ file: "daemon.ts", specifier: "./core/agents/paths.js" },
+-	{ file: "cli.ts", specifier: "./core/agents/paths.js" },
+ 	{ file: "index.ts", specifier: "./core/agents/paths.js" },
+ 	{ file: "core/daemon/watch.ts", specifier: "../agents/paths.js" },
+ 	{ file: "adapters/focus-store.ts", specifier: "../core/agents/paths.js" },
+@@ -183,14 +200,12 @@
+ 	return dirname(dirname(dirname(store.manifestPath("agreement"))));
+ }
+ 
+-describe("PIJ_HOME resolves identically at every surface (pij#169)", () => {
+-	describe("no surface re-derives it", () => {
+-		for (const { file, specifier } of SWEPT_SITES) {
++describe("PIJ_HOME resolves identically at legacy library surfaces (pij#169)", () => {
++	describe("no library surface re-derives it", () => {
++		for (const { file, specifier } of LEGACY_HOME_READERS) {
+ 			it(`${file} calls resolvePijHome() instead of inlining`, () => {
+ 				const source = readFileSync(join(PIJ_ROOT, file), "utf8");
+-				// Count rather than assert-absent: a file with two sites (cli.ts)
+-				// must lose BOTH, and "0 remaining" is the only reading of that
+-				// which cannot be satisfied by a partial edit.
++				// Reject every surviving inline fallback, not just its first occurrence.
+ 				expect(source.match(INLINED)?.length ?? 0).toBe(0);
+ 				expect(source).toContain(`from "${specifier}"`);
+ 				expect(source).toContain("resolvePijHome");
+@@ -282,3 +297,147 @@
+ 		});
+ 	});
+ });
++
++const TSX_CLI = createRequire(import.meta.url).resolve("tsx/cli");
++
++/** Include directory creation, symlinks and exact file bytes, not just the lock. */
++function homeSnapshot(root: string, prefix = ""): Record<string, string> {
++	const snapshot: Record<string, string> = {};
++	for (const entry of readdirSync(join(root, prefix), { withFileTypes: true })) {
++		const path = join(prefix, entry.name);
++		if (entry.isDirectory()) {
++			snapshot[path] = "directory";
++			Object.assign(snapshot, homeSnapshot(root, path));
++		} else if (entry.isSymbolicLink()) {
++			snapshot[path] = `link:${readlinkSync(join(root, path))}`;
++		} else {
++			snapshot[path] = readFileSync(join(root, path)).toString("base64");
++		}
++	}
++	return snapshot;
++}
++
++describe.each([undefined, "legacy"])("public administration refuses (generation=%s)", (generation) => {
++	let parent: string;
++	let home: string;
++	let env: NodeJS.ProcessEnv;
++	let holder: ReturnType<typeof spawn> | undefined;
++	let endpoint: ReturnType<typeof createServer> | undefined;
++	let connections: number;
++
++	beforeEach(async () => {
++		parent = mkdtempSync(join(tmpdir(), "pij-admin-refusal-"));
++		home = join(parent, ".pij");
++		mkdirSync(home);
++		mkdirSync(join(parent, "bin"));
++		connections = 0;
++		endpoint = createServer((socket) => {
++			connections++;
++			socket.destroy();
++		});
++		endpoint.listen(0, "127.0.0.1");
++		await once(endpoint, "listening");
++		const address = endpoint.address();
++		if (address === null || typeof address === "string") throw new Error("missing private port");
++		env = {
++			...process.env,
++			HOME: parent,
++			USERPROFILE: parent,
++			PATH: join(parent, "bin"),
++			NODE_OPTIONS: "",
++			PIJ_HOME: home,
++			PIJ_RS_STATE_DIR: join(parent, ".pij-rs"),
++			PIJ_RS_ADDR: `127.0.0.1:${address.port}`,
++			PIJ_DAEMON_GENERATION: generation,
++			PIJ_TELEGRAM_ENV: "",
++			PIJ_DAEMON_OWNED: "",
++			PIJ_SESSION_ID: "",
++			PIJ_ROUTE_DIAGNOSTIC: "",
++			TMUX: "",
++			TMUX_PANE: "",
++			CLAUDE_CONFIG_DIR: join(parent, ".claude"),
++			XDG_CONFIG_HOME: join(parent, ".config"),
++			CLAUDE_CODE_SESSION_ID: "",
++			COPILOT_AGENT_SESSION_ID: "",
++			CODEX_THREAD_ID: "",
++		};
++		// A private inert lock holder, never the test runner or a real daemon.
++		// Record stop/restart signals and answer a causal IPC probe after each CLI.
++		holder = spawn(process.execPath, ["-e", `
++			const signals = [];
++			for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"])
++				process.on(signal, () => signals.push(signal));
++			process.on("message", () => process.send(signals));
++			process.send("ready");
++		`], { cwd: parent, env, stdio: ["ignore", "ignore", "ignore", "ipc"] });
++		expect((await once(holder, "message", { signal: AbortSignal.timeout(5_000) }))[0]).toBe("ready");
++		writeFileSync(join(home, "daemon.lock"), JSON.stringify({
++			pid: holder.pid,
++			startedAt: new Date().toISOString(),
++		}));
++		writeFileSync(join(home, "registry.ndjson"), "preserved registry\n");
++		writeFileSync(join(home, "daemon.log"), "preserved daemon log\n");
++	});
++
++	afterEach(async () => {
++		if (holder !== undefined && holder.exitCode === null && holder.signalCode === null) {
++			const closed = once(holder, "close");
++			holder.kill("SIGKILL");
++			await closed;
++		}
++		holder = undefined;
++		if (endpoint !== undefined) {
++			const closed = once(endpoint, "close");
++			endpoint.close();
++			await closed;
++		}
++		endpoint = undefined;
++		rmSync(parent, { recursive: true, force: true });
++	});
++
++	async function expectRefused(argv: readonly string[], pijHome = home): Promise<void> {
++		if (holder === undefined) throw new Error("missing private lock holder");
++		const before = homeSnapshot(parent);
++		const result = spawnSync(process.execPath, [TSX_CLI, join(PIJ_ROOT, "cli.ts"), ...argv, "--json"], {
++			cwd: parent,
++			env: { ...env, PIJ_HOME: pijHome },
++			encoding: "utf8",
++			timeout: 10_000,
++		});
++		if (result.error) throw result.error;
++		expect(result.status).toBe(4);
++		expect(result.stderr).toBe("");
++		expect(JSON.parse(result.stdout)).toMatchObject({
++			ok: false,
++			v: 2,
++			command: `pij ${argv[0]}`,
++			error: "refused",
++			details: { code: "E-RS-UNPORTED", verb: argv[0] },
++		});
++		expect(holder.exitCode).toBeNull();
++		expect(holder.signalCode).toBeNull();
++		const reply = once(holder, "message", { signal: AbortSignal.timeout(2_000) });
++		holder.send("probe");
++		expect((await reply)[0]).toEqual([]);
++		expect(connections).toBe(0);
++		expect(homeSnapshot(parent)).toEqual(before);
++	}
++
++	it("refuses fresh-home startup without creating a legacy home", async () => {
++		const fresh = join(parent, "fresh", ".pij");
++		expect(existsSync(fresh)).toBe(false);
++		await expectRefused(["daemon", "start"], fresh);
++		expect(existsSync(fresh)).toBe(false);
++	});
++
++	it.each([
++		["daemon"],
++		["daemon", "start"],
++		["daemon", "stop"],
++		["daemon", "restart"],
++		["daemon", "status"],
++		["path"],
++	].map((argv) => ({ argv })))("refuses $argv without changing legacy files or the live holder", async ({ argv }) => {
++		await expectRefused(argv);
++	});
++});
+diff --git a/.pi/extensions/pij/orchestration-notice.integration.test.ts b/.pi/extensions/pij/orchestration-notice.integration.test.ts
+--- a/.pi/extensions/pij/orchestration-notice.integration.test.ts
++++ b/.pi/extensions/pij/orchestration-notice.integration.test.ts
+@@ -1,35 +1,25 @@
+-import { execFileSync } from "node:child_process";
+-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
++// Plan 139: retain all eight legacy keeper cases at the current caller boundary.
++// Prime ruling: native baton.request must send through DeliveryService and return
++// data.notice; missing/dissolved keeper means null and no send. This scripted HTTP
++// fixture proves argv/caller and complete receipt forwarding, NOT native delivery.
++// Native parity must separately prove one send for the other six cases and zero
++// for missing/dissolved keepers. Never recreate the retired CliBatonNoticeSink here.
++import { execFile } from "node:child_process";
++import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
++import { createServer } from "node:http";
++import { createRequire } from "node:module";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
++import { promisify } from "node:util";
+ import { describe, expect, it } from "vitest";
+-import type { HarnessKind, ReceiptState, SessionDescriptor } from "./core/types.js";
++import type { HarnessKind, SessionDescriptor } from "./core/types.js";
+ 
+ const CLI = join(import.meta.dirname, "cli.ts");
+-const TSX = join(import.meta.dirname, "..", "..", "..", "node_modules", ".bin", "tsx");
++const TSX = createRequire(import.meta.url).resolve("tsx");
++const execute = promisify(execFile);
++const AT = Date.parse("2026-09-07T12:00:00.000Z");
+ 
+-function run(
+-	home: string,
+-	args: readonly string[],
+-	actor: string,
+-): { readonly code: number; readonly stdout: string } {
+-	try {
+-		return {
+-			code: 0,
+-			stdout: execFileSync(TSX, [CLI, ...args], {
+-				env: { ...process.env, PIJ_HOME: home, PIJ_SESSION_ID: actor },
+-				encoding: "utf8",
+-				timeout: 10_000,
+-			}),
+-		};
+-	} catch (error) {
+-		const failure = error as { status?: number; stdout?: string; stderr?: string };
+-		return {
+-			code: failure.status ?? 1,
+-			stdout: `${failure.stdout ?? ""}${failure.stderr ?? ""}`,
+-		};
+-	}
+-}
++type Notice = "delivered" | "queued" | "unverified" | null;
+ 
+ function descriptor(input: {
+ 	readonly state: "idle" | "working";
+@@ -40,13 +30,9 @@
+ 	readonly lifecycle?: SessionDescriptor["lifecycle"];
+ }): SessionDescriptor {
+ 	return {
+-		id: "pij-target",
+-		folder: "/repo",
+-		dataDir: "/tmp/pij-target",
+-		eventsPath: "/tmp/pij-target/events.ndjson",
+-		pid: input.pid,
+-		startedAt: "2026-07-11T09:00:00.000Z",
+-		state: input.state,
++		id: "pij-target", folder: "/repo", dataDir: "/tmp/pij-target",
++		eventsPath: "/tmp/pij-target/events.ndjson", pid: input.pid,
++		startedAt: "2026-07-11T09:00:00.000Z", state: input.state,
+ 		...(input.harness ? { harness: input.harness } : {}),
+ 		...(input.lastTickAt ? { lastTickAt: input.lastTickAt } : {}),
+ 		...(input.deliveryMode ? { deliveryMode: input.deliveryMode } : {}),
+@@ -54,126 +40,108 @@
+ 	};
+ }
+ 
+-function inboxMessageCount(home: string, id: string): number {
+-	try {
+-		return readdirSync(join(home, id, "inbox")).filter(
+-			(name) => name.startsWith("msg-") && name.endsWith(".json"),
+-		).length;
+-	} catch {
+-		return 0;
+-	}
++function snapshot(home: string): Record<string, string> {
++	return Object.fromEntries(readdirSync(home).sort().map((name) => [
++		name, readFileSync(join(home, name)).toString("base64"),
++	]));
+ }
+ 
+-describe("CliBatonNoticeSink production classification", () => {
+-	it.each<{
+-		readonly label: string;
+-		readonly target?: SessionDescriptor;
+-		readonly expected: ReceiptState;
+-		readonly expectedNewMessages: number;
+-	}>([
+-		{
+-			label: "delivered for an idle live pi target",
+-			target: descriptor({ state: "idle", pid: process.pid }),
+-			expected: "delivered",
+-			expectedNewMessages: 1,
+-		},
+-		{
+-			label: "queued for a working live pi target",
+-			target: descriptor({ state: "working", pid: process.pid }),
+-			expected: "queued",
+-			expectedNewMessages: 1,
+-		},
+-		{
+-			label: "queued for a live control-plane target with a fresh heartbeat",
+-			target: descriptor({
+-				state: "idle",
+-				pid: process.pid,
+-				harness: "codex",
+-				lastTickAt: new Date(Date.now() + 60_000).toISOString(),
+-			}),
+-			expected: "queued",
+-			expectedNewMessages: 1,
+-		},
+-		{
+-			label: "unverified for a live control-plane target with a stale heartbeat",
+-			target: descriptor({
+-				state: "idle",
+-				pid: process.pid,
+-				harness: "copilot",
+-				lastTickAt: "2026-01-01T00:00:00.000Z",
+-			}),
+-			expected: "unverified",
+-			expectedNewMessages: 1,
+-		},
+-		{
+-			label: "unverified for a dead target",
+-			target: descriptor({ state: "idle", pid: 2_147_483_647 }),
+-			expected: "unverified",
+-			expectedNewMessages: 1,
+-		},
+-		{
+-			label: "unverified without persisting for a missing target",
+-			expected: "unverified",
+-			expectedNewMessages: 0,
+-		},
+-		{
+-			label: "unverified without persisting for a dissolved pull target",
+-			target: descriptor({
+-				state: "idle",
+-				pid: process.pid,
+-				harness: "copilot",
+-				deliveryMode: "pull",
+-				lifecycle: "dissolved",
+-			}),
+-			expected: "unverified",
+-			expectedNewMessages: 0,
+-		},
+-		{
+-			label: "queued with one persisted notice for a live pull target",
+-			target: descriptor({
+-				state: "idle",
+-				pid: process.pid,
+-				harness: "copilot",
+-				deliveryMode: "pull",
+-				lifecycle: "bound",
+-			}),
+-			expected: "queued",
+-			expectedNewMessages: 1,
+-		},
+-	])("$label", { timeout: 30_000 }, ({ target, expected, expectedNewMessages }) => {
+-		const home = mkdtempSync(join(tmpdir(), "pij-baton-notice-"));
++describe("baton keeper notice caller parity — scripted rs wire, native delivery separately required", () => {
++	it.each<{ readonly label: string; readonly target?: SessionDescriptor; readonly notice: Notice }>([
++		{ label: "delivered for an idle live pi target", target: descriptor({ state: "idle", pid: process.pid }), notice: "delivered" },
++		{ label: "queued for a working live pi target", target: descriptor({ state: "working", pid: process.pid }), notice: "queued" },
++		{ label: "queued for a live control-plane target with a fresh heartbeat", target: descriptor({
++			state: "idle", pid: process.pid, harness: "codex", lastTickAt: new Date(AT + 60_000).toISOString(),
++		}), notice: "queued" },
++		{ label: "unverified for a live control-plane target with a stale heartbeat", target: descriptor({
++			state: "idle", pid: process.pid, harness: "copilot", lastTickAt: "2026-01-01T00:00:00.000Z",
++		}), notice: "unverified" },
++		{ label: "unverified for a dead target", target: descriptor({ state: "idle", pid: 2_147_483_647 }), notice: "unverified" },
++		{ label: "no notice or send for a missing target", notice: null },
++		{ label: "no notice or send for a dissolved pull target", target: descriptor({
++			state: "idle", pid: process.pid, harness: "copilot", deliveryMode: "pull", lifecycle: "dissolved",
++		}), notice: null },
++		{ label: "queued with one native notice for a live pull target", target: descriptor({
++			state: "idle", pid: process.pid, harness: "copilot", deliveryMode: "pull", lifecycle: "bound",
++		}), notice: "queued" },
++	])("$label", { timeout: 30_000 }, async ({ target, notice }) => {
++		const root = realpathSync(mkdtempSync(join(tmpdir(), "pij-baton-notice-")));
++		const legacyHome = join(root, "legacy");
++		const stateDir = join(root, "rs");
++		mkdirSync(legacyHome);
++		mkdirSync(stateDir);
++		writeFileSync(join(stateDir, "daemon.key"), "private-notice-key");
++		// Old filesystem state is a decoy, never the source of an rs notice verdict.
++		if (target) writeFileSync(join(legacyHome, "pij-target.json"), JSON.stringify(target));
++		const before = snapshot(legacyHome);
++		const defineArgs = ["orchestration", "baton", "define", "git-index", "--resource", "shared git index", "--json"];
++		const requestArgs = ["orchestration", "baton", "request", "git-index", "--purpose", "stage the commit", "--json"];
++		const defined = JSON.stringify({ ok: true, command: "pij orchestration", v: 2, data: {
++			baton: { name: "git-index", description: "shared git index", resource: "shared git index",
++				probe: null, repo: root, created_by: "pij-target", created_at: AT }, seq: 1,
++		} });
++		const requested = ` ${JSON.stringify({ ok: true, command: "pij orchestration", v: 2, data: {
++			request: { id: "request-notice-proof", baton: "git-index", requester: "pij-requester",
++				purpose: "stage the commit", pin: null, evidence: null, requested_at: AT, state: "requested" },
++			seq: 2, notice,
++		}, meta: "native notice result", future: { retained: true } })}\n`;
++		const requests: { method?: string; authorization?: string; body: unknown }[] = [];
++		const server = createServer((request, response) => {
++			void (async () => {
++				response.setHeader("Content-Type", "application/json");
++				if (request.url === "/health") {
++					response.end(JSON.stringify({ ok: true, command: "health", v: 2,
++						data: { status: "ok", build: "fixture", offline: true, machine: "private" } }));
++					return;
++				}
++				if (request.url !== "/v1/orchestration") {
++					response.writeHead(404).end();
++					return;
++				}
++				let body = "";
++				for await (const chunk of request) body += String(chunk);
++				requests.push({ method: request.method, authorization: request.headers.authorization, body: JSON.parse(body) });
++				response.end(requests.length === 1 ? defined : requested);
++			})().catch((error: Error) => response.destroy(error));
++		});
+ 		try {
+-			expect(
+-				run(
+-					home,
+-					["orchestration", "baton", "define", "git-index", "--resource", "shared git index"],
+-					"pij-target",
+-				).code,
+-			).toBe(0);
+-			if (target) writeFileSync(join(home, "pij-target.json"), JSON.stringify(target));
+-			const before = inboxMessageCount(home, "pij-target");
+-
+-			const requested = run(
+-				home,
+-				[
+-					"orchestration",
+-					"baton",
+-					"request",
+-					"git-index",
+-					"--purpose",
+-					"stage the commit",
+-					"--json",
+-				],
+-				"pij-requester",
+-			);
+-
+-			expect(requested.code).toBe(0);
+-			expect(JSON.parse(requested.stdout)).toMatchObject({
+-				receipt: { state: expected },
++			await new Promise<void>((resolve, reject) => {
++				server.once("error", reject);
++				server.listen(0, "127.0.0.1", resolve);
+ 			});
+-			expect(inboxMessageCount(home, "pij-target") - before).toBe(expectedNewMessages);
++			const address = server.address();
++			if (address === null || typeof address === "string") throw new Error("missing private port");
++			const run = (args: readonly string[], actor: string) => execute(process.execPath,
++				["--import", TSX, CLI, ...args], {
++					cwd: root, timeout: 10_000, killSignal: "SIGKILL",
++					env: { PATH: process.env.PATH, HOME: root, USERPROFILE: root,
++						CLAUDE_CONFIG_DIR: join(root, "claude"), XDG_CONFIG_HOME: join(root, "config"),
++						TSX_DISABLE_CACHE: "1", PIJ_HOME: legacyHome, PIJ_SESSION_ID: actor,
++						PIJ_RS_STATE_DIR: stateDir, PIJ_RS_ADDR: `127.0.0.1:${address.port}` },
++				});
++			const definition = await run(defineArgs, "pij-target");
++			expect(definition.stderr).toBe("");
++			expect(definition.stdout).toBe(`${defined}\n`);
++			const request = await run(requestArgs, "pij-requester");
++			expect(request.stderr).toBe("");
++			expect(request.stdout).toBe(requested);
++			expect(JSON.parse(request.stdout)).toMatchObject({ ok: true, v: 2,
++				data: { request: { requester: "pij-requester", state: "requested" }, seq: 2, notice } });
++			expect(requests).toEqual([
++				{ method: "POST", authorization: "Bearer private-notice-key", body: {
++					argv: defineArgs, caller: expect.objectContaining({ pijSessionId: "pij-target", cwd: root }),
++				} },
++				{ method: "POST", authorization: "Bearer private-notice-key", body: {
++					argv: requestArgs, caller: expect.objectContaining({ pijSessionId: "pij-requester", cwd: root }),
++				} },
++			]);
++			expect(snapshot(legacyHome)).toEqual(before);
+ 		} finally {
+-			rmSync(home, { recursive: true, force: true });
++			if (server.listening) await new Promise<void>((resolve, reject) => {
++				server.close((error) => error ? reject(error) : resolve());
++				server.closeAllConnections();
++			});
++			rmSync(root, { recursive: true, force: true });
+ 		}
+ 	});
+ });

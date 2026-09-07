@@ -7,8 +7,27 @@
 // against a home that provably does not exist yet: the `existsSync(...) === false`
 // assertion BEFORE the call is what makes each case a test rather than a
 // tautology (`mkdtempSync` creates its directory, which would pre-satisfy the bug).
+//
+// Plan 139 classification: runDaemon and the remaining PIJ_HOME readers are
+// supported legacy LIBRARY seams, not a second public CLI. cli.ts now delegates
+// to adapters/generation-router.ts; core/generation-routing.ts explicitly refuses
+// daemon/path administration before any legacy startup, store or process access.
+// Keep the lifecycle regressions below and prove that public boundary separately.
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	readlinkSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
+import { createRequire } from "node:module";
+import { createServer } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,7 +53,7 @@ const NO_TICK_MS = 60_000;
  *  redirecting it makes the fallback path hermetic. */
 const HERMETIC_ENV = ["PIJ_HOME", "PIJ_TELEGRAM_ENV", "PIJ_DAEMON_OWNED", "HOME"] as const;
 
-describe("runDaemon — first-run home bootstrap", () => {
+describe("runDaemon library — first-run home bootstrap", () => {
 	let saved: Record<string, string | undefined>;
 	let parent: string;
 
@@ -86,8 +105,8 @@ describe("runDaemon — first-run home bootstrap", () => {
 
 		let stop: (() => void) | undefined;
 		try {
-			// No `pijHome` option: this exercises the env resolution path a real
-			// `pij daemon` start takes, not just the injected test seam.
+			// No `pijHome` option: exercise the library's environment resolution.
+			// Public `pij daemon` is refused, not an alternate way into this seam.
 			stop = runDaemon({ tickMs: NO_TICK_MS, deliveryMs: NO_TICK_MS, log: () => {} });
 			expect(existsSync(join(home, "daemon.lock"))).toBe(true);
 		} finally {
@@ -103,9 +122,8 @@ describe("runDaemon — first-run home bootstrap", () => {
 		// at ~/.pij like everything else.
 		//
 		// The VALUE is not the invariant — it changed, deliberately. The
-		// invariant is AGREEMENT: whatever the daemon picks as its home, every
-		// reader must independently resolve the same path, or the CLI looks for
-		// a registry the daemon is not writing. So this asserts the daemon's
+		// invariant is AGREEMENT: whatever the legacy daemon picks as its home,
+		// its library readers must independently resolve the same path. Assert the
 		// actual on-disk lock location against what the shared resolver returns,
 		// rather than against a hard-coded string.
 		process.env.PIJ_HOME = "";
@@ -150,24 +168,23 @@ describe("runDaemon — first-run home bootstrap", () => {
 });
 
 // ---------------------------------------------------------------------------
-// pij#169 — every PIJ_HOME surface agrees
+// pij#169 — every retained legacy PIJ_HOME library surface agrees
 //
 // `core/agents/paths.ts` called itself "the one place that computes" PIJ_HOME
 // while seven sites still inlined `process.env.PIJ_HOME ?? join(homedir(),
 // ".pij")`. The inlined form and the resolver disagreed on exactly one input —
-// a SET-but-EMPTY PIJ_HOME — and a partial sweep would have RELOCATED that
-// disagreement onto a pair that currently agrees (a daemon writing ~/.pij while
-// the CLI reads ./). Hence: all seven, proven together.
+// a SET-but-EMPTY PIJ_HOME. The public CLI's two sites were subsequently retired
+// with the rs cutover; it must no longer resolve a legacy home at all. The five
+// retained library consumers still share the resolver and retain this regression.
 // ---------------------------------------------------------------------------
 
 /** Extension root — this test lives at `.pi/extensions/pij/`. */
 const PIJ_ROOT = dirname(fileURLToPath(import.meta.url));
 
-/** The seven sites of pij#169, keyed by file (cli.ts holds two of them), each
- *  with the relative specifier its depth requires under NodeNext ESM. */
-const SWEPT_SITES: readonly { readonly file: string; readonly specifier: string }[] = [
+/** Retained library consumers of the pij#169 sweep. The retired cli.ts sites
+ *  are covered by the public refusal cases below, not an import requirement. */
+const LEGACY_HOME_READERS: readonly { readonly file: string; readonly specifier: string }[] = [
 	{ file: "daemon.ts", specifier: "./core/agents/paths.js" },
-	{ file: "cli.ts", specifier: "./core/agents/paths.js" },
 	{ file: "index.ts", specifier: "./core/agents/paths.js" },
 	{ file: "core/daemon/watch.ts", specifier: "../agents/paths.js" },
 	{ file: "adapters/focus-store.ts", specifier: "../core/agents/paths.js" },
@@ -183,14 +200,12 @@ function focusStoreHome(store: FsFocusStore): string {
 	return dirname(dirname(dirname(store.manifestPath("agreement"))));
 }
 
-describe("PIJ_HOME resolves identically at every surface (pij#169)", () => {
-	describe("no surface re-derives it", () => {
-		for (const { file, specifier } of SWEPT_SITES) {
+describe("PIJ_HOME resolves identically at legacy library surfaces (pij#169)", () => {
+	describe("no library surface re-derives it", () => {
+		for (const { file, specifier } of LEGACY_HOME_READERS) {
 			it(`${file} calls resolvePijHome() instead of inlining`, () => {
 				const source = readFileSync(join(PIJ_ROOT, file), "utf8");
-				// Count rather than assert-absent: a file with two sites (cli.ts)
-				// must lose BOTH, and "0 remaining" is the only reading of that
-				// which cannot be satisfied by a partial edit.
+				// Reject every surviving inline fallback, not just its first occurrence.
 				expect(source.match(INLINED)?.length ?? 0).toBe(0);
 				expect(source).toContain(`from "${specifier}"`);
 				expect(source).toContain("resolvePijHome");
@@ -280,5 +295,170 @@ describe("PIJ_HOME resolves identically at every surface (pij#169)", () => {
 			expect(resolvePijHome()).toBe(unset);
 			expect(focusStoreHome(new FsFocusStore())).toBe(unset);
 		});
+	});
+});
+
+const TSX_CLI = createRequire(import.meta.url).resolve("tsx/cli");
+
+/** Include directory creation, symlinks and exact file bytes, not just the lock. */
+function homeSnapshot(root: string, prefix = ""): Record<string, string> {
+	const snapshot: Record<string, string> = {};
+	for (const entry of readdirSync(join(root, prefix), { withFileTypes: true })) {
+		const path = join(prefix, entry.name);
+		if (entry.isDirectory()) {
+			snapshot[path] = "directory";
+			Object.assign(snapshot, homeSnapshot(root, path));
+		} else if (entry.isSymbolicLink()) {
+			snapshot[path] = `link:${readlinkSync(join(root, path))}`;
+		} else {
+			snapshot[path] = readFileSync(join(root, path)).toString("base64");
+		}
+	}
+	return snapshot;
+}
+
+describe.each([
+	undefined,
+	"legacy",
+])("public administration refuses (generation=%s)", (generation) => {
+	let parent: string;
+	let home: string;
+	let env: NodeJS.ProcessEnv;
+	let holder: ReturnType<typeof spawn> | undefined;
+	let endpoint: ReturnType<typeof createServer> | undefined;
+	let connections: number;
+
+	beforeEach(async () => {
+		parent = mkdtempSync(join(tmpdir(), "pij-admin-refusal-"));
+		home = join(parent, ".pij");
+		mkdirSync(home);
+		mkdirSync(join(parent, "bin"));
+		connections = 0;
+		endpoint = createServer((socket) => {
+			connections++;
+			socket.destroy();
+		});
+		endpoint.listen(0, "127.0.0.1");
+		await once(endpoint, "listening");
+		const address = endpoint.address();
+		if (address === null || typeof address === "string") throw new Error("missing private port");
+		env = {
+			...process.env,
+			HOME: parent,
+			USERPROFILE: parent,
+			PATH: join(parent, "bin"),
+			NODE_OPTIONS: "",
+			PIJ_HOME: home,
+			PIJ_RS_STATE_DIR: join(parent, ".pij-rs"),
+			PIJ_RS_ADDR: `127.0.0.1:${address.port}`,
+			PIJ_DAEMON_GENERATION: generation,
+			PIJ_TELEGRAM_ENV: "",
+			PIJ_DAEMON_OWNED: "",
+			PIJ_SESSION_ID: "",
+			PIJ_ROUTE_DIAGNOSTIC: "",
+			TMUX: "",
+			TMUX_PANE: "",
+			CLAUDE_CONFIG_DIR: join(parent, ".claude"),
+			XDG_CONFIG_HOME: join(parent, ".config"),
+			CLAUDE_CODE_SESSION_ID: "",
+			COPILOT_AGENT_SESSION_ID: "",
+			CODEX_THREAD_ID: "",
+		};
+		// A private inert lock holder, never the test runner or a real daemon.
+		// Record stop/restart signals and answer a causal IPC probe after each CLI.
+		holder = spawn(
+			process.execPath,
+			[
+				"-e",
+				`
+			const signals = [];
+			for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"])
+				process.on(signal, () => signals.push(signal));
+			process.on("message", () => process.send(signals));
+			process.send("ready");
+		`,
+			],
+			{ cwd: parent, env, stdio: ["ignore", "ignore", "ignore", "ipc"] },
+		);
+		expect((await once(holder, "message", { signal: AbortSignal.timeout(5_000) }))[0]).toBe(
+			"ready",
+		);
+		writeFileSync(
+			join(home, "daemon.lock"),
+			JSON.stringify({
+				pid: holder.pid,
+				startedAt: new Date().toISOString(),
+			}),
+		);
+		writeFileSync(join(home, "registry.ndjson"), "preserved registry\n");
+		writeFileSync(join(home, "daemon.log"), "preserved daemon log\n");
+	});
+
+	afterEach(async () => {
+		if (holder !== undefined && holder.exitCode === null && holder.signalCode === null) {
+			const closed = once(holder, "close");
+			holder.kill("SIGKILL");
+			await closed;
+		}
+		holder = undefined;
+		if (endpoint !== undefined) {
+			const closed = once(endpoint, "close");
+			endpoint.close();
+			await closed;
+		}
+		endpoint = undefined;
+		rmSync(parent, { recursive: true, force: true });
+	});
+
+	async function expectRefused(argv: readonly string[], pijHome = home): Promise<void> {
+		if (holder === undefined) throw new Error("missing private lock holder");
+		const before = homeSnapshot(parent);
+		const result = spawnSync(
+			process.execPath,
+			[TSX_CLI, join(PIJ_ROOT, "cli.ts"), ...argv, "--json"],
+			{
+				cwd: parent,
+				env: { ...env, PIJ_HOME: pijHome },
+				encoding: "utf8",
+				timeout: 10_000,
+			},
+		);
+		if (result.error) throw result.error;
+		expect(result.status).toBe(4);
+		expect(result.stderr).toBe("");
+		expect(JSON.parse(result.stdout)).toMatchObject({
+			ok: false,
+			v: 2,
+			command: `pij ${argv[0]}`,
+			error: "refused",
+			details: { code: "E-RS-UNPORTED", verb: argv[0] },
+		});
+		expect(holder.exitCode).toBeNull();
+		expect(holder.signalCode).toBeNull();
+		const reply = once(holder, "message", { signal: AbortSignal.timeout(2_000) });
+		holder.send("probe");
+		expect((await reply)[0]).toEqual([]);
+		expect(connections).toBe(0);
+		expect(homeSnapshot(parent)).toEqual(before);
+	}
+
+	it("refuses fresh-home startup without creating a legacy home", async () => {
+		const fresh = join(parent, "fresh", ".pij");
+		expect(existsSync(fresh)).toBe(false);
+		await expectRefused(["daemon", "start"], fresh);
+		expect(existsSync(fresh)).toBe(false);
+	});
+
+	it.each(
+		[
+			["daemon"],
+			["daemon", "start"],
+			["daemon", "stop"],
+			["daemon", "restart"],
+			["daemon", "status"],
+			["path"],
+		].map((argv) => ({ argv })),
+	)("refuses $argv without changing legacy files or the live holder", async ({ argv }) => {
+		await expectRefused(argv);
 	});
 });

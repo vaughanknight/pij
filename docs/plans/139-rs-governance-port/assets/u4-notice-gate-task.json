@@ -1,0 +1,18 @@
+{
+  "base": "78531a0ba2f22469ab72289ba9ff6c1635e863e7",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4-gate",
+  "branch": "139-rs-governance-port-u4-gate",
+  "goal": "Restore REQUIRED automatic keeper notice after durable baton request; prove the eight retained legacy outcomes through actual Rust persistence/delivery",
+  "ruling": "Prime: REQUIRED legacy behaviour. Persist and publish baton.requested as now, then DeliveryService.send(from=requester,to=keeper) with legacy notice text. Return {request,seq,notice:delivered|queued|unverified}; no send and notice:null when keeper missing/dissolved. Same mechanism as decisions answer. Keep eight legacy cases as parity tests.",
+  "target": ["crates/daemon/src/http/governance.rs orchestration_command baton request branch", "A narrowly necessary existing orchestration helper/store surface only if actual legacy keeper semantics demand it", "Rust direct integration proof for the exact eight cases in .pi/extensions/pij/orchestration-notice.integration.test.ts"],
+  "change": [
+    "Read actual legacy notice implementation and the eight tests before defining notice shape/text/keeper selection. Prime's shorthand is not permission to invent a different enum/object or message text; use actual values and preserve the full native envelope.",
+    "Reuse existing DeliveryService, registry and the decision-answer sending pattern. No second sender/transport/retry system. State/event persistence precedes external send, outside EventBus admission lock; do not let a delivery error erase a committed request.",
+    "Classify delivered, queued and unverified honestly from real service outcomes; missing/dissolved keeper is null with zero send. Preserve refusal/self-send policy and existing ownership. Do not fabricate delivery from queue acceptance or pane observation.",
+    "Add eight native fake-host integration cases that assert actual persisted request+event, send/no-send, caller/recipient/text and returned notice. Use real shared queue/spine SQL authority and scripted host boundaries where needed; do not claim that proves a genuine model turn.",
+    "Coordinate response schema/test assumptions with pij-general-miriam (u6), who owns the TS eight-case caller file. u2/pij-written-lansra owns registration.rs/http-shim/native inbox and routing source. u1/pij-electoral-orlandine owns smoke. No overlap is needed.",
+    "Shared governance-routes/events/error fixtures and MANIFEST are PM-owned integration boundaries. If a fixture needs updating, deliver a proposed JSON delta/recipe in your receipt, not a concurrent shared-file edit. PM removes the stale API unsupported-notice claim after composition."
+  ],
+  "constraints": ["Load pij and builder; numbered preflight ACK of exact worktree/HEAD/current identity+model then proceed under this release", "SOURCE ONLY: no tests, builds, typecheck, lint, formatters or commits. PM validates after all slice barriers", "No client.rs/Envelope raw_json edits; PM owns rare Tail error boxing", "No production daemon restart/port7461 fixtures, global config/links/toolchain/main node_modules changes, or inbox transport-log reads", "Code read/write only in assigned worktree and fence; preserve old worktree and buffers; no HOLD"],
+  "acceptance": "Return source patch against78531, SHA256, complete changed-path hashes, eight-case mapping, exact proposed fixture change, and remaining assumptions. READY_TO_VALIDATE is not acceptance. Remain semantic waiting."
+}

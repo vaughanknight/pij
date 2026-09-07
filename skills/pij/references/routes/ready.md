@@ -12,9 +12,9 @@ prime or operator will push the next turn.
    STOP — run NO pij identity command (no adopt, no inbox register).**
    Copilot with its native `pij_send` tool is also extension-owned: reply `Ready.`
    and stop without a competing identity/adopt/inbox command.
-   Copilot without the native tool must report native setup unavailable and stop;
-   adopting or starting a CLI pull receiver is not a delivery fallback. Otherwise,
-   detect only the delivery owner:
+   Copilot without the native tool but with a pane must report native setup
+   unavailable; do not start a competing pull receiver. Without a pane it may
+   use the verified external pull path below. Otherwise, detect the delivery owner:
    - With an exact non-empty `$TMUX_PANE`, resolve `<h>` from the current host
      (`claude` or `codex` — NEVER `pi`: pi/omp seats self-register at
      boot and `pij adopt` rejects `--harness pi` by design) and run exactly
@@ -22,7 +22,13 @@ prime or operator will push the next turn.
      Carry the parent whenever the env has one — it is a self-declaration of who
      governs you, validated and persisted, and it is the ONLY moment it can be
      recorded without someone later remembering. Never discover or guess another pane.
-   - With no `$TMUX_PANE`, do not invent a pane or run shim inbox registration: rs cannot derive paneless bind evidence that way. Report the named admission prerequisite and stop; a verified native register/extension channel is required, never legacy fallback.
+   - With no `$TMUX_PANE`, run `pij inbox register --json` from the current
+     Claude/Copilot/Codex tool shell. Read the accepted id at the complete v2
+     envelope's `data.id`. The bridge checks the established native session
+     environment/files; rs observes the matching long-lived harness ancestor
+     and stores its `(pid, proc_start)`, never the short-lived CLI's process.
+     Missing, conflicting or unverified evidence refuses: do not invent a pane,
+     process tuple, seat id or legacy fallback. See § C1 for exact prerequisites.
 2. **Verify the write, never the print.** Read `pij whoami --json` and `pij phonehome --json`: the complete v2 data must name this seat and corroborate its binding. A tombstoned identity refuses even if an old pid is live. No `revive --attach` repair is ported; native revive requires an explicit tombstoned seat and relaunches it. After reboot/long gaps, every old pane/pid conclusion is stale.
 3. Once verified, reply with exactly:
 
@@ -30,7 +36,14 @@ prime or operator will push the next turn.
 Ready.
 ```
 
-4. **STOP.** In push mode, ending the turn is the wait. Never start a competing inbox receiver. Only an already verified pull-owned native seat may use `pij-rs inbox --wait`; shim `inbox --wait` and auto-registration are unsupported. See the stable [Unsupported status](../../../../docs/how/pij-rs-api.md#unsupported-status), not a legacy workaround.
+4. **Wait through the delivery owner.** In push/extension mode, ending the turn
+   is the wait; never start a competing inbox receiver. In verified external pull
+   mode, use `pij inbox --wait` (or `pij inbox --wait 30000 --json` for a finite
+   wait). The same native session resolves the registered id without exporting
+   `PIJ_SESSION_ID`; claims are acknowledged only after successful output.
+   Never poll `pij state`, and never treat paneless pull as native-extension
+   push attestation. See [Unsupported status](../../../../docs/how/pij-rs-api.md#unsupported-status)
+   for genuinely unported verbs, not a legacy workaround.
 
 ## Hard boundary
 

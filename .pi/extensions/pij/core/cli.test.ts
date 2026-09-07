@@ -2304,24 +2304,17 @@ describe("dispatch tree/link", () => {
 // CliResult the bin would print, so each E-ARG/E-NOREG pin holds whether the
 // rejection happens in parseArgs or in dispatch.
 
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 // Platform-section-local imports (the legacy import block above is frozen):
 // module-scope import declarations hoist, so placement here is behavior-neutral.
-import {
-	chmodSync,
-	existsSync,
-	mkdirSync,
-	mkdtempSync,
-	readFileSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { FsAllocationStore } from "../adapters/allocation-store.js";
 import { FsAssignmentStore } from "../adapters/assignment-store.js";
+import { FsChannel } from "../adapters/channel.js";
 import { FsDispatchStore } from "../adapters/dispatch-store.js";
 import { FakeOpJournal, FakePlatformWriteLock } from "../adapters/fakes.js";
 import { FsFenceStore } from "../adapters/fence-store.js";
@@ -2331,6 +2324,7 @@ import { FsPlatformWriteLock } from "../adapters/platform-write-lock.js";
 import { FsProjectStore } from "../adapters/project-store.js";
 import { FsSpineLog } from "../adapters/spine-store.js";
 import { renderCanaryTimeout } from "./canary.js";
+import { contextWindowFromPane } from "./context/window.js";
 import { canonicalAssignmentJson } from "./platform/assignment.js";
 import type {
 	AllocationStorePort,
@@ -2346,6 +2340,7 @@ import {
 	SPINE_KIND_STATE_SET,
 } from "./platform/types.js";
 import type { StreamWorktreePort } from "./stream.js";
+import { WorktreeManager } from "./worktree.js";
 
 const platformRequire = createRequire(import.meta.url);
 const PLATFORM_TSX = platformRequire.resolve("tsx/cli");
@@ -2501,6 +2496,47 @@ function platformDeps(
 		opJournal: new FakeOpJournal(),
 		platformWriteLock: new FakePlatformWriteLock(),
 	};
+}
+
+/** Retained library integration only: no executable, generation switch or public
+ * CLI emulation. The real filesystem/worktree adapters feed the existing ports. */
+function libraryFsDeps(home: string, repo: string, self?: string) {
+	const packetIdentity = (path: string) => {
+		const absolute = resolve(repo, path);
+		return ok({
+			path: absolute,
+			sha256: createHash("sha256").update(readFileSync(absolute)).digest("hex"),
+		});
+	};
+	return {
+		...platformDeps({ self, cwd: repo, alive: [process.pid] }),
+		pijHome: home,
+		registry: new FsRegistry(home),
+		delivery: new FsChannel(home),
+		projectStore: new FsProjectStore(home),
+		assignmentStore: new FsAssignmentStore(home),
+		allocationStore: new FsAllocationStore(home),
+		fenceStore: new FsFenceStore(home),
+		dispatchStore: new FsDispatchStore(home),
+		spineLog: new FsSpineLog(home),
+		opJournal: new FsOpJournal(home),
+		platformWriteLock: new FsPlatformWriteLock(home, { lockBudgetMs: 200 }),
+		worktrees: new WorktreeManager(),
+		worktreeRoot: resolve(repo, "..", "worktrees"),
+		packetIdentity,
+		nextCanaryNonce: () => "canary-nonce-library-7391",
+		writeCanaryPacket: (input: {
+			readonly caller: SessionDescriptor;
+			readonly dispatchId: string;
+			readonly body: string;
+		}) => {
+			const directory = join(input.caller.dataDir, "canary-packets");
+			mkdirSync(directory, { recursive: true });
+			const path = join(directory, `${input.dispatchId}.md`);
+			writeFileSync(path, input.body, { flag: "wx" });
+			return packetIdentity(path);
+		},
+	} satisfies CliDeps;
 }
 
 /** Unwrap OpJournalPort.pending's Result surface (review 003 H2) — every pin
@@ -6688,11 +6724,9 @@ describe("state clear (State-Model v2)", () => {
 		});
 	});
 
-	describe("stream/fence bin wiring", () => {
-		it("runs create → fence show → close end-to-end and serves generic family help", {
-			timeout: 15_000,
-		}, () => {
-			const root = mkdtempSync(join(tmpdir(), "pij-stream-bin-"));
+	describe("stream/fence retained library integration", () => {
+		it("runs create → fence show → close through real filesystem and git adapters", () => {
+			const root = mkdtempSync(join(tmpdir(), "pij stream library "));
 			const home = join(root, "home");
 			const repo = join(root, "demo");
 			try {
@@ -6703,56 +6737,81 @@ describe("state clear (State-Model v2)", () => {
 				writeFileSync(join(repo, "README.md"), "initial\n");
 				execFileSync("git", ["-C", repo, "add", "README.md"]);
 				execFileSync("git", ["-C", repo, "commit", "--quiet", "-m", "initial"]);
-				new FsProjectStore(home).create(seedProject({ slug: "platform" }));
-				const env = { ...process.env, PIJ_HOME: home };
-				const runBin = (args: readonly string[]) =>
-					spawnSync(process.execPath, [PLATFORM_TSX, PIJ_CLI_BIN, ...args], {
-						cwd: repo,
-						env,
-						encoding: "utf8",
-					});
+				const d = libraryFsDeps(home, repo);
+				expect(d.projectStore.create(seedProject({ slug: "platform" })).ok).toBe(true);
 
-				const help = runBin(["stream", "create", "--help"]);
-				expect(help.status).toBe(0);
-				expect(help.stdout).toContain("pij stream create");
-				const reportHelp = runBin(["report", "--help"]);
-				expect(reportHelp.status).toBe(0);
-				expect(reportHelp.stdout).toContain('pij report question "<what I need from you>"');
-				expect(reportHelp.stdout).toContain('pij report blocked "<what I am waiting on>"');
-				expect(reportHelp.stdout).toContain("[--note <text>]");
-
-				const created = runBin([
-					"stream",
-					"create",
-					"--project",
-					"platform",
-					"--slug",
-					"bin-flow",
-					"--ordinal",
-					"61",
-					"--actor",
-					"tester",
-				]);
-				expect(created.status, created.stderr).toBe(0);
+				const created = run(
+					[
+						"stream",
+						"create",
+						"--project",
+						"platform",
+						"--slug",
+						"bin-flow",
+						"--ordinal",
+						"61",
+						"--actor",
+						"tester",
+					],
+					d,
+				);
+				expect(created.exitCode, created.stderr).toBe(0);
 				expect(created.stdout).toContain("alloc-s061-bin-flow");
 
-				const fenced = runBin([
-					"fence",
-					"set",
-					"bin-flow",
-					"--paths",
-					"src/**",
-					"--actor",
-					"tester",
-				]);
-				expect(fenced.status, fenced.stderr).toBe(0);
-				const shown = runBin(["fence", "show", "--path", "src/api.ts", "--json"]);
-				expect(shown.status, shown.stderr).toBe(0);
-				expect(JSON.parse(shown.stdout) as Fence[]).toHaveLength(1);
+				const allocation = d.allocationStore.read("alloc-s061-bin-flow");
+				if (!allocation) throw new Error("missing allocation");
+				expect(readFileSync(join(allocation.worktree, "README.md"), "utf8")).toBe("initial\n");
+				const fenced = run(
+					["fence", "set", "bin-flow", "--paths", "src/**", "--actor", "tester"],
+					d,
+				);
+				expect(fenced.exitCode, fenced.stderr).toBe(0);
+				const shown = run(["fence", "show", "--path", "src/api.ts", "--json"], d);
+				expect(shown.exitCode, shown.stderr).toBe(0);
+				expect(JSON.parse(shown.stdout)).toHaveLength(1);
 
-				const closed = runBin(["stream", "close", "alloc-s061-bin-flow", "--actor", "tester"]);
-				expect(closed.status, closed.stderr).toBe(0);
+				const closed = run(["stream", "close", "alloc-s061-bin-flow", "--actor", "tester"], d);
+				expect(closed.exitCode, closed.stderr).toBe(0);
 				expect(new FsAllocationStore(home).read("alloc-s061-bin-flow")?.state).toBe("closed");
+				expect(existsSync(allocation.worktree)).toBe(false);
+			} finally {
+				rmSync(root, { recursive: true, force: true });
+			}
+		});
+
+		it("public family help describes the Rust route, not retired local grammar", () => {
+			const root = mkdtempSync(join(tmpdir(), "pij-route-help-"));
+			try {
+				for (const family of ["stream", "report"]) {
+					const result = spawnSync(
+						process.execPath,
+						[PLATFORM_TSX, PIJ_CLI_BIN, family, "--help"],
+						{
+							cwd: root,
+							env: {
+								...process.env,
+								HOME: root,
+								USERPROFILE: root,
+								PIJ_HOME: join(root, "legacy"),
+								PIJ_RS_STATE_DIR: join(root, "rs"),
+								PIJ_RS_ADDR: "127.0.0.1:1",
+								PIJ_SESSION_ID: "",
+								PIJ_DAEMON_GENERATION: "",
+								PIJ_ROUTE_DIAGNOSTIC: "",
+								COPILOT_AGENT_SESSION_ID: "",
+								CLAUDE_CODE_SESSION_ID: "",
+								CODEX_THREAD_ID: "",
+								TMUX: "",
+								TMUX_PANE: "",
+							},
+							encoding: "utf8",
+						},
+					);
+					expect(result.status, result.stderr).toBe(0);
+					expect(result.stdout).toContain(`pij ${family}: POST /v1/${family}`);
+				}
+				expect(existsSync(join(root, "legacy"))).toBe(false);
+				expect(existsSync(join(root, "rs"))).toBe(false);
 			} finally {
 				rmSync(root, { recursive: true, force: true });
 			}
@@ -7058,10 +7117,8 @@ describe("state clear (State-Model v2)", () => {
 			expect(renderDispatchWaitTimeout(record)).not.toContain("state=acked");
 		});
 
-		it("real bin timeout persists delivered-unacked, then a matching ack transitions to acked", {
-			timeout: 15_000,
-		}, () => {
-			const root = mkdtempSync(join(tmpdir(), "pij-dispatch-bin-"));
+		it("retained library wait hint preserves delivered-unacked, then matching ack persists acked", () => {
+			const root = mkdtempSync(join(tmpdir(), "pij dispatch library "));
 			const home = join(root, "home");
 			const repo = join(root, "repo");
 			const packet = join(repo, "packet.md");
@@ -7093,41 +7150,32 @@ describe("state clear (State-Model v2)", () => {
 						effort: "high",
 					}),
 				);
-				const env = {
-					...process.env,
-					PIJ_HOME: home,
-					PIJ_SESSION_ID: "pij-parent",
-					COPILOT_AGENT_SESSION_ID: "",
-					CLAUDE_CODE_SESSION_ID: "",
-					CODEX_THREAD_ID: "",
-					TMUX_PANE: "",
-				};
-				const timedOut = spawnSync(
-					process.execPath,
-					[PLATFORM_TSX, PIJ_CLI_BIN, "dispatch", "pij-worker", "--packet", packet, "--wait=20"],
-					{ cwd: repo, env, encoding: "utf8" },
-				);
-				expect(timedOut.status, timedOut.stderr).toBe(0);
+				const d = libraryFsDeps(home, repo, "pij-parent");
+				const sent = run(["dispatch", "pij-worker", "--packet", "packet.md", "--wait=20"], d);
+				expect(sent.exitCode, sent.stderr).toBe(0);
 				const store = new FsDispatchStore(home);
 				const record = store.list()[0];
 				expect(record?.state).toBe("delivered-unacked");
 				if (!record) throw new Error("missing dispatch");
-				const terminalOutput = timedOut.stdout.trim().split(/\r?\n/).at(-1);
-				expect(terminalOutput).toBe(renderDispatchWaitTimeout(record));
-				expect(timedOut.stdout).not.toContain("state=acked");
-				const sha = createHash("sha256").update(readFileSync(packet)).digest("hex");
-				const acked = spawnSync(
-					process.execPath,
-					[PLATFORM_TSX, PIJ_CLI_BIN, "ack", record?.id ?? "missing", "--packet-sha", sha],
-					{
-						cwd: repo,
-						env: { ...env, PIJ_SESSION_ID: "pij-worker" },
-						encoding: "utf8",
-					},
+				expect(sent.follow).toMatchObject({
+					kind: "dispatch-wait",
+					dispatchId: record.id,
+					timeoutMs: 20,
+				});
+				expect(record.packetPath).toBe(packet);
+				expect(renderDispatchWaitTimeout(record)).toBe(
+					`dispatch ${record.id} state=delivered-unacked (timeout awaiting brief ack)`,
 				);
-				expect(acked.status, acked.stderr).toBe(0);
+				expect(renderDispatchWaitTimeout(record)).not.toContain("state=acked");
+				const sha = createHash("sha256").update(readFileSync(packet)).digest("hex");
+				expect(record.packetSha256).toBe(sha);
+				const acked = run(
+					["ack", record.id, "--packet-sha", sha],
+					libraryFsDeps(home, repo, "pij-worker"),
+				);
+				expect(acked.exitCode, acked.stderr).toBe(0);
 				expect(acked.stdout).toContain("state=acked");
-				expect(store.read(record?.id ?? "missing")?.state).toBe("acked");
+				expect(store.read(record.id)?.state).toBe("acked");
 			} finally {
 				rmSync(root, { recursive: true, force: true });
 			}
@@ -7402,49 +7450,8 @@ describe("state clear (State-Model v2)", () => {
 			expect(d.dispatchStore.read("dispatch-test-1")?.canary).toBeUndefined();
 		});
 
-		function collectChild(
-			args: readonly string[],
-			cwd: string,
-			env: NodeJS.ProcessEnv,
-		): Promise<{
-			readonly status: number | null;
-			readonly stdout: string;
-			readonly stderr: string;
-		}> {
-			const child = spawn(process.execPath, [PLATFORM_TSX, PIJ_CLI_BIN, ...args], {
-				cwd,
-				env,
-				stdio: ["ignore", "pipe", "pipe"],
-			});
-			let stdout = "";
-			let stderr = "";
-			child.stdout.setEncoding("utf8");
-			child.stderr.setEncoding("utf8");
-			child.stdout.on("data", (chunk: string) => {
-				stdout += chunk;
-			});
-			child.stderr.on("data", (chunk: string) => {
-				stderr += chunk;
-			});
-			return new Promise((resolve) => {
-				child.on("close", (status) => resolve({ status, stdout, stderr }));
-			});
-		}
-
-		async function waitForDispatch(store: FsDispatchStore): Promise<Dispatch> {
-			const deadline = Date.now() + 3_000;
-			while (Date.now() < deadline) {
-				const record = store.list()[0];
-				if (record) return record;
-				await new Promise((resolve) => setTimeout(resolve, 20));
-			}
-			throw new Error("timed out waiting for canary dispatch");
-		}
-
-		it("real bin timeout leaves delivered-unacked, no CanaryRecord, and a named terminal refusal", {
-			timeout: 15_000,
-		}, () => {
-			const root = mkdtempSync(join(tmpdir(), "pij-canary-timeout-bin-"));
+		it("retained library canary wait hint leaves no CanaryRecord and renders a named timeout", () => {
+			const root = mkdtempSync(join(tmpdir(), "pij-canary-timeout-library-"));
 			const home = join(root, "home");
 			const repo = join(root, "repo");
 			try {
@@ -7480,147 +7487,86 @@ describe("state clear (State-Model v2)", () => {
 						effort: "xhigh",
 					}),
 				);
-				const env = {
-					...process.env,
-					PIJ_HOME: home,
-					PIJ_SESSION_ID: "pij-parent",
-					COPILOT_AGENT_SESSION_ID: "",
-					CLAUDE_CODE_SESSION_ID: "",
-					CODEX_THREAD_ID: "",
-					TMUX_PANE: "",
-				};
-				const timedOut = spawnSync(
-					process.execPath,
-					[
-						PLATFORM_TSX,
-						PIJ_CLI_BIN,
-						"canary",
-						"pij-worker",
-						"--expect-model",
-						EXPECTED_MODEL,
-						"--wait=20",
-					],
-					{ cwd: repo, env, encoding: "utf8" },
+				const d = libraryFsDeps(home, repo, "pij-parent");
+				const started = run(
+					["canary", "pij-worker", "--expect-model", EXPECTED_MODEL, "--wait=20"],
+					d,
 				);
-				expect(timedOut.status).toBe(3);
+				expect(started.exitCode, started.stderr).toBe(0);
 				const record = new FsDispatchStore(home).list()[0];
 				if (!record) throw new Error("missing canary dispatch");
 				expect(record.state).toBe("delivered-unacked");
 				expect(record.canary).toBeUndefined();
 				expect(existsSync(record.packetPath)).toBe(true);
-				const terminalOutput = timedOut.stdout.trim().split(/\r?\n/).at(-1);
-				expect(terminalOutput).toBe(renderCanaryTimeout(record));
-				expect(timedOut.stdout).not.toContain("canary PASS");
+				expect(started.follow).toMatchObject({
+					kind: "canary-wait",
+					dispatchId: record.id,
+					timeoutMs: 20,
+				});
+				expect(renderCanaryTimeout(record)).toBe(
+					`E-CANARY-TIMEOUT: canary dispatch ${record.id} state=delivered-unacked (timeout awaiting brief ack)`,
+				);
+				expect(renderCanaryTimeout(record)).not.toContain("canary PASS");
 			} finally {
 				rmSync(root, { recursive: true, force: true });
 			}
 		});
 
-		it("real bin PASSES with an unverified tier when the effective context tier is unobservable", {
-			timeout: 15_000,
-		}, async () => {
-			const root = mkdtempSync(join(tmpdir(), "pij-canary-pass-bin-"));
+		it("retained library records an unverified tier when the parsed footer has no context marker", () => {
+			// This is the historical library contract, NOT a Rust model-observation
+			// canary. Public Rust canaries still require fresh native model evidence.
+			const root = mkdtempSync(join(tmpdir(), "pij-canary-context-library-"));
 			const home = join(root, "home");
 			const repo = join(root, "repo");
-			const userHome = join(root, "user-home");
-			const fakeBin = join(root, "bin");
 			try {
 				mkdirSync(home, { recursive: true });
 				mkdirSync(repo, { recursive: true });
-				mkdirSync(join(userHome, ".pi", "agent"), { recursive: true });
-				mkdirSync(fakeBin, { recursive: true });
-				writeFileSync(
-					join(userHome, ".pi", "agent", "models.json"),
-					JSON.stringify({
-						providers: {
-							"github-copilot": {
-								models: [
-									{
-										id: "gpt-5.6-sol",
-										name: "GPT-5.6 Sol",
-										contextWindow: 1_050_000,
-									},
-								],
-							},
-						},
-					}),
-				);
-				const fakeTmux = join(fakeBin, "tmux");
-				writeFileSync(
-					fakeTmux,
-					'#!/usr/bin/env node\nprocess.stdout.write("gpt-5.6-sol · ready\\n");\n',
-				);
-				chmodSync(fakeTmux, 0o755);
-				const registry = new FsRegistry(home);
-				registry.write(
-					desc({
-						id: "pij-parent",
-						folder: repo,
-						dataDir: join(home, "pij-parent"),
-						eventsPath: join(home, "pij-parent", "events.ndjson"),
-						pid: process.pid,
-						state: "idle",
-						lifecycle: "bound",
-						paneId: "%30",
-						harnessSessionId: "native-parent",
-					}),
-				);
-				registry.write(
-					desc({
-						id: "pij-worker",
-						folder: repo,
-						dataDir: join(home, "pij-worker"),
-						eventsPath: join(home, "pij-worker", "events.ndjson"),
-						pid: process.pid,
-						state: "idle",
-						lifecycle: "bound",
-						deliveryMode: "pull",
-						paneId: "%31",
-						harnessSessionId: "native-worker",
-						boundModel: EXPECTED_MODEL,
-						effort: "xhigh",
-					}),
-				);
-				const parentEnv = {
-					...process.env,
-					PIJ_HOME: home,
-					PIJ_SESSION_ID: "pij-parent",
-					COPILOT_AGENT_SESSION_ID: "",
-					CLAUDE_CODE_SESSION_ID: "",
-					CODEX_THREAD_ID: "",
-					TMUX_PANE: "",
-					HOME: userHome,
-					PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+				const base = canaryDeps();
+				const observed = contextWindowFromPane("gpt-5.6-sol · ready\n");
+				expect(observed).toBeNull();
+				const d = {
+					...libraryFsDeps(home, repo, "pij-parent"),
+					models: base.models,
+					contextWindowReader: { read: () => observed },
 				};
-				const canary = collectChild(
+				for (const descriptor of base.registry.list()) {
+					d.registry.write({
+						...descriptor,
+						folder: repo,
+						dataDir: join(home, descriptor.id),
+						eventsPath: join(home, descriptor.id, "events.ndjson"),
+						pid: process.pid,
+					});
+				}
+				const started = run(
 					["canary", "pij-worker", "--expect-model", EXPECTED_MODEL, "--wait=2000"],
-					repo,
-					parentEnv,
+					d,
 				);
-				const store = new FsDispatchStore(home);
-				const pending = await waitForDispatch(store);
+				expect(started.exitCode, started.stderr).toBe(0);
+				const pending = d.dispatchStore.list()[0];
+				if (!pending) throw new Error("missing canary dispatch");
 				const sha = createHash("sha256").update(readFileSync(pending.packetPath)).digest("hex");
-				const acked = spawnSync(
-					process.execPath,
-					[PLATFORM_TSX, PIJ_CLI_BIN, "ack", pending.id, "--packet-sha", sha],
-					{
-						cwd: repo,
-						env: { ...parentEnv, PIJ_SESSION_ID: "pij-worker" },
-						encoding: "utf8",
-					},
+				expect(pending.packetSha256).toBe(sha);
+				const acked = run(
+					["ack", pending.id, "--packet-sha", sha],
+					libraryFsDeps(home, repo, "pij-worker"),
 				);
-				expect(acked.status, acked.stderr).toBe(0);
-				// plan 071 D6 — the fake tmux footer publishes NO context marker, which
-				// is what every real claude pane looks like. That used to be a hard
-				// E-CANARY-CONTEXT refusal; it is now a pass that says out loud the
-				// tier was never verified. (The observed-contradiction refusal is
-				// covered by the control in core/canary.test.ts.)
-				const completed = await canary;
-				expect(completed.status, completed.stderr).toBe(0);
+				expect(acked.exitCode, acked.stderr).toBe(0);
+				const completed = finalizeCanary(
+					{
+						dispatchId: pending.id,
+						nonce: d.nextCanaryNonce(),
+						expectedModel: EXPECTED_MODEL,
+						json: false,
+					},
+					d,
+				);
+				expect(completed.exitCode, completed.stderr).toBe(0);
 				expect(completed.stdout).toContain("canary PASS");
 				expect(completed.stdout).toContain("contextTier=unverified");
-				const record = store.read(pending.id);
+				const record = new FsDispatchStore(home).read(pending.id);
 				if (!record) throw new Error("missing acknowledged dispatch");
+				expect(record.state).toBe("acked");
 				expect(record.canary?.contextWindow?.check).toBe("unverified");
 			} finally {
 				rmSync(root, { recursive: true, force: true });

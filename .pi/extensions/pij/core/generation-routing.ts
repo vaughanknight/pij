@@ -52,6 +52,13 @@ function renderAdopt(payload: unknown): string {
 	return `adopted ${id} (${where}, ${bound}) — peers can now: pij send ${id} "<text>"`;
 }
 
+function renderRegister(payload: unknown): string {
+	const harness = text(payload, "harness");
+	if (harness === "pi" || harness === "omp")
+		return "pi/omp seats self-register at boot; you are already reachable — run `pij whoami` to confirm, never adopt";
+	return `registered ${text(payload, "id") ?? "?"} (${harness ?? "?"}, ${text(payload, "pane") === undefined ? "paneless pull" : "pane push"})`;
+}
+
 function renderWhoami(payload: unknown): string {
 	return [
 		`pij session: ${text(payload, "id") ?? "?"}`,
@@ -204,9 +211,10 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 	{
 		verb: "inbox",
 		leaf: "register",
-		unported:
-			"paneless registration has no verified rs bind evidence; use supported native admission",
-		why: "Never register a second legacy seat",
+		rsPath: "/v1/register",
+		method: "POST",
+		render: renderRegister,
+		why: "Resolve registered panes or admit verified external pull hosts through native rs registration",
 	},
 	{
 		verb: "bg",

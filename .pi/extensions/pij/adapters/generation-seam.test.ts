@@ -274,10 +274,7 @@ describe("leaf routing leaves grammar with the daemon", () => {
 		expect(JSON.parse(seen[0]?.body ?? "null").argv).toEqual(argv);
 	});
 
-	it.each([
-		"register",
-		"frobnicate",
-	])("inbox %s is a named refusal, not a bare-inbox read", async (leaf) => {
+	it.each(["frobnicate"])("inbox %s is a named refusal, not a bare-inbox read", async (leaf) => {
 		const seen: Seen[] = [];
 		const result = await routeVerb("inbox", leaf, ["inbox", leaf], deps(seen));
 		expect(result.outcome).toMatchObject({ kind: "rs-error", code: "E-RS-UNPORTED" });
@@ -321,7 +318,7 @@ describe("leaf routing leaves grammar with the daemon", () => {
 });
 
 describe("generation diagnostics report capability attempts, not completed operations", () => {
-	it("expands the actual inbox leaves and labels the unported leaf", async () => {
+	it("expands actual inbox leaves without performing registration", async () => {
 		const seen: Seen[] = [];
 		const decisions = await probeDecisionOnly(["inbox"], deps(seen));
 		expect(decisions.map((decision) => decision.verb)).toEqual([
@@ -329,8 +326,8 @@ describe("generation diagnostics report capability attempts, not completed opera
 			"inbox check",
 			"inbox register",
 		]);
-		expect(decisions.map((decision) => decision.generation)).toEqual(["rs", "rs", "rs-failed"]);
-		expect(decisions[2]?.line).toContain("E-RS-UNPORTED");
+		expect(decisions.map((decision) => decision.generation)).toEqual(["rs", "rs", "rs"]);
+		expect(decisions[2]?.line).toContain("/v1/register");
 		expect(seen).toEqual([]);
 	});
 

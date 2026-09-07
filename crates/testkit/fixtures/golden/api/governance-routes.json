@@ -1,4 +1,87 @@
 {
+  "baton_notice_cases": [
+    {
+      "id": "idle-live-pi",
+      "harness": "pi",
+      "state": "idle",
+      "evidence": "active",
+      "notice": "queued",
+      "send_calls": 1,
+      "persisted_messages": 1
+    },
+    {
+      "id": "working-live-pi",
+      "harness": "pi",
+      "state": "working",
+      "evidence": "active",
+      "notice": "queued",
+      "send_calls": 1,
+      "persisted_messages": 1
+    },
+    {
+      "id": "fresh-live-control-plane",
+      "harness": "codex",
+      "state": "idle",
+      "evidence": "active",
+      "notice": "queued",
+      "send_calls": 1,
+      "persisted_messages": 1
+    },
+    {
+      "id": "stale-live-control-plane",
+      "harness": "copilot",
+      "state": "idle",
+      "evidence": "recycled",
+      "notice": "unverified",
+      "send_calls": 1,
+      "persisted_messages": 1
+    },
+    {
+      "id": "dead-keeper",
+      "harness": "pi",
+      "state": "idle",
+      "evidence": "dead",
+      "notice": "unverified",
+      "send_calls": 1,
+      "persisted_messages": 1
+    },
+    {
+      "id": "missing-keeper",
+      "harness": "pi",
+      "state": "idle",
+      "evidence": "missing",
+      "notice": null,
+      "send_calls": 0,
+      "persisted_messages": 0
+    },
+    {
+      "id": "dissolved-pull-keeper",
+      "harness": "copilot",
+      "state": "idle",
+      "evidence": "dissolved",
+      "notice": null,
+      "send_calls": 0,
+      "persisted_messages": 0
+    },
+    {
+      "id": "live-bound-pull-keeper",
+      "harness": "copilot",
+      "state": "idle",
+      "evidence": "active",
+      "notice": "queued",
+      "send_calls": 1,
+      "persisted_messages": 1
+    }
+  ],
+  "baton_notice_body_template": "[pij orchestration] baton '{baton}' requested by {requester}: {purpose} (request {request_id})",
+  "baton_notice_invariants": [
+    "baton.request persists its request and publishes baton.requested before using the existing DeliveryService.send once, from requester to definition.created_by, with the legacy request notice body.",
+    "Missing or dissolved keeper returns notice:null without a delivery admission; the committed request and event remain.",
+    "Use actual receipt strength: idle or working Pi/Omp extension-stream admission is queued until ReaderRead (#374 honest-receipt rule); confirmed socket/native injection may report delivered.",
+    "Unverified uses only existing core::liveness::alive Dead/Recycled process-incarnation evidence; native stale-external witness is a recycled binding, never a restored heartbeat-age threshold.",
+    "Send error, Held or Refused does not erase the committed request; E-RS-PARTIAL carries committed=true, event_published=true, request and seq. Publication failure occurs before any send.",
+    "Self-send still goes through existing delivery refusal; no special self-send bypass or second sender."
+  ],
   "contract_version": 1,
   "plan": 139,
   "status": "frozen-at-u0-commit",
@@ -1048,6 +1131,7 @@
                 "requested_at": 1788739200000,
                 "state": "requested"
               },
+              "notice": "queued",
               "seq": 101
             }
           }

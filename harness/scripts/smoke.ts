@@ -1,44 +1,23 @@
 #!/usr/bin/env tsx
 // npm run smoke -- [name] — runs each .pi/extensions/<name>/smoke.ts via the Driver SDK.
 
-import { spawn, spawnSync } from "node:child_process";
+import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
-	chmodSync,
 	mkdirSync,
-	mkdtempSync,
 	readdirSync,
 	readFileSync,
-	rmSync,
+	realpathSync,
 	statSync,
 	writeFileSync,
 } from "node:fs";
-import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-
-import { FsDispatchStore } from "../../.pi/extensions/pij/adapters/dispatch-store.js";
-import { FsRegistry } from "../../.pi/extensions/pij/adapters/fs-registry.js";
-import type { SessionDescriptor } from "../../.pi/extensions/pij/core/types.js";
-import {
-	isolatedChildEnvironment,
-	loadScenario,
-	runScenario,
-	type Scenario,
-} from "../driver/index.js";
+import { exerciseExternalRoundtrip } from "../driver/governance-external.js";
+import { type CommandResult, PrivateGovernanceFixture } from "../driver/governance-fixture.js";
+import { loadScenario, runScenario, type Scenario } from "../driver/index.js";
 
 const PIJ_ROOT = join(import.meta.dirname, "..", "..");
 const EXTENSIONS_ROOT = join(PIJ_ROOT, ".pi", "extensions");
-const WATCHDOG_PROOF = join(
-	PIJ_ROOT,
-	"docs",
-	"plans",
-	"055-pij-watchdog",
-	"proofs",
-	"run-proofs.ts",
-);
-const TSX_CLI = createRequire(import.meta.url).resolve("tsx/cli");
-const PIJ_CLI = join(PIJ_ROOT, ".pi", "extensions", "pij", "cli.ts");
 
 function findTopLevelFiles(root: string, filename: string, filter?: string): string[] {
 	const found: string[] = [];
@@ -84,270 +63,347 @@ export function resolveSmokeCommand(
 	return `pi --approve --no-extensions${extensions}`;
 }
 
-interface WatchdogSmokeResult {
-	readonly verdict: "PASS" | "SKIP" | "FAIL";
-	readonly reason?: string;
-}
-
-interface TeamScaffoldSmokeResult {
+interface SmokeResult {
 	readonly verdict: "PASS" | "FAIL";
 	readonly reason?: string;
 }
 
-function smokeDescriptor(
-	home: string,
-	repo: string,
-	over: Partial<SessionDescriptor> & { readonly id: string },
-): SessionDescriptor {
-	return {
-		folder: repo,
-		dataDir: join(home, over.id),
-		eventsPath: join(home, over.id, "events.ndjson"),
-		pid: process.pid,
-		startedAt: new Date().toISOString(),
-		state: "idle",
-		lifecycle: "bound",
-		deliveryMode: "pull",
-		...over,
-	};
+function object(value: unknown): Record<string, unknown> {
+	assert(value !== null && typeof value === "object" && !Array.isArray(value));
+	return value as Record<string, unknown>;
 }
 
-function runPij(
-	args: readonly string[],
-	cwd: string,
-	env: NodeJS.ProcessEnv,
-): { readonly stdout: string; readonly stderr: string } {
-	const result = spawnSync(process.execPath, [TSX_CLI, PIJ_CLI, ...args], {
-		cwd,
-		env,
-		encoding: "utf8",
-		timeout: 15_000,
-	});
-	if (result.error) throw result.error;
-	if (result.status !== 0) {
-		throw new Error(result.stderr.trim() || result.stdout.trim() || `pij exited ${result.status}`);
+function text(value: unknown): string {
+	assert(typeof value === "string" && value.length > 0);
+	return value;
+}
+
+function sequence(value: unknown): number {
+	assert(typeof value === "number" && Number.isSafeInteger(value) && value >= 0);
+	return value;
+}
+
+/** Keep the entire wire response: never turn a data projection into an envelope. */
+export function parseSmokeEnvelope(
+	result: CommandResult,
+	expectedOk = true,
+	refusalCode?: string,
+): Record<string, unknown> {
+	const envelope = object(JSON.parse(result.stdout));
+	assert.equal(envelope.v, 2, `wire version: ${result.stdout}`);
+	text(envelope.command);
+	assert.equal(envelope.ok, expectedOk, `response: ${result.stdout}\n${result.stderr}`);
+	assert.notEqual(result.status, null, `command terminated by signal: ${result.stderr}`);
+	if (expectedOk) assert.equal(result.status, 0, result.stderr);
+	else assert.notEqual(result.status, 0, "a refusal must exit unsuccessfully");
+	if (refusalCode !== undefined) assert.equal(object(envelope.details).code, refusalCode);
+	return envelope;
+}
+
+function smokeFailure(error: unknown): string {
+	if (error instanceof AggregateError) {
+		return [error.message, ...error.errors.map(smokeFailure)].join("\n");
 	}
-	return { stdout: result.stdout, stderr: result.stderr };
-}
-
-function collectPij(
-	args: readonly string[],
-	cwd: string,
-	env: NodeJS.ProcessEnv,
-): Promise<{ readonly status: number | null; readonly stdout: string; readonly stderr: string }> {
-	const child = spawn(process.execPath, [TSX_CLI, PIJ_CLI, ...args], {
-		cwd,
-		env,
-		stdio: ["ignore", "pipe", "pipe"],
-	});
-	let stdout = "";
-	let stderr = "";
-	child.stdout.setEncoding("utf8");
-	child.stderr.setEncoding("utf8");
-	child.stdout.on("data", (chunk: string) => {
-		stdout += chunk;
-	});
-	child.stderr.on("data", (chunk: string) => {
-		stderr += chunk;
-	});
-	return new Promise((done) => {
-		child.on("close", (status) => done({ status, stdout, stderr }));
-	});
-}
-
-async function waitForCanaryDispatch(store: FsDispatchStore): Promise<string> {
-	const deadline = Date.now() + 5_000;
-	while (Date.now() < deadline) {
-		const record = store
-			.list()
-			.find(
-				(candidate) =>
-					candidate.packetPath.includes("/canary-packets/") &&
-					candidate.state === "delivered-unacked",
-			);
-		if (record) return record.id;
-		await new Promise((done) => setTimeout(done, 20));
+	if (error instanceof Error) {
+		return [
+			error.stack ?? error.message,
+			...(error.cause === undefined ? [] : [smokeFailure(error.cause)]),
+		].join("\n");
 	}
-	throw new Error("canary dispatch did not appear");
+	return String(error);
 }
 
-export async function runTeamScaffoldSmoke(): Promise<TeamScaffoldSmokeResult> {
-	const root = mkdtempSync(join(tmpdir(), "pij-team-scaffold-smoke-"));
-	const home = join(root, "home");
-	const repo = join(root, "repo");
+async function privateSmoke(
+	exercise: (fixture: PrivateGovernanceFixture) => Promise<void>,
+): Promise<SmokeResult> {
+	let fixture: PrivateGovernanceFixture | undefined;
+	const failures: unknown[] = [];
 	try {
-		mkdirSync(home, { recursive: true });
-		mkdirSync(join(repo, ".harness", "government", "briefs"), { recursive: true });
-		mkdirSync(join(repo, "src", "api"), { recursive: true });
-		writeFileSync(join(repo, "README.md"), "team scaffold smoke\n");
-		writeFileSync(join(repo, "src", "api", "index.ts"), "export const ready = true;\n");
-		writeFileSync(join(repo, ".harness", "government", "briefs", "s061.md"), "# Stream brief\n");
-		const fakeBin = join(root, "bin");
-		mkdirSync(fakeBin, { recursive: true });
-		const fakeTmux = join(fakeBin, "tmux");
-		writeFileSync(
-			fakeTmux,
-			'#!/usr/bin/env node\nprocess.stdout.write("GPT-5.6 Sol · 1.1M context\\n");\n',
-		);
-		chmodSync(fakeTmux, 0o755);
-		for (const args of [
-			["init", "--quiet", repo],
-			["-C", repo, "config", "user.email", "pij@example.test"],
-			["-C", repo, "config", "user.name", "pij smoke"],
-			["-C", repo, "add", "README.md", "src/api/index.ts", ".harness/government/briefs/s061.md"],
-			["-C", repo, "commit", "--quiet", "-m", "initial"],
-		] as const) {
-			const git = spawnSync("git", args, { encoding: "utf8" });
-			if (git.status !== 0) throw new Error(git.stderr.trim() || `git ${args.join(" ")} failed`);
-		}
-
-		const registry = new FsRegistry(home);
-		registry.write(
-			smokeDescriptor(home, repo, {
-				id: "pij-parent",
-				paneId: "%61",
-				harnessSessionId: "native-parent",
-			}),
-		);
-		registry.write(
-			smokeDescriptor(home, repo, {
-				id: "pij-worker",
-				paneId: "%62",
-				harnessSessionId: "native-worker",
-				boundModel: "github-copilot/gpt-5.6-sol",
-				effort: "high",
-			}),
-		);
-		const parentEnv = {
-			...process.env,
-			PIJ_HOME: home,
-			PIJ_SESSION_ID: "pij-parent",
-			PIJ_TEST_NO_FSYNC: "1",
-			COPILOT_AGENT_SESSION_ID: "",
-			CLAUDE_CODE_SESSION_ID: "",
-			CODEX_THREAD_ID: "",
-			TMUX_PANE: "",
-			PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
-		};
-		const workerEnv = { ...parentEnv, PIJ_SESSION_ID: "pij-worker" };
-
-		runPij(
-			[
-				"project",
-				"create",
-				"Team scaffold demo",
-				"--slug",
-				"team-scaffold-demo",
-				"--actor",
-				"pij-prime",
-			],
-			repo,
-			parentEnv,
-		);
-		runPij(
-			[
-				"stream",
-				"create",
-				"--project",
-				"team-scaffold-demo",
-				"--slug",
-				"api-rework",
-				"--ordinal",
-				"61",
-				"--actor",
-				"pij-prime",
-			],
-			repo,
-			parentEnv,
-		);
-		runPij(
-			["fence", "set", "api-rework", "--paths", "src/api/**", "--actor", "pij-prime"],
-			repo,
-			parentEnv,
-		);
-
-		const dispatched = JSON.parse(
-			runPij(
-				["dispatch", "pij-worker", "--packet", ".harness/government/briefs/s061.md", "--json"],
-				repo,
-				parentEnv,
-			).stdout,
-		) as { readonly id: string; readonly packetSha256: string };
-		runPij(["ack", dispatched.id, "--packet-sha", dispatched.packetSha256], repo, workerEnv);
-
-		const store = new FsDispatchStore(home);
-		const canary = collectPij(
-			["canary", "pij-worker", "--expect-model", "github-copilot/gpt-5.6-sol", "--wait=5000"],
-			repo,
-			parentEnv,
-		);
-		const canaryId = await waitForCanaryDispatch(store);
-		const canaryRecord = store.read(canaryId);
-		if (!canaryRecord) throw new Error("canary dispatch vanished");
-		const canarySha = createHash("sha256")
-			.update(readFileSync(canaryRecord.packetPath))
-			.digest("hex");
-		runPij(["ack", canaryId, "--packet-sha", canarySha], repo, workerEnv);
-		const canaryResult = await canary;
-		if (canaryResult.status !== 0) {
-			throw new Error(canaryResult.stderr.trim() || canaryResult.stdout.trim());
-		}
-		if (store.read(canaryId)?.canary === undefined) {
-			throw new Error("canary pass did not attach a CanaryRecord");
-		}
-
-		const anomalies = JSON.parse(
-			runPij(["anomalies", "--json"], repo, parentEnv).stdout,
-		) as unknown[];
-		if (anomalies.length !== 0) {
-			throw new Error(`clean walkthrough produced anomalies: ${JSON.stringify(anomalies)}`);
-		}
-		runPij(["stream", "close", "alloc-s061-api-rework", "--actor", "pij-prime"], repo, parentEnv);
-		return { verdict: "PASS" };
+		fixture = await PrivateGovernanceFixture.open(PIJ_ROOT);
+		await exercise(fixture);
 	} catch (error) {
-		return {
-			verdict: "FAIL",
-			reason: error instanceof Error ? error.message : String(error),
-		};
+		failures.push(error);
 	} finally {
-		rmSync(root, { recursive: true, force: true });
+		try {
+			await fixture?.close();
+		} catch (error) {
+			failures.push(error);
+		}
 	}
+	return failures.length === 0
+		? { verdict: "PASS" }
+		: {
+				verdict: "FAIL",
+				reason: failures.map(smokeFailure).join("\n"),
+			};
 }
 
-export function runWatchdogSmoke(spawn: typeof spawnSync = spawnSync): WatchdogSmokeResult {
-	const result = spawn(process.execPath, [TSX_CLI, WATCHDOG_PROOF, "--smoke"], {
-		cwd: PIJ_ROOT,
-		encoding: "utf8",
-		timeout: 60_000,
-		env: { ...process.env, ...isolatedChildEnvironment() },
+export async function runTeamScaffoldSmoke(): Promise<SmokeResult> {
+	return privateSmoke(async (fixture) => {
+		const parent = object(
+			parseSmokeEnvelope(
+				await fixture.native(["adopt", fixture.parentPane, "--harness", "omp", "--role", "prime"]),
+			).data,
+		);
+		const parentId = text(parent.id);
+		const workerEnv = { ...fixture.env, TMUX_PANE: fixture.workerPane };
+		const worker = object(
+			parseSmokeEnvelope(
+				await fixture.native(
+					[
+						"adopt",
+						fixture.workerPane,
+						"--harness",
+						"omp",
+						"--parent",
+						parentId,
+						"--role",
+						"worker",
+					],
+					workerEnv,
+				),
+			).data,
+		);
+		const workerId = text(worker.id);
+		assert.equal(worker.parent, parentId);
+		assert.equal(worker.pane, fixture.workerPane);
+		assert(sequence(object(worker.proc).proc_start) > 0);
+		assert.equal(worker.session, null, "inert pane is not a model session");
+
+		for (const args of [
+			["init", "-b", "main", fixture.repo],
+			[
+				"-c",
+				"user.name=Private smoke fixture",
+				"-c",
+				"user.email=fixture@example.invalid",
+				"commit",
+				"--allow-empty",
+				"-m",
+				"private smoke",
+			],
+		]) {
+			const result = await fixture.run("git", args);
+			assert.equal(result.status, 0, `git: ${result.stderr}`);
+		}
+		const projectReply = parseSmokeEnvelope(
+			await fixture.shim(["project", "create", "Private team smoke", "--repo", fixture.repo]),
+		);
+		const projectData = object(projectReply.data);
+		const project = text(object(projectData.project).slug);
+		const projectSeq = sequence(projectData.seq);
+		const worktrees = join(fixture.root, "worktrees");
+		mkdirSync(worktrees);
+		const streamData = object(
+			parseSmokeEnvelope(
+				await fixture.shim([
+					"stream",
+					"create",
+					"--project",
+					project,
+					"--slug",
+					"workflow",
+					"--base",
+					"main",
+					"--root",
+					worktrees,
+				]),
+			).data,
+		);
+		const stream = object(streamData.stream);
+		const streamId = text(stream.id);
+		assert.equal(stream.project, project);
+		assert.equal(stream.state, "created");
+		assert(sequence(stream.ordinal) > 0);
+		const worktree = realpathSync(text(stream.worktree));
+		assert(worktree.startsWith(`${realpathSync(worktrees)}/`), "worktree escaped private root");
+		assert(statSync(join(worktree, ".git")).isFile(), "real linked worktree");
+		const branch = await fixture.run("git", ["-C", worktree, "branch", "--show-current"]);
+		assert.equal(branch.status, 0, branch.stderr);
+		assert.equal(branch.stdout.trim(), stream.branch);
+
+		const fence = object(
+			object(
+				parseSmokeEnvelope(await fixture.shim(["fence", "set", streamId, "--paths", "src/api/**"]))
+					.data,
+			).fence,
+		);
+		const shownFence = object(
+			parseSmokeEnvelope(await fixture.shim(["fence", "show", "--stream", streamId])).data,
+		);
+		assert(Array.isArray(shownFence.fences));
+		assert.deepEqual(shownFence.fences, [fence]);
+		assert.equal(fence.stream, streamId);
+		assert.deepEqual(fence.paths, ["src/api/**"]);
+
+		const packet = join(fixture.root, "packet.txt");
+		writeFileSync(packet, "Read these exact private fixture bytes. No live model is running.\n");
+		const dispatched = object(
+			parseSmokeEnvelope(await fixture.shim(["dispatch", workerId, "--packet", packet])).data,
+		);
+		const dispatch = object(dispatched.dispatch);
+		const dispatchId = text(dispatch.id);
+		const claims = parseSmokeEnvelope(await fixture.shim(["inbox"], workerEnv)).data;
+		assert(Array.isArray(claims));
+		const messages = claims.map((claim) => object(object(claim).message));
+		const packetMessage = object(messages.find((message) => message.msg_id === dispatch.msg_id));
+		assert.equal(packetMessage.from, parentId);
+		assert.equal(packetMessage.to, workerId);
+		const packetSha = createHash("sha256").update(readFileSync(packet)).digest("hex");
+		assert.equal(dispatch.packet_sha256, packetSha);
+		assert(text(packetMessage.body).includes(packet));
+		assert(text(packetMessage.body).includes(packetSha));
+		assert.deepEqual(parseSmokeEnvelope(await fixture.shim(["inbox"], workerEnv)).data, []);
+		const ack = object(
+			parseSmokeEnvelope(
+				await fixture.shim(["ack", dispatchId, "--packet-sha", packetSha], workerEnv),
+			).data,
+		);
+		const acknowledged = object(ack.dispatch);
+		assert.equal(acknowledged.state, "acked");
+		assert.equal(object(acknowledged.ack).seat, workerId);
+		assert.equal(object(acknowledged.ack).packet_sha256, packetSha);
+		assert(sequence(ack.seq) > sequence(dispatched.seq));
+
+		const taskData = object(
+			parseSmokeEnvelope(
+				await fixture.shim([
+					"task",
+					"set",
+					workerId,
+					"Exercise shipped governance",
+					"--project",
+					project,
+				]),
+			).data,
+		);
+		const task = object(taskData.task);
+		assert.equal(task.node_id, workerId);
+		assert.equal(task.project, project);
+		const node = object(
+			object(parseSmokeEnvelope(await fixture.shim(["node", "show", workerId])).data).node,
+		);
+		assert(Array.isArray(node.assignments));
+		assert(node.assignments.some((assignment) => object(assignment).id === task.id));
+		assert(Array.isArray(node.dispatches));
+		assert(node.dispatches.some((record) => object(record).id === dispatchId));
+
+		const canary = parseSmokeEnvelope(
+			await fixture.shim(["canary", workerId, "--wait=20"]),
+			false,
+			"E-RS-CANARY-PENDING",
+		);
+		const pendingCanary = object(canary.details);
+		text(pendingCanary.nonce);
+		const challengeId = text(pendingCanary.dispatch);
+		// Inert hosts cannot answer a model challenge. Never inject a positive ACK/footer.
+		const challenged = object(
+			object(parseSmokeEnvelope(await fixture.shim(["node", "show", workerId])).data).node,
+		);
+		assert(Array.isArray(challenged.dispatches));
+		const challenge = object(
+			challenged.dispatches.find((record) => object(record).id === challengeId),
+		);
+		assert(!Object.hasOwn(challenge, "canary"), "inert host has no proven canary");
+		assert.notEqual(challenge.state, "acked");
+		const closedData = object(
+			parseSmokeEnvelope(await fixture.shim(["stream", "close", streamId])).data,
+		);
+		assert.equal(object(closedData.stream).state, "closed");
+		const spine = object(
+			parseSmokeEnvelope(await fixture.shim(["spine", "events", "--since", "0"])).data,
+		);
+		assert(Array.isArray(spine.events));
+		for (const expected of [
+			projectSeq,
+			sequence(streamData.seq),
+			sequence(dispatched.seq),
+			sequence(ack.seq),
+			sequence(taskData.seq),
+			sequence(closedData.seq),
+		]) {
+			assert(
+				spine.events.some((event) => object(event).seq === expected),
+				`spine omitted actual effect ${expected}`,
+			);
+		}
+		assert(sequence(spine.cursor) >= sequence(closedData.seq));
+		await exerciseExternalRoundtrip(fixture, parseSmokeEnvelope);
+		console.error(
+			JSON.stringify({
+				smoke: "private-team",
+				parent: parentId,
+				worker: workerId,
+				project,
+				stream: streamId,
+				dispatch: dispatchId,
+				packetSha,
+				cursor: spine.cursor,
+				modelCanary: "unproven-inert-hosts",
+			}),
+		);
 	});
-	if (result.error) return { verdict: "FAIL", reason: result.error.message };
-	if (result.status !== 0) {
-		return {
-			verdict: "FAIL",
-			reason: result.stderr.trim() || result.stdout.trim() || `exit ${result.status ?? 1}`,
-		};
-	}
-	try {
-		const parsed = JSON.parse(result.stdout) as unknown;
-		if (!parsed || typeof parsed !== "object" || !("verdict" in parsed)) {
-			return { verdict: "FAIL", reason: "watchdog smoke emitted no verdict" };
+}
+
+function privateHomeSnapshot(root: string): Record<string, string> {
+	const snapshot: Record<string, string> = {};
+	const visit = (directory: string): void => {
+		for (const entry of readdirSync(directory, { withFileTypes: true })) {
+			const path = join(directory, entry.name);
+			if (entry.isDirectory()) {
+				snapshot[`${path.slice(root.length)}/`] = "directory";
+				visit(path);
+			} else {
+				assert(entry.isFile(), `unexpected private-home entry: ${path}`);
+				snapshot[path.slice(root.length)] = createHash("sha256")
+					.update(readFileSync(path))
+					.digest("hex");
+			}
 		}
-		const verdict = (parsed as { readonly verdict?: unknown }).verdict;
-		if (verdict === "PASS" || verdict === "SKIP" || verdict === "FAIL") {
-			const reason = (parsed as { readonly reason?: unknown }).reason;
-			return {
-				verdict,
-				...(typeof reason === "string" ? { reason } : {}),
-			};
+	};
+	visit(root);
+	return snapshot;
+}
+
+export async function runWatchdogSmoke(): Promise<SmokeResult> {
+	return privateSmoke(async (fixture) => {
+		parseSmokeEnvelope(await fixture.native(["adopt", fixture.parentPane, "--harness", "omp"]));
+		const before = object(
+			parseSmokeEnvelope(await fixture.native(["spine", "events", "--since", "0"])).data,
+		);
+		const roster = parseSmokeEnvelope(await fixture.native(["list"]));
+		const home = join(fixture.root, "home");
+		const files = privateHomeSnapshot(home);
+		for (const generation of ["rs", "legacy"]) {
+			const refusal = parseSmokeEnvelope(
+				await fixture.shim(["watchdog", "disable-all"], {
+					...fixture.env,
+					PIJ_DAEMON_GENERATION: generation,
+				}),
+				false,
+				"E-RS-UNPORTED",
+			);
+			assert.equal(object(refusal.details).verb, "watchdog");
 		}
-		return { verdict: "FAIL", reason: "watchdog smoke emitted an invalid verdict" };
-	} catch (error) {
-		return {
-			verdict: "FAIL",
-			reason: `watchdog smoke emitted invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
-		};
-	}
+		const after = object(
+			parseSmokeEnvelope(
+				await fixture.native(["spine", "events", "--since", String(sequence(before.cursor))]),
+			).data,
+		);
+		assert.equal(after.cursor, before.cursor, "refused watchdog must not append");
+		assert.deepEqual(after.events, []);
+		assert.deepEqual(parseSmokeEnvelope(await fixture.native(["list"])), roster);
+		assert.deepEqual(privateHomeSnapshot(home), files, "no legacy file authority was mutated");
+		console.error(
+			JSON.stringify({
+				smoke: "watchdog-refusal",
+				code: "E-RS-UNPORTED",
+				cursor: after.cursor,
+				forcedLegacy: "refused",
+				mutation: "none",
+			}),
+		);
+	});
 }
 
 async function main(): Promise<void> {
@@ -374,9 +430,8 @@ async function main(): Promise<void> {
 	}
 	if (includeWatchdog) {
 		process.stdout.write("smoke: pij-watchdog ... ");
-		const watchdog = runWatchdogSmoke();
+		const watchdog = await runWatchdogSmoke();
 		if (watchdog.verdict === "PASS") console.log("✓");
-		else if (watchdog.verdict === "SKIP") console.log(`↷ (${watchdog.reason ?? "skipped"})`);
 		else {
 			failed++;
 			console.log("✗");

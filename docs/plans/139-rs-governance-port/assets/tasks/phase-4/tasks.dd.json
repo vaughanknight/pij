@@ -9,7 +9,8 @@
         "title": "Re-point shim, skills, API doc",
         "slug": "phase-4",
         "status": "draft",
-        "summary": "Re-point shim, skills, API doc"
+        "summary": "Re-point shim, skills, API doc",
+        "log": "../../execution-log.dd.json#entries"
       }
     },
     {
@@ -21,24 +22,28 @@
       "value": [
         {
           "id": "tk-40a4",
-          "title": "u6 \u2014 RS_ROUTE_TABLE serve-or-refuse for every verb + enforcement test over the skill verb table",
+          "title": "u6 — RS_ROUTE_TABLE serve-or-refuse for every verb + enforcement test over the skill verb table",
           "domain": "ts",
           "phase": "p4",
-          "state": "unchecked"
+          "state": "unchecked",
+          "done": "#done_when/tk-40a4"
         },
         {
           "id": "tk-41a4",
-          "title": "u6 \u2014 skills/pij routes cite rs verbs; docs/how/pij-rs-api.md + pinned fixtures",
+          "title": "u6 — skills/pij routes cite rs verbs; docs/how/pij-rs-api.md + pinned fixtures",
           "domain": "docs",
           "phase": "p4",
-          "state": "unchecked"
+          "state": "unchecked",
+          "done": "#done_when/tk-41a4"
         },
         {
           "id": "tk-42a4",
-          "title": "u6 \u2014 chainglass confirmation (roles, tree, no banner) recorded as evidence",
+          "title": "u6 — chainglass confirmation (roles, tree, no banner) recorded as evidence",
           "domain": "proof",
           "phase": "p4",
-          "state": "unchecked"
+          "state": "blocked",
+          "note": "Prime-owned chainglass/production confirmation pending; no local test substitutes for this receipt.",
+          "receipt": "../../execution-log.dd.json#entries/lg-0010"
         }
       ]
     },
@@ -50,7 +55,7 @@
             "id": "dw-40a4",
             "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
             "state": "unchecked",
-            "pressure": "not-applicable"
+            "pressure": "../../backpressure.dd.json#rows/bp-0008"
           }
         ],
         "tk-41a4": [
@@ -58,19 +63,19 @@
             "id": "dw-41a4",
             "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
             "state": "unchecked",
-            "pressure": "not-applicable"
+            "pressure": "../../backpressure.dd.json#rows/bp-0009"
           }
         ],
         "tk-42a4": [
           {
             "id": "dw-42a4",
             "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
-            "state": "unchecked",
-            "pressure": "not-applicable"
+            "state": "blocked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0003",
+            "note": "Prime-owned chainglass/production receipt is pending; isolated proof cannot satisfy this external confirmation."
           }
         ]
       }
     }
-  ],
-  "references": []
+  ]
 }

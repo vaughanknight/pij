@@ -33,17 +33,39 @@ For the remaining modes, detect once per run: callable in-process `pij_spawn` â†
 
 | Intent | pi push | tmux control-plane push | external pull |
 |---|---|---|---|
-| prereq | **Extension-owned registration: no adopt/inbox register.** | running rs daemon + exact-pane adoption: `pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}` | verified native registration; shim inbox register refuses |
+| prereq | **Extension-owned registration: no adopt/inbox register.** | running rs daemon + exact-pane adoption: `pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}` | `pij inbox register --json` from a verified Claude/Copilot/Codex tool shell; accepted id is `data.id` |
 | spawn | explicitly available in-process host tool, or native CLI | `pij-rs spawn --harness <h> --cwd <absolute-path> --parent <id> â€¦` | no tmux launch without an available tmux context |
-| message | `pij_send({to, message})` | `pij send <id> '<text>'` | verified identity, then the supported native/shim send |
-| receive | automatic injected turn | automatic daemon-injected turn | verified pull-owned native `pij-rs inbox --wait`; never a competing extension receiver |
+| message | `pij_send({to, message})` | `pij send <id> '<text>'` | `pij send <id> '<text>' --json` from the same native host/session |
+| receive | automatic injected turn | automatic daemon-injected turn | `pij inbox --wait [ms] [--json]`; never a competing extension receiver |
 | compact peer | `pij_send({to, command:"compact"})` | `pij send <id> --command compact` | same structured command, subject to target support |
 | peek | host transcript or owner-scoped tmux capture | host transcript or owner-scoped tmux capture | supported host transcript only; shim tail refuses |
 | retire | owner-authorized host teardown is distinct from rs tombstone | `pij close <id>` tombstones only, self/current-parent | same rs ownership, no force bypass |
 
 Tmux self-adopt uses only the exact nonempty `$TMUX_PANE` of the current process. Carry the supported `--parent` claim when the environment names the true governor; omitted parent is unsaid and preserves an existing value. Existing-seat structural repair through `link` is unported, so never omit parent assuming that command can fix it later. Native extensions retain ownership of their own registration.
 
-Empty or absent `TMUX_PANE` is not permission to discover or guess another pane. Paneless adopt and shim inbox register cannot derive bind evidence and refuse. Native `register` requires independently corroborated process identity; never bind to the short-lived CLI pid. A verified pull-owned seat can use native inbox waiting; absence of that prerequisite is a named gap, not a legacy fallback.
+Empty or absent `TMUX_PANE` is not permission to discover or guess another pane.
+Paneless adopt still refuses; **`pij inbox register --json` is the supported
+external pull bridge to native `/v1/register`**, not a generic shim `register`
+verb or a legacy store. Prerequisites are the current `CLAUDE_CODE_SESSION_ID`,
+or a UUID `COPILOT_AGENT_SESSION_ID` with its matching `~/.copilot/session-state/<id>`
+directory, or a UUID `CODEX_THREAD_ID` with its matching readable date-nested
+rollout under `~/.codex/sessions`. Multiple valid identities refuse.
+
+The CLI must descend from the matching live harness host. rs observes process
+ancestry and start stamps, rejects a nearer conflicting harness/session, and
+binds the **host** incarnation rather than the transient CLI/shell. Repeated
+registration of the same host/session returns the same `data.id`; an inherited
+or stale `PIJ_SESSION_ID` is replaced only after that native admission succeeds.
+Subsequent shim whoami/phonehome/send/inbox resolve the same native identity
+without a manual export. Missing evidence is a named refusal, never permission
+to fabricate a process or fall back to FsRegistry/FsChannel.
+
+Pull seats have `pane:null` and `native_extension_delivery:false`. `inbox --wait`
+blocks for mail; a positive millisecond argument bounds the wait. JSON remains a
+complete v2 envelope whose `data` is a claims array (empty on finite timeout),
+not an unwrapped `messages` object. The CLI prints before acknowledging; claim
+acceptance is not model completion. Native-extension-owned Copilot/Pi/OMP seats
+keep their automatic receiver and must not start this pull consumer.
 
 Model names and permission/launch behavior belong to the selected native harness and installed rs source, not legacy spawn defaults.
 

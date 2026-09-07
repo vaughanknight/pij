@@ -16,7 +16,7 @@
 | complexity | — |
 | summary | Re-point shim, skills, API doc |
 | backpressure | — |
-| log | — |
+| log | [entries](../../execution-log.dd.md#entries) |
 | mode | — |
 | plan_version | — |
 | created | — |
@@ -35,9 +35,9 @@ Re-point shim, skills, API doc
 
 | id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| tk-40a4 | u6 — RS_ROUTE_TABLE serve-or-refuse for every verb + enforcement test over the skill verb table | ts | p4 | [ ] unchecked | — | — | — | — | — | — |
-| tk-41a4 | u6 — skills/pij routes cite rs verbs; docs/how/pij-rs-api.md + pinned fixtures | docs | p4 | [ ] unchecked | — | — | — | — | — | — |
-| tk-42a4 | u6 — chainglass confirmation (roles, tree, no banner) recorded as evidence | proof | p4 | [ ] unchecked | — | — | — | — | — | — |
+| tk-40a4 | u6 — RS_ROUTE_TABLE serve-or-refuse for every verb + enforcement test over the skill verb table | ts | p4 | [ ] unchecked | — | — | [ ] 0/1 [tk-40a4](#tk-40a4) | — | — | — |
+| tk-41a4 | u6 — skills/pij routes cite rs verbs; docs/how/pij-rs-api.md + pinned fixtures | docs | p4 | [ ] unchecked | — | — | [ ] 0/1 [tk-41a4](#tk-41a4) | — | — | — |
+| tk-42a4 | u6 — chainglass confirmation (roles, tree, no banner) recorded as evidence | proof | p4 | [-] blocked | Prime-owned chainglass/production confirmation pending; no local test substitutes for this receipt. | ../../execution-log.dd.json#entries/lg-0010 | — | — | — | — |
 
 <a id="done-when"></a>
 
@@ -47,16 +47,16 @@ Re-point shim, skills, API doc
 
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
-| dw-40a4 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [ ] unchecked | not-applicable |
+| dw-40a4 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [ ] unchecked | [bp-0008](../../backpressure.dd.md#rows) |
 
 ### tk-41a4
 
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
-| dw-41a4 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [ ] unchecked | not-applicable |
+| dw-41a4 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [ ] unchecked | [bp-0009](../../backpressure.dd.md#rows) |
 
 ### tk-42a4
 
-| id | assertion | state | pressure |
-| --- | --- | --- | --- |
-| dw-42a4 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [ ] unchecked | not-applicable |
+| id | assertion | state | pressure | note |
+| --- | --- | --- | --- | --- |
+| dw-42a4 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [-] blocked | [bp-0003](../../backpressure.dd.md#rows) | Prime-owned chainglass/production receipt is pending; isolated proof cannot satisfy this external confirmation. |

@@ -16,7 +16,7 @@
 | complexity | — |
 | summary | Anomalies, verify, decisions, lifecycle |
 | backpressure | — |
-| log | — |
+| log | [entries](../../execution-log.dd.md#entries) |
 | mode | — |
 | plan_version | — |
 | created | — |
@@ -35,9 +35,9 @@ Anomalies, verify, decisions, lifecycle
 
 | id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| tk-30a3 | u4 — anomalies as a spine view (status-stale, unverified-done, open-question, unacked-dispatch, dead-seat) | rust | p3 | [ ] unchecked | — | — | — | — | — | — |
-| tk-31a3 | u4 — report verify; decisions: question row → parent, answer routed to asker | rust | p3 | [ ] unchecked | — | — | — | — | — | — |
-| tk-32a3 | u5 — close (owner-only tombstone) + reap (--dry-run, proc{pid,proc_start}+pane, recycled-pid refusal) | rust | p3 | [ ] unchecked | — | — | — | — | — | — |
+| tk-30a3 | u4 — anomalies as a spine view (status-stale, unverified-done, open-question, unacked-dispatch, dead-seat) | rust | p3 | [ ] unchecked | — | — | [ ] 0/1 [tk-30a3](#tk-30a3) | — | — | — |
+| tk-31a3 | u4 — report verify; decisions: question row → parent, answer routed to asker | rust | p3 | [ ] unchecked | — | — | [ ] 0/1 [tk-31a3](#tk-31a3) | — | — | — |
+| tk-32a3 | u5 — close (owner-only tombstone) + reap (--dry-run, proc{pid,proc_start}+pane, recycled-pid refusal) | rust | p3 | [ ] unchecked | — | — | [ ] 0/1 [tk-32a3](#tk-32a3) | — | — | — |
 
 <a id="done-when"></a>
 
@@ -47,16 +47,16 @@ Anomalies, verify, decisions, lifecycle
 
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
-| dw-30a3 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [ ] unchecked | not-applicable |
+| dw-30a3 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [ ] unchecked | [bp-0005](../../backpressure.dd.md#rows) |
 
 ### tk-31a3
 
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
-| dw-31a3 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [ ] unchecked | not-applicable |
+| dw-31a3 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [ ] unchecked | [bp-0006](../../backpressure.dd.md#rows) |
 
 ### tk-32a3
 
 | id | assertion | state | pressure |
 | --- | --- | --- | --- |
-| dw-32a3 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [ ] unchecked | not-applicable |
+| dw-32a3 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [ ] unchecked | [bp-0007](../../backpressure.dd.md#rows) |

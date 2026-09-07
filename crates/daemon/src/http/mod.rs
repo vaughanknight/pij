@@ -749,7 +749,7 @@ async fn register(
         Ok((descriptor, report)) => {
             let meta = descriptor.pane.is_none().then(|| {
                 format!(
-                    "export PIJ_SESSION_ID={} — this paneless seat has no observable pane, so subsequent commands require the registered id",
+                    "verified external shim callers resolve this paneless seat from their native host/session automatically; other clients must pass id {0} explicitly or export PIJ_SESSION_ID={0}",
                     descriptor.id
                 )
             });

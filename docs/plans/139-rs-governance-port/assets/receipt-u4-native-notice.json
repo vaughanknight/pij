@@ -1,0 +1,219 @@
+{
+  "status": "READY_TO_VALIDATE",
+  "acceptance": "SOURCE_ONLY_NOT_ACCEPTED",
+  "unit": "u4-native-keeper-notice",
+  "base": "78531a0ba2f22469ab72289ba9ff6c1635e863e7",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4-gate",
+  "branch": "139-rs-governance-port-u4-gate",
+  "identity": {
+    "seat": "pij-adjacent-falcon",
+    "parent": "pij-lonely-ikrie",
+    "harness": "omp",
+    "model": "github-copilot/gpt-6-astra-1m",
+    "effort": "high",
+    "session": "01a079e2-4b02-7000-9ed2-e21f349aee14",
+    "pane": "%3999",
+    "semantic_state": "waiting",
+    "registration_preserved": true
+  },
+  "release": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/u4-notice-gate-task.json",
+  "ruling_record": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4-gate/docs/plans/139-rs-governance-port/assets/u4-native-notice-decision.json",
+  "scope_record": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4-gate/docs/plans/139-rs-governance-port/assets/u4-native-notice-scope.json",
+  "rulings": {
+    "keeper": "definition.created_by; sender=request.requester; exact legacy renderBatonNotice request text retained",
+    "idle_pi": "Prime explicitly amended delivered\u2192queued: extension-stream admission is not ReaderRead (#374 honest-receipt rule). Native test separately reads/acknowledges and proves later Delivered origin reader-read without a second persisted message.",
+    "stale_external": "Prime explicitly mapped legacy stale-heartbeat to native stale-incarnation evidence. Use existing core::liveness::alive Dead/Recycled, never a restored age threshold.",
+    "counts": "All eight distinct host cases retained. Original send and persisted message counts are unchanged, including missing/dissolved zero cases."
+  },
+  "patch": {
+    "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4-gate/docs/plans/139-rs-governance-port/assets/u4-native-notice-source.patch",
+    "sha256": "b1ae9871b53373bd5657382db80205ebf2437fcd05bb794493ca0d3334cbedf0",
+    "bytes": 22513,
+    "source_files": 2,
+    "basis": "Exact preimage of governance.rs on verified78531 plus new native integration test; no prior u4 recovery/authority patch replay."
+  },
+  "changed_paths": {
+    "crates/daemon/src/http/governance.rs": {
+      "preimage_sha256": "f26fddaafa1db068a49cdebba530739215ad37e078711bebea3b2a507e0fcb4e",
+      "postimage_sha256": "794963649d9475f832b6b79f636e547814a3033b919973ff1ffd8ea9896e4b47",
+      "new_file": false
+    },
+    "crates/daemon/tests/governance_notices.rs": {
+      "preimage_sha256": null,
+      "postimage_sha256": "22ca1754407282a5a183e9326e653d0965120cb36feace65ecb860c2c8d0a692",
+      "new_file": true
+    }
+  },
+  "implementation": {
+    "source": "crates/daemon/src/http/governance.rs::orchestration_command baton.request branch + private notify_baton_keeper",
+    "ordering": "Existing request persistence and baton.requested publication finish before calling the existing DeliveryService.send; no EventBus callback reentry, new sender, transport bypass or retry loop.",
+    "projection": "Missing/tombstoned keeper returns null without delivery admission. Actual Delivered/Queued plus existing process-incarnation Dead/Recycled evidence determine notice. Held/Refused and send/probe errors return E-RS-PARTIAL with committed request and seq instead of a fabricated success.",
+    "preservation": "Existing sender self-addressing refusal remains; a failure never deletes or hides the durable request/event. No queue/store schema/port/constructor changes."
+  },
+  "matrix": [
+    {
+      "id": "idle-live-pi",
+      "harness": "pi",
+      "state": "idle",
+      "evidence": "active",
+      "notice": "queued",
+      "send_calls": 1,
+      "persisted_messages": 1
+    },
+    {
+      "id": "working-live-pi",
+      "harness": "pi",
+      "state": "working",
+      "evidence": "active",
+      "notice": "queued",
+      "send_calls": 1,
+      "persisted_messages": 1
+    },
+    {
+      "id": "fresh-live-control-plane",
+      "harness": "codex",
+      "state": "idle",
+      "evidence": "active",
+      "notice": "queued",
+      "send_calls": 1,
+      "persisted_messages": 1
+    },
+    {
+      "id": "stale-live-control-plane",
+      "harness": "copilot",
+      "state": "idle",
+      "evidence": "recycled",
+      "notice": "unverified",
+      "send_calls": 1,
+      "persisted_messages": 1
+    },
+    {
+      "id": "dead-keeper",
+      "harness": "pi",
+      "state": "idle",
+      "evidence": "dead",
+      "notice": "unverified",
+      "send_calls": 1,
+      "persisted_messages": 1
+    },
+    {
+      "id": "missing-keeper",
+      "harness": "pi",
+      "state": "idle",
+      "evidence": "missing",
+      "notice": null,
+      "send_calls": 0,
+      "persisted_messages": 0
+    },
+    {
+      "id": "dissolved-pull-keeper",
+      "harness": "copilot",
+      "state": "idle",
+      "evidence": "dissolved",
+      "notice": null,
+      "send_calls": 0,
+      "persisted_messages": 0
+    },
+    {
+      "id": "live-bound-pull-keeper",
+      "harness": "copilot",
+      "state": "idle",
+      "evidence": "active",
+      "notice": "queued",
+      "send_calls": 1,
+      "persisted_messages": 1
+    }
+  ],
+  "native_tests": {
+    "path": "crates/daemon/tests/governance_notices.rs",
+    "count": 13,
+    "names": [
+      "keeper_notice_idle_pi_queues_until_native_reader_ack",
+      "keeper_notice_working_pi_queues_once",
+      "keeper_notice_fresh_external_queues_once",
+      "keeper_notice_stale_external_uses_recycled_incarnation",
+      "keeper_notice_dead_keeper_persists_unverified_message",
+      "keeper_notice_missing_keeper_sends_nothing",
+      "keeper_notice_dissolved_pull_keeper_sends_nothing",
+      "keeper_notice_live_bound_pull_queues_once",
+      "keeper_notice_socket_delivery_requires_transport_confirmation",
+      "keeper_notice_transport_failure_keeps_committed_request_and_seq",
+      "keeper_notice_held_and_refused_are_not_fabricated_success",
+      "keeper_notice_self_send_keeps_existing_refusal",
+      "keeper_notice_publication_failure_prevents_send"
+    ],
+    "fixture": "Actual build_services with real registry/queue/spine sharing one database, existing FakeLiveness/FakeTransport at host boundaries, private authenticated axum HTTP listener on port0, and a separate SQL reader for persisted facts. No legacy state or scripted HTTP response server.",
+    "eight_case_assertions": [
+      "Complete v2 native response including notice and original request/seq fields",
+      "Canonical request persisted and exactly one matching baton.requested event",
+      "Exact durable delivery job count and pending state, no second queue or copied payload schema",
+      "Actual message sender/recipient/legacy body and exact msg_id links to message.pushed and delivery.outcome",
+      "One published delivery admission/outcome per expected send, zero admissions/rows/transport calls for missing/dissolved",
+      "Request event seq precedes delivery event; actual queued outcome is not presented as transport delivery"
+    ],
+    "additional_assertions": [
+      "Idle Pi later native claim+ack yields ReaderRead and one done job, not another message",
+      "Confirmed socket recipient receives exact legacy text and actual injected-to-transport receipt",
+      "Scripted transport failure retains request+seq in E-RS-PARTIAL",
+      "Held and Refused preserve actual underlying receipts without fabricated success",
+      "Self-addressing remains a refusal with request still committed",
+      "SQL publication fault leaves request persisted but prevents any notice send/job/receipt"
+    ],
+    "send_count_oracle": "Counts measure real durable delivery admissions (message.pushed + delivery.outcome), persisted jobs and transport recorder effects. No mock intercepts the concrete DeliveryService::send method; source contains one existing send call. Zero rows/events/transport effects plus successful null response defend no-send behavior.",
+    "host_ceiling": "Native Rust business/HTTP/SQL behavior with scripted process/transport boundaries; not an actual model turn, production daemon delivery, or OS process/liveness validation."
+  },
+  "shared_fixture_proposal": {
+    "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4-gate/docs/plans/139-rs-governance-port/assets/contracts-delta-u4-native-notice.json",
+    "sha256": "c7bb1821d7c2143a8d86914ef49e38bd860a5ac832f1e887edc5171b357ca020",
+    "owner": "PM",
+    "applied_by_worker": false,
+    "recipe": "Merge top-level baton_notice_cases (all8) and baton_notice_body_template into crates/testkit/fixtures/golden/api/governance-routes.json; amend existing baton-request response.data.notice to queued. Mirror plan contract if canonical. No event schema change. PM handles MANIFEST/API unsupported-notice docs."
+  },
+  "u6_coordination": {
+    "owner": "pij-general-miriam",
+    "amendment": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6-gate/docs/plans/139-rs-governance-port/assets/u6-notice-honest-receipt-amendment.patch",
+    "reported_sha256": "55a0c768a0764d93c3d497e8b056c2b54812474d6a1610a6542be28196ee4ca8",
+    "evidence": "Peer-reported source-only amendment and receipt; not worker validation of TS tests."
+  },
+  "validation": {
+    "worker": "NONE",
+    "executed_checks": [],
+    "committed": false,
+    "source_formatted": false,
+    "pm_cwd": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port",
+    "pm_commands_after_barrier": [
+      "just format",
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-daemon --test governance_notices",
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-daemon --test governance_composition",
+      "harness checks"
+    ],
+    "behavioral_red_recipe": "On an isolated78531 subject, apply only the new governance_notices.rs plus the canonical fixture proposal, not production governance.rs, then run the same native notice command. Test source consumes APIs present on78531; absent notice/admission should fail behavior, not compilation. This RED has NOT been run.",
+    "green_recipe": "Compose the two-file production/test patch and fixture delta, then rerun the identical command. PM owns actual command/exit/output receipts.",
+    "prerequisite": "Canonical matrix/body fixture merge is mandatory before tests. Missing fixture/compile failures are NOT behavioral RED. No validation/gate/model acceptance is claimed."
+  },
+  "preservation": [
+    "old u4 worktree and prior authority/recovery exports untouched",
+    "all observation buffers untouched",
+    "no shared fixture/MANIFEST/docs mutation",
+    "no registration/shim/native inbox/client.rs/raw_json changes",
+    "no global configuration/toolchain/node_modules changes",
+    "no production daemon restart or transport-log reads"
+  ],
+  "friction": [
+    {
+      "observation": "Legacy delivered and stale-heartbeat expectations conflicted with native extension-stream receipt strength and process-incarnation authority. Prime resolved both before expectations changed.",
+      "encoded": "Eight canonical native host rows plus explicit ReaderRead/socket/failure witnesses keep wire-only TS fixtures from standing in for delivery truth."
+    },
+    {
+      "observation": "LSP references returned empty for orchestration_command although a same-file call exists; exact source fallback identified it.",
+      "disposition": "No absence/callsite claim relied on the empty result; no observation buffer was edited."
+    }
+  ],
+  "remaining_assumptions": [
+    "PM merges shared fixture proposal before compiling tests",
+    "PM removes unsupported-notice documentation only after genuine native validation",
+    "READINESS is authored source; actual RED/GREEN remains PM-owned"
+  ],
+  "pending_policy_questions": [],
+  "paused": "waiting, not HOLD"
+}

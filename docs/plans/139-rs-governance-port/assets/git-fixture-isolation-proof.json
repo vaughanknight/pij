@@ -1,0 +1,26 @@
+{
+  "at": "2026-09-07T13:09:45Z",
+  "problem": "Refusal no-write assertions observed .git/ai/logs and working_logs created after fixture git init; public CLI git tripwire did not fire.",
+  "control_without_pij": {
+    "git_init_exit": 0,
+    "immediate_ai_directory": false,
+    "later_ai_directory": true,
+    "observation_window_seconds": 2
+  },
+  "isolated_control": {
+    "environment": {
+      "GIT_TRACE2_EVENT": "0"
+    },
+    "git_init_exit": 0,
+    "ai_directory_observed": false,
+    "observation_window_seconds": 2
+  },
+  "source": "Git Trace2 environment overrides trace2.eventTarget; 0 disables only its event destination. Git AI asynchronously initializes discovered repos.",
+  "references": [
+    "https://github.com/git/git/blob/master/trace2/tr2_dst.c",
+    "https://github.com/git/git/blob/master/trace2/tr2_sysenv.c",
+    "https://github.com/git/git/blob/master/Documentation/technical/api-trace2.adoc"
+  ],
+  "change": "Fixture saves/restores GIT_TRACE2_EVENT, leaving Git hooks and complete tree/mutation assertions intact; canonicalizes fixture repo paths before existing library validation.",
+  "cleanup": "Both separate experimental roots removed; no global Git config or Git AI service changed"
+}

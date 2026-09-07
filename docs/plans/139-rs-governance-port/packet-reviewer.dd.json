@@ -26,7 +26,7 @@
         },
         {
           "id": "i1",
-          "text": "Read plan/impl-guide/contracts and full final composed diff against baseline d964233d4cbf45400a6b2fc5f873de48909e7e38. PM will pin the exact final SHA. Code is read-only; findings record only under assets/reviews/."
+          "text": "Read canonical plan, root impl-guide.dd.json (pij-team schema retained by explicit prime ruling), stable crates/testkit/fixtures/golden/api contracts and final composed artifact SHA supplied at release. Inspect full plan delta from d964233d4cbf45400a6b2fc5f873de48909e7e38, distinguishing released main63988ededb9a62a7e45cbd68b36e930b0631593b changes from139 and merge seams. No intermediate patch or stale index is the subject."
         },
         {
           "id": "i2",
@@ -46,11 +46,11 @@
         },
         {
           "id": "i6",
-          "text": "KNOWN OPEN/INTENTIONAL: production/chainglass AC2/AC3/AC7/AC9 receipts belong to prime after deploy; PM is locally proved only. compact/new/reload transport, watchdog/chore/focus/etc unported jobs intentionally refuse. PIJ_TMUX_SOCKET guarded-start feature is deferred; strict private-resource recipe is mandatory for proofs.18.1.11 literally printed no-model and must remain unbound, not guessed as requested Astra. Do not re-report these as implementation findings."
+          "text": "KNOWN OWNED/INTENTIONAL: production/chainglass AC2/AC3/AC7/AC9 and phase4 tk-42a4 belong to prime after deploy and remain explicitly blocked, never fabricated accepted. Controls compact/new/reload, compact-self and bg ARE supported. Chore/watchdog/focus/admin gaps named-refuse. Generic register is native/HTTP-only but verified external inbox register MUST be served on Rust, with real host rather than CLI wrapper identity. Sessions uses live HTTP baseline, not a nonexistent native subcommand. Refusal exit policies differ intentionally. Do not restore legacy fallback, invent model claims or re-report explicit supported boundaries as gaps."
         },
         {
           "id": "i7",
-          "text": "No code edits, commits, builds, formatters, linters or project-wide test suites. PM owns final validation and can execute any targeted experiment you justify. Never flowspace3 daemon, live daemon restart/port7461 fixture, main/global/node_modules/toolchain writes, or pij inbox transport-log reads."
+          "text": "No code edits, commits, builds, project tests, formatters or linters. PM owns validation and targeted experiments. Only review artifacts under assets/reviews and your own observation buffer are writable; historical review preset failed by forbidding report output, so do not choose a preset that blocks your required artifact. Never flowspace3 daemon, production daemon restart, port7461 fixture, global/main node_modules/toolchain mutation or inbox transport-log reads."
         },
         {
           "id": "i8",
@@ -58,11 +58,11 @@
         },
         {
           "id": "i9",
-          "text": "Return material CRITICAL/HIGH/MEDIUM findings only: location, exact evidence, affected contract/AC, impact, smallest fix; try to disprove each against explicit prime rulings first. No style noise or findings quota. no_material_findings is valid."
+          "text": "Return material CRITICAL/HIGH/MEDIUM findings only with location, source evidence, affected contract/AC, impact and smallest fix; disprove against explicit prime rulings first. Cross-check especially verified external host ancestry/pull waits, one true sequence domain, cancellation-safe destructive commits, native raw validated byte retention and post-output ACK, and keeper notices after persistence with actual receipt strength. Idle Pi/OMP is queued until ReaderRead; stale is existing Dead/Recycled evidence, never invented age. no_material_findings is valid."
         },
         {
           "id": "i10",
-          "text": "Write a ddocs review record under assets/reviews using a supported local schema; validate/build it, then send the path and one-line verdict via pij_send to pij-lonely-ikrie. Judge every AC with honest proof grade; production-dependent rows remain pending rather than fabricated accepted."
+          "text": "Produce the required A-H review/Handover Brief and supported ddocs ReviewReceipt under assets/reviews, with exact source SHA and requested versus OBSERVED model/effort. Use builder review discipline (domain mode off unless canonical plan declares otherwise), independently cover implementation/safety, anti-reinvention, evidence and doctrine; use read-only critics for genuine independent slices. No live runtime validation by reviewers. Send paths and verdict to pij-lonely-ikrie; accepted local code is not production/whole-plan acceptance."
         }
       ]
     },
@@ -125,12 +125,12 @@
         },
         {
           "id": "r3",
-          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/testkit/fixtures/golden/api/governance-routes.json",
           "note": "request/response/refusal/isolation contracts"
         },
         {
           "id": "r4",
-          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/contracts/governance-events.json",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/testkit/fixtures/golden/api/governance-events.json",
           "note": "event and cursor contracts"
         },
         {

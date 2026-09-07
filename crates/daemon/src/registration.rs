@@ -45,6 +45,12 @@ struct NativeHandoff {
     prebind: Option<SeatDescriptor>,
 }
 
+enum RegistrationMode<'a> {
+    Ordinary,
+    NativeExtension(&'a NativeHandoff),
+    Paneless(&'a [ProcIdentity]),
+}
+
 impl RegistrationService {
     pub(crate) fn new(
         registry: Arc<dyn Registry>,
@@ -82,7 +88,124 @@ impl RegistrationService {
         claim: Registration,
         harness_session: Option<String>,
     ) -> std::result::Result<(SeatDescriptor, PutBinding), RegistrationError> {
-        self.register_inner(claim, harness_session, None).await
+        if claim.id.is_empty()
+            && matches!(
+                Harness::parse(&claim.harness),
+                Some(Harness::Claude | Harness::Copilot | Harness::Codex)
+            )
+        {
+            return self
+                .register_paneless_with_observer(claim, harness_session, observe_native_process)
+                .await;
+        }
+        self.register_inner(claim, harness_session, RegistrationMode::Ordinary)
+            .await
+    }
+
+    async fn register_paneless_with_observer<F, Fut>(
+        &self,
+        mut claim: Registration,
+        harness_session: Option<String>,
+        mut observe: F,
+    ) -> std::result::Result<(SeatDescriptor, PutBinding), RegistrationError>
+    where
+        F: FnMut(u32) -> Fut,
+        Fut: Future<Output = std::result::Result<Option<NativeProcess>, RegistrationError>>,
+    {
+        let harness = Harness::parse(&claim.harness)
+            .filter(|harness| {
+                matches!(harness, Harness::Claude | Harness::Copilot | Harness::Codex)
+            })
+            .ok_or_else(|| paneless_refusal("requires Claude, Copilot, or Codex"))?;
+        if !claim.id.is_empty()
+            || claim.pane.is_some()
+            || claim.relay
+            || claim.supersedes.is_some()
+            || claim.spawn_id.is_some()
+        {
+            return Err(paneless_refusal(
+                "requires an empty id, no pane/spawn/supersedes, and relay false",
+            ));
+        }
+        let session = harness_session
+            .as_deref()
+            .filter(|session| {
+                !session.is_empty()
+                    && !session
+                        .chars()
+                        .any(|ch| ch.is_whitespace() || ch.is_control())
+            })
+            .ok_or_else(|| paneless_refusal("requires an exact nonempty native session"))?;
+        let caller = match (claim.pid, claim.proc_start) {
+            (Some(pid), Some(proc_start)) if pid > 0 && proc_start > 0 => {
+                ProcIdentity { pid, proc_start }
+            }
+            _ => {
+                return Err(paneless_refusal(
+                    "requires a complete nonzero pid/proc_start tuple",
+                ));
+            }
+        };
+        let ancestry = tokio::time::timeout(Duration::from_secs(2), async {
+            self.require_process(caller).await?;
+            let mut ancestry = Vec::with_capacity(8);
+            let mut current = caller;
+            loop {
+                if ancestry.len() == 32 || ancestry.contains(&current) {
+                    return Err(paneless_refusal(
+                        "host ancestry is cyclic or exceeds 32 processes",
+                    ));
+                }
+                let process = observe(current.pid)
+                    .await?
+                    .ok_or_else(|| paneless_refusal("a caller/ancestor process disappeared"))?;
+                ancestry.push(current);
+                if process.is_external_host(harness) {
+                    if !process.matches_external_session(harness, session) {
+                        return Err(paneless_refusal(
+                            "observed harness session differs from the claim",
+                        ));
+                    }
+                    break;
+                }
+                // A nested harness must not inherit an outer harness's session.
+                // Stop at the nearest recognized external host, even if the
+                // requested harness appears farther up the process tree.
+                if [Harness::Claude, Harness::Copilot, Harness::Codex]
+                    .into_iter()
+                    .any(|candidate| candidate != harness && process.is_external_host(candidate))
+                {
+                    return Err(paneless_refusal(
+                        "nearest external harness differs from the claim",
+                    ));
+                }
+                if process.parent == 0 {
+                    return Err(paneless_refusal("no matching external harness ancestor"));
+                }
+                let parent = self.observe_identity(process.parent).await?;
+                if parent.proc_start > current.proc_start {
+                    return Err(paneless_refusal(
+                        "an ancestor pid was reused after its child started",
+                    ));
+                }
+                current = parent;
+            }
+            for identity in &ancestry {
+                self.require_process(*identity).await?;
+            }
+            Ok(ancestry)
+        })
+        .await
+        .map_err(|_| paneless_refusal("host observation exceeded two seconds"))??;
+        let host = ancestry.last().expect("observed external harness ancestor");
+        claim.pid = Some(host.pid);
+        claim.proc_start = Some(host.proc_start);
+        self.register_inner(
+            claim,
+            harness_session,
+            RegistrationMode::Paneless(&ancestry),
+        )
+        .await
     }
 
     /// Attest extension delivery only after observing the actual Copilot host.
@@ -141,8 +264,12 @@ impl RegistrationService {
                 identity,
             )
             .await?;
-        self.register_inner(claim, harness_session, Some(&dead_native))
-            .await
+        self.register_inner(
+            claim,
+            harness_session,
+            RegistrationMode::NativeExtension(&dead_native),
+        )
+        .await
     }
 
     /// A dead exact incarnation cannot come back to life. Collect that witness
@@ -325,7 +452,7 @@ impl RegistrationService {
         &self,
         mut claim: Registration,
         harness_session: Option<String>,
-        handoff: Option<&NativeHandoff>,
+        mode: RegistrationMode<'_>,
     ) -> std::result::Result<(SeatDescriptor, PutBinding), RegistrationError> {
         if claim
             .role
@@ -336,7 +463,11 @@ impl RegistrationService {
                 "role must be a nonempty string".to_string(),
             ));
         }
-        let native = handoff.is_some();
+        let (native, paneless, handoff) = match mode {
+            RegistrationMode::Ordinary => (false, None, None),
+            RegistrationMode::NativeExtension(proof) => (true, None, Some(proof)),
+            RegistrationMode::Paneless(ancestry) => (false, Some(ancestry), None),
+        };
         let dead_native = handoff.map_or(&[][..], |proof| proof.dead.as_slice());
         let harness_session = harness_session.filter(|session| !session.trim().is_empty());
         let proc = match (claim.pid, claim.proc_start) {
@@ -365,6 +496,11 @@ impl RegistrationService {
         // Re-read the entire roster under shared mutation exclusion: two different
         // seat IDs can still contend for the same process, session, or pane.
         let _guard = self.registration_lock.lock().await;
+        if let Some(ancestry) = paneless {
+            for identity in ancestry {
+                self.require_process(*identity).await?;
+            }
+        }
         let seats = self
             .registry
             .list(SeatFilter::default())
@@ -417,6 +553,12 @@ impl RegistrationService {
                     .ok_or_else(|| native_refusal("memorable Pij ID space is exhausted"))?
                     .to_string();
             }
+        }
+        if paneless.is_some() {
+            let session = harness_session
+                .as_deref()
+                .expect("validated paneless session");
+            claim.id = paneless_target(&claim, session, proc, &seats)?;
         }
         let claimed_id = SeatId::from(claim.id.clone());
         let existing = registration_target(&claim, native, &seats);
@@ -521,32 +663,6 @@ impl RegistrationService {
                 "unrecognised harness after admission".to_string(),
             ));
         };
-        if harness == Harness::Claude {
-            for report in ensure_claude_inbound_accept(&self.claude_homes) {
-                if let Some(error) = report.error.as_deref() {
-                    eprintln!("pij-rs claude inbound: {}: {error}", report.home.display());
-                    continue;
-                }
-                if report.changed {
-                    self.event_bus
-                        .publish(Event {
-                            seq: None,
-                            v: wire::EVENT_VERSION,
-                            at: system_time_ms()?,
-                            kind: "config.claude-inbound-ensured".to_string(),
-                            seat: Some(claimed_id.clone()),
-                            payload: serde_json::json!({
-                                "home": report.home,
-                                "before": report.before,
-                                "after": report.after,
-                            })
-                            .to_string(),
-                        })
-                        .await
-                        .map_err(RegistrationError::Runtime)?;
-                }
-            }
-        }
         let mut descriptor = existing
             .cloned()
             .unwrap_or_else(|| SeatDescriptor::new(claimed_id, harness, claim.folder.clone()));
@@ -602,6 +718,53 @@ impl RegistrationService {
                     && same_native_owner(owner, &descriptor)
             });
 
+        if paneless.is_some() && existing == Some(&descriptor) {
+            let role = self
+                .roles
+                .read_role(&descriptor.id)
+                .await
+                .map_err(RegistrationError::Runtime)?;
+            if claim
+                .role
+                .as_ref()
+                .is_none_or(|claimed| role.as_ref() == Some(claimed))
+            {
+                descriptor.role = role;
+                return Ok((
+                    descriptor,
+                    PutBinding {
+                        inserted: false,
+                        previous_proc: proc,
+                    },
+                ));
+            }
+        }
+        if harness == Harness::Claude {
+            for report in ensure_claude_inbound_accept(&self.claude_homes) {
+                if let Some(error) = report.error.as_deref() {
+                    eprintln!("pij-rs claude inbound: {}: {error}", report.home.display());
+                    continue;
+                }
+                if report.changed {
+                    self.event_bus
+                        .publish(Event {
+                            seq: None,
+                            v: wire::EVENT_VERSION,
+                            at: system_time_ms()?,
+                            kind: "config.claude-inbound-ensured".to_string(),
+                            seat: Some(descriptor.id.clone()),
+                            payload: serde_json::json!({
+                                "home": report.home,
+                                "before": report.before,
+                                "after": report.after,
+                            })
+                            .to_string(),
+                        })
+                        .await
+                        .map_err(RegistrationError::Runtime)?;
+                }
+            }
+        }
         // Retire only a proven-dead native resource owner, never its queued work.
         // Same-conversation resume updates its original address instead.
         for observed in dead_native.iter().filter(|seat| seat.id != descriptor.id) {
@@ -677,6 +840,52 @@ impl RegistrationService {
 
 fn native_refusal(reason: impl std::fmt::Display) -> RegistrationError {
     RegistrationError::Refused(format!("native Copilot registration refused: {reason}"))
+}
+
+fn paneless_refusal(reason: impl std::fmt::Display) -> RegistrationError {
+    RegistrationError::Refused(format!("paneless external registration refused: {reason}"))
+}
+
+fn paneless_target(
+    claim: &Registration,
+    session: &str,
+    identity: Option<ProcIdentity>,
+    seats: &[SeatDescriptor],
+) -> std::result::Result<String, RegistrationError> {
+    let identity = identity.expect("validated external host identity");
+    let mut target = None;
+    for seat in seats.iter().filter(|seat| seat.tombstoned_at.is_none()) {
+        let same_session = seat.harness.as_str() == claim.harness
+            && seat.harness_session.as_deref() == Some(session);
+        let same_pid = seat.proc.is_some_and(|proc| proc.pid == identity.pid);
+        if !same_session && !same_pid {
+            continue;
+        }
+        if !same_session
+            || seat.proc != Some(identity)
+            || seat.pane.is_some()
+            || seat.relay
+            || seat.native_extension_delivery
+            || seat.spawn_id.is_some()
+        {
+            return Err(paneless_refusal(format!(
+                "host process or native session conflicts with seat `{}`",
+                seat.id
+            )));
+        }
+        if target.replace(seat).is_some() {
+            return Err(paneless_refusal(
+                "native session has multiple Pij addresses",
+            ));
+        }
+    }
+    if let Some(target) = target {
+        return Ok(target.id.to_string());
+    }
+    memorable_pij_id_candidates(&format!("{}\0{session}", claim.harness))
+        .find(|candidate| seats.iter().all(|seat| seat.id != *candidate))
+        .map(|id| id.to_string())
+        .ok_or_else(|| paneless_refusal("memorable Pij ID space is exhausted"))
 }
 
 fn registration_target<'a>(
@@ -831,6 +1040,76 @@ struct NativeProcess {
 }
 
 impl NativeProcess {
+    fn is_external_host(&self, harness: Harness) -> bool {
+        if harness == Harness::Copilot {
+            return self.is_copilot_host();
+        }
+        let (binary, entry) = match harness {
+            Harness::Claude => ("claude", "@anthropic-ai/claude-code/cli.js"),
+            Harness::Codex => ("codex", "@openai/codex/bin/codex.js"),
+            _ => return false,
+        };
+        let executable = Path::new(&self.executable).file_name();
+        let argv0 = self.argv.first().and_then(|arg| Path::new(arg).file_name());
+        if executable != argv0 {
+            return false;
+        }
+        executable == Some(std::ffi::OsStr::new(binary))
+            || (executable == Some(std::ffi::OsStr::new("node"))
+                && self
+                    .argv
+                    .get(1)
+                    .is_some_and(|script| Path::new(script).ends_with(entry)))
+    }
+
+    fn matches_external_session(&self, harness: Harness, session: &str) -> bool {
+        let start = if Path::new(&self.executable).file_name() == Some(std::ffi::OsStr::new("node"))
+        {
+            2
+        } else {
+            1
+        };
+        let argv = &self.argv[start..];
+        // A Claude fork names both its source conversation and its new identity.
+        let fork = harness == Harness::Claude && argv.iter().any(|arg| arg == "--fork-session");
+        let mut pinned = false;
+        let mut args = argv.iter().peekable();
+        while let Some(arg) = args.next() {
+            if arg == "--" {
+                break;
+            }
+            let (flag, inline) = arg
+                .split_once('=')
+                .map_or((arg.as_str(), None), |(flag, value)| (flag, Some(value)));
+            let session_flag = match harness {
+                Harness::Claude => matches!(flag, "--session-id" | "--resume" | "-r"),
+                Harness::Copilot => matches!(flag, "--session-id" | "--resume"),
+                Harness::Codex => flag == "resume",
+                _ => false,
+            };
+            if !session_flag {
+                continue;
+            }
+            let value = inline.or_else(|| {
+                args.peek()
+                    .filter(|value| !value.starts_with('-'))
+                    .map(|value| value.as_str())
+            });
+            if flag == "--session-id" {
+                pinned = value == Some(session);
+                if !pinned {
+                    return false;
+                }
+            } else if !fork && value.is_some_and(|value| value != session) {
+                return false;
+            }
+            if inline.is_none() && value.is_some() {
+                args.next();
+            }
+        }
+        !fork || pinned
+    }
+
     fn is_copilot_host(&self) -> bool {
         let executable = Path::new(&self.executable)
             .file_name()
@@ -2443,5 +2722,662 @@ mod tests {
             "accept"
         );
         let _ = fs::remove_dir_all(root);
+    }
+
+    const PANELLESS_CLI: ProcIdentity = ProcIdentity {
+        pid: 9000,
+        proc_start: 200,
+    };
+    const PANELLESS_SHELL: ProcIdentity = ProcIdentity {
+        pid: 9001,
+        proc_start: 180,
+    };
+    const PANELLESS_NEXT_CLI: ProcIdentity = ProcIdentity {
+        pid: 9002,
+        proc_start: 210,
+    };
+
+    fn paneless_claim(harness: Harness) -> Registration {
+        let mut claim = native_claim("");
+        claim.harness = harness.as_str().to_string();
+        claim.pane = None;
+        claim.pid = Some(PANELLESS_CLI.pid);
+        claim.proc_start = Some(PANELLESS_CLI.proc_start);
+        claim
+    }
+
+    fn paneless_liveness() -> Arc<dyn LivenessPort> {
+        Arc::new(
+            FakeLiveness::new()
+                .with_proc(HOST)
+                .with_proc(PANELLESS_CLI)
+                .with_proc(PANELLESS_SHELL)
+                .with_proc(PANELLESS_NEXT_CLI),
+        )
+    }
+
+    fn paneless_process(pid: u32, harness: Harness, node: bool) -> Option<NativeProcess> {
+        if pid == PANELLESS_CLI.pid || pid == PANELLESS_NEXT_CLI.pid {
+            return Some(NativeProcess {
+                parent: PANELLESS_SHELL.pid,
+                executable: "/opt/pij/pij".into(),
+                argv: vec!["/opt/pij/pij".into(), "inbox".into()],
+            });
+        }
+        if pid == PANELLESS_SHELL.pid {
+            return Some(NativeProcess {
+                parent: HOST.pid,
+                executable: "/bin/sh".into(),
+                argv: vec!["sh".into(), "-c".into(), "copilot claude codex".into()],
+            });
+        }
+        if pid != HOST.pid {
+            return None;
+        }
+        let executable = if node {
+            "/usr/bin/node".to_string()
+        } else {
+            format!("/opt/bin/{}", harness.as_str())
+        };
+        let mut argv = vec![executable.clone()];
+        if node {
+            argv.push(format!(
+                "/private/fixture/node_modules/{}",
+                match harness {
+                    Harness::Claude => "@anthropic-ai/claude-code/cli.js",
+                    Harness::Copilot => "@github/copilot/index.js",
+                    Harness::Codex => "@openai/codex/bin/codex.js",
+                    _ => unreachable!("external harness fixture"),
+                }
+            ));
+        }
+        Some(NativeProcess {
+            parent: 0,
+            executable,
+            argv,
+        })
+    }
+
+    async fn pull_register(
+        service: &RegistrationService,
+        claim: Registration,
+        session: &str,
+        node: bool,
+    ) -> std::result::Result<(SeatDescriptor, pij_core::ports::PutBinding), RegistrationError> {
+        let harness = Harness::parse(&claim.harness).expect("fixture harness");
+        service
+            .register_paneless_with_observer(claim, Some(session.into()), |pid| {
+                ready(Ok(paneless_process(pid, harness, node)))
+            })
+            .await
+    }
+
+    #[tokio::test]
+    async fn paneless_all_external_harnesses_bind_actual_host_not_cli_or_shell() {
+        for harness in [Harness::Claude, Harness::Copilot, Harness::Codex] {
+            for node in [false, true] {
+                let (service, registry) = native_service(Vec::new(), paneless_liveness()).await;
+                let (seat, binding) =
+                    pull_register(&service, paneless_claim(harness), SESSION, node)
+                        .await
+                        .expect("verified external ancestor");
+                let expected = pij_core::names::memorable_pij_id_candidates(&format!(
+                    "{}\0{SESSION}",
+                    harness.as_str()
+                ))
+                .next()
+                .expect("canonical candidate");
+                assert_eq!(seat.id, expected);
+                assert_eq!(seat.harness, harness);
+                assert_eq!(seat.proc, Some(HOST));
+                assert_eq!(seat.harness_session.as_deref(), Some(SESSION));
+                assert_eq!(seat.pane, None);
+                assert!(!seat.relay);
+                assert!(!seat.native_extension_delivery);
+                assert!(binding.inserted);
+                assert_eq!(binding.previous_proc, None);
+                assert_eq!(registry.get(&seat.id).await.unwrap(), Some(seat));
+            }
+        }
+    }
+
+    #[test]
+    fn paneless_host_matcher_rejects_shell_text_forged_argv_and_unrecognized_node_entries() {
+        for harness in [Harness::Claude, Harness::Copilot, Harness::Codex] {
+            let mut process = paneless_process(HOST.pid, harness, false).unwrap();
+            process.executable = "/bin/sh".into();
+            assert!(!process.is_external_host(harness));
+            process = paneless_process(HOST.pid, harness, false).unwrap();
+            process.argv[0] = "sh".into();
+            assert!(!process.is_external_host(harness));
+            for entry in [
+                "-e",
+                "/tmp/extension.mjs",
+                "/tmp/npm-loader.js",
+                "/tmp/index.js",
+            ] {
+                process = paneless_process(HOST.pid, harness, true).unwrap();
+                process.argv[1] = entry.into();
+                assert!(!process.is_external_host(harness));
+            }
+            process = paneless_process(HOST.pid, harness, true).unwrap();
+            process.argv[1] = process.argv[1].replace("node_modules/@", "node_modules/not-@");
+            assert!(!process.is_external_host(harness));
+        }
+    }
+
+    #[tokio::test]
+    async fn paneless_refuses_missing_or_wrong_harness_ancestor_without_writes() {
+        for harness in [Harness::Claude, Harness::Copilot, Harness::Codex] {
+            for missing in [false, true] {
+                let (service, registry) = native_service(Vec::new(), paneless_liveness()).await;
+                refused(
+                    service
+                        .register_paneless_with_observer(
+                            paneless_claim(harness),
+                            Some(SESSION.into()),
+                            |pid| {
+                                let mut process = paneless_process(pid, harness, false);
+                                if pid == HOST.pid {
+                                    if missing {
+                                        process = None;
+                                    } else {
+                                        process.as_mut().unwrap().executable = "/bin/sh".into();
+                                    }
+                                }
+                                ready(Ok(process))
+                            },
+                        )
+                        .await,
+                );
+                assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn paneless_requires_empty_id_exact_session_complete_tuple_and_pull_shape() {
+        let (service, registry) = native_service(Vec::new(), paneless_liveness()).await;
+        for session in [
+            None,
+            Some(""),
+            Some(" "),
+            Some(" session"),
+            Some("session\n"),
+        ] {
+            refused(
+                service
+                    .register_with_harness_session(
+                        paneless_claim(Harness::Copilot),
+                        session.map(str::to_string),
+                    )
+                    .await,
+            );
+        }
+        for case in 0..11 {
+            let mut claim = paneless_claim(Harness::Copilot);
+            match case {
+                0 => claim.id = "pij-unverified-name".into(),
+                1 => claim.pane = Some("%137".into()),
+                2 => claim.relay = true,
+                3 => claim.spawn_id = Some("spawn".into()),
+                4 => claim.supersedes = Some("pij-old".into()),
+                5 => claim.pid = None,
+                6 => claim.proc_start = None,
+                7 => claim.pid = Some(0),
+                8 => claim.proc_start = Some(0),
+                9 => claim.harness = "omp".into(),
+                10 => claim.role = Some(" ".into()),
+                _ => unreachable!(),
+            }
+            refused(
+                service
+                    .register_paneless_with_observer(claim, Some(SESSION.into()), |pid| {
+                        ready(Ok(paneless_process(pid, Harness::Copilot, false)))
+                    })
+                    .await,
+            );
+        }
+        assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
+    }
+
+    #[test]
+    fn paneless_observed_session_argv_must_match_including_claude_fork_identity() {
+        for (harness, flag) in [
+            (Harness::Claude, "--session-id"),
+            (Harness::Claude, "--resume"),
+            (Harness::Claude, "-r"),
+            (Harness::Copilot, "--session-id"),
+            (Harness::Copilot, "--resume"),
+            (Harness::Codex, "resume"),
+        ] {
+            for node in [false, true] {
+                let mut process = paneless_process(HOST.pid, harness, node).unwrap();
+                process.argv.extend([flag.into(), SESSION.into()]);
+                assert!(process.matches_external_session(harness, SESSION));
+                assert!(!process.matches_external_session(harness, "another-session"));
+                if flag.starts_with("--") {
+                    process.argv.pop();
+                    *process.argv.last_mut().unwrap() = format!("{flag}={SESSION}");
+                    assert!(process.matches_external_session(harness, SESSION));
+                    assert!(!process.matches_external_session(harness, "another-session"));
+                }
+            }
+        }
+        let mut process = paneless_process(HOST.pid, Harness::Claude, false).unwrap();
+        process.argv.extend(
+            [
+                "--resume",
+                "source-session",
+                "--fork-session",
+                "--session-id",
+                SESSION,
+            ]
+            .into_iter()
+            .map(str::to_string),
+        );
+        assert!(process.matches_external_session(Harness::Claude, SESSION));
+        assert!(!process.matches_external_session(Harness::Claude, "source-session"));
+        process.argv.truncate(2);
+        assert!(
+            process.matches_external_session(Harness::Claude, SESSION),
+            "bare resume picker"
+        );
+        for flag in ["--continue", "-c"] {
+            let mut process = paneless_process(HOST.pid, Harness::Claude, false).unwrap();
+            process
+                .argv
+                .extend([flag.into(), "unrelated prompt text".into()]);
+            assert!(
+                process.matches_external_session(Harness::Claude, SESSION),
+                "boolean continue does not make prompt text session evidence"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn paneless_session_argv_conflict_refuses_before_registration() {
+        for harness in [Harness::Claude, Harness::Copilot, Harness::Codex] {
+            let (service, registry) = native_service(Vec::new(), paneless_liveness()).await;
+            refused(
+                service
+                    .register_paneless_with_observer(
+                        paneless_claim(harness),
+                        Some(SESSION.into()),
+                        |pid| {
+                            let mut process = paneless_process(pid, harness, false);
+                            if pid == HOST.pid {
+                                process.as_mut().unwrap().argv.extend([
+                                    if harness == Harness::Codex {
+                                        "resume"
+                                    } else {
+                                        "--session-id"
+                                    }
+                                    .into(),
+                                    "conflicting-session".into(),
+                                ]);
+                            }
+                            ready(Ok(process))
+                        },
+                    )
+                    .await,
+            );
+            assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
+        }
+    }
+
+    #[tokio::test]
+    async fn paneless_rechecks_incarnation_after_observation_and_lock_wait() {
+        for during_lock in [false, true] {
+            let liveness = Arc::new(MovingStart(AtomicU64::new(HOST.proc_start)));
+            let (service, registry) = native_service(Vec::new(), liveness.clone()).await;
+            let mut claim = paneless_claim(Harness::Codex);
+            claim.pid = Some(HOST.pid);
+            claim.proc_start = Some(HOST.proc_start);
+            let observed = Notify::new();
+            let guard = if during_lock {
+                Some(service.registration_lock.lock().await)
+            } else {
+                None
+            };
+            let pending =
+                service.register_paneless_with_observer(claim, Some(SESSION.into()), |pid| {
+                    observed.notify_one();
+                    if !during_lock {
+                        liveness.0.store(HOST.proc_start + 1, Ordering::SeqCst);
+                    }
+                    ready(Ok(paneless_process(pid, Harness::Codex, false)))
+                });
+            tokio::pin!(pending);
+            if during_lock {
+                tokio::select! {
+                    _ = observed.notified() => {}
+                    result = &mut pending => panic!("registration must wait for the lock: {result:?}"),
+                }
+                liveness.0.store(HOST.proc_start + 1, Ordering::SeqCst);
+            }
+            drop(guard);
+            refused(pending.await);
+            assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
+        }
+    }
+
+    #[tokio::test]
+    async fn paneless_repeated_cli_wrappers_reuse_host_address_without_mutation() {
+        use pij_core::events::EventFilter;
+        use tokio_stream::StreamExt;
+
+        for harness in [Harness::Claude, Harness::Copilot, Harness::Codex] {
+            let (service, registry) = native_service(Vec::new(), paneless_liveness()).await;
+            let mut claim = paneless_claim(harness);
+            claim.role = Some("coder".into());
+            let (first, _) = pull_register(&service, claim.clone(), SESSION, true)
+                .await
+                .unwrap();
+            assert_eq!(first.role.as_deref(), Some("coder"));
+            let mut subscription = service
+                .event_bus
+                .subscribe(None, EventFilter::default())
+                .await
+                .unwrap();
+            let writes = registry
+                .calls()
+                .iter()
+                .filter(|call| call.starts_with("put:"))
+                .count();
+            claim.pid = Some(PANELLESS_NEXT_CLI.pid);
+            claim.proc_start = Some(PANELLESS_NEXT_CLI.proc_start);
+            let (same, binding) = pull_register(&service, claim.clone(), SESSION, true)
+                .await
+                .unwrap();
+            assert_eq!(same, first);
+            assert!(!binding.inserted);
+            assert_eq!(binding.previous_proc, Some(HOST));
+            assert_eq!(
+                registry
+                    .calls()
+                    .iter()
+                    .filter(|call| call.starts_with("put:"))
+                    .count(),
+                writes
+            );
+            tokio::select! {
+                biased;
+                event = subscription.next() => panic!("unchanged repeat emitted {event:?}"),
+                _ = ready(()) => {}
+            }
+            service
+                .roles
+                .assert_role(&same.id, &same.id, Some("reviewer".into()))
+                .await
+                .unwrap();
+            claim.role = None;
+            let (authoritative, _) = pull_register(&service, claim, SESSION, true).await.unwrap();
+            assert_eq!(authoritative.role.as_deref(), Some("reviewer"));
+            assert_eq!(
+                registry
+                    .calls()
+                    .iter()
+                    .filter(|call| call.starts_with("put:"))
+                    .count(),
+                writes
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn paneless_refuses_ambiguous_session_stale_tuple_and_false_push_attestation() {
+        for harness in [Harness::Claude, Harness::Copilot, Harness::Codex] {
+            for case in 0..10 {
+                let mut incumbent =
+                    SeatDescriptor::new("pij-incumbent", harness, "/isolated/native-registration");
+                incumbent.proc = Some(HOST);
+                incumbent.harness_session = Some(SESSION.into());
+                match case {
+                    0 => incumbent.proc = Some(OTHER_HOST),
+                    1 => {
+                        incumbent.proc = Some(ProcIdentity {
+                            proc_start: HOST.proc_start + 1,
+                            ..HOST
+                        })
+                    }
+                    2 => incumbent.harness_session = Some("other-session".into()),
+                    3 => incumbent.harness = Harness::Omp,
+                    4 => incumbent.pane = Some("%137".into()),
+                    5 => incumbent.relay = true,
+                    6 => incumbent.native_extension_delivery = true,
+                    7 => incumbent.spawn_id = Some("spawn".into()),
+                    8 => incumbent.tombstoned_at = Some(1),
+                    9 => {}
+                    _ => unreachable!(),
+                }
+                let mut seats = vec![incumbent.clone()];
+                if case == 9 {
+                    let mut duplicate = incumbent.clone();
+                    duplicate.id = "pij-duplicate".into();
+                    seats.push(duplicate);
+                }
+                let (service, registry) = native_service(seats, paneless_liveness()).await;
+                refused(pull_register(&service, paneless_claim(harness), SESSION, false).await);
+                assert_eq!(registry.get(&incumbent.id).await.unwrap(), Some(incumbent));
+                assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn paneless_allocator_reserves_existing_names_and_serializes_repeat_claims() {
+        let seed = format!("codex\0{SESSION}");
+        let mut candidates = pij_core::names::memorable_pij_id_candidates(&seed);
+        let occupied = SeatDescriptor::new(candidates.next().unwrap(), Harness::Omp, "/unrelated");
+        let expected = candidates.next().unwrap();
+        let (service, registry) = native_service(vec![occupied.clone()], paneless_liveness()).await;
+        let (left, right) = tokio::join!(
+            pull_register(&service, paneless_claim(Harness::Codex), SESSION, false),
+            pull_register(&service, paneless_claim(Harness::Codex), SESSION, false),
+        );
+        let (left, first) = left.unwrap();
+        let (right, second) = right.unwrap();
+        assert_eq!(left.id, expected);
+        assert_eq!(right.id, expected);
+        assert_ne!(first.inserted, second.inserted);
+        assert_eq!(
+            registry
+                .calls()
+                .iter()
+                .filter(|call| call.starts_with("put:"))
+                .count(),
+            1
+        );
+        assert_eq!(registry.get(&occupied.id).await.unwrap(), Some(occupied));
+    }
+
+    struct PanelessCallerStart(AtomicU64);
+
+    #[async_trait::async_trait]
+    impl LivenessPort for PanelessCallerStart {
+        async fn proc_start(&self, pid: u32) -> pij_core::error::Result<Option<u64>> {
+            Ok(if pid == PANELLESS_CLI.pid {
+                Some(self.0.load(Ordering::SeqCst))
+            } else if pid == PANELLESS_SHELL.pid {
+                Some(PANELLESS_SHELL.proc_start)
+            } else if pid == HOST.pid {
+                Some(HOST.proc_start)
+            } else {
+                None
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn paneless_sandwich_rechecks_cli_even_when_host_incarnation_is_unchanged() {
+        let liveness = Arc::new(PanelessCallerStart(AtomicU64::new(
+            PANELLESS_CLI.proc_start,
+        )));
+        let (service, registry) = native_service(Vec::new(), liveness.clone()).await;
+        refused(
+            service
+                .register_paneless_with_observer(
+                    paneless_claim(Harness::Claude),
+                    Some(SESSION.into()),
+                    |pid| {
+                        if pid == HOST.pid {
+                            liveness
+                                .0
+                                .store(PANELLESS_CLI.proc_start + 1, Ordering::SeqCst);
+                        }
+                        ready(Ok(paneless_process(pid, Harness::Claude, false)))
+                    },
+                )
+                .await,
+        );
+        assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
+    }
+
+    #[tokio::test]
+    async fn paneless_ancestry_refuses_cycles_newer_parents_and_more_than_32_processes() {
+        for newer_parent in [false, true] {
+            let liveness: Arc<dyn LivenessPort> = if newer_parent {
+                Arc::new(
+                    FakeLiveness::new()
+                        .with_proc(PANELLESS_CLI)
+                        .with_proc(ProcIdentity {
+                            proc_start: PANELLESS_CLI.proc_start + 1,
+                            ..PANELLESS_SHELL
+                        }),
+                )
+            } else {
+                paneless_liveness()
+            };
+            let (service, registry) = native_service(Vec::new(), liveness).await;
+            refused(
+                service
+                    .register_paneless_with_observer(
+                        paneless_claim(Harness::Copilot),
+                        Some(SESSION.into()),
+                        |pid| {
+                            let mut process =
+                                paneless_process(pid, Harness::Copilot, false).unwrap();
+                            if !newer_parent {
+                                process.parent = pid;
+                            }
+                            ready(Ok(Some(process)))
+                        },
+                    )
+                    .await,
+            );
+            assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
+        }
+        let mut liveness = FakeLiveness::new();
+        for pid in 100..=132 {
+            liveness = liveness.with_proc(ProcIdentity {
+                pid,
+                proc_start: 200,
+            });
+        }
+        let (service, registry) = native_service(Vec::new(), Arc::new(liveness)).await;
+        let mut claim = paneless_claim(Harness::Codex);
+        claim.pid = Some(100);
+        let calls = AtomicU64::new(0);
+        refused(
+            service
+                .register_paneless_with_observer(claim, Some(SESSION.into()), |pid| {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    ready(Ok(Some(NativeProcess {
+                        parent: pid + 1,
+                        executable: "/bin/sh".into(),
+                        argv: vec!["sh".into()],
+                    })))
+                })
+                .await,
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 32);
+        assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
+    }
+
+    #[tokio::test]
+    async fn paneless_host_observation_has_a_wall_clock_bound() {
+        let (service, registry) = native_service(Vec::new(), paneless_liveness()).await;
+        tokio::time::pause();
+        let error = service
+            .register_paneless_with_observer(
+                paneless_claim(Harness::Copilot),
+                Some(SESSION.into()),
+                |_| {
+                    std::future::pending::<
+                        std::result::Result<Option<NativeProcess>, RegistrationError>,
+                    >()
+                },
+            )
+            .await
+            .expect_err("bounded paneless host observation");
+        assert!(error.to_string().contains("two seconds"));
+        assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
+    }
+
+    #[tokio::test]
+    async fn paneless_nearest_external_host_refuses_inherited_other_harness_session_without_writes()
+    {
+        for requested in [Harness::Claude, Harness::Copilot, Harness::Codex] {
+            for nearest in [Harness::Claude, Harness::Copilot, Harness::Codex] {
+                if nearest == requested {
+                    continue;
+                }
+                for node in [false, true] {
+                    let (service, registry) = native_service(Vec::new(), paneless_liveness()).await;
+                    let outer_observations = AtomicU64::new(0);
+                    let error = service
+                        .register_paneless_with_observer(
+                            paneless_claim(requested),
+                            Some(SESSION.into()),
+                            |pid| {
+                                let process = if pid == PANELLESS_SHELL.pid {
+                                    let mut host =
+                                        paneless_process(HOST.pid, nearest, node).unwrap();
+                                    host.parent = HOST.pid;
+                                    Some(host)
+                                } else {
+                                    if pid == HOST.pid {
+                                        outer_observations.fetch_add(1, Ordering::SeqCst);
+                                    }
+                                    paneless_process(pid, requested, node)
+                                };
+                                ready(Ok(process))
+                            },
+                        )
+                        .await
+                        .expect_err("nearest external harness is the identity boundary");
+                    assert!(
+                        error
+                            .to_string()
+                            .contains("nearest external harness differs")
+                    );
+                    assert_eq!(outer_observations.load(Ordering::SeqCst), 0);
+                    assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn paneless_dispatch_preserves_ordinary_empty_id_admission_for_other_harnesses() {
+        let (service, registry) = native_service(Vec::new(), paneless_liveness()).await;
+        for harness in ["pi", "omp", "unknown-harness"] {
+            let mut claim = paneless_claim(Harness::Copilot);
+            claim.harness = harness.into();
+            claim.pid = None;
+            claim.proc_start = None;
+            let ordinary = service
+                .register_inner(claim.clone(), None, super::RegistrationMode::Ordinary)
+                .await
+                .expect_err("ordinary empty id refused");
+            let dispatched = service
+                .register_with_harness_session(claim, None)
+                .await
+                .expect_err("unrelated harness still uses ordinary admission");
+            assert_eq!(dispatched.to_string(), ordinary.to_string());
+            assert!(!dispatched.to_string().contains("paneless external"));
+        }
+        assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
     }
 }

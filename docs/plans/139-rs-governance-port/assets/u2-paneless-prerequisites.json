@@ -1,0 +1,28 @@
+{
+  "status": "IMPLEMENTATION_CONTRACT_CONFIRMED_NOT_VALIDATED",
+  "public_commands": ["pij inbox register --json", "pij inbox --wait [ms] --json", "pij send <id> <body> --json", "pij send <id> <body> --in-reply-to <msg_id> --json"],
+  "registration_response": "Full native v2 envelope; data.id, data.harness, data.session, data.proc, data.binding (created/same). No legacy existing boolean or unwrapped JSON. Pull has data.pane=null and native_extension_delivery=false.",
+  "inbox_response": "Full v2 envelope, data array of claims with job_id and message. Finite empty wait returns data:[]; no timedOut/self wrapper. Rendering must complete before ack. Self-send remains refused.",
+  "ambient": {
+    "claude": "CLAUDE_CODE_SESSION_ID, nonempty",
+    "copilot": "COPILOT_AGENT_SESSION_ID, UUID, with matching HOME/.copilot/session-state/<id> directory",
+    "codex": "CODEX_THREAD_ID, UUID, with readable matching HOME/.codex/sessions/YYYY/MM/DD/rollout-<date>-<id>.jsonl; retain session_meta cwd in fixtures",
+    "all": "TMUX and TMUX_PANE absent/empty; HOME isolated; PIJ_SESSION_ID absent or stale is repaired only after native evidence is admitted. Do not manufacture PIJ_SESSION_ID or use FsRegistry/FsChannel. Separate conversations need distinct host processes."
+  },
+  "host_evidence": {
+    "rule": "Public CLI executes as a descendant of a live matching external harness host. The wrapper submits its own process tuple; daemon observes ancestry, verifies incarnations, and returns/stores HOST tuple, never wrapper PID.",
+    "native": ["claude", "copilot", "codex"],
+    "node_entrypoints": ["@anthropic-ai/claude-code/cli.js", "@github/copilot/index.js", "@openai/codex/bin/codex.js"],
+    "node_rule": "Actual executable and argv[0] must be node, argv[1] the matching package entry. An active private IPC-capable fixture host at that package-shaped script path can spawn actual CLI children; copied argv[0], shell -c text, npm launcher or node -e is not host evidence. Explicit native session argv must agree.",
+    "proof_ceiling": "A deterministic protocol host is not a real model canary. No provider calls or credential lookup are required or permitted by this fixture."
+  },
+  "daemon": {
+    "binary": "Explicit worktree-local target/debug/pij-rs, honoring CARGO_TARGET_DIR when set; PM builds it. Never ambient production PATH binary.",
+    "launch": "<binary> --state-dir <private-state> --addr <private-addr> daemon --bind <private-addr>",
+    "readiness": "Observe listening banner and authenticated /health; key is private-state/daemon.key. Zero port may be selected by OS and actual banner address propagated to clients.",
+    "client_env": ["PIJ_RS_STATE_DIR=<private-state>", "PIJ_RS_ADDR=<observed-private-addr>", "HOME=<private-home>", "CLAUDE_CONFIG_DIR=<private-home>/.claude", "XDG_CONFIG_HOME=<private-home>/.config"],
+    "isolation": "No default7461, production binary/config/daemon, or transport logs. Own and wait for all child exits on teardown; no fixed sleep as readiness or delivery proof."
+  },
+  "reuse": ["core/current-session.ts: resolveAmbientNativeIdentity", "core/harness/copilot.ts: resolveCopilotCurrentSession", "core/harness/codex.ts: listCodexRollouts/codexRolloutForSession", "adapters/daemon-http.ts: observedProcessStart"],
+  "cross_slice_api": "None added: smoke and remaining caller tests consume public CLI only. Helpers above are existing production evidence patterns, not new shared test dependencies."
+}
