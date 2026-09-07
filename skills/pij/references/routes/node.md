@@ -1,149 +1,100 @@
-# node — declare & read node truth: projects, tasks, states, adoption, anomalies
+# node — rs governance records, questions and node truth
 
-> Route module — sibling-blind. Knows only this job; composition is the dispatch's job.
-> Conventions cited as § C*n* live in `00-routing.md` § Shared conventions (pull lazily).
+> Route module — sibling-blind. Conventions cited as § C*n* live in `00-routing.md` § Shared conventions (pull lazily).
 
-**Job**: work the pij platform's governance surface — projects, stream/fence/dispatch records, canaries, per-node assignments, the attributed spine, node cards, adoption repair, and anomaly queries. Writes are attributed; safety is DERIVED, never enforced.
+**Job**: operate projects, streams, fences, dispatches, roles, assignments, decisions, node cards and the attributed spine in the Rust store. See the [stable API contract](../../../../docs/how/pij-rs-api.md) and [Unsupported status](../../../../docs/how/pij-rs-api.md#unsupported-status). `pij` either serves rs or refuses; explicit legacy forcing is no escape. `--json` is the complete original v2 envelope, never a legacy field projection.
 
-## Attribution (resolved BEFORE any write)
+## Attribution and roles
 
-`--actor <label>` asserts and wins; otherwise your resolved self (`PIJ_SESSION_ID`, else a unique pane match) is used; an unresolvable caller is refused naming `--actor` — nothing mutates on refusal. Seats that write often should `export PIJ_SESSION_ID=<own-id>`.
-
-Everything under `report` is a first-person claim about yourself.
-`report now|question|blocked|state|clear` take no node or `--actor` and require
-the caller to resolve to a registered descriptor. `report verify <node>` keeps
-its supervisory target but stamps the registered caller.
-
-## Projects
+Bearer authentication proves machine access, not seat identity. The daemon resolves caller evidence before mutation. `--actor`, when accepted, must equal that caller; it cannot override attribution. Never copy another seat's `PIJ_SESSION_ID` to gain authority.
 
 ```bash
-pij project create "<description>" [--json]   # kebab slug, collision-suffixed
-pij project list [--json]
-pij project show <slug> [--json]
-pij project set <slug> [--plan <path>] [--prime <id>]
+pij role <seat> reviewer --json
+pij role <seat> --unset --json
+pij orchestration role set <seat> pm --json
+pij orchestration role unset <seat> --json
 ```
 
-## Tasks & reports (per-assignment semantic truth)
+RoleService stores explicit assertions in `seat_roles` and joins whoami, seats, StateCard and phonehome. An unstamped role is null, not an inferred worker. Omitted role on adoption/registration preserves the assertion; unset is explicit, not an omission. Role assignment is self-or-current-parent at the service boundary; protocol designations still come from the governor. A role is not prime designation and grants no orchestration authority.
+
+## Projects, streams and fences
 
 ```bash
-pij task set <node> "<task>" [--project <slug>]    # opens/points an assignment
-pij report now "<did>" "<next>" [--state <word>] [--note "<text>"] [--project <slug>]
-pij report question "<what I need from you>" [--assignment <id>]
-pij report blocked "<what I am waiting on>" [--assignment <id>]
-pij report state <state> [--assignment <id>] [--refs a,b,…]
-pij report clear [--assignment <id>]
-pij report verify <node> [--assignment <id>]       # done is a CLAIM until verified
-```
-
-Semantic states: `blocked|question|hold|waiting|ready|failed|cancelled|done`. Without an assignment, a reporting seat uses `asg-general-<node>`.
-The node badge derives worst-first across open assignments. The mechanical axis
-(`starting|working|idle|stalled|stopped|dead|unknown`) is pij-computed, never writable here.
-
-Use `report question` for a human answer, `report blocked` for an external dependency; `--note` is valid only with `--state question|blocked`.
-Actively working has no semantic state word: absence is honest by design; never invent `working`.
-
-**Cadence (invariant 12): report at BOTH edges — when you start and finish each unit.**
-Never wait for a watchdog nudge: it is a backstop showing the card was already stale.
-Consumers render `now`/`next` as CURRENT; a seat that merged an hour ago must not still read as awaiting review.
-`report clear` drops a state that no longer applies (e.g. `waiting` after resuming).
-
-**pij tells you when you have drifted.** Once your card is >10min old, every pij
-command appends one line to **stderr**:
-
-```
-⚠ pij: your now/next card is 23m old — pij report now "<did>" "<next>"
-```
-
-Treat it as the instruction it is and report; it clears itself the moment you do.
-It never appears on stdout (`--json` stays parseable), never fires on `report`
-itself, and never fires for a seat that has parked itself in
-`waiting|hold|blocked|question` — those are correct declarations, not drift.
-
-**Who reads this.** Status renders for **prime/PM** seats. A worker's `report now`
-is recorded and auditable but surfaces in no card, so write it for the ledger, not
-for an audience. Roles are set with `pij orchestration role set <id> pm|worker`;
-an unstamped seat renders as `ROLE UNKNOWN` and shows no status at all.
-
-**Limits, enforced at write** (measured in `core/cli.ts`, not aspirational):
-`now`'s did/next cap at **280 characters each**, `--note` at **200** — both after
-whitespace collapsing, and both rejected with `E-ARG` rather than truncated. Size
-your text; do not discover the cap by hitting it. Renderers may *additionally*
-visually truncate, which is a display concern and not a second limit.
-
-**A declared question does not expire.** `report question` stays in the consumer's
-needs-attention strip until `report clear` or another state. It WILL be seen:
-never re-ask, self-nudge, or escalate by repetition; that only duplicates a question already displayed.
-
-Inline markdown is supported in report text (`` `code` ``, `**bold**`,
-`[links]`). Block markdown is not: newlines are refused. Shell-quote markdown
-containing backticks with single quotes so the shell does not execute it.
-
-## Team-scaffold records
-
-```bash
-pij stream create --project <slug> --slug <stream> [--base <ref>] [--ordinal N]
+pij project create '<description>' [--repo <path>] [--plan <path>] [--prime <seat>] --json
+pij project list --json
+pij project show <slug> --json
+pij project set <slug> [--description <text>] [--repo <path>] [--plan <path>] [--prime <seat>]
+pij stream create --project <slug> --slug <stream> [--base <ref>] [--ordinal N] [--root <path>]
+pij stream list [--project <slug>] --json
+pij stream show <allocation-id> --json
 pij stream close <allocation-id>
 pij fence set <stream> --paths <a,b> [--shared <x,y>]
-pij fence show [--path <repo-path>]
-pij dispatch <id> --packet <file> [--wait]
-pij ack <dispatch-id> --packet-sha <sha256>
-pij canary <id> [--expect-model <model>]
+pij fence show [--stream <stream>] [--path <path>] --json
 ```
 
-Records live below `~/.pij/allocations/`, `fences/`, and `dispatches/`; canary pass evidence attaches to the real acknowledged dispatch. Worked flow and manifest example: [`../../../../docs/how/pij-team-scaffold.md`](../../../../docs/how/pij-team-scaffold.md).
+Records are shared SQLite authority, not `~/.pij/allocations/` or filesystem ledgers. Stream creation uses the real repository reservation/worktree operation; close changes the record, not the worktree. Fences describe intended writes, not permission, and path filters never widen them.
 
-## Seat attestation
+## Packet receipts and attestation
 
 ```bash
-pij attest <id> --plan-id <id>
+pij dispatch <seat> --packet <path> [--wait[=MS]] --json
+pij ack <dispatch-id> --packet-sha <sha256> --json
+pij canary <seat> [--expect-model <model>] [--wait[=MS]] --json
+pij attest <seat> --plan-id <id> --json
 ```
 
-`planId` is an opaque, explicit seat-level attestation. Absent means
-unattested; it is never inferred from `Project.planPath`, a cwd, or ambient
-`HARNESS_PLAN_ID`. Spawn creates it with `--plan-id`; attest corrects an
-existing descriptor through the same CLI-owned write law.
+The daemon reads/hashes packet bytes relative to caller cwd and persists the dispatch before existing DeliveryService admission. Queued is not delivered; delivered is not acknowledged. Only the actual recipient can ack the matching packet SHA, and identical acknowledgement is idempotent. Canary requires a real nonce-correlated dispatch, recipient ack and observed runtime/model evidence; descriptor presence is not a pass. `--wait` observes bounded progress rather than inventing completion.
 
-## Node cards & the spine
+`planId` is an explicit seat assertion, never inferred from a project, cwd or environment. `attest` does not set native-extension-delivery security attestation. Native spawn has no `--plan-id`; attest the resulting seat separately.
+
+## Tasks and reports
 
 ```bash
-pij node show <id> --json    # both state axes, assignment, context gauges, tmux window
-pij spine events [--peer <id>] [--project <slug>] [--since N] [--json]
-pij spine append --kind <k> [--refs a,b,…] [--peer <id>] [--project <slug>]
-pij spine render             # regenerate ~/.pij/spine/spine.md (markdown view of the log)
+pij task set <seat> '<task>' [--project <slug>]
+pij task close <assignment-id> --reason done|cancelled|failed|superseded
+pij report now '<did>' '<next>' [--state <word>] [--note '<text>'] [--project <slug>]
+pij report question "<what I need from you>" [--assignment <id>]
+pij report blocked "<what I am waiting on>" [--assignment <id>]
+pij report state <state> [--assignment <id>] [--refs a,b]
+pij report clear [--assignment <id>]
+pij report verify <seat> [--assignment <id>]
 ```
 
-Filters are exact (`--peer pij-a` never matches `pij-ab`); `--since` is exclusive.
+Everything under `report` is a first-person claim about yourself. `report verify <seat>` is the supervisory exception and requires the target's **current recorded parent**, never self or an unrelated seat. Done verification binds the latest done sequence; another done declaration reopens unverified-done. Closing a task does not substitute for verification.
 
-## Adoption (unadopted nodes)
+States: `blocked|question|hold|waiting|ready|failed|cancelled|done`. Mechanical liveness/activity is derived, not a writable semantic state; do not invent `working`. Existing now/state outputs and events stay unchanged. Use `--note` with question/blocked; report clear removes a state, not a durable decision. Record now/next at both edges of work (invariant 12), at the seat's own altitude. Query anomalies unscoped when supervising status cards: project/here filters may hide node-keyed stale status.
 
-Unadopted = non-prime with **no effective parent** — legal to boot, invisible to its tree. Enumerate machine-wide, then link:
+Actively working has no semantic state word. If done, run `pij report state done`; do not self-pause a watchdog. Inline markdown is supported in report text (`code`, emphasis and links), but newlines are refused. Shell-quote backticks with single quotes so they are not executed. Did/next cap at 280 characters each and notes at 200 after whitespace collapsing; over-limit text is refused, never silently truncated (`http/report.rs` owns this boundary).
+
+## Durable decisions
 
 ```bash
-pij tree --global --json                 # filter unadopted == true (pij list --json carries the same boolean per row)
-pij link <child> --parent <parent-id> --role <pm|worker>  # governor places + designates
-pij link <child> --root                  # sanctioned root placement (also audited)
+pij decisions [--state open|answered|all] [--asked_by <seat>] [--parent <seat>] --json
+pij answer <decision-id> '<answer>' --json
+# Current-parent recovery, only after observing a terminal non-delivered intent:
+pij answer --supersede <decision-id> '<replacement answer>' --json
 ```
 
-Role always arrives from above: the governor that gives a seat work designates
-it while placing it. A seat never infers or self-declares its own role.
-Prevention beats repair: spawn from a seat with `PIJ_SESSION_ID` exported so
-caller-truth parentage lands at spawn. Prime seats are legal roots and are never
-flagged.
+`report question` persists the question and `decision.opened`; state changes do not silently answer/delete it. Default decisions are open, fleet-wide. Reads and parent filters project the **current** parent; the opened event preserves parent-at-ask. A root question's prime visibility fallback confers no answer authority.
 
-## Anomalies (derived safety)
+The asker or current parent may answer. Self-answer closes without self-send (`answer_msg_id: null`); another-seat answer goes to the asker via existing delivery. Identical retry does not duplicate push; conflicting answered content refuses. Supersede belongs only to the current parent and only a terminal non-delivered old answer. Pending/running/held/reserved work refuses `E-RS-ANSWER-IN-TRANSIT`; delivered/acked refuses `E-RS-ANSWER-DELIVERED`. **An answer in transit cannot be withdrawn; wait for its terminal outcome.** Elapsed time and ordinary claim expiry do not establish terminal expiry. No queue cancellation or new transport exists.
+
+Supersession needs shared real SQLite queue/decision/spine authority. Mixed/fake authorities refuse `E-RS-ANSWER-AUTHORITY-SPLIT` before replacement, naming both backends. Ordinary questions/answers remain available on supported configurations. The stable API explains durable outcome evidence and replacement sequencing.
+
+## Node views and spine
 
 ```bash
-pij anomalies [--here] [--project <slug>] --json   # evidence refs into the spine
-                        # --here: this folder's peers · --project: one project's
-                        # assignments — detection stays machine-wide, only the
-                        # VIEW scopes (repo primes: poll scoped, not global)
+pij list --json
+pij sessions --json
+pij node show <seat> --json
+pij spine events [--peer <seat>] [--project <slug>] [--since N] --json
+pij spine append --kind <kind> [--refs <a,b>] [--project <slug>] --json
+pij spine render [--peer <seat>] [--project <slug>] [--since N] --json
+pij anomalies [--here] [--project <slug>] --json
 ```
 
-| Symptom | Read | Likely meaning |
-|---|---|---|
-| semantic active but system idle for hours | axis-disagreement finding | seat lost its dispatch — nudge or reassign |
-| `done` with no `verifiedBy` | unverified-done finding | a claim awaiting verification — verify or challenge |
-| hold cleared by a non-issuer | foreign-hold-clear finding | coordination bypass — raise with the issuer |
-| dispatch delivered but unacked past threshold | delivered-unacked-stale finding | recipient never acknowledged; inspect the dispatch/packet |
-| allocation journal stopped before create/close completed | allocation-half-open finding | resume or investigate the last successful step |
-| node missing from its tree | `unadopted == true` in tree/list | link it to its true parent (above) |
+Shim `pij list` supports exact `--harness <h>`, `--folder <path>`, `--parent <seat>` and `--scope local`, forwarded to `/v1/seats` without losing values. `pij sessions` and native `pij-rs list` accept bare or `--json` only. No `--prime`, `--role`, `--here`, `--archived` or cross-generation union. `node show` joins rs subtree/governance records; unknown nodes refuse. `link`/`tree` are unported: inspect recorded `parent`, never rewrite it through legacy or infer it from spawnedBy. Existing-seat reparenting/root placement is a named gap, not a role mutation.
+
+Spine kinds are literal/open strings. Append attribution is daemon-resolved and irreversible; correct mistakes with a referenced event. `--peer` is a read filter, not append impersonation. Render returns `{text,cursor}` without writing a legacy spine file. Local `--since N` is exclusive; live `/v1/events` instead uses machine cursor maps. That stream begins with Hello (`hello:true`, not `type=hello`), then Event frames with JSON-**string** payloads; see the API before decoding them.
+
+Canonical examples live at `crates/testkit/fixtures/golden/api/governance-routes.json` and `governance-events.json`. They are not new live captures; PM/prime own validation and production/chainglass acceptance.

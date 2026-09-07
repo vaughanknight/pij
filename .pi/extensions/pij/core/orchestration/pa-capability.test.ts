@@ -12,32 +12,15 @@ import {
 
 const EXT_ROOT = join(import.meta.dirname, "..", "..");
 
-// ── THESE THREE SCRAPES ARE THE ONLY TABLE-TO-REALITY PROOF IN THE REPO ──────
+// These source-to-table checks defend the still-live core and chore dispatchers.
+// A whoami payload derived from PA_VERB_CLASSIFICATION cannot detect a deleted
+// classification: both sides would shrink together. Keep these independent
+// parser inventories and their nonempty guards.
 //
-// DELETING ANY OF THEM SILENTLY REMOVES THE ONLY THING THAT WOULD NOTICE A VERB
-// DISAPPEARING FROM `PA_VERB_CLASSIFICATION`. They compare the table against the
-// REAL verb surface read off `core/cli.ts`, the bin, and `core/chores/cli-verbs.ts`
-// — no other test in this repository does, and nothing else can: every other
-// consumer of the table reads the table.
-//
-// The exhaustiveness pin at `cli.inbox.integration.test.ts` DEPENDS ON THIS and
-// cannot substitute for it. That pin asserts the `whoami --json` payload's key
-// set equals `Object.keys(PA_VERB_CLASSIFICATION)` — but the payload is
-// GENERATED from that same table, so deleting a row moves BOTH SIDES IDENTICALLY
-// and the pin stays green with nothing to perceive. It is blind to table
-// SHRINKAGE by construction. (Proven, not assumed: plan 094 adversarial mutation
-// A5 deleted `whoami: ALLOW` from the table and the pin stayed green — a correct
-// equivalent mutant — while mutation A4, the same deletion, turned
-// "classifies every verb the CORE parser can produce" below RED.)
-//
-// So the chain has two halves living in two files, and only one of them is here:
-//   payload → table   proven by the pin (plan 094 mutations 15, 15b, A1–A3)
-//   table   → reality proven HERE, and nowhere else
-//
-// A future author who removes these scrapes as redundant — reasoning that the
-// pin already checks exhaustiveness — deletes the half that actually watches the
-// world, keeps the half that only watches itself, and leaves a green suite.
-// ─────────────────────────────────────────────────────────────────────────────
+// The executable now routes exclusively through the rs inventory. Its removed
+// raw-argv legacy branches are no longer a PA gate or a source of legacy verbs;
+// executable inventory/help coverage lives in usage-flags.test.ts and
+// generation-skill-coverage.test.ts instead.
 
 /** Every verb the CORE parser can produce, scraped from the Command union. */
 function coreVerbs(): readonly string[] {
@@ -45,27 +28,8 @@ function coreVerbs(): readonly string[] {
 	return [...src.matchAll(/readonly verb: "([a-z-]+)"/g)].map((m) => m[1] as string);
 }
 
-/** Every verb the BIN handles by raw-argv early branch, BEFORE core parse.
- *  These are the ones a dispatch()-only gate would silently permit. */
-function binEarlyVerbs(): readonly string[] {
-	const src = readFileSync(join(EXT_ROOT, "cli.ts"), "utf8");
-	const patterns = [
-		/process\.argv\[2\] === "([a-z-]+)"/g,
-		/top === "([a-z-]+)"/g,
-		/parsed\.cmd\.subverb === "([a-z-]+)"/g,
-	];
-	const out = new Set<string>();
-	for (const re of patterns) for (const m of src.matchAll(re)) out.add(m[1] as string);
-	return [...out];
-}
-
-/** Every `chore` SUBVERB the bin can dispatch, scraped from its real switch.
- *
- * The top-level scrape sees only the `chore` token, so without this a new
- * MUTATING subverb would inherit `chore: ALLOW` and the build would stay green
- * — AC-12's "a new verb fails the build" property silently not holding for a
- * bin-owned mutation family. Scraped, never hand-listed, for the same reason
- * the other two are. */
+/** Every `chore` subverb the core dispatcher can handle, read from its switch.
+ * A new mutating subverb must not inherit the top-level `chore: ALLOW` entry. */
 function choreSubverbs(): readonly string[] {
 	const src = readFileSync(join(EXT_ROOT, "core", "chores", "cli-verbs.ts"), "utf8");
 	const dispatchFn = src.slice(src.indexOf("export function dispatchChore"));
@@ -73,34 +37,12 @@ function choreSubverbs(): readonly string[] {
 	return [...body.matchAll(/case "([a-z-]+)":/g)].map((m) => m[1] as string);
 }
 
-describe("PA capability classification is TOTAL across BOTH seams", () => {
-	// The o-prime made this mandatory rather than mitigation, and the reason is
-	// the point: everything else shipped this week depends on a careful seat.
-	// This test does not. Adding a verb without classifying it fails the suite,
-	// which converts drift from silent to loud — the only property that survives
-	// its author not being here.
-	//
-	// There is NO single chokepoint: core dispatch() covers parsed verbs, while
-	// spawn/adopt/close/orchestration branch on raw argv in the bin and return
-	// before core parse. A gate at dispatch() alone would refuse `task set` and
-	// silently permit `close`. A verb list you can tick is the most believable
-	// kind of incomplete gate — so the table is checked against BOTH sources.
+describe("PA capability classification is TOTAL across the live core dispatchers", () => {
+	// Adding a core verb or chore subverb without classifying it must fail even
+	// when every consumer-generated capability payload agrees with the table.
 
 	it("classifies every verb the CORE parser can produce", () => {
 		const unclassified = coreVerbs().filter((v) => PA_VERB_CLASSIFICATION[v] === undefined);
-		expect(unclassified).toEqual([]);
-	});
-
-	it("classifies every verb the BIN handles before core parse", () => {
-		// Scraped, not hand-listed: a hand-listed set would drift from the file it
-		// claims to mirror, which is the defect this test exists to catch.
-		const known = new Set(Object.keys(PA_VERB_CLASSIFICATION));
-		// Only argv tokens that are real verbs — the scrape also catches flags and
-		// non-verb literals, which are not our business.
-		const candidates = binEarlyVerbs().filter((v) => v.length > 2 && !v.startsWith("--"));
-		const unclassified = candidates.filter(
-			(v) => !known.has(v) && !["help", "version", "usage"].includes(v),
-		);
 		expect(unclassified).toEqual([]);
 	});
 
@@ -129,13 +71,10 @@ describe("PA capability classification is TOTAL across BOTH seams", () => {
 		expect(paCapabilityVerb("watchdog", "watch")).toBe("watchdog");
 	});
 
-	it("actually scrapes something from each source — guards a vacuous pass", () => {
-		// If either scrape silently returned [] (a regex that stopped matching after
-		// a refactor), both assertions above would pass while checking nothing.
+	it("scrapes the real core parser — guards a vacuous pass", () => {
+		// The chore scrape has its own nonempty guard in the subverb test above.
 		expect(coreVerbs().length).toBeGreaterThan(20);
-		expect(binEarlyVerbs().length).toBeGreaterThan(3);
 		expect(coreVerbs()).toContain("task-set");
-		expect(binEarlyVerbs()).toContain("close");
 	});
 });
 

@@ -1,0 +1,35 @@
+{
+  "at": "2026-09-07T14:00:59Z",
+  "runner": "p139-parity-final",
+  "exit": 0,
+  "binary_sha256": "43ca12839d2db6fa8398db2a0a0d061dca2936c53fbe0a00cf65245c6135a15a",
+  "corpus_repo_path": "crates/testkit/fixtures/golden/api/governance-client-parity.json",
+  "corpus_sha256": "8ac162852e0da1858029190386f75984cbdfafc0147b113de217b215525af9c7",
+  "captured_corpus_sha256": "a9311375da6623bbbd9aa4e4e1520353cd543b6b069ad857b365af2017a12f51",
+  "metadata_correction": "review-traceability-correction.json; captured stdout and source_snapshot unchanged",
+  "counts": {
+    "shared_mutations": 29,
+    "named_refusals": 9,
+    "same_daemon_cli_pairs": 18,
+    "live_http_pairs": 4,
+    "shared_error_exit_pairs": 6,
+    "matched_pairs": 66,
+    "non_shared_capability_probes": 2
+  },
+  "methods": {
+    "mutations": "Client boundary only: identical deterministic responses, not domain execution",
+    "reads": "Same real isolated Rust daemon; empty anomaly/decision collections declared",
+    "sessions": "Live HTTP baseline; native subcommand absent by ruling",
+    "register": "Native/HTTP-only; generic shim refuses by name",
+    "did_evidence": "Separate real CLI workflow, native keeper-notice persistence/delivery and paneless smoke; authenticated OMP canary is separate",
+    "production": "Unclaimed, prime-owned"
+  },
+  "teardown": {
+    "verified": true,
+    "fixture_root": "/tmp/p139-8tKAXQ",
+    "contract": "Owned clients/daemon/tmux stopped, private socket/root removed, listener absent; fixture.close completed"
+  },
+  "source_hashes": 30,
+  "previous_capture_commit": "78531a0ba2f22469ab72289ba9ff6c1635e863e7",
+  "production": "Unclaimed; prime-owned"
+}

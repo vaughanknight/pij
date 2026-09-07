@@ -1,0 +1,1053 @@
+diff --git a/crates/cli/src/lifecycle.rs b/crates/cli/src/lifecycle.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..48de675abd12363e1d3019d0356b7d1abc446728
+--- /dev/null
++++ b/crates/cli/src/lifecycle.rs
+@@ -0,0 +1,22 @@
++//! Native lifecycle leaves forward to the daemon's single semantic parser.
++
++use pij_core::model::Envelope;
++use serde_json::{Value, json};
++
++use crate::{CallerContext, DaemonClient};
++
++impl DaemonClient {
++    /// Close a seat using daemon-derived ownership; retain the complete envelope.
++    pub async fn close(&self, args: &[String], caller: &CallerContext) -> Envelope<Value> {
++        let argv: Vec<&str> = std::iter::once("close")
++            .chain(args.iter().map(String::as_str)).collect();
++        self.post("pij close", "/v1/close", &json!({"argv":argv,"caller":caller})).await
++    }
++
++    /// Reconcile stale records without interpreting liveness or flags client-side.
++    pub async fn reap(&self, args: &[String], caller: &CallerContext) -> Envelope<Value> {
++        let argv: Vec<&str> = std::iter::once("reap")
++            .chain(args.iter().map(String::as_str)).collect();
++        self.post("pij reap", "/v1/reap", &json!({"argv":argv,"caller":caller})).await
++    }
++}
+diff --git a/crates/cli/tests/lifecycle.rs b/crates/cli/tests/lifecycle.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..26caa7dedd5b5ec1a904d3c7bd0eb28728fe8cc3
+--- /dev/null
++++ b/crates/cli/tests/lifecycle.rs
+@@ -0,0 +1,70 @@
++//! Baseline-compatible CLI witness: before the cutover, unknown close/reap
++//! fail as actual process outcomes, not compile errors. The HTTP peer is private.
++
++use std::process::Command;
++use std::sync::{Arc, Mutex};
++
++use axum::extract::State;
++use axum::http::{HeaderMap, StatusCode};
++use axum::routing::post;
++use axum::{Json, Router};
++use serde_json::Value;
++
++#[derive(Clone)]
++struct Fixture {
++    seen: Arc<Mutex<Vec<Value>>>,
++    answer: Value,
++    status: StatusCode,
++}
++
++async fn reply(State(state): State<Fixture>, headers: HeaderMap, Json(body): Json<Value>) -> (StatusCode, Json<Value>) {
++    assert_eq!(headers.get("authorization").expect("bearer"), "Bearer lifecycle-key");
++    state.seen.lock().expect("requests").push(body);
++    (state.status, Json(state.answer))
++}
++
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn shipped_lifecycle_cli_forwards_canonical_argv_and_preserves_entire_envelope() {
++    let contract: Value = serde_json::from_str(include_str!(
++        "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
++    )).expect("canonical routes");
++    for path in ["/v1/close", "/v1/reap"] {
++        let case = &contract["routes"].as_array().expect("routes").iter()
++            .find(|route| route["path"] == path).expect("lifecycle route")["cases"][0];
++        let args: Vec<&str> = case["shim_request"]["argv"].as_array().expect("argv")
++            .iter().map(|arg| arg.as_str().expect("argument")).collect();
++        for (status, mut answer) in [
++            (StatusCode::OK, case["response"].clone()),
++            (StatusCode::FORBIDDEN, contract["refusals"]["ownership"]["response"].clone()),
++        ] {
++            answer["command"] = case["response"]["command"].clone();
++            let state_dir = pij_testkit::fresh_dir("pij-lifecycle-cli");
++            std::fs::write(state_dir.join("daemon.key"), "lifecycle-key").expect("private key");
++            let seen = Arc::new(Mutex::new(Vec::new()));
++            let app = Router::new().route(path, post(reply)).with_state(Fixture {
++                seen: seen.clone(), answer: answer.clone(), status,
++            });
++            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("private listener");
++            let address = listener.local_addr().expect("address");
++            let server = tokio::spawn(async move { axum::serve(listener, app).await.expect("serve"); });
++            let output = Command::new(env!("CARGO_BIN_EXE_pij-rs"))
++                .args(["--state-dir", state_dir.to_str().expect("path"), "--addr", &address.to_string(), "--json"])
++                .args(&args)
++                .env_remove("PIJ_SESSION_ID")
++                .env_remove("PI_SESSION_ID")
++                .env("TMUX_PANE", case["shim_request"]["caller"]["TMUX_PANE"].as_str().expect("pane"))
++                .env("HOME", &state_dir)
++                .env("CLAUDE_CONFIG_DIR", state_dir.join(".claude"))
++                .env("XDG_CONFIG_HOME", state_dir.join(".config"))
++                .output().expect("shipped lifecycle CLI");
++            server.abort();
++            std::fs::remove_dir_all(&state_dir).expect("remove owned fixture");
++            assert_eq!(output.status.success(), status.is_success(), "{}", String::from_utf8_lossy(&output.stderr));
++            let actual: Value = serde_json::from_slice(&output.stdout).expect("complete CLI envelope");
++            assert_eq!(actual, answer, "native command must preserve every daemon envelope field");
++            let requests = seen.lock().expect("requests");
++            assert_eq!(requests.len(), 1);
++            assert_eq!(requests[0]["argv"], case["shim_request"]["argv"]);
++        }
++    }
++}
+diff --git a/crates/daemon/src/http/lifecycle.rs b/crates/daemon/src/http/lifecycle.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..309e17ff3a860b466f834f13ccd9b7b450cdd9a7
+--- /dev/null
++++ b/crates/daemon/src/http/lifecycle.rs
+@@ -0,0 +1,220 @@
++//! Close is an owner-only tombstone. Reap is conservative stale-record repair.
++//! Both native argv and typed HTTP callers enter this single semantic parser.
++
++use axum::extract::rejection::JsonRejection;
++use axum::extract::{Json, State};
++use axum::http::StatusCode;
++use axum::response::Response;
++use pij_core::error::{PijError, Result};
++use pij_core::model::{Envelope, ErrorKind, SeatDescriptor, SeatId, Seq};
++use pij_core::ports::Spine;
++use serde::Serialize;
++use serde_json::{Value, json};
++
++use super::identity::{CallerContext, Resolved, resolve_seat};
++use super::{AppState, envelope, internal};
++use crate::reaper;
++
++#[derive(Clone, Copy)]
++enum Operation {
++    Close,
++    Reap,
++}
++impl Operation {
++    fn verb(self) -> &'static str {
++        match self { Self::Close => "close", Self::Reap => "reap" }
++    }
++    fn command(self) -> &'static str {
++        match self { Self::Close => "pij close", Self::Reap => "pij reap" }
++    }
++}
++
++struct Call {
++    caller: CallerContext,
++    attribution: Vec<SeatId>,
++    seat: Option<SeatId>,
++    reason: String,
++    dry_run: bool,
++}
++
++fn nonempty(value: &Value, name: &str) -> std::result::Result<String, String> {
++    value.as_str().filter(|text| !text.trim().is_empty())
++        .map(str::to_owned).ok_or_else(|| format!("{name} must be a nonempty string"))
++}
++
++fn parse(body: Value, operation: Operation) -> std::result::Result<Call, String> {
++    let object = body.as_object().ok_or("lifecycle request must be an object")?;
++    for key in object.keys() {
++        let allowed = matches!(key.as_str(), "argv" | "caller" | "actor")
++            || match operation {
++                Operation::Close => matches!(key.as_str(), "seat" | "reason"),
++                Operation::Reap => key == "dry_run",
++            };
++        if !allowed { return Err(format!("unknown {} request field: {key}", operation.verb())); }
++    }
++    let caller = object.get("caller").map(|value| serde_json::from_value(value.clone()))
++        .transpose().map_err(|error| error.to_string())?.unwrap_or_default();
++    let mut call = Call {
++        caller, attribution: Vec::new(), seat: None,
++        reason: "owner-close".to_string(), dry_run: false,
++    };
++    if let Some(actor) = object.get("actor") {
++        call.attribution.push(nonempty(actor, "actor")?.into());
++    }
++    if let Some(argv) = object.get("argv") {
++        if ["seat", "reason", "dry_run"].iter().any(|key| object.contains_key(*key)) {
++            return Err("use typed fields or argv, not both".to_string());
++        }
++        let argv: Vec<String> = serde_json::from_value(argv.clone()).map_err(|error| error.to_string())?;
++        if argv.first().map(String::as_str) != Some(operation.verb()) {
++            return Err(format!("argv must begin with {}", operation.verb()));
++        }
++        let mut args = argv.iter().skip(1);
++        let mut reason_seen = false;
++        let mut actor_seen = false;
++        while let Some(arg) = args.next() {
++            match arg.as_str() {
++                "--json" => {}
++                "--actor" if !actor_seen => {
++                    actor_seen = true;
++                    let actor = args.next().filter(|text| !text.trim().is_empty() && !text.starts_with('-'))
++                        .ok_or("--actor requires a seat")?;
++                    call.attribution.push(actor.as_str().into());
++                }
++                "--reason" if matches!(operation, Operation::Close) && !reason_seen => {
++                    reason_seen = true;
++                    call.reason = args.next().filter(|text| !text.trim().is_empty() && !text.starts_with('-'))
++                        .ok_or("--reason requires a reason")?.clone();
++                }
++                "--dry-run" if matches!(operation, Operation::Reap) && !call.dry_run => call.dry_run = true,
++                value if matches!(operation, Operation::Close) && !value.starts_with('-')
++                    && !value.trim().is_empty() && call.seat.is_none() => call.seat = Some(value.into()),
++                _ => return Err(format!("unknown or repeated {} argument: {arg}", operation.verb())),
++            }
++        }
++    } else {
++        match operation {
++            Operation::Close => {
++                call.seat = object.get("seat").map(|value| nonempty(value, "seat").map(SeatId::from)).transpose()?;
++                if let Some(reason) = object.get("reason") { call.reason = nonempty(reason, "reason")?; }
++            }
++            Operation::Reap => {
++                if let Some(value) = object.get("dry_run") {
++                    call.dry_run = value.as_bool().ok_or("dry_run must be boolean")?;
++                }
++            }
++        }
++    }
++    if matches!(operation, Operation::Close) && call.seat.is_none() {
++        return Err("close requires a seat".to_string());
++    }
++    Ok(call)
++}
++
++fn argument_failure(command: &str, reason: String) -> Response {
++    let mut answer: Envelope<Value> = Envelope::refused(command, ErrorKind::Refused, reason);
++    answer.details = Some(json!({"code":"E-RS-ARG"}));
++    envelope(StatusCode::BAD_REQUEST, &answer)
++}
++
++fn ownership_failure(command: &str, caller: &SeatId, seat: &SeatId, parent: Option<&SeatId>) -> Response {
++    let operation = command.strip_prefix("pij ").unwrap_or(command);
++    let mut answer: Envelope<Value> = Envelope::refused(command, ErrorKind::Refused,
++        format!("E-RS-OWNERSHIP {operation}: {caller} is neither {seat} nor its recorded parent"));
++    answer.details = Some(json!({"code":"E-RS-OWNERSHIP","operation":operation,"caller":caller,"seat":seat,"parent":parent}));
++    envelope(StatusCode::FORBIDDEN, &answer)
++}
++
++fn runtime_failure(command: &str, error: PijError) -> Response {
++    match &error {
++        PijError::GovernanceRefused { code, record } => {
++            let mut answer: Envelope<Value> = Envelope::refused(command, ErrorKind::Refused, error.to_string());
++            answer.details = Some(json!({"code":code,"record":record}));
++            envelope(StatusCode::CONFLICT, &answer)
++        }
++        PijError::NoRegistryEntry { .. } => envelope(StatusCode::NOT_FOUND,
++            &Envelope::<Value>::refused(command, ErrorKind::Refused, error.to_string())),
++        _ => internal(command, error),
++    }
++}
++
++#[derive(Serialize)]
++struct CloseReceipt {
++    seat: SeatId,
++    tombstoned_at: u64,
++    reason: String,
++    seq: Seq,
++}
++
++async fn tombstone_receipt(spine: &dyn Spine, seat: &SeatId, expected_seq: Option<Seq>,
++    existing: Option<&SeatDescriptor>) -> Result<CloseReceipt> {
++    let inconsistent = || PijError::Adapter {
++        adapter: "lifecycle/tombstone-receipt".to_string(),
++        message: format!("no matching durable tombstone event for {seat}"),
++    };
++    let event = spine.latest_matching(seat, &["seat.tombstone"]).await?.ok_or_else(inconsistent)?;
++    let seq = event.seq.ok_or_else(inconsistent)?;
++    let payload: Value = serde_json::from_str(&event.payload).map_err(|_| inconsistent())?;
++    let reason = payload["reason"].as_str().ok_or_else(inconsistent)?;
++    if expected_seq.is_some_and(|expected| expected != seq)
++        || existing.is_some_and(|raw| raw.tombstoned_at != Some(event.at)
++            || raw.tombstone_reason.as_deref() != Some(reason)) {
++        return Err(inconsistent());
++    }
++    Ok(CloseReceipt { seat: seat.clone(), tombstoned_at: event.at, reason: reason.to_string(), seq })
++}
++
++pub(crate) async fn close(State(state): State<AppState>,
++    body: std::result::Result<Json<Value>, JsonRejection>) -> Response {
++    handle(state, body, Operation::Close).await
++}
++
++pub(crate) async fn reap(State(state): State<AppState>,
++    body: std::result::Result<Json<Value>, JsonRejection>) -> Response {
++    handle(state, body, Operation::Reap).await
++}
++
++async fn handle(state: AppState, body: std::result::Result<Json<Value>, JsonRejection>, operation: Operation) -> Response {
++    let command = operation.command();
++    let call = match body.map_err(|error| error.body_text()).and_then(|Json(body)| parse(body, operation)) {
++        Ok(call) => call,
++        Err(reason) => return argument_failure(command, reason),
++    };
++    let actor = match resolve_seat(&state, command, call.caller.session_id, call.caller.pane).await {
++        Resolved::Seat(seat, _) => seat,
++        Resolved::Refusal(response) => return response,
++    };
++    if call.attribution.iter().any(|claimed| claimed != &actor.id) {
++        return ownership_failure(command, &actor.id, call.seat.as_ref().unwrap_or(&actor.id), actor.parent.as_ref());
++    }
++    match operation {
++        Operation::Reap => match reaper::reap(state.services.registry.as_ref(), state.services.liveness.as_ref(),
++            state.services.tmux.as_ref(), call.dry_run).await {
++            Ok(receipt) => envelope(StatusCode::OK, &Envelope::ok(command, receipt)),
++            Err(error) => runtime_failure(command, error),
++        },
++        Operation::Close => {
++            let Some(target) = call.seat else { return argument_failure(command, "close requires a seat".to_string()); };
++            let expected = match state.services.registry.get(&target).await {
++                Ok(Some(expected)) => expected,
++                Ok(None) => return runtime_failure(command, PijError::NoRegistryEntry { seat: target }),
++                Err(error) => return runtime_failure(command, error),
++            };
++            if actor.id != expected.id && expected.parent.as_ref() != Some(&actor.id) {
++                return ownership_failure(command, &actor.id, &target, expected.parent.as_ref());
++            }
++            let receipt = if expected.tombstoned_at.is_some() {
++                tombstone_receipt(state.services.spine.as_ref(), &target, None, Some(&expected)).await
++            } else {
++                match state.services.registry.tombstone_if_unchanged(expected, call.reason).await {
++                    Ok(seq) => tombstone_receipt(state.services.spine.as_ref(), &target, Some(seq), None).await,
++                    Err(error) => Err(error),
++                }
++            };
++            match receipt {
++                Ok(receipt) => envelope(StatusCode::OK, &Envelope::ok(command, receipt)),
++                Err(error) => runtime_failure(command, error),
++            }
++        }
++    }
++}
+diff --git a/crates/daemon/src/reaper.rs b/crates/daemon/src/reaper.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..399c4d09605d2ced7a70bf693fbb375bae89dad2
+--- /dev/null
++++ b/crates/daemon/src/reaper.rs
+@@ -0,0 +1,186 @@
++//! Stale-record reconciliation, never process or pane termination.
++//! Unknown evidence is a brake: removing it permits the same set or more reaps.
++
++use pij_core::error::{PijError, Result};
++use pij_core::liveness::alive;
++use pij_core::model::{Liveness, SeatDescriptor, SeatId, Seq};
++use pij_core::ports::{LivenessPort, Registry, SeatFilter, TmuxPort};
++use serde::Serialize;
++
++/// A stale binding proved eligible by process and pane observations.
++#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
++pub struct ReapCandidate {
++    /// Registry identity, not a process to signal.
++    pub seat: SeatId,
++    /// `dead` or `recycled`.
++    pub process: &'static str,
++    /// `absent` or `paneless`.
++    pub pane: &'static str,
++    /// Stable explanation for the eligibility decision.
++    pub reason: &'static str,
++}
++
++/// A binding which cannot safely be reconciled from these observations.
++#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
++pub struct UnverifiableSeat {
++    /// Registry identity.
++    pub seat: SeatId,
++    /// Missing evidence or a concurrent change; never permission to delete.
++    pub reason: &'static str,
++}
++
++/// One atomically committed tombstone and its shared-spine sequence.
++#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
++pub struct ReapedSeat {
++    /// Retired registry identity.
++    pub seat: SeatId,
++    /// Durable tombstone event sequence.
++    pub seq: Seq,
++}
++
++/// Observations and committed changes from one manual sweep.
++#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
++pub struct ReapReceipt {
++    /// Whether all mutation was disabled.
++    pub dry_run: bool,
++    /// Active rows at the start of this sweep.
++    pub before: usize,
++    /// Active rows after this sweep (unchanged for dry-run).
++    pub after: usize,
++    /// Bindings eligible from the first observation, ordered by seat id.
++    pub candidates: Vec<ReapCandidate>,
++    /// Only successful conditional commits, never dry-run predictions.
++    pub reaped: Vec<ReapedSeat>,
++    /// Unknown observations or a binding changed before commit.
++    pub unverifiable: Vec<UnverifiableSeat>,
++}
++
++enum Eligibility {
++    Candidate(ReapCandidate),
++    Retain,
++    Unknown(&'static str),
++}
++
++async fn eligibility(
++    seat: &SeatDescriptor,
++    liveness: &dyn LivenessPort,
++    tmux: &dyn TmuxPort,
++) -> Eligibility {
++    let Some(proc) = seat.proc else {
++        return Eligibility::Unknown("process-identity-unavailable");
++    };
++    let process = match alive(proc, liveness).await {
++        Ok(Liveness::Active) => return Eligibility::Retain,
++        Ok(Liveness::Dead { .. }) => "dead",
++        Ok(Liveness::Recycled { .. }) => "recycled",
++        Err(_) => return Eligibility::Unknown("process-probe-failed"),
++    };
++    let pane = if let Some(recorded) = &seat.pane {
++        match tmux.list_panes().await {
++            Ok(panes) if panes.iter().any(|pane| &pane.id == recorded) => {
++                return Eligibility::Retain;
++            }
++            Ok(_) => "absent",
++            Err(_) => return Eligibility::Unknown("pane-probe-failed"),
++        }
++    } else {
++        "paneless"
++    };
++    let reason = match (process, pane) {
++        ("dead", "absent") => "process-dead-and-pane-absent",
++        ("recycled", "absent") => "process-recycled-and-pane-absent",
++        ("dead", _) => "process-dead-paneless",
++        _ => "process-recycled-paneless",
++    };
++    Eligibility::Candidate(ReapCandidate {
++        seat: seat.id.clone(),
++        process,
++        pane,
++        reason,
++    })
++}
++
++/// Reconcile only stale bindings, rechecking observations before atomic commit.
++///
++/// The registry must compare the entire raw snapshot inside its mutation
++/// transaction/order lock. A separate read followed by unconditional tombstone
++/// would permit a concurrent revive to be retired using the old process evidence.
++///
++/// # Errors
++/// Returns registry/publication failures. Unknown host probes and conditional
++/// conflicts are returned as unverifiable rows, never converted into absence.
++pub async fn reap(
++    registry: &dyn Registry,
++    liveness: &dyn LivenessPort,
++    tmux: &dyn TmuxPort,
++    dry_run: bool,
++) -> Result<ReapReceipt> {
++    let seats = registry.list(SeatFilter::default()).await?;
++    let before = seats.iter().filter(|seat| seat.tombstoned_at.is_none()).count();
++    let mut receipt = ReapReceipt {
++        dry_run,
++        before,
++        after: before,
++        candidates: Vec::new(),
++        reaped: Vec::new(),
++        unverifiable: Vec::new(),
++    };
++    for listed in seats.into_iter().filter(|seat| seat.tombstoned_at.is_none()) {
++        // Only Registry::get supplies the exact raw snapshot for the CAS seam.
++        let Some(expected) = registry.get(&listed.id).await? else {
++            receipt.unverifiable.push(UnverifiableSeat {
++                seat: listed.id,
++                reason: "incarnation-changed",
++            });
++            continue;
++        };
++        if expected.tombstoned_at.is_some() {
++            continue;
++        }
++        let candidate = match eligibility(&expected, liveness, tmux).await {
++            Eligibility::Candidate(candidate) => candidate,
++            Eligibility::Retain => continue,
++            Eligibility::Unknown(reason) => {
++                receipt.unverifiable.push(UnverifiableSeat { seat: expected.id, reason });
++                continue;
++            }
++        };
++        receipt.candidates.push(candidate.clone());
++        if dry_run {
++            continue;
++        }
++        let reason = match eligibility(&expected, liveness, tmux).await {
++            Eligibility::Candidate(current) => current.reason,
++            Eligibility::Retain => {
++                receipt.unverifiable.push(UnverifiableSeat {
++                    seat: expected.id,
++                    reason: "liveness-changed",
++                });
++                continue;
++            }
++            Eligibility::Unknown(reason) => {
++                receipt.unverifiable.push(UnverifiableSeat { seat: expected.id, reason });
++                continue;
++            }
++        };
++        match registry.tombstone_if_unchanged(expected, reason.to_string()).await {
++            Ok(seq) => receipt.reaped.push(ReapedSeat { seat: candidate.seat, seq }),
++            Err(PijError::GovernanceRefused { code, .. }) if code == "E-RS-INCARNATION-CHANGED" => {
++                receipt.unverifiable.push(UnverifiableSeat {
++                    seat: candidate.seat,
++                    reason: "incarnation-changed",
++                });
++            }
++            Err(error) => return Err(error),
++        }
++    }
++    if !dry_run {
++        receipt.after = registry.list(SeatFilter::default()).await?
++            .iter().filter(|seat| seat.tombstoned_at.is_none()).count();
++    }
++    Ok(receipt)
++}
++
++#[cfg(test)]
++#[path = "reaper_tests.rs"]
++mod tests;
+diff --git a/crates/daemon/src/reaper_tests.rs b/crates/daemon/src/reaper_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..a4c971d4b6b93f151754a1c274c86dc2e59a5eeb
+--- /dev/null
++++ b/crates/daemon/src/reaper_tests.rs
+@@ -0,0 +1,215 @@
++use std::collections::VecDeque;
++use std::sync::{Arc, Mutex};
++use std::sync::atomic::{AtomicUsize, Ordering};
++
++use async_trait::async_trait;
++use pij_core::config::{AdapterChoice, Adapters, Config};
++use pij_core::error::{PijError, Result};
++use pij_core::model::{Pane, ProcIdentity, SeatDescriptor};
++use pij_core::ports::{LivenessPort, Registry};
++use pij_testkit::FreshStore;
++use pij_testkit::fakes::{FakeLiveness, FakeTmux};
++use serde_json::{Value, json};
++
++use super::reap;
++
++fn seat() -> SeatDescriptor {
++    let events: Value = serde_json::from_str(include_str!(
++        "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-events.json"
++    )).expect("canonical events");
++    serde_json::from_value(events["events"].as_array().expect("events").iter()
++        .find(|event| event["id"] == "seat-put").expect("seat-put")["decoded_payload"].clone())
++        .expect("raw canonical seat")
++}
++
++async fn services() -> (crate::Services, FreshStore) {
++    let store = FreshStore::new();
++    let config = Config {
++        adapters: Adapters {
++            registry: AdapterChoice::Real, spine: AdapterChoice::Real, queue: AdapterChoice::Real,
++            ..Adapters::default()
++        },
++        store_path: store.path(), ..Config::default()
++    };
++    let services = crate::build_services(&config, &std::path::Path::new(&store.path()).with_extension("signals"))
++        .await.expect("real store services");
++    (services, store)
++}
++
++struct ScriptedProbe(Mutex<VecDeque<Result<Option<u64>>>>);
++#[async_trait]
++impl LivenessPort for ScriptedProbe {
++    async fn proc_start(&self, _pid: u32) -> Result<Option<u64>> {
++        self.0.lock().expect("probe script").pop_front().expect("one result per observation")
++    }
++}
++fn failed_probe() -> Result<Option<u64>> {
++    Err(PijError::Adapter { adapter: "process-liveness/ps".to_string(),
++        message: "ps terminated by signal; empty stdout".to_string() })
++}
++
++#[tokio::test]
++async fn reap_dry_run_matches_canonical_candidate_and_run_commits_one_event() {
++    let (services, _store) = services().await;
++    let expected = seat();
++    let before = services.registry.put(expected.clone()).await.expect("seed");
++    let tmux = FakeTmux::new();
++    let live = FakeLiveness::new();
++    let dry = reap(services.registry.as_ref(), &live, &tmux, true).await.expect("dry-run");
++    let contract: Value = serde_json::from_str(include_str!(
++        "../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
++    )).expect("canonical routes");
++    let fixture = &contract["routes"].as_array().expect("routes").iter()
++        .find(|route| route["path"] == "/v1/reap").expect("reap")["cases"][0];
++    assert_eq!(serde_json::to_value(&dry.candidates).expect("candidates"), fixture["response"]["data"]["candidates"]);
++    assert_eq!((dry.before, dry.after), (1, 1));
++    assert!(dry.reaped.is_empty());
++    assert_eq!(services.registry.get(&expected.id).await.unwrap(), Some(expected.clone()));
++    assert!(services.spine.tail(None, before).await.unwrap().is_empty(), "dry-run writes no events");
++    let actual = reap(services.registry.as_ref(), &live, &tmux, false).await.expect("reap");
++    assert_eq!(actual.candidates, dry.candidates);
++    assert_eq!((actual.before, actual.after), (1, 0));
++    assert_eq!(actual.reaped.len(), 1);
++    let events = services.spine.tail(None, before).await.expect("events");
++    assert_eq!(events.len(), 1);
++    assert_eq!(events[0].kind, "seat.tombstone");
++    assert_eq!(events[0].seq, Some(actual.reaped[0].seq));
++    assert!(events[0].at > 0);
++    assert_eq!(serde_json::from_str::<Value>(&events[0].payload).unwrap(),
++        json!({"reason":"process-dead-and-pane-absent"}));
++    assert_eq!(services.registry.get(&expected.id).await.unwrap().unwrap().tombstoned_at, Some(events[0].at));
++    assert!(tmux.calls().iter().all(|call| call == "list_panes"), "never kill, send, or capture");
++}
++
++#[tokio::test]
++async fn reap_failed_and_signalled_process_observations_are_unverifiable_without_events() {
++    for dry_run in [true, false] {
++        let (services, _store) = services().await;
++        let expected = seat();
++        let before = services.registry.put(expected.clone()).await.unwrap();
++        let probe = ScriptedProbe(Mutex::new(VecDeque::from([failed_probe()])));
++        let tmux = FakeTmux::new();
++        let receipt = reap(services.registry.as_ref(), &probe, &tmux, dry_run).await.unwrap();
++        assert!(receipt.candidates.is_empty());
++        assert!(receipt.reaped.is_empty());
++        assert_eq!(receipt.unverifiable[0].reason, "process-probe-failed");
++        assert_eq!(receipt.after, 1);
++        assert_eq!(services.registry.get(&expected.id).await.unwrap(), Some(expected));
++        assert!(services.spine.tail(None, before).await.unwrap().is_empty());
++        assert!(tmux.calls().is_empty());
++    }
++}
++
++#[tokio::test]
++async fn reap_unknown_recorded_pane_vetoes_but_paneless_needs_no_tmux_probe() {
++    for paneless in [false, true] {
++        let (services, _store) = services().await;
++        let mut expected = seat();
++        if paneless { expected.pane = None; }
++        let before = services.registry.put(expected.clone()).await.unwrap();
++        let tmux = FakeTmux::new().with_list_pane_failures(2);
++        let receipt = reap(services.registry.as_ref(), &FakeLiveness::new(), &tmux, false).await.unwrap();
++        if paneless {
++            assert_eq!(receipt.reaped.len(), 1);
++            assert_eq!(receipt.candidates[0].pane, "paneless");
++            assert!(tmux.calls().is_empty());
++        } else {
++            assert!(receipt.reaped.is_empty());
++            assert_eq!(receipt.unverifiable[0].reason, "pane-probe-failed");
++            assert_eq!(services.registry.get(&expected.id).await.unwrap(), Some(expected));
++            assert!(services.spine.tail(None, before).await.unwrap().is_empty());
++        }
++    }
++}
++
++#[tokio::test]
++async fn reap_recycled_pid_requires_recorded_pane_absence_and_never_signals_replacement() {
++    // Plan095 death-reconciler.snapshot.test.ts:70: pij-weak-gurgeh's pid 952
++    // was reused by a system daemon. Both start-time directions mean mismatch.
++    for (pane_present, later_start) in [(false, false), (false, true), (true, false), (true, true)] {
++        let (services, _store) = services().await;
++        let mut expected = seat();
++        expected.id = "pij-weak-gurgeh".into();
++        let proc = ProcIdentity { pid: 952, ..expected.proc.unwrap() };
++        expected.proc = Some(proc);
++        let observed = if later_start { proc.proc_start + 1 } else { proc.proc_start - 1 };
++        services.registry.put(expected.clone()).await.unwrap();
++        let live = FakeLiveness::new().with_recycled(proc.pid, observed);
++        let mut tmux = FakeTmux::new();
++        if pane_present {
++            tmux = tmux.with_pane(Pane { id: expected.pane.clone().unwrap(), session: "private".to_string(),
++                window: "private".to_string(), title: String::new(), cursor_x: None, cursor_y: None });
++        }
++        let receipt = reap(services.registry.as_ref(), &live, &tmux, false).await.unwrap();
++        assert_eq!(receipt.reaped.len(), usize::from(!pane_present));
++        assert_eq!(live.proc_start(proc.pid).await.unwrap(), Some(observed));
++        assert!(tmux.calls().iter().all(|call| call == "list_panes"));
++        if !pane_present { assert_eq!(receipt.candidates[0].process, "recycled"); }
++    }
++}
++
++struct RevivingProbe {
++    registry: Arc<dyn Registry>,
++    replacement: SeatDescriptor,
++    calls: AtomicUsize,
++}
++#[async_trait]
++impl LivenessPort for RevivingProbe {
++    async fn proc_start(&self, _pid: u32) -> Result<Option<u64>> {
++        if self.calls.fetch_add(1, Ordering::SeqCst) == 1 {
++            self.registry.put(self.replacement.clone()).await?;
++        }
++        Ok(None)
++    }
++}
++
++#[tokio::test]
++async fn reap_concurrent_revive_between_observation_and_commit_is_preserved() {
++    let (services, _store) = services().await;
++    let expected = seat();
++    let before = services.registry.put(expected.clone()).await.unwrap();
++    let mut replacement = expected;
++    let proc = replacement.proc.unwrap();
++    replacement.proc = Some(ProcIdentity { proc_start: proc.proc_start + 1, ..proc });
++    let live = RevivingProbe { registry: services.registry.clone(), replacement: replacement.clone(), calls: AtomicUsize::new(0) };
++    let receipt = reap(services.registry.as_ref(), &live, &FakeTmux::new(), false).await.unwrap();
++    assert_eq!(receipt.candidates.len(), 1);
++    assert!(receipt.reaped.is_empty());
++    assert_eq!(receipt.unverifiable[0].reason, "incarnation-changed");
++    assert_eq!(services.registry.get(&replacement.id).await.unwrap(), Some(replacement));
++    let events = services.spine.tail(None, before).await.unwrap();
++    assert_eq!(events.len(), 1);
++    assert_eq!(events[0].kind, "seat.put", "revive event survives; no stale tombstone");
++}
++
++#[tokio::test]
++async fn reap_recheck_unknown_or_matching_live_process_cancels_candidate() {
++    for observation in [failed_probe(), Ok(seat().proc.unwrap().proc_start).map(Some)] {
++        let (services, _store) = services().await;
++        let expected = seat();
++        let before = services.registry.put(expected.clone()).await.unwrap();
++        let probe = ScriptedProbe(Mutex::new(VecDeque::from([Ok(None), observation])));
++        let receipt = reap(services.registry.as_ref(), &probe, &FakeTmux::new(), false).await.unwrap();
++        assert_eq!(receipt.candidates.len(), 1);
++        assert!(receipt.reaped.is_empty());
++        assert_eq!(receipt.unverifiable.len(), 1);
++        assert_eq!(services.registry.get(&expected.id).await.unwrap(), Some(expected));
++        assert!(services.spine.tail(None, before).await.unwrap().is_empty());
++    }
++}
++
++#[tokio::test]
++async fn reap_matching_live_process_is_retained_without_any_pane_probe_or_event() {
++    let (services, _store) = services().await;
++    let expected = seat();
++    let before = services.registry.put(expected.clone()).await.unwrap();
++    let live = FakeLiveness::new().with_proc(expected.proc.unwrap());
++    let tmux = FakeTmux::new().with_list_pane_failures(1);
++    let receipt = reap(services.registry.as_ref(), &live, &tmux, false).await.unwrap();
++    assert!(receipt.candidates.is_empty());
++    assert!(receipt.reaped.is_empty());
++    assert_eq!(receipt.after, 1);
++    assert_eq!(services.registry.get(&expected.id).await.unwrap(), Some(expected));
++    assert!(services.spine.tail(None, before).await.unwrap().is_empty());
++    assert!(tmux.calls().is_empty(), "a known live process already vetoes reconciliation");
++}
+diff --git a/crates/daemon/tests/lifecycle_http.rs b/crates/daemon/tests/lifecycle_http.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..72b2cf53d2d3e682fb0a1224e2bef6acd5306b2c
+--- /dev/null
++++ b/crates/daemon/tests/lifecycle_http.rs
+@@ -0,0 +1,136 @@
++//! Baseline-compatible route witnesses: copy with support/governance_http.rs
++//! and canonical fixtures to the pre-fix tree. No new lifecycle Rust API used.
++
++use serde_json::{Value, json};
++
++#[path = "support/governance_http.rs"]
++mod governance_http;
++use governance_http::{case, contracts, daemon, post};
++
++#[tokio::test]
++async fn close_parent_tombstones_once_with_canonical_receipt() {
++    let fixtures = contracts();
++    let (addr, server, _store) = daemon(&fixtures).await;
++    let fixture = case(&fixtures, "seat-close");
++    let response = post(addr, "/v1/close", &fixture["request"]).await;
++    assert_eq!(response.status(), 200, "close route must be served");
++    let response: Value = response.json().await.expect("close envelope");
++    for field in ["ok", "command", "v"] {
++        assert_eq!(response[field], fixture["response"][field]);
++    }
++    for field in ["seat", "reason"] {
++        assert_eq!(response["data"][field], fixture["response"]["data"][field]);
++    }
++    assert!(response["data"]["tombstoned_at"].as_u64().expect("timestamp") > 0);
++    assert!(response["data"]["seq"].as_u64().expect("sequence") > 0);
++    let repeated: Value = post(addr, "/v1/close", &fixture["shim_request"])
++        .await.json().await.expect("repeated close envelope");
++    assert_eq!(repeated, response, "retry must return the original tombstone receipt");
++    let mut reap = case(&fixtures, "reap-dry-run")["request"].clone();
++    reap["dry_run"] = json!(true);
++    let after: Value = post(addr, "/v1/reap", &reap)
++        .await.json().await.expect("reap envelope");
++    assert_eq!(after["data"]["before"], 2, "tombstones leave the active roster");
++    server.abort();
++}
++
++#[tokio::test]
++async fn close_outsider_and_unknown_target_refuse_without_retiring_a_seat() {
++    let fixtures = contracts();
++    let (addr, server, _store) = daemon(&fixtures).await;
++    let mut request = case(&fixtures, "seat-close")["request"].clone();
++    request["caller"]["TMUX_PANE"] = json!("%12");
++    let response = post(addr, "/v1/close", &request).await;
++    assert_eq!(response.status(), 403);
++    let refusal: Value = response.json().await.expect("refusal envelope");
++    assert_eq!(refusal["ok"], false);
++    assert_eq!(refusal["details"]["code"], "E-RS-OWNERSHIP");
++    request = case(&fixtures, "seat-close")["request"].clone();
++    request["seat"] = json!("pij-missing");
++    let response = post(addr, "/v1/close", &request).await;
++    assert_eq!(response.status(), 404);
++    let response: Value = post(addr, "/v1/reap", &case(&fixtures, "reap-dry-run")["request"])
++        .await.json().await.expect("reap envelope");
++    assert_eq!(response["data"]["before"], 3);
++    server.abort();
++}
++
++#[tokio::test]
++async fn close_self_uses_resolved_caller_without_parent_privilege() {
++    let fixtures = contracts();
++    let (addr, server, _store) = daemon(&fixtures).await;
++    let mut request = case(&fixtures, "seat-close")["request"].clone();
++    request["caller"]["TMUX_PANE"] = json!("%11");
++    let response = post(addr, "/v1/close", &request).await;
++    assert_eq!(response.status(), 200);
++    let closed: Value = response.json().await.expect("close");
++    assert_eq!(closed["ok"], true);
++    let tombstone_seq = closed["data"]["seq"].as_u64().expect("tombstone sequence");
++    for caller in [
++        request["caller"].clone(),
++        json!({"PIJ_SESSION_ID":fixtures["fixture_context"]["worker"]}),
++    ] {
++        let mut retry = request.clone();
++        retry["caller"] = caller;
++        let retired_self = post(addr, "/v1/close", &retry).await;
++        assert_eq!(retired_self.status(), 400, "retirement revokes the shared caller identity");
++        let refusal: Value = retired_self.json().await.expect("retired-self refusal");
++        assert_eq!(refusal["ok"], false);
++        assert_eq!(refusal["details"]["tombstone_seq"], tombstone_seq);
++        assert!(refusal["meta"].as_str().expect("human refusal").contains(&tombstone_seq.to_string()));
++    }
++    let parent_retry = post(addr, "/v1/close", &case(&fixtures, "seat-close")["request"]).await;
++    assert_eq!(parent_retry.status(), 200, "live parent can read the prior receipt");
++    assert_eq!(parent_retry.json::<Value>().await.expect("parent receipt"), closed);
++    server.abort();
++}
++
++#[tokio::test]
++async fn lifecycle_unknown_flags_and_forged_actor_are_not_silently_accepted() {
++    let fixtures = contracts();
++    let (addr, server, _store) = daemon(&fixtures).await;
++    let caller = case(&fixtures, "seat-close")["request"]["caller"].clone();
++    for (path, argv) in [
++        ("/v1/close", json!(["close", "pij-worker", "--force"])),
++        ("/v1/close", json!(["close", "pij-worker", "--actor", "pij-outsider"])),
++        ("/v1/reap", json!(["reap", "--all"])),
++        ("/v1/reap", json!(["reap", "pij-worker"])),
++    ] {
++        let response = post(addr, path, &json!({"argv":argv,"caller":caller})).await;
++        assert!(!response.status().is_success());
++        assert_eq!(response.json::<Value>().await.expect("decodable refusal")["ok"], false);
++    }
++    let response: Value = post(addr, "/v1/reap", &case(&fixtures, "reap-dry-run")["request"])
++        .await.json().await.expect("reap envelope");
++    assert_eq!(response["data"]["before"], 3);
++    server.abort();
++}
++
++#[tokio::test]
++async fn reap_missing_process_identity_is_unverifiable_in_dry_run_and_run() {
++    let fixtures = contracts();
++    let (addr, server, _store) = daemon(&fixtures).await;
++    let fixture = case(&fixtures, "reap-dry-run");
++    let response = post(addr, "/v1/reap", &fixture["request"]).await;
++    assert_eq!(response.status(), 200, "reap route must be served");
++    let dry: Value = response.json().await.expect("dry-run envelope");
++    for field in ["ok", "command", "v"] {
++        assert_eq!(dry[field], fixture["response"][field]);
++    }
++    assert_eq!(dry["data"]["before"], 3);
++    assert_eq!(dry["data"]["after"], 3);
++    assert_eq!(dry["data"]["candidates"], json!([]));
++    assert_eq!(dry["data"]["reaped"], json!([]));
++    assert_eq!(dry["data"]["unverifiable"].as_array().expect("rows").len(), 3);
++    assert!(dry["data"]["unverifiable"].as_array().expect("rows").iter().all(|row|
++        row["reason"] == fixture["response"]["data"]["unverifiable"][0]["reason"]));
++    let mut request = fixture["shim_request"].clone();
++    request["argv"] = json!(["reap"]);
++    let actual: Value = post(addr, "/v1/reap", &request)
++        .await.json().await.expect("actual-run envelope");
++    for field in ["before", "after", "candidates", "reaped", "unverifiable"] {
++        assert_eq!(actual["data"][field], dry["data"][field]);
++    }
++    assert_eq!(actual["data"]["dry_run"], false);
++    server.abort();
++}
+diff --git a/crates/harnesses/src/proc.rs b/crates/harnesses/src/proc.rs
+index 52b3700095955a9d5bee42ec4607650d820521c2..d93c229e4423de4c94bff48e925be4fa8af78862 100644
+--- a/crates/harnesses/src/proc.rs
++++ b/crates/harnesses/src/proc.rs
+@@ -6,7 +6,7 @@
+ //! one-directional safety interlock (a brake), not policy.
+ 
+ use std::io;
+-use std::process::Command;
++use std::process::{Command, ExitStatus};
+ use std::sync::Arc;
+ 
+ use async_trait::async_trait;
+@@ -77,7 +77,7 @@ impl LivenessPort for ProcLiveness {
+ }
+ 
+ struct CommandOutput {
+-    success: bool,
++    status: ExitStatus,
+     stdout: Vec<u8>,
+     stderr: Vec<u8>,
+ }
+@@ -95,7 +95,7 @@ impl CommandRunner for PsRunner {
+             .env("LC_ALL", "C")
+             .output()?;
+         Ok(CommandOutput {
+-            success: output.status.success(),
++            status: output.status,
+             stdout: output.stdout,
+             stderr: output.stderr,
+         })
+@@ -103,40 +103,38 @@ impl CommandRunner for PsRunner {
+ }
+ 
+ fn classify(pid: u32, output: CommandOutput) -> Result<Option<u64>> {
++    if !output.status.success() {
++        return Err(PijError::Adapter {
++            adapter: ADAPTER.to_string(),
++            message: format!(
++                "could not inspect pid {pid}: ps {}; {}",
++                output.status,
++                String::from_utf8_lossy(&output.stderr).trim()
++            ),
++        });
++    }
+     let stdout = std::str::from_utf8(&output.stdout).map_err(|error| PijError::Adapter {
+         adapter: ADAPTER.to_string(),
+         message: format!("pid {pid} produced non-UTF-8 stdout: {error}"),
+     })?;
+     let row = stdout.trim();
+     if !row.is_empty() {
+-        if !output.success {
+-            return Err(PijError::Adapter {
+-                adapter: ADAPTER.to_string(),
+-                message: format!("ps failed for pid {pid} after returning a process row"),
+-            });
+-        }
+         return parse_process_start(row).map(Some);
+     }
+ 
++    // Nonzero ps (including the usual absent-pid exit 1) is not absence proof.
++    // This brake deliberately reduces reap eligibility rather than guessing.
+     let stderr = String::from_utf8_lossy(&output.stderr);
+     let reason = stderr.trim();
+-    if reason.is_empty() || means_no_process(reason) {
++    if reason.is_empty() {
+         return Ok(None);
+     }
+-
+     Err(PijError::Adapter {
+         adapter: ADAPTER.to_string(),
+         message: format!("could not inspect pid {pid}: {reason}"),
+     })
+ }
+ 
+-fn means_no_process(stderr: &str) -> bool {
+-    let stderr = stderr.to_ascii_lowercase();
+-    stderr.contains("no such process")
+-        || stderr.contains("process id too large")
+-        || stderr.contains("process id out of range")
+-        || stderr.contains("process id list syntax error")
+-}
+ 
+ /// Read the host's current UTC offset in minutes from the platform clock.
+ ///
+@@ -259,6 +257,8 @@ fn parse_error(row: &str) -> PijError {
+ mod tests {
+     use std::collections::VecDeque;
+     use std::io;
++    use std::os::unix::process::ExitStatusExt;
++    use std::process::ExitStatus;
+     use std::sync::Mutex;
+ 
+     use pij_core::ports::LivenessPort;
+@@ -296,7 +296,7 @@ mod tests {
+ 
+     fn output(success: bool, stdout: &[u8], stderr: &[u8]) -> CommandOutput {
+         CommandOutput {
+-            success,
++            status: ExitStatus::from_raw(i32::from(!success) << 8),
+             stdout: stdout.to_vec(),
+             stderr: stderr.to_vec(),
+         }
+@@ -334,14 +334,62 @@ mod tests {
+     }
+ 
+     #[test]
+-    fn an_absent_exact_pid_is_none() {
+-        let adapter = ProcLiveness::with_runner(ScriptedRunner::one(7272, output(false, b"", b"")));
++    fn successful_empty_exact_pid_probe_is_none() {
++        let adapter = ProcLiveness::with_runner(ScriptedRunner::one(7272, output(true, b"", b"")));
+         assert_eq!(
+             block_on(adapter.proc_start(7272)).expect("absence is observable"),
+             None
+         );
+     }
+ 
++    #[test]
++    fn failed_empty_probe_is_unknown_not_dead() {
++        let adapter = ProcLiveness::with_runner(ScriptedRunner::one(
++            7272,
++            output(false, b"", b""),
++        ));
++        assert!(block_on(adapter.proc_start(7272)).is_err());
++    }
++
++    #[test]
++    fn failed_no_such_process_probe_is_unknown_not_dead() {
++        let adapter = ProcLiveness::with_runner(ScriptedRunner::one(
++            7272,
++            output(false, b"", b"No such process"),
++        ));
++        assert!(block_on(adapter.proc_start(7272)).is_err());
++    }
++
++    #[test]
++    fn successful_empty_probe_with_error_text_is_unknown() {
++        let adapter = ProcLiveness::with_runner(ScriptedRunner::one(
++            7272,
++            output(true, b"", b"Operation not permitted"),
++        ));
++        assert!(block_on(adapter.proc_start(7272)).is_err());
++    }
++
++    #[test]
++    fn signalled_empty_probe_is_unknown_not_dead() {
++        let adapter = ProcLiveness::with_runner(ScriptedRunner::one(
++            7272,
++            CommandOutput {
++                status: ExitStatus::from_raw(9),
++                ..output(false, b"", b"")
++            },
++        ));
++        let error = block_on(adapter.proc_start(7272)).expect_err("signal is not absence proof");
++        assert!(error.to_string().contains("signal"));
++    }
++
++    #[test]
++    fn failed_probe_with_a_process_row_is_unknown() {
++        let fixture = include_bytes!("../tests/fixtures/ps-macos-lstart.txt");
++        let adapter =
++            ProcLiveness::with_runner(ScriptedRunner::one(7272, output(false, fixture, b"")));
++        assert!(block_on(adapter.proc_start(7272)).is_err());
++    }
++
+     #[test]
+     fn utc_record_matches_the_same_local_start_and_rejects_recycled_pid_time() {
+         assert!(

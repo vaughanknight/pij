@@ -1,0 +1,144 @@
+{
+  "dd": {
+    "schema": "pij-team/packet"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Reviewer — composed plan139 governance port",
+        "role": "reviewer",
+        "plan": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/plan.dd.json",
+        "seat": "unbound; canary identity required before review",
+        "updated": "2026-09-07"
+      }
+    },
+    {
+      "name": "mission",
+      "value": "Cross-model review of the final composed plan139 implementation. Verify one governance world, one event sequence domain, ownership, destructive atomicity, and legacy serve-or-refuse cutover. PM supplies final revision at dispatch; do not review an intermediate source-ready patch as finished code."
+    },
+    {
+      "name": "instructions",
+      "value": [
+        {
+          "id": "i0",
+          "text": "FIRST use absolute PM worktree paths. Load BOTH pij and builder skills, plus validate-v2 review discipline. Canary first: quote pij whoami and actual OMP footer model/effort. Required model is github-copilot/claude-opus-5 high, not inferred from spawn argv."
+        },
+        {
+          "id": "i1",
+          "text": "Read canonical plan, root impl-guide.dd.json (pij-team schema retained by explicit prime ruling), stable crates/testkit/fixtures/golden/api contracts and final composed artifact SHA supplied at release. Inspect full plan delta from d964233d4cbf45400a6b2fc5f873de48909e7e38, distinguishing released main63988ededb9a62a7e45cbd68b36e930b0631593b changes from139 and merge seams. No intermediate patch or stale index is the subject."
+        },
+        {
+          "id": "i2",
+          "text": "DISBELIEVE AUTHOR RECEIPTS. Derive what code does from actual sources and inspect raw deterministic output behind every green claim. Do not treat authored/unrun tests, source-ready patches or formatter success as behavioral proof. Request a specific missing execution from PM rather than inventing results."
+        },
+        {
+          "id": "i3",
+          "text": "LEAST CONFIDENT: (1) cancellation-shielded publication and shutdown/follower ordering; (2) SQL pool/sequence coherence through real/fake fixture replacements and role service captures; (3) dispatch/decision side-effect and receipt ordering across cancellation/retry; (4) complete CLI native/shim JSON parity and no legacy fallback for any table entry. Hunt these first."
+        },
+        {
+          "id": "i4",
+          "text": "Mandatory priorities: sole spine SQL insertion + all producers bus-owned; atomic destructive row/event commits and rollback witnesses; current ownership and stale-lease HTTP replay refusal; computed anomaly semantics/relay parity; self-answer no-push versus other-answer real push; failed/unknown process probes never reap; no delivery semantics drift from373/374."
+        },
+        {
+          "id": "i5",
+          "text": "Check the shim guard reads the actual skill CLI-verb table, and that synthetic-table-verb mutation is demonstrated failing. Check archive cannot invalidate compiled fixture paths or refusal ledger references. Roles are asserted metadata, never inferred privilege."
+        },
+        {
+          "id": "i6",
+          "text": "KNOWN OWNED/INTENTIONAL: production/chainglass AC2/AC3/AC7/AC9 and phase4 tk-42a4 belong to prime after deploy and remain explicitly blocked, never fabricated accepted. Controls compact/new/reload, compact-self and bg ARE supported. Chore/watchdog/focus/admin gaps named-refuse. Generic register is native/HTTP-only but verified external inbox register MUST be served on Rust, with real host rather than CLI wrapper identity. Sessions uses live HTTP baseline, not a nonexistent native subcommand. Refusal exit policies differ intentionally. Do not restore legacy fallback, invent model claims or re-report explicit supported boundaries as gaps."
+        },
+        {
+          "id": "i7",
+          "text": "No code edits, commits, builds, project tests, formatters or linters. PM owns validation and targeted experiments. Only review artifacts under assets/reviews and your own observation buffer are writable; historical review preset failed by forbidding report output, so do not choose a preset that blocks your required artifact. Never flowspace3 daemon, production daemon restart, port7461 fixture, global/main node_modules/toolchain mutation or inbox transport-log reads."
+        },
+        {
+          "id": "i8",
+          "text": "For meaning-shaped questions use flowspace3 search first (client only); verify LSP root before believing empty refs. Report source/proof gaps via harness observe without draining buffers. If parent messages land in internal scouts, relay to Main context."
+        },
+        {
+          "id": "i9",
+          "text": "Return material CRITICAL/HIGH/MEDIUM findings only with location, source evidence, affected contract/AC, impact and smallest fix; disprove against explicit prime rulings first. Cross-check especially verified external host ancestry/pull waits, one true sequence domain, cancellation-safe destructive commits, native raw validated byte retention and post-output ACK, and keeper notices after persistence with actual receipt strength. Idle Pi/OMP is queued until ReaderRead; stale is existing Dead/Recycled evidence, never invented age. no_material_findings is valid."
+        },
+        {
+          "id": "i10",
+          "text": "Produce the required A-H review/Handover Brief and supported ddocs ReviewReceipt under assets/reviews, with exact source SHA and requested versus OBSERVED model/effort. Use builder review discipline (domain mode off unless canonical plan declares otherwise), independently cover implementation/safety, anti-reinvention, evidence and doctrine; use read-only critics for genuine independent slices. No live runtime validation by reviewers. Send paths and verdict to pij-lonely-ikrie; accepted local code is not production/whole-plan acceptance."
+        }
+      ]
+    },
+    {
+      "name": "working_with",
+      "value": [
+        {
+          "id": "w1",
+          "text": "The PM is your counterpart: verdict and findings go to the PM; the PM may refute findings with evidence — re-judge refutations on the evidence, not on rank."
+        },
+        {
+          "id": "w2",
+          "text": "You do not fix code, commit, or open PRs. If you find something outside the plan's scope, name it as a note for prime rather than expanding the review."
+        }
+      ]
+    },
+    {
+      "name": "scope",
+      "value": {
+        "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port",
+        "branch": "139-rs-governance-port",
+        "fence": "Code read-only; write only docs/plans/139-rs-governance-port/assets/reviews/** and own observation buffer",
+        "forbidden_note": "No source edits, main checkout/global state/government mutations, merges, PRs, production actions or hand-written flow state. Absolute paths only."
+      }
+    },
+    {
+      "name": "done_bar",
+      "value": [
+        {
+          "id": "d1",
+          "text": "Every plan AC judged true/false with evidence cited."
+        },
+        {
+          "id": "d2",
+          "text": "Composition seams between units explicitly examined and reported."
+        },
+        {
+          "id": "d3",
+          "text": "Review record ddoc written, built, and path delivered to the PM with a verdict line."
+        }
+      ]
+    },
+    {
+      "name": "refs",
+      "value": [
+        {
+          "id": "r0",
+          "path": "skill://pij-team/TENETS.md",
+          "note": "frozen seams and mechanical evidence doctrine"
+        },
+        {
+          "id": "r1",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/plan.dd.json",
+          "note": "ACs and prime-ruled amendments"
+        },
+        {
+          "id": "r2",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/impl-guide.dd.json",
+          "note": "composition and review priorities"
+        },
+        {
+          "id": "r3",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/testkit/fixtures/golden/api/governance-routes.json",
+          "note": "request/response/refusal/isolation contracts"
+        },
+        {
+          "id": "r4",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/testkit/fixtures/golden/api/governance-events.json",
+          "note": "event and cursor contracts"
+        },
+        {
+          "id": "r5",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/red-proof.json",
+          "note": "executed pre-fix witnesses, not green acceptance"
+        }
+      ]
+    }
+  ]
+}

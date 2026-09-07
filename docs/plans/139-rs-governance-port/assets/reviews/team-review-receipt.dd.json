@@ -1,0 +1,135 @@
+{
+  "dd": {
+    "schema": "builder/team"
+  },
+  "sections": [
+    {
+      "name": "review",
+      "value": {
+        "record_type": "review",
+        "id": "review-139-4751923e-pij-zany-reptile",
+        "recorded_at": "2026-09-07T15:34:27Z",
+        "scope": "composition",
+        "subject_sha": "4751923e6625e53ed3955b4587fdea58dd4eb0fe",
+        "plan": {
+          "path": "docs/plans/139-rs-governance-port/plan.dd.json",
+          "sha256": "c29ce7f9b790f0f4ed70aad02cea354d6ff5488e2859e0b46ffdc12daf7fea65"
+        },
+        "guide": {
+          "path": "docs/plans/139-rs-governance-port/impl-guide.dd.json",
+          "sha256": "14591869c352d244c2f88f8d88d8e18cf4e4df41d653115242c211f2e8177c82"
+        },
+        "reviewer_id": "pij-zany-reptile",
+        "requested": {
+          "role": "reviewer",
+          "harness": "omp",
+          "model": "github-copilot/claude-opus-5",
+          "effort": "high",
+          "source": {
+            "harness": "guide",
+            "model": "guide",
+            "effort": "guide"
+          }
+        },
+        "observed": {
+          "peer_id": "pij-zany-reptile",
+          "root": "/Users/jordanknight/pi-hacking/pij",
+          "ready": true,
+          "harness": "omp",
+          "model": "github-copilot/claude-opus-5",
+          "effort": "high",
+          "native_session": "01a07c38-90fe-7000-bd9b-d502b368ff43",
+          "pid": 69055,
+          "evidence": [
+            "OMP v18.0.10; session journal ~/.omp/agent/sessions/-pi-hacking-pij/2026-09-07T14-14-37-054Z_01a07c38-90fe-7000-bd9b-d502b368ff43.jsonl records model_change model=github-copilot/claude-opus-5 with resolvedModelIsFallback=false",
+            "Same journal records thinking_level_change thinkingLevel=high, configured=null",
+            "Native runtime root, re-verified read-only at refreeze with no re-adopt and no registry mutation: `pij whoami` returns session pij-zany-reptile, folder /Users/jordanknight/pi-hacking/pij, state idle, role —, and no data dir (rs seats have none). $PWD is the same path and $PIJ_SESSION_ID is pij-zany-reptile. This receipt's `root` field carries that registration root. CORRECTION: an earlier draft of this line and of `root` gave /Users/jordanknight/pi-hacking/fs3-rs-governance-port, which is the REVIEW WORKSPACE — a worktree I read from — and never my registration root; whoami never reported it. The two are recorded separately below rather than conflated.",
+            "Review workspace, distinct from the runtime root: /Users/jordanknight/pi-hacking/fs3-rs-governance-port, branch 139-rs-governance-port. Every path in the findings and in the report is read from that worktree; the reviewer seat itself is registered at and runs from /Users/jordanknight/pi-hacking/pij. No adopt, re-adopt, registration or registry write was performed by this reviewer at any point.",
+            "Registry-side corroboration supplied by the PM from a read-only `pij-rs list --json`, agreeing with the above and with this receipt's fields: id pij-zany-reptile, folder /Users/jordanknight/pi-hacking/pij, session 01a07c38-90fe-7000-bd9b-d502b368ff43, parent pij-lonely-ikrie, proc 69055 with proc_start 20260908001435, pane %4233.",
+            "Owned pane resolved from $TMUX_PANE and an explicitly targeted tmux query: %4233 (pij:11.0, window p139-opus-review, pane_pid 69039); an earlier untargeted query returned the attached client's active pane and was retracted",
+            "Admission nonce e957f6d290ec03af9fe02710b62bc882a911819af26c9d62 returned to the PM before release",
+            "Runtime identity of the pin verified directly: git diff --name-only 335d2098 4751923e -- . ':(exclude)docs/**' returns only crates/testkit/fixtures/golden/api/governance-client-parity.json and crates/testkit/fixtures/MANIFEST.toml",
+            "Both pin gates read at raw output: rust-gate-4751923e-green.txt is 100423 bytes with zero FAILED/panicked lines, ends 'pij-gate: all stages green', arch PASS 9 crates 0 violations, tmux adapter suite 32 passed 0 failed 0 filtered; engineering-gate-4751923e-green.json is ok:true with skipped:[] and every required sensor pass"
+          ],
+          "gaps": [
+            "Provider identity is NOT attested. Model and effort are read from the local OMP session journal, which records what this client requested and resolved; it is not a cryptographic attestation from the provider that those weights served the turn. Nothing here should be cited as provider attestation.",
+            "argv is deliberately omitted from this observation. The spawn command line does contain --model and --thinking, but argv states what was asked for, not what ran, and the reviewer packet required observation that is not inferred from spawn argv.",
+            "The AC9 documentation half was verified by independent cross-model inspection (zero legacy-verb scan plus required-element checklist), not by runtime execution; recorded at 85% inspection confidence.",
+            "External and production arms are unverified by this review and remain prime-owned: AC2, AC3, AC7, AC9, backpressure rows bp-0002/bp-0003/bp-0007/bp-0009, task tk-42a4 and phase ph-a9c3.",
+            "Schema resolution for this receipt is cwd-scoped, and that distinction is the point. HISTORICAL: from the plan repository as cwd, `ddocs validate` and `ddocs build` both returned E401 'schema \"builder/team\" was not found in any discovery root' (document directory, .dd, .harness/.dd, ~/.dd). My earlier draft of this gap mis-cited that failure as E410, which was the code from a separate `ddocs schema show` probe; the actual validate/build failure was E401. Default repo discovery and importer support for builder/team remain UNSUPPORTED in /Users/jordanknight/pi-hacking/fs3-rs-governance-port, and no schema was installed, copied or symlinked and no global state was edited to work around it. CURRENT: the PM found a supported read-only path — the resolver treats cwd as repoRoot, so `ddocs validate <absolute receipt path> --depth 0 --json` run with cwd=/Users/jordanknight/substrate/harness-engineering, the canonical source of builder/team, resolves the schema and returns status ok, schema builder/team, depth 0, 0 errors and 0 warnings; the raw envelope is preserved beside this receipt as team-review-validation.json. Note the asymmetry, which is a property of the tool and not of this document: the cwd path serves the READ-ONLY verb only. From that same cwd, against this same absolute path, `ddocs set` refuses with E433 'address resolves outside the repository' and `ddocs build` refuses with E429 'document is outside the repository root'. Cross-repo validation is supported; cross-repo writes are not, so this document has no generated sibling markdown and the amendment recorded here was authored directly. What the pass proves and does not prove: it proves this document's STRUCTURE conforms to builder/team; it does not validate the digests, which the PM verified independently, and it does not make the plan repository able to discover or import builder/team by default."
+          ]
+        },
+        "verdict": "approved",
+        "report": {
+          "path": "docs/plans/139-rs-governance-port/assets/reviews/review.final-composed.md",
+          "sha256": "c2d3afe27b2ed7baa35ff21a98b845e492d138f1e212da9193fba85cedcf1053"
+        },
+        "findings": [
+          {
+            "id": "F001",
+            "severity": "high",
+            "description": "No green full gate bound to the reviewed SHA when the review opened; the newest executed gates were RED at e6a2d5d5. An evidence gap, never a code defect. Closed within the review when the PM landed the 335d2098 gate outputs, and closed again independently at the pin.",
+            "disposition": "fixed",
+            "evidence": "assets/rust-gate-335d-green.txt (adapter suite 32 passed 0 failed 0 filtered at line 591, same 32 cases as the RED run's 31+1); assets/engineering-gate-335d-green.json ok:true; assets/rust-gate-4751923e-green.txt 100423 bytes, zero FAILED/panicked, 'pij-gate: all stages green'; assets/engineering-gate-4751923e-green.json ok:true skipped:[]"
+          },
+          {
+            "id": "F002",
+            "severity": "medium",
+            "description": "Five checked phase-1/phase-2 tasks and their assertions cited the superseded pre-merge checkpoint 0a7a2673, so 'checked' asserted against a state three revisions behind the composed artifact.",
+            "disposition": "fixed",
+            "evidence": "Rebound to execution-log.dd.json#entries/lg-0014 with real pressure rows bp-0001/bp-0003/bp-0004 replacing pressure:not-applicable; original notes and historical logs retained"
+          },
+          {
+            "id": "F003",
+            "severity": "medium",
+            "description": "The parity corpus fixture declared source_base 78531a0b while all 30 files pinned in its source_snapshot changed after that commit, so the label resolved to bytes other than the ones pinned.",
+            "disposition": "fixed",
+            "evidence": "Redundant source_base deleted (history.previous_capture_commit already carried the lineage); parity receipt key renamed to previous_capture_commit and original capture digest retained as captured_corpus_sha256. Verified: fixture diff is one deleted line; MANIFEST 112803->112742 bytes and a9311375->8ac16285 matching sha256sum on disk; jq -S del(.source_base) before equals after; 30/30 source_snapshot digests still verify"
+          },
+          {
+            "id": "F004",
+            "severity": "low",
+            "description": "Relay evidence renders join(\",\") and empty as \"none\" where the legacy renderer uses join(\", \") and \"(none)\". Accepted, not fixed: every detector emits exactly one evidence sequence, so neither branch is reachable and AC5 byte parity holds for all reachable inputs. Recorded as a latent trap for the first detector that emits zero or two sequences.",
+            "disposition": "accepted",
+            "evidence": "crates/core/src/anomalies.rs:131-139 versus .pi/extensions/pij/core/daemon/anomaly-sweep.ts:133; single-sequence detectors at crates/core/src/anomalies.rs:339,380,418,479,511"
+          },
+          {
+            "id": "F005",
+            "severity": "low",
+            "description": "REFUTED AT SOURCE, recorded rather than actioned. A read-only critic reported as HIGH that AnomalyThresholds::default() hardcodes a 10-minute status-stale threshold. It does not; the default references the named 30-minute constant. Retained so the disproof is citable rather than lost.",
+            "disposition": "accepted",
+            "evidence": "crates/core/src/anomalies.rs:223 reads status_stale_ms: STATUS_STALE_MS, with the constant declared at line 22 as 30 * 60 * 1_000"
+          },
+          {
+            "id": "F006",
+            "severity": "medium",
+            "description": "Five newly checked acceptance criteria cited the execution-log entry recording this review as proven_by. A review is a judgement about evidence, not evidence; AC1 in particular demands a live two-subscriber control that exists but was no longer what the criterion pointed at.",
+            "disposition": "fixed",
+            "evidence": "Rebound to executions carrying the witnesses: AC1/AC5/AC6 to lg-0009 (two Hello-confirmed streams, adopt seq7, report seq9, question28/answer33/done37/verify38/newdone40), AC4 to lg-0012 (66 original-byte comparisons, no normalization), AC8 to lg-0014"
+          },
+          {
+            "id": "F007",
+            "severity": "low",
+            "description": "A correction announced as bounded also flipped four tasks, their assertions, four backpressure rows, one phase and five acceptance criteria from unchecked to checked. Each flip was supportable on the evidence, so this was a scope-declaration defect rather than a false claim; a reviewer ACKing the announcement alone would have covered more than it described.",
+            "disposition": "fixed",
+            "evidence": "Subsequent pin declared its full scope up front; declared scope and delivered delta then matched"
+          },
+          {
+            "id": "F008",
+            "severity": "medium",
+            "description": "tk-41a4 and dw-41a4 were checked citing this review, against a generic assertion demanding RED, GREEN, test names and live seqs, while their pressure row bp-0009 stayed unchecked and no note reconciled the two. The reconciliation existed only in agent-to-agent messages, not in any artifact a later reader resolves.",
+            "disposition": "fixed",
+            "evidence": "Pointer moved to lg-0014 with executed RED at assets/u6-red-green-proof.json (baseline e22833b0, exit 1, 77 failed, classification naming incomplete skill coverage, no import/syntax/type failure substituted); both notes now scope the executable half, label the documentation half as inspection at 85% confidence and not runtime execution, and state that bp-0009/AC9 stay open for prime-owned confirmation with tk-42a4 carrying chainglass"
+          },
+          {
+            "id": "EXT-001",
+            "severity": "medium",
+            "description": "EXPLICIT EXTERNAL GAP, open by design and not a defect in the composition. This receipt approves the LOCAL composition only. The production and consumer-facing arms were not exercised by this review and remain prime-owned: AC2 production stamped events, AC3 chainglass role rendering, AC7 production auto-reap receipt, AC9 consumer confirmation, backpressure rows bp-0002/bp-0003/bp-0007/bp-0009, task tk-42a4 and phase ph-a9c3. Approval here is not production acceptance, not whole-plan acceptance, and not an archive claim.",
+            "disposition": "open",
+            "evidence": "Verified open at the pin: plan.dd.json acceptance_criteria AC2/AC3/AC7/AC9 unchecked; backpressure.dd.json rows bp-0002/bp-0003/bp-0007/bp-0009 unchecked; tasks/phase-4/tasks.dd.json tk-42a4 blocked with its prime-owned note intact; plan phases ph-a9c3 unchecked"
+          }
+        ]
+      }
+    }
+  ]
+}

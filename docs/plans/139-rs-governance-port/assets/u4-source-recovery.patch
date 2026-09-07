@@ -1,0 +1,632 @@
+--- a/crates/daemon/src/http/decisions.rs
++++ b/crates/daemon/src/http/decisions.rs
+@@ -9,7 +9,7 @@
+ use pij_core::error::{PijError, Result};
+ use pij_core::model::{DeliveryOutcome, Envelope, ErrorKind, Msg, SeatDescriptor, SeatId, SemanticState, Seq};
+ use pij_core::orchestration::PrimeState;
+-use pij_core::ports::{Registry, SeatFilter, Spine};
++use pij_core::ports::{Registry, SeatFilter};
+ use pij_core::report::{ReportConfig, ReportService};
+ use pij_store::SqliteOrchestration;
+ use serde::Deserialize;
+@@ -64,8 +64,7 @@
+         let seats = self.registry.list(SeatFilter::default()).await?;
+         let prime = self.store.prime().await?.filter(|row|row.state == PrimeState::Current).map(|row|row.seat);
+         project_parents(&mut rows,&seats,prime.as_ref());
+-        let events = self.bus.tail(None,Seq(0)).await?;
+-        let cursor = events.last().and_then(|event|event.seq).unwrap_or(Seq(0));
++        let cursor = self.store.spine_head().await?;
+         let state = filters.get("state").map(String::as_str).unwrap_or("open");
+         if !matches!(state,"open"|"answered"|"all") { return Err(DecisionError::argument("state must be open|answered|all")); }
+         rows.retain(|row| (state == "all" || (row.state == DecisionState::Open) == (state == "open"))
+@@ -76,19 +75,37 @@
+ 
+     /// Durable linkage precedes admission; only an accepted delivery closes a
+     /// non-self answer. Retries retain both message id and answer event sequence.
+-    pub async fn answer(&self, actor: &SeatId, id: &str, answer: &str) -> std::result::Result<Value, DecisionError> {
++    pub async fn answer(&self, actor: &SeatId, id: &str, answer: &str, supersede: bool) -> std::result::Result<Value, DecisionError> {
+         let _guard = self.answer_lock.lock().await;
+         let stored = self.store.get_decision(id).await?.ok_or_else(|| DecisionError::argument(format!("unknown decision {id}")))?;
+         let asker = live_seat(self.registry.as_ref(),&stored.decision.asked_by).await?;
+         if !may_answer(actor,&asker) { return Err(DecisionError::ownership("answer",actor,&asker)); }
+-        let msg_id = (actor != &asker.id).then(||format!("{id}-answer"));
+-        let prepared = self.store.prepare_decision_answer(id,actor,answer,msg_id.as_deref()).await?;
++        let prepared = if supersede {
++            let store = self.store.clone();
++            let registry = self.registry.clone();
++            let actor = actor.clone();
++            let asker_id = asker.id.clone();
++            let id = id.to_string();
++            let answer = answer.to_string();
++            let at = system_time_ms()?;
++            let (_,prepared) = self.bus.publish_committed(async move {
++                let current = live_seat(registry.as_ref(),&asker_id).await?;
++                if current.parent.as_ref() != Some(&actor) || current.id == actor {
++                    return Err(PijError::GovernanceRefused {code:"E-RS-OWNERSHIP".into(),record:current.id.to_string()});
++                }
++                store.supersede_decision_answer_committed(&id,&actor,&answer,at).await
++            }).await?;
++            prepared
++        } else {
++            let msg_id = (actor != &asker.id).then(||stored.decision.answer_msg_id.unwrap_or_else(||format!("{id}-answer")));
++            self.store.prepare_decision_answer(id,actor,answer,msg_id.as_deref()).await?
++        };
+         if prepared.decision.state == DecisionState::Answered {
+             let seq = prepared.answer_seq.ok_or_else(||DecisionError::internal("answered decision has no receipt"))?;
+             return Ok(json!({"decision":prepared.decision,"seq":seq}));
+         }
+-        if let Some(msg_id) = msg_id {
+-            let receipt = self.delivery.accept(Msg { from: actor.clone(),to:asker.id.clone(),body:answer.to_string(),msg_id,
++        if let Some(msg_id) = prepared.decision.answer_msg_id.as_ref() {
++            let receipt = self.delivery.accept(Msg { from: actor.clone(),to:asker.id.clone(),body:answer.to_string(),msg_id:msg_id.clone(),
+                 from_machine:None,in_reply_to:None,command:None }).await.map_err(|error|DecisionError {
+                     status:StatusCode::CONFLICT,code:"E-RS-ANSWER-DELIVERY".into(),message:error.to_string(),details:json!({"decision":prepared.decision,"state":"open"})
+                 })?;
+@@ -101,11 +118,12 @@
+         let actor = actor.clone();
+         let asker_id = asker.id;
+         let id = id.to_string();
++        let expected_msg_id = prepared.decision.answer_msg_id;
+         let at = system_time_ms()?;
+         let (seq,decision) = self.bus.publish_committed(async move {
+             let current = live_seat(registry.as_ref(),&asker_id).await?;
+             if !may_answer(&actor,&current) { return Err(PijError::GovernanceRefused { code:"E-RS-OWNERSHIP".into(),record:current.id.to_string() }); }
+-            store.answer_decision_committed(&id,&actor,at).await
++            store.answer_decision_committed(&id,&actor,expected_msg_id.as_deref(),at).await
+         }).await?;
+         Ok(json!({"decision":decision,"seq":seq}))
+     }
+@@ -168,6 +186,10 @@
+ impl From<PijError> for DecisionError {
+     fn from(error: PijError) -> Self {
+         match error {
++            PijError::GovernanceRefused {code,record} if matches!(code.as_str(),"E-RS-ANSWER-IN-TRANSIT"|"E-RS-ANSWER-DELIVERED") => {
++                let message = if code == "E-RS-ANSWER-IN-TRANSIT" { "an answer in transit cannot be withdrawn; wait for its terminal outcome" } else { "a delivered or acknowledged answer cannot be superseded" };
++                Self {status:StatusCode::CONFLICT,code,message:message.into(),details:serde_json::from_str(&record).unwrap_or_else(|_|json!({"record":record}))}
++            }
+             PijError::GovernanceRefused {code,record} => Self {status:if code == "E-RS-OWNERSHIP" {StatusCode::FORBIDDEN}else{StatusCode::CONFLICT},code,message:format!("transition refused for {record}"),details:json!({"record":record})},
+             PijError::NoRegistryEntry {seat,store} => Self {status:StatusCode::BAD_REQUEST,code:"E-RS-NO-SEAT".into(),message:format!("{seat} is not an active seat in {store}"),details:json!({"seat":seat})},
+             error=>Self::internal(error.to_string()),
+@@ -232,6 +254,8 @@
+     pub decision: Option<String>,
+     /// Typed answer text.
+     pub answer: Option<String>,
++    /// Explicit recovery; only the asker's current parent may supersede.
++    pub supersede: Option<bool>,
+     /// Shim command tokens.
+     #[serde(default)]
+     pub argv: Vec<String>,
+@@ -240,19 +264,38 @@
+     pub caller: CallerContext,
+ }
+ 
+-pub(crate) async fn answer_post(State(state):State<AppState>,Json(request):Json<AnswerRequest>) -> Response {
++pub(crate) async fn answer_post(State(state):State<AppState>,Json(mut request):Json<AnswerRequest>) -> Response {
+     let command = "pij answer";
+-    let actor = match resolve_seat(&state,command,request.caller.session_id,request.caller.pane).await { Resolved::Seat(seat,_)=>seat,Resolved::Refusal(response)=>return response };
+-    let (id,answer) = if request.argv.is_empty() {
+-        match (request.decision,request.answer) { (Some(id),Some(answer))=>(id,answer),_=>return DecisionError::argument("answer requires decision and answer").response(command) }
++    let actor = match resolve_seat(&state,command,request.caller.session_id.take(),request.caller.pane.take()).await { Resolved::Seat(seat,_)=>seat,Resolved::Refusal(response)=>return response };
++    let (id,answer,supersede) = match parse_answer(&request) { Ok(args)=>args,Err(error)=>return error.response(command) };
++    respond(command,state.services.decisions.answer(&actor.id,id,answer,supersede).await)
++}
++
++fn parse_answer(request: &AnswerRequest) -> std::result::Result<(&str,&str,bool),DecisionError> {
++    let (id,answer,supersede) = if request.argv.is_empty() {
++        match (request.decision.as_deref(),request.answer.as_deref()) {
++            (Some(id),Some(answer))=>(id,answer,request.supersede.unwrap_or(false)),
++            _=>return Err(DecisionError::argument("answer requires decision and answer")),
++        }
+     } else {
+-        if request.decision.is_some() || request.answer.is_some() { return DecisionError::argument("do not mix typed answer fields and argv").response(command); }
+-        let args:Vec<_> = request.argv.iter().filter(|arg|arg.as_str()!="--json").collect();
+-        if args.len()!=3 || args[0]!="answer" || args[1].starts_with("--") || args[2].starts_with("--") { return DecisionError::argument("usage: pij answer <decision> <answer> [--json]").response(command); }
+-        (args[1].to_string(),args[2].to_string())
++        if request.decision.is_some() || request.answer.is_some() || request.supersede.is_some() {
++            return Err(DecisionError::argument("do not mix typed answer fields and argv"));
++        }
++        let mut supersede = false;
++        let mut args = Vec::with_capacity(3);
++        for arg in &request.argv {
++            match arg.as_str() {
++                "--json"=>{},
++                "--supersede" if !supersede=>supersede=true,
++                flag if flag.starts_with("--")=>return Err(DecisionError::argument(format!("unknown or duplicate answer option {flag}"))),
++                arg=>args.push(arg),
++            }
++        }
++        if args.len()!=3 || args[0]!="answer" { return Err(DecisionError::argument("usage: pij answer [--supersede] <decision> <answer> [--json]")); }
++        (args[1],args[2],supersede)
+     };
+-    if id.trim().is_empty() || answer.trim().is_empty() { return DecisionError::argument("decision and answer must not be empty").response(command); }
+-    respond(command,state.services.decisions.answer(&actor.id,&id,&answer).await)
++    if id.trim().is_empty() || answer.trim().is_empty() { return Err(DecisionError::argument("decision and answer must not be empty")); }
++    Ok((id,answer,supersede))
+ }
+ 
+ pub(crate) fn respond(command:&str,result:std::result::Result<Value,DecisionError>) -> Response {
+@@ -269,10 +312,11 @@
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+-    use pij_core::model::{Harness, ProcIdentity};
++    use pij_core::ports::{Queue, Spine};
++    use pij_core::model::{DeliveryOrigin, Harness, Outcome, ProcIdentity};
+     use pij_harnesses::InteractionGate;
+     use pij_store::{SqliteQueue, SqliteRegistry, SqliteSpine, StorePool};
+-    use pij_testkit::{FakeTmux, FakeTransport};
++    use pij_testkit::fakes::{FakeTmux, FakeTransport};
+ 
+     struct Fixture {
+         service: DecisionService,
+@@ -280,6 +324,7 @@
+         bus: Arc<EventBus>,
+         store: SqliteOrchestration,
+         pool: StorePool,
++        transport: Arc<FakeTransport>,
+         worker: SeatId,
+         parent: SeatId,
+     }
+@@ -298,13 +343,21 @@
+             registry.put(SeatDescriptor::new(parent.clone(),Harness::Omp,"/work")).await.expect("parent");
+             let queue = Arc::new(SqliteQueue::new(pool.clone(),30,128).expect("queue"));
+             let interaction = Arc::new(InteractionGate::new(Arc::new(FakeTmux::new())));
+-            let delivery = Arc::new(DeliveryService::new(registry.clone(),queue,Arc::new(transport),interaction,bus.clone()).expect("delivery"));
++            let transport = Arc::new(transport);
++            let delivery = Arc::new(DeliveryService::new(registry.clone(),queue,transport.clone(),interaction,bus.clone()).expect("delivery"));
+             let service = DecisionService::new(store.clone(),registry.clone(),bus.clone(),delivery);
+-            Self {service,registry,bus,store,pool,worker,parent}
++            Self {service,registry,bus,store,pool,transport,worker,parent}
+         }
+         async fn ask(&self)->String {
+             let opened = self.service.question(&self.worker,"which branch owns this?").await.expect("question");
+             opened["decision"]["id"].as_str().expect("id").to_string()
++        }
++        async fn socket_worker(&self) {
++            let mut worker = self.registry.get(&self.worker).await.expect("read").expect("worker");
++            worker.harness = Harness::Claude;
++            worker.proc = Some(ProcIdentity {pid:123,proc_start:456});
++            worker.semantic_state = None;
++            self.registry.put(worker).await.expect("socket worker");
+         }
+     }
+ 
+@@ -322,9 +375,9 @@
+         let current = f.service.list(&BTreeMap::from([("parent".into(),new_parent.to_string())])).await.expect("new view");
+         assert_eq!(current["decisions"][0]["parent"],new_parent.as_str());
+         assert_eq!(f.store.get_decision(&id).await.expect("stored").expect("row").decision.parent,Some(f.parent.clone()));
+-        assert_eq!(f.service.answer(&f.parent,&id,"main").await.expect_err("old parent refused").status,StatusCode::FORBIDDEN);
+-        let accepted = f.service.answer(&new_parent,&id,"main").await.expect("new parent answer");
+-        let again = f.service.answer(&new_parent,&id,"main").await.expect("idempotent");
++        assert_eq!(f.service.answer(&f.parent,&id,"main",false).await.expect_err("old parent refused").status,StatusCode::FORBIDDEN);
++        let accepted = f.service.answer(&new_parent,&id,"main",false).await.expect("new parent answer");
++        let again = f.service.answer(&new_parent,&id,"main",false).await.expect("idempotent");
+         assert_eq!(accepted,again);
+         let inbox = f.service.delivery.claim_inbox(&f.worker,false).await.expect("actual inbox");
+         assert_eq!(inbox.len(),1);
+@@ -332,14 +385,14 @@
+         assert_eq!(inbox[0].message.to,f.worker);
+         assert_eq!(inbox[0].message.body,"main");
+         assert_eq!(inbox[0].message.msg_id,format!("{id}-answer"));
+-        assert!(f.service.answer(&new_parent,&id,"other").await.is_err());
++        assert!(f.service.answer(&new_parent,&id,"other",false).await.is_err());
+     }
+ 
+     #[tokio::test]
+     async fn self_answer_closes_without_any_delivery_push_or_queue_row() {
+         let f = Fixture::new(FakeTransport::reachable()).await;
+         let id = f.ask().await;
+-        let answered = f.service.answer(&f.worker,&id,"self ruling").await.expect("self answer");
++        let answered = f.service.answer(&f.worker,&id,"self ruling",false).await.expect("self answer");
+         assert!(answered["decision"]["answer_msg_id"].is_null());
+         assert_eq!(answered["decision"]["answered_by"],f.worker.as_str());
+         let events = f.bus.tail(None,Seq(0)).await.expect("events");
+@@ -371,7 +424,7 @@
+         worker.proc = Some(ProcIdentity {pid:123,proc_start:456});
+         worker.semantic_state = None;
+         f.registry.put(worker).await.expect("socket fixture");
+-        assert!(f.service.answer(&f.parent,&id,"main").await.is_err());
++        assert!(f.service.answer(&f.parent,&id,"main",false).await.is_err());
+         let row = f.store.get_decision(&id).await.expect("stored").expect("row");
+         assert_eq!(row.decision.state,DecisionState::Open);
+         assert_eq!(row.decision.answer_msg_id.as_deref(),Some(format!("{id}-answer").as_str()));
+@@ -388,7 +441,7 @@
+         let verified = f.service.verify(&f.parent,&f.worker,None).await.expect("parent");
+         assert_eq!(verified["done_seq"],first.0);
+         let second = reports.declare(&f.worker,Some(SemanticState::Done),None).await.expect("new done");
+-        let anomalies = super::super::anomalies::AnomalyService::new(f.store.clone(),f.registry.clone(),f.bus.clone(),Arc::new(pij_testkit::FakeLiveness::new()));
++        let anomalies = super::super::anomalies::AnomalyService::new(f.store.clone(),f.registry.clone(),f.bus.clone(),Arc::new(pij_testkit::fakes::FakeLiveness::new()));
+         let rows = anomalies.list(&BTreeMap::new(),None).await.expect("derived anomalies");
+         let row = rows["anomalies"].as_array().expect("rows").iter().find(|row|row["kind"]=="unverified-done").expect("new done unverified");
+         assert_eq!(row["evidence"][0],second.0);
+@@ -406,10 +459,176 @@
+         let fixture = events["events"].as_array().expect("events").iter().find(|row|row["id"]=="dispatch-delivered").expect("event");
+         let event:pij_core::model::Event = serde_json::from_value(fixture["frame"]["event"].clone()).expect("canonical event");
+         let seq = f.bus.publish(event).await.expect("publish");
+-        let anomalies = super::super::anomalies::AnomalyService::new(f.store.clone(),f.registry.clone(),f.bus.clone(),Arc::new(pij_testkit::FakeLiveness::new()));
++        let anomalies = super::super::anomalies::AnomalyService::new(f.store.clone(),f.registry.clone(),f.bus.clone(),Arc::new(pij_testkit::fakes::FakeLiveness::new()));
+         let rows = anomalies.list(&BTreeMap::new(),None).await.expect("projection");
+         let row = rows["anomalies"].as_array().expect("rows").iter().find(|row|row["kind"]=="delivered-unacked-stale").expect("legacy anomaly kind");
+         assert_eq!(row["evidence"][0],seq.0);
+         assert_eq!(row["recordRef"],format!("dispatch:{}",dispatch.id));
+     }
+-}
++
++    #[tokio::test]
++    async fn supersede_failed_delivery_mints_new_id_and_retries_stably() {
++        let f = Fixture::new(FakeTransport::reachable().script_deliver_error()).await;
++        let id = f.ask().await;
++        f.socket_worker().await;
++        assert_eq!(f.service.answer(&f.parent,&id,"old",false).await.expect_err("injection failed").code,"E-RS-ANSWER-DELIVERY");
++        let old_id = format!("{id}-answer");
++        let answered = f.service.answer(&f.parent,&id,"replacement",true).await.expect("explicit recovery");
++        let fresh_id = answered["decision"]["answer_msg_id"].as_str().expect("new id");
++        assert_ne!(fresh_id,old_id);
++        assert_eq!(f.service.answer(&f.parent,&id,"replacement",false).await.expect("ordinary retry"),answered);
++        let delivered = f.transport.delivered();
++        assert_eq!(delivered.len(),1);
++        assert_eq!(delivered[0].msg_id,fresh_id);
++        assert_eq!(delivered[0].body,"replacement");
++        let events = f.bus.tail(None,Seq(0)).await.expect("history");
++        let event = events.iter().find(|event|event.kind=="decision.answer-superseded").expect("audit");
++        let payload:Value = serde_json::from_str(&event.payload).expect("payload");
++        assert_eq!(payload["superseded"],json!({"answer_msg_id":old_id,"answered_by":f.parent,"answer":"old"}));
++        assert_eq!(payload["record"]["state"],"open");
++        assert_eq!(fresh_id,format!("{id}-answer-{}",event.seq.expect("actual allocated seq").0));
++    }
++
++    #[tokio::test]
++    async fn supersede_delivered_answer_refuses_after_cache_eviction() {
++        let f = Fixture::new(FakeTransport::reachable()).await;
++        let id = f.ask().await;
++        f.socket_worker().await;
++        let answered = f.service.answer(&f.parent,&id,"old",false).await.expect("delivered");
++        let queue = SqliteQueue::new(f.pool.clone(),30,1).expect("one-entry retention");
++        queue.note_delivered(&f.worker,"newer-message",DeliveryOrigin::InjectedToTransport).await.expect("evict old marker");
++        let before = f.store.spine_head().await.expect("head");
++        let error = f.service.answer(&f.parent,&id,"replacement",true).await.expect_err("immutable delivered evidence");
++        assert_eq!(error.code,"E-RS-ANSWER-DELIVERED");
++        assert_eq!(error.details["answer_msg_id"],answered["decision"]["answer_msg_id"]);
++        assert_eq!(f.store.spine_head().await.expect("no replacement event"),before);
++        assert_eq!(f.transport.delivered().len(),1);
++    }
++
++    #[tokio::test]
++    async fn supersede_old_parent_and_asker_refuse() {
++        let f = Fixture::new(FakeTransport::reachable().script_deliver_error()).await;
++        let id = f.ask().await;
++        f.socket_worker().await;
++        assert!(f.service.answer(&f.parent,&id,"old",false).await.is_err());
++        let new_parent = SeatId::from("replacement-parent");
++        f.registry.put(SeatDescriptor::new(new_parent.clone(),Harness::Omp,"/work")).await.expect("new parent");
++        let mut worker = f.registry.get(&f.worker).await.expect("read").expect("worker");
++        worker.parent = Some(new_parent.clone());
++        f.registry.put(worker).await.expect("reparent");
++        let before = f.store.spine_head().await.expect("head");
++        assert_eq!(f.service.answer(&f.parent,&id,"replacement",true).await.expect_err("old parent").status,StatusCode::FORBIDDEN);
++        assert_eq!(f.service.answer(&f.worker,&id,"replacement",true).await.expect_err("asker cannot supersede").status,StatusCode::FORBIDDEN);
++        assert_eq!(f.store.spine_head().await.expect("no refused events"),before);
++        let answered = f.service.answer(&new_parent,&id,"replacement",true).await.expect("current parent");
++        assert_eq!(answered["decision"]["answered_by"],new_parent.as_str());
++        assert_eq!(f.transport.delivered()[0].from,new_parent);
++    }
++
++    #[tokio::test]
++    async fn supersede_pending_and_claimed_jobs_refuse() {
++        let f = Fixture::new(FakeTransport::reachable()).await;
++        let id = f.ask().await;
++        let answered = f.service.answer(&f.parent,&id,"old",false).await.expect("queued acceptance");
++        let queue = SqliteQueue::new(f.pool.clone(),30,128).expect("shared queue");
++        let before = f.store.spine_head().await.expect("head");
++        for state in ["pending","running"] {
++            if state=="running" { queue.claim(&[format!("delivery:{}",f.worker)],"supersede-test").await.expect("claim").expect("job"); }
++            let error = f.service.answer(&f.parent,&id,"replacement",true).await.expect_err("in transit");
++            assert_eq!(error.code,"E-RS-ANSWER-IN-TRANSIT");
++            assert_eq!(error.details["answer_msg_id"],answered["decision"]["answer_msg_id"]);
++            assert_eq!(error.details["job_state"],state);
++            assert!(error.message.contains("an answer in transit cannot be withdrawn; wait for its terminal outcome"));
++        }
++        let (job,_) = queue.peek(&[format!("delivery:{}",f.worker)]).await.expect("peek").expect("running job");
++        queue.ack_delivery(job,DeliveryOrigin::ReaderRead).await.expect("acknowledge old message");
++        assert_eq!(f.service.answer(&f.parent,&id,"replacement",true).await.expect_err("acked answer").code,"E-RS-ANSWER-DELIVERED");
++        assert_eq!(f.store.spine_head().await.expect("no replacement event"),before);
++        assert_eq!(f.store.get_decision(&id).await.expect("read").expect("row").decision.answer.as_deref(),Some("old"));
++        assert!(f.transport.delivered().is_empty());
++    }
++
++    #[tokio::test]
++    async fn supersede_terminal_failed_queue_job_reopens_before_readmission() {
++        let f = Fixture::new(FakeTransport::reachable()).await;
++        let id = f.ask().await;
++        f.service.answer(&f.parent,&id,"old",false).await.expect("queued acceptance");
++        let queue = SqliteQueue::new(f.pool.clone(),30,128).expect("shared queue");
++        let (job,_) = queue.claim(&[format!("delivery:{}",f.worker)],"supersede-test").await.expect("claim").expect("job");
++        queue.ack(job,Outcome::Failed {reason:"expired-unknown".into()}).await.expect("existing terminal failure");
++        let answered = f.service.answer(&f.parent,&id,"replacement",true).await.expect("terminal recovery");
++        assert_ne!(answered["decision"]["answer_msg_id"],format!("{id}-answer"));
++        let (_,pending) = queue.peek(&[format!("delivery:{}",f.worker)]).await.expect("peek").expect("new job");
++        assert_eq!(pending.dedupe_key,answered["decision"]["answer_msg_id"].as_str().expect("new id"));
++        let history = f.bus.tail(None,Seq(0)).await.expect("events");
++        let event = history.iter().find(|event|event.kind=="decision.answer-superseded").expect("audit");
++        let payload:Value = serde_json::from_str(&event.payload).expect("payload");
++        assert_eq!(payload["record"]["state"],"open");
++        assert!(payload["record"]["answered_at"].is_null());
++    }
++
++    #[test]
++    fn supersede_parser_consumes_canonical_typed_and_argv_requests() {
++        let fixtures:Value = serde_json::from_str(include_str!("../../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json")).expect("routes");
++        let route = fixtures["routes"].as_array().expect("routes").iter().find(|route|route["path"]=="/v1/answer").expect("answer");
++        let case = route["cases"].as_array().expect("cases").iter().find(|case|case["id"]=="decision-answer-supersede").expect("supersede fixture");
++        for key in ["request","shim_request"] {
++            let request:AnswerRequest = serde_json::from_value(case[key].clone()).expect("request");
++            let (id,answer,supersede) = parse_answer(&request).expect("grammar");
++            assert!(supersede);
++            assert_eq!(id,case["request"]["decision"].as_str().expect("id"));
++            assert_eq!(answer,case["request"]["answer"].as_str().expect("answer"));
++        }
++        for argv in [vec!["answer","--supersede","--supersede","d","text"],vec!["answer","--unknown","d","text"],vec!["answer","--supersede","d"],vec!["answer","d","text","extra"]] {
++            let request:AnswerRequest = serde_json::from_value(json!({"argv":argv})).expect("request");
++            assert!(parse_answer(&request).is_err());
++        }
++        let request:AnswerRequest = serde_json::from_value(json!({"argv":["answer","d","text"],"supersede":false})).expect("request");
++        assert!(parse_answer(&request).is_err());
++    }
++
++    #[tokio::test]
++    async fn supersede_direct_delivery_reservation_refuses_without_a_terminal_receipt() {
++        let f = Fixture::new(FakeTransport::reachable()).await;
++        let id = f.ask().await;
++        let old_id = format!("{id}-answer");
++        f.store.prepare_decision_answer(&id,&f.parent,"old",Some(&old_id)).await.expect("intent");
++        let queue = SqliteQueue::new(f.pool.clone(),30,128).expect("shared queue");
++        queue.note_delivered(&f.worker,&old_id,DeliveryOrigin::InjectedToTransport).await.expect("pre-injection reservation");
++        let error = f.service.answer(&f.parent,&id,"replacement",true).await.expect_err("reservation has no terminal receipt");
++        assert_eq!(error.code,"E-RS-ANSWER-IN-TRANSIT");
++        assert_eq!(error.details["answer_msg_id"],old_id);
++        assert_eq!(error.details["job_state"],"delivery-reserved");
++        assert!(f.transport.delivered().is_empty());
++    }
++
++    #[tokio::test]
++    async fn supersede_terminal_refusal_keeps_replacement_subject_to_delivery_policy() {
++        let f = Fixture::new(FakeTransport::reachable().script_outcome(DeliveryOutcome::Refused {reason:"operator denied".into()})).await;
++        let id = f.ask().await;
++        f.socket_worker().await;
++        assert_eq!(f.service.answer(&f.parent,&id,"old",false).await.expect_err("terminal refusal").code,"E-RS-ANSWER-DELIVERY");
++        let error = f.service.answer(&f.parent,&id,"replacement",true).await.expect_err("new answer is also refused");
++        assert_eq!(error.code,"E-RS-ANSWER-DELIVERY");
++        let row = f.store.get_decision(&id).await.expect("read").expect("row");
++        assert_eq!(row.decision.answer.as_deref(),Some("replacement"));
++        assert_ne!(row.decision.answer_msg_id.as_deref(),Some(format!("{id}-answer").as_str()));
++        assert_eq!(row.decision.state,DecisionState::Open);
++        assert!(f.transport.delivered().is_empty());
++    }
++
++    #[tokio::test]
++    async fn supersede_transport_hold_remains_in_transit_after_cache_eviction() {
++        let f = Fixture::new(FakeTransport::reachable().script_outcome(DeliveryOutcome::Held {reason:"approval pending".into()})).await;
++        let id = f.ask().await;
++        f.socket_worker().await;
++        assert!(f.service.answer(&f.parent,&id,"old",false).await.is_err());
++        let queue = SqliteQueue::new(f.pool.clone(),30,1).expect("one-entry retention");
++        queue.note_delivered(&f.worker,"newer-message",DeliveryOrigin::InjectedToTransport).await.expect("evict old marker");
++        let error = f.service.answer(&f.parent,&id,"replacement",true).await.expect_err("transport is still deciding");
++        assert_eq!(error.code,"E-RS-ANSWER-IN-TRANSIT");
++        assert_eq!(error.details["job_state"],"held");
++        assert_eq!(f.store.get_decision(&id).await.expect("read").expect("row").decision.answer.as_deref(),Some("old"));
++        assert!(f.transport.delivered().is_empty());
++    }
++}
+--- a/crates/store/src/decisions.rs
++++ b/crates/store/src/decisions.rs
+@@ -73,14 +73,41 @@
+         Ok(stored)
+     }
+ 
++    /// Replace only a terminal, non-delivered intent; queued/claimed work cannot
++    /// be withdrawn. The audit, new message identity, and prepared row commit together.
++    pub async fn supersede_decision_answer_committed(&self, id: &str, actor: &SeatId, answer: &str, at: u64) -> Result<(Event, StoredDecision)> {
++        require_current_schema(&self.pool).await?;
++        if answer.trim().is_empty() { return Err(refusal("E-RS-ARG",id)); }
++        let mut tx = begin_write(&self.pool).await?;
++        let mut stored = read_in_transaction(&mut tx,id).await?;
++        let old_msg_id = stored.decision.answer_msg_id.as_deref().ok_or_else(||refusal("E-RS-ANSWER-CONFLICT",id))?;
++        ensure_answer_terminal(&mut tx,&stored.decision,old_msg_id).await?;
++        let superseded = json!({"answer_msg_id":old_msg_id,"answered_by":stored.decision.answered_by,"answer":stored.decision.answer});
++        stored.decision.state = DecisionState::Open;
++        stored.decision.answer = Some(answer.to_string());
++        stored.decision.answered_by = Some(actor.clone());
++        stored.decision.answered_at = None;
++        stored.answer_seq = None;
++        let draft = decision_event(&stored.decision,actor,"answer-superseded",at);
++        let event = append_generated_in_transaction(&mut tx,draft,|seq| {
++            stored.decision.answer_msg_id = Some(format!("{id}-answer-{}",seq.0));
++            json!({"actor":actor,"action":"answer-superseded","record":stored.decision,"superseded":superseded}).to_string()
++        }).await?;
++        sqlx::query("UPDATE decisions SET state='open',answer=?2,answered_by=?3,answer_msg_id=?4,answered_at=NULL,answer_seq=NULL WHERE id=?1")
++            .bind(id).bind(answer).bind(actor.as_str()).bind(&stored.decision.answer_msg_id)
++            .execute(&mut *tx).await.map_err(adapter_error)?;
++        tx.commit().await.map_err(adapter_error)?;
++        Ok((event,stored))
++    }
++
+     /// Close only after durable transport acceptance (or an authorized self
+     /// ruling). State and decision.answered are all-or-nothing under the bus.
+-    pub async fn answer_decision_committed(&self, id: &str, actor: &SeatId, at: u64) -> Result<(Event, Decision)> {
++    pub async fn answer_decision_committed(&self, id: &str, actor: &SeatId, expected_msg_id: Option<&str>, at: u64) -> Result<(Event, Decision)> {
+         require_current_schema(&self.pool).await?;
+         let mut tx = begin_write(&self.pool).await?;
+         let stored = read_in_transaction(&mut tx,id).await?;
+         let mut decision = stored.decision;
+-        if decision.state != DecisionState::Open || decision.answer.is_none() || decision.answered_by.as_ref() != Some(actor) {
++        if decision.state != DecisionState::Open || decision.answer.is_none() || decision.answered_by.as_ref() != Some(actor) || decision.answer_msg_id.as_deref() != expected_msg_id {
+             return Err(refusal("E-RS-ANSWER-CONFLICT",id));
+         }
+         decision.state = DecisionState::Answered;
+@@ -139,6 +166,34 @@
+     let row = sqlx::query("SELECT * FROM decisions WHERE id=?1").bind(id).fetch_optional(connection).await.map_err(adapter_error)?
+         .ok_or_else(|| refusal("E-RS-NO-DECISION",id))?;
+     decode(row)
++}
++
++/// Read all delivery vetoes inside the same write transaction as replacement.
++/// Historical delivery survives the bounded delivered-id cache's eviction.
++async fn ensure_answer_terminal(connection: &mut SqliteConnection, decision: &Decision, msg_id: &str) -> Result<()> {
++    let delivered: bool = sqlx::query_scalar(
++        "SELECT EXISTS(SELECT 1 FROM jobs WHERE dedupe_key=?1 AND state='done') OR EXISTS(SELECT 1 FROM spine_events WHERE kind='delivery.outcome' AND seat=?2 AND CASE WHEN json_valid(payload) THEN json_extract(payload,'$.msg_id')=?1 AND json_extract(payload,'$.outcome.outcome')='delivered' ELSE 0 END)"
++    ).bind(msg_id).bind(decision.asked_by.as_str()).fetch_one(&mut *connection).await.map_err(adapter_error)?;
++    if delivered { return Err(answer_delivery_refusal("E-RS-ANSWER-DELIVERED",&decision.id,msg_id,"delivered")); }
++    let state: Option<String> = sqlx::query_scalar("SELECT state FROM jobs WHERE dedupe_key=?1 AND state!='failed' ORDER BY id DESC LIMIT 1")
++        .bind(msg_id).fetch_optional(&mut *connection).await.map_err(adapter_error)?;
++    if let Some(state) = state { return Err(answer_delivery_refusal("E-RS-ANSWER-IN-TRANSIT",&decision.id,msg_id,&state)); }
++    let outcome: Option<String> = sqlx::query_scalar("SELECT COALESCE(json_extract(payload,'$.outcome.outcome'),'unknown') FROM spine_events WHERE kind='delivery.outcome' AND seat=?1 AND CASE WHEN json_valid(payload) THEN json_extract(payload,'$.msg_id')=?2 ELSE 0 END ORDER BY seq DESC LIMIT 1")
++        .bind(decision.asked_by.as_str()).bind(msg_id).fetch_optional(&mut *connection).await.map_err(adapter_error)?;
++    match outcome.as_deref() {
++        Some("held")=>return Err(answer_delivery_refusal("E-RS-ANSWER-IN-TRANSIT",&decision.id,msg_id,"held")),
++        // A completed refusal is terminal even if its pre-injection marker remains.
++        Some("refused")=>return Ok(()),
++        _=>{},
++    }
++    let reserved: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM delivered_messages WHERE recipient=?1 AND msg_id=?2)")
++        .bind(decision.asked_by.as_str()).bind(msg_id).fetch_one(&mut *connection).await.map_err(adapter_error)?;
++    if reserved { return Err(answer_delivery_refusal("E-RS-ANSWER-IN-TRANSIT",&decision.id,msg_id,"delivery-reserved")); }
++    Ok(())
++}
++
++fn answer_delivery_refusal(code: &str, decision: &str, msg_id: &str, state: &str) -> PijError {
++    PijError::GovernanceRefused {code:code.to_string(),record:json!({"decision":decision,"answer_msg_id":msg_id,"job_state":state}).to_string()}
+ }
+ 
+ fn decision_event(row: &Decision, actor: &SeatId, action: &str, at: u64) -> Event {
+@@ -198,7 +253,7 @@
+         assert_eq!(pending.decision.state,DecisionState::Open);
+         assert_eq!(pending.decision.answer_msg_id.as_deref(),Some("d1-answer"));
+         assert!(store.prepare_decision_answer("d1",&parent,"other",Some("d1-answer")).await.is_err());
+-        let (answered, row) = store.answer_decision_committed("d1",&parent,101).await.expect("accepted");
++        let (answered, row) = store.answer_decision_committed("d1",&parent,Some("d1-answer"),101).await.expect("accepted");
+         assert_eq!(row.state,DecisionState::Answered);
+         assert_eq!(store.get_decision("d1").await.expect("read").expect("row").answer_seq,answered.seq);
+         let events = SqliteSpine::new(pool.clone()).tail(None,Seq(0)).await.expect("events");
+@@ -214,7 +269,7 @@
+         store.open_decision_committed("d1",&actor,None,"which branch?",100).await.expect("question");
+         store.prepare_decision_answer("d1",&actor,"main",None).await.expect("prepare");
+         sqlx::query("CREATE TRIGGER reject_answer BEFORE INSERT ON spine_events WHEN NEW.kind='decision.answered' BEGIN SELECT RAISE(ABORT,'injected event failure'); END").execute(&pool).await.expect("inject");
+-        assert!(store.answer_decision_committed("d1",&actor,101).await.is_err());
++        assert!(store.answer_decision_committed("d1",&actor,None,101).await.is_err());
+         let row = store.get_decision("d1").await.expect("read").expect("row");
+         assert_eq!(row.decision.state,DecisionState::Open);
+         assert!(row.answer_seq.is_none());
+@@ -250,4 +305,75 @@
+         assert!(store.get_decision("d1").await.expect("read").is_none());
+         assert!(SqliteSpine::new(pool).tail(None,Seq(0)).await.expect("events").is_empty());
+     }
+-}
++
++    #[tokio::test]
++    async fn superseded_intent_and_audit_survive_reopen() {
++        let fresh = FreshStore::new();
++        let pool = crate::open(&fresh.path()).await.expect("open");
++        let store = SqliteOrchestration::new(pool.clone());
++        let fixtures:serde_json::Value = serde_json::from_str(include_str!("../../../docs/plans/139-rs-governance-port/assets/contracts/governance-events.json")).expect("events");
++        let fixture = fixtures["events"].as_array().expect("events").iter().find(|row|row["id"]=="decision-answer-superseded").expect("supersede fixture");
++        let mut expected = fixture["decoded_payload"].clone();
++        let id = expected["record"]["id"].as_str().expect("id").to_string();
++        let asker = SeatId::from(expected["record"]["asked_by"].as_str().expect("asker"));
++        let previous = SeatId::from(expected["superseded"]["answered_by"].as_str().expect("old parent"));
++        let actor = SeatId::from(expected["actor"].as_str().expect("current parent"));
++        let (_,question) = store.open_decision_committed(&id,&asker,Some(&previous),expected["record"]["question"].as_str().expect("question"),expected["record"]["asked_at"].as_u64().expect("time")).await.expect("question");
++        store.prepare_decision_answer(&id,&previous,expected["superseded"]["answer"].as_str().expect("old answer"),expected["superseded"]["answer_msg_id"].as_str()).await.expect("old intent");
++        let (event,prepared) = store.supersede_decision_answer_committed(&id,&actor,expected["record"]["answer"].as_str().expect("new answer"),1788739200005).await.expect("supersede");
++        let new_id = format!("{id}-answer-{}",event.seq.expect("real seq").0);
++        expected["record"]["question_seq"] = json!(question.question_seq);
++        expected["record"]["answer_msg_id"] = json!(new_id);
++        assert_eq!(serde_json::from_str::<serde_json::Value>(&event.payload).expect("payload"),expected);
++        assert_eq!(prepared.decision.state,DecisionState::Open);
++        assert!(prepared.answer_seq.is_none());
++        pool.close().await;
++        let pool = crate::open(&fresh.path()).await.expect("reopen");
++        let store = SqliteOrchestration::new(pool.clone());
++        let reopened = store.get_decision(&id).await.expect("read").expect("row");
++        assert_eq!(reopened.decision.answer_msg_id.as_deref(),Some(new_id.as_str()));
++        assert_eq!(reopened.decision.answered_by,Some(actor));
++        assert_eq!(SqliteSpine::new(pool.clone()).tail(None,question.question_seq).await.expect("history"),vec![event]);
++        pool.close().await;
++    }
++
++    #[tokio::test]
++    async fn supersede_row_failure_rolls_back_new_event_and_linkage() {
++        let pool = crate::open("").await.expect("memory");
++        let store = SqliteOrchestration::new(pool.clone());
++        let actor = SeatId::from("parent");
++        let (_,question) = store.open_decision_committed("d1",&SeatId::from("worker"),Some(&actor),"which branch?",100).await.expect("question");
++        store.prepare_decision_answer("d1",&actor,"old",Some("d1-answer")).await.expect("intent");
++        sqlx::query("CREATE TRIGGER reject_supersede BEFORE UPDATE OF answer ON decisions WHEN NEW.answer != OLD.answer BEGIN SELECT RAISE(ABORT,'injected replacement failure'); END").execute(&pool).await.expect("inject");
++        assert!(store.supersede_decision_answer_committed("d1",&actor,"new",101).await.is_err());
++        let row = store.get_decision("d1").await.expect("read").expect("row");
++        assert_eq!(row.decision.answer.as_deref(),Some("old"));
++        assert_eq!(row.decision.answer_msg_id.as_deref(),Some("d1-answer"));
++        assert_eq!(store.spine_head().await.expect("head"),question.question_seq);
++    }
++
++    #[tokio::test]
++    async fn obsolete_answer_completion_cannot_close_replacement_intent() {
++        let pool = crate::open("").await.expect("memory");
++        let store = SqliteOrchestration::new(pool);
++        let actor = SeatId::from("parent");
++        store.open_decision_committed("d1",&SeatId::from("worker"),Some(&actor),"which branch?",100).await.expect("question");
++        store.prepare_decision_answer("d1",&actor,"old",Some("d1-answer")).await.expect("intent");
++        let (_,prepared) = store.supersede_decision_answer_committed("d1",&actor,"new",101).await.expect("supersede");
++        assert!(store.answer_decision_committed("d1",&actor,Some("d1-answer"),102).await.is_err());
++        assert_eq!(store.get_decision("d1").await.expect("read").expect("row").decision.state,DecisionState::Open);
++        store.answer_decision_committed("d1",&actor,prepared.decision.answer_msg_id.as_deref(),103).await.expect("current completion");
++    }
++
++    #[tokio::test]
++    async fn spine_head_observes_empty_and_latest_committed_sequence() {
++        let pool = crate::open("").await.expect("memory");
++        let store = SqliteOrchestration::new(pool.clone());
++        assert_eq!(store.spine_head().await.expect("empty head"),Seq(0));
++        let spine = SqliteSpine::new(pool);
++        for at in [1,2] {
++            let seq = spine.append(Event {seq:None,v:1,at,kind:"head-proof".into(),seat:None,payload:"{}".into()}).await.expect("append");
++            assert_eq!(store.spine_head().await.expect("head"),seq);
++        }
++    }
++}
+--- a/crates/store/src/spine.rs
++++ b/crates/store/src/spine.rs
+@@ -1,6 +1,6 @@
+ //! The append-only history, on SQLite.
+ //!
+-//! Rows are inserted and never updated. `seq` is an AUTOINCREMENT primary key,
++//! Committed rows are never updated. `seq` is an AUTOINCREMENT primary key,
+ //! so it is monotonic for the life of the database and is never reused even
+ //! after deletion — which is what lets `tail(since)` mean "everything I have not
+ //! seen" rather than "everything currently present".
+@@ -17,6 +17,7 @@
+ use pij_core::ports::{PutBinding, Spine};
+ 
+ use crate::migrate::{begin_write, require_current_schema};
++use crate::orchestration::{SqliteOrchestration, sql_u64};
+ 
+ /// An owned, lazy registry transaction returning its committed event and binding.
+ /// The publisher acquires its ordering lock before polling, then owns this future
+@@ -87,6 +88,17 @@
+     /// Wrap an open pool.
+     pub fn new(pool: Pool<Sqlite>) -> Self {
+         SqliteSpine { pool }
++    }
++}
++
++impl SqliteOrchestration {
++    /// Observe the committed head without decoding or copying event history.
++    /// This cursor is never used to allocate a future event sequence.
++    pub async fn spine_head(&self) -> Result<Seq> {
++        require_current_schema(&self.pool).await?;
++        let seq: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(seq), 0) FROM spine_events")
++            .fetch_one(&self.pool).await.map_err(adapter_error)?;
++        Ok(Seq(sql_u64(seq, "spine head")?))
+     }
+ }
+ 

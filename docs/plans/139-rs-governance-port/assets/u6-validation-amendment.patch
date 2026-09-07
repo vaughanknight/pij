@@ -1,0 +1,179 @@
+diff --git a/.pi/extensions/pij/cli.ts b/.pi/extensions/pij/cli.ts
+--- a/.pi/extensions/pij/cli.ts
++++ b/.pi/extensions/pij/cli.ts
+@@ -140,12 +140,18 @@
+ 		return;
+ 	}
+ 	const rendered = renderRsAnswer(row, payload, argv, rawEnvelope);
+-	if (rendered.kind === "no-renderer" || rendered.kind === "json-refused") {
+-		const refusal: RouteOutcome = { kind: "rs-error", verb, addr: outcome.addr, detail: rendered.message };
+-		await emitRefusal(refusal, argv, routingRefusalEnvelope(refusal));
+-		return;
++	switch (rendered.kind) {
++		case "json":
++		case "rendered":
++			await writeOutput(rendered.text);
++			break;
++		case "no-renderer":
++		case "json-refused": {
++			const refusal: RouteOutcome = { kind: "rs-error", verb, addr: outcome.addr, detail: rendered.message };
++			await emitRefusal(refusal, argv, routingRefusalEnvelope(refusal));
++			return;
++		}
+ 	}
+-	await writeOutput(rendered.text);
+ 	if (acknowledge !== undefined) {
+ 		const warning = await acknowledge();
+ 		if (warning !== undefined) process.stderr.write(`${warning}\n`);
+diff --git a/.pi/extensions/pij/adapters/generation-cutover.test.ts b/.pi/extensions/pij/adapters/generation-cutover.test.ts
+--- a/.pi/extensions/pij/adapters/generation-cutover.test.ts
++++ b/.pi/extensions/pij/adapters/generation-cutover.test.ts
+@@ -177,7 +177,8 @@
+ 	});
+ 
+ 	it.each(["inbox", "report", "project"])("an unlisted %s leaf never falls through to legacy", async (verb) => {
+-		const refusal = contracts.refusals.unported!;
++		const refusal = contracts.refusals.unported;
++		if (refusal === undefined) throw new Error("Missing canonical unported refusal fixture");
+ 		const host = replying(canonicalBytes(refusal.response), refusal.http_status);
+ 		const result = await routeVerb(verb, "synthetic-leaf", [verb, "synthetic-leaf"], host.deps);
+ 		expect(result.outcome.kind.startsWith("legacy-")).toBe(false);
+@@ -220,7 +221,8 @@
+ describe("governance shim preserves canonical HTTP contracts", () => {
+ 	it.each(postCases)("$id POST preserves argv, caller and complete v2 success bytes", async (fixture) => {
+ 		const argv = [...fixture.argv, "--json"];
+-		const verb = argv[0]!;
++		const verb = fixture.argv[0];
++		if (verb === undefined) throw new Error(`Missing canonical verb: ${fixture.id}`);
+ 		const leaf = leafOf(fixture.argv);
+ 		const raw = canonicalBytes(fixture.response);
+ 		const host = replying(raw, 200, callerDeps(fixture.request));
+@@ -235,7 +237,9 @@
+ 				body: expect.any(String),
+ 			},
+ 		]);
+-		expect(JSON.parse(host.requests.at(-1)!.body!)).toEqual({
++		const body = host.requests.at(-1)?.body;
++		if (body === undefined) throw new Error(`Missing POST request body: ${fixture.id}`);
++		expect(JSON.parse(body)).toEqual({
+ 			argv,
+ 			caller: { tmuxPane: fixture.request?.caller?.TMUX_PANE, cwd: fixture.request?.caller?.cwd },
+ 		});
+@@ -248,14 +252,16 @@
+ 		"%s preserves complete canonical v2 refusal bytes rather than unwrapping or rewrapping",
+ 		async (_id, refusal) => {
+ 			const fixture = postCases.find((entry) => entry.response.command === refusal.response.command);
+-			expect(fixture).toBeDefined();
+-			const argv = [...fixture!.argv, "--json"];
++			if (fixture === undefined) throw new Error(`Missing canonical command fixture: ${refusal.response.command}`);
++			const argv = [...fixture.argv, "--json"];
++			const verb = fixture.argv[0];
++			if (verb === undefined) throw new Error(`Missing canonical verb: ${fixture.id}`);
+ 			const raw = canonicalBytes(refusal.response);
+-			const host = replying(raw, refusal.http_status, callerDeps(fixture!.request));
+-			const result = await routeVerb(argv[0]!, leafOf(fixture!.argv), argv, host.deps);
++			const host = replying(raw, refusal.http_status, callerDeps(fixture.request));
++			const result = await routeVerb(verb, leafOf(fixture.argv), argv, host.deps);
+ 			expect(result.outcome.kind.startsWith("legacy-")).toBe(false);
+ 			expect(result.outcome.kind).not.toBe("rs");
+-			expect(host.requests.at(-1)?.path).toBe(fixture!.path);
++			expect(host.requests.at(-1)?.path).toBe(fixture.path);
+ 			expect(result.rawEnvelope).toBe(raw);
+ 			expect(renderRsAnswer(result.row, result.payload, argv, result.rawEnvelope)).toEqual({ kind: "json", text: raw });
+ 		},
+@@ -267,13 +273,17 @@
+ 	] as const)("%s retains every filter and caller scope for the shared daemon parser", async (id, filters) => {
+ 		const fixture = fixtureNamed(id);
+ 		const argv = [...fixture.argv, ...filters, "--json"];
++		const verb = fixture.argv[0];
++		if (verb === undefined) throw new Error(`Missing canonical verb: ${fixture.id}`);
+ 		const raw = canonicalBytes(fixture.response);
+ 		const host = replying(raw, 200, callerDeps(fixture.request));
+-		const result = await routeVerb(argv[0]!, undefined, argv, host.deps);
++		const result = await routeVerb(verb, undefined, argv, host.deps);
+ 		expect(result.outcome.kind).toBe("rs");
+ 		expect(host.requests.at(-1)?.method).toBe("POST");
+ 		expect(host.requests.at(-1)?.path).toBe(fixture.path);
+-		expect(JSON.parse(host.requests.at(-1)!.body!)).toEqual({
++		const body = host.requests.at(-1)?.body;
++		if (body === undefined) throw new Error(`Missing POST request body: ${fixture.id}`);
++		expect(JSON.parse(body)).toEqual({
+ 			argv,
+ 			caller: { tmuxPane: fixture.request?.caller?.TMUX_PANE, cwd: fixture.request?.caller?.cwd },
+ 		});
+@@ -283,7 +293,7 @@
+ 	it("keeps spine event payloads JSON strings matching the stable event contract", async () => {
+ 		const fixture = fixtureNamed("spine-append");
+ 		const event = eventContracts.events.find((entry) => entry.id === fixture.id);
+-		expect(event).toBeDefined();
++		if (event === undefined) throw new Error(`Missing canonical event fixture: ${fixture.id}`);
+ 		const raw = canonicalBytes(fixture.response);
+ 		const argv = [...fixture.argv, "--json"];
+ 		const host = replying(raw, 200, callerDeps(fixture.request));
+@@ -293,7 +303,7 @@
+ 		if (rendered.kind !== "json") throw new Error("spine JSON response was refused");
+ 		const payload = JSON.parse(rendered.text).data.event.payload;
+ 		expect(typeof payload).toBe("string");
+-		expect(JSON.parse(payload)).toEqual(event!.decoded_payload);
++		expect(JSON.parse(payload)).toEqual(event.decoded_payload);
+ 	});
+ });
+ 
+@@ -357,7 +367,9 @@
+ 		const requests = host.requests.filter((request) => request.path !== "/health");
+ 		expect(requests).toHaveLength(1);
+ 		expect(requests[0]).toMatchObject({ method: "GET", body: undefined, authorization: `Bearer ${KEY}` });
+-		const url = new URL(requests[0]!.path, `http://${ADDR}`);
++		const request = requests[0];
++		if (request === undefined) throw new Error("Missing list GET request");
++		const url = new URL(request.path, `http://${ADDR}`);
+ 		expect(url.pathname).toBe("/v1/seats");
+ 		expect(url.hash).toBe("");
+ 		expect([...url.searchParams]).toHaveLength(Object.keys(filters).length);
+@@ -415,7 +427,9 @@
+ 		expect(result.outcome.kind).toBe("rs");
+ 		expect(host.requests.at(-1)?.path).toBe(path);
+ 		expect(host.requests.at(-1)?.method).toBe("POST");
+-		expect(JSON.parse(host.requests.at(-1)!.body!)).toEqual({ argv, caller: { tmuxPane: "%control", pijSessionId: "pij-control" } });
++		const body = host.requests.at(-1)?.body;
++		if (body === undefined) throw new Error(`Missing control POST request body: ${verb}`);
++		expect(JSON.parse(body)).toEqual({ argv, caller: { tmuxPane: "%control", pijSessionId: "pij-control" } });
+ 	});
+ 
+ 	it.each([
+@@ -431,7 +445,9 @@
+ 		expect(result.outcome.kind).toBe("rs");
+ 		expect(host.requests.at(-1)?.path).toBe("/v1/bg");
+ 		expect(host.requests.at(-1)?.method).toBe("POST");
+-		expect(JSON.parse(host.requests.at(-1)!.body!)).toEqual({ argv, caller: {} });
++		const body = host.requests.at(-1)?.body;
++		if (body === undefined) throw new Error(`Missing bg POST request body: ${leaf}`);
++		expect(JSON.parse(body)).toEqual({ argv, caller: {} });
+ 		expect(renderRsAnswer(result.row, result.payload, argv, result.rawEnvelope)).toEqual({ kind: "json", text: raw });
+ 	});
+ });
+diff --git a/.pi/extensions/pij/adapters/generation-router.ts b/.pi/extensions/pij/adapters/generation-router.ts
+--- a/.pi/extensions/pij/adapters/generation-router.ts
++++ b/.pi/extensions/pij/adapters/generation-router.ts
+@@ -138,7 +138,8 @@
+ 	{ readonly ok: true; readonly query: URLSearchParams } | { readonly ok: false; readonly reason: string } {
+ 	const query = new URLSearchParams();
+ 	for (let index = 1; index < argv.length; index++) {
+-		const token = argv[index]!;
++		const token = argv[index];
++		if (token === undefined) return { ok: false, reason: `missing read argument at position ${index}` };
+ 		if (token === "--json") continue;
+ 		const matched = /^--([^=]+)(?:=(.*))?$/.exec(token);
+ 		const name = matched?.[1];
+diff --git a/.pi/extensions/pij/adapters/generation-seam.test.ts b/.pi/extensions/pij/adapters/generation-seam.test.ts
+--- a/.pi/extensions/pij/adapters/generation-seam.test.ts
++++ b/.pi/extensions/pij/adapters/generation-seam.test.ts
+@@ -263,7 +263,7 @@
+ 	const source = () => readFileSync(new URL("../../../../crates/daemon/src/http/mod.rs", import.meta.url), "utf8");
+ 	const registeredPaths = (rust: string): ReadonlySet<string> => {
+ 		const paths = new Set<string>();
+-		for (const match of rust.matchAll(/Self::\w+\s*=>\s*"(\/v1\/[^\"]*|\/health)"/g)) paths.add(match[1] as string);
++		for (const match of rust.matchAll(/Self::\w+\s*=>\s*"(\/v1\/[^"]*|\/health)"/g)) paths.add(match[1] as string);
+ 		if (paths.size === 0) throw new Error("no endpoint paths found — did Endpoint::path move?");
+ 		return paths;
+ 	};

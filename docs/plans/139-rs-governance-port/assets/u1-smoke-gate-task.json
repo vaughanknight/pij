@@ -1,0 +1,15 @@
+{
+  "contract": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/gate-repair-contract.json",
+  "peer": "pij-electoral-orlandine",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1-gate",
+  "target": "harness/scripts/smoke.ts, harness/scripts/smoke.test.ts, and narrowly necessary harness/driver or harness-only fixture helper. No .pi source/tests or Rust changes.",
+  "change": [
+    "Replace runTeamScaffoldSmoke filesystem/pretend-tmux authority with actual isolated Rust daemon and real owned fixture resources using existing harness patterns where available; use PM governance_boot.rs and retained live-parity-launcher.py as proven isolation references, not as production credentials/config.",
+    "The shim must execute ported project/stream/fence/task/spine and dispatch/inbox/ack paths against that private daemon; no default7461 requests. Preserve full wire envelopes. Every owned process/socket/state dir gets verified teardown even on failure.",
+    "Add actual paneless external roundtrip: register via pij inbox register --json without TMUX/PANE, then inbox --wait and send with stable ambient native identity. Use separate live host processes where native identity requires distinct incarnations. u2 owns implementation; public contract and ambient variables are fixed in shared contract.",
+    "Replace obsolete positive watchdog CLI smoke with an actual named-refusal/no-mutation smoke; remove dependency on historical plan055 proof runner from permanent smoke path. Do not mark an unrun scenario SKIP or PASS. Preserve other extension smoke behavior.",
+    "Do not claim fake/inert hosts prove a real model canary. Deterministic smoke may prove explicit no-model refusal; existing separate authenticated OMP canary receipt is the genuine turn proof. No new credential lookup or provider calls in deterministic smoke.",
+    "Make source portable; use safe worktree-local build/binary conventions, never production binary as an implicit fixture authority. Do not run formatter/validators yourself."
+  ],
+  "acceptance": "READY_TO_VALIDATE source patch against78531, sha256 and complete path hashes, changes/findings map. PM runs validation once after all slices return. No code/test success inferred from source readiness."
+}

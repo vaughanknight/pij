@@ -1,0 +1,30 @@
+diff --git a/crates/harnesses/src/adapter.rs b/crates/harnesses/src/adapter.rs
+index a6c22b88..f1dea2ee 100644
+--- a/crates/harnesses/src/adapter.rs
++++ b/crates/harnesses/src/adapter.rs
+@@ -803,4 +803,25 @@ mod tests {
+             assert_eq!(registry.get(kind).kind(), kind);
+         }
+     }
++
++    #[test]
++    fn omp_footer_model_field_excludes_status_columns() {
++        let footer = include_str!("../../testkit/fixtures/harnesses/omp-18-0-10-footer.txt");
++        assert_eq!(
++            super::observed_model(Harness::Omp, footer).as_deref(),
++            Some("GPT-6 Astra (1M)"),
++            "the model field ends before the effort/status columns"
++        );
++    }
++
++    #[test]
++    fn omp_model_bearing_footer_is_ready_without_weakening_busy_guard() {
++        let footer = include_str!("../../testkit/fixtures/harnesses/omp-18-0-10-footer.txt");
++        let pane = format!("────────\n❯\n────────\n◫ 13.3%/1M ⟲ · {}", footer.trim());
++        assert_eq!(super::classify_readiness(Harness::Omp, &pane), Readiness::Ready);
++        assert_eq!(
++            super::classify_readiness(Harness::Omp, &format!("{pane}\n◎ working")),
++            Readiness::Busy
++        );
++    }
+ }

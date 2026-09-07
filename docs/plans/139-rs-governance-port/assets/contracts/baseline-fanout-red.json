@@ -1,0 +1,138 @@
+{
+  "base_commit": "4c191a88b7539a709bd563b854aef8dc18566af7",
+  "since": 6,
+  "adopt": [
+    200,
+    {
+      "ok": true,
+      "command": "pij adopt",
+      "v": 2,
+      "data": {
+        "id": "pij-melodic-dolphin",
+        "harness": "omp",
+        "session": null,
+        "pane": "%1",
+        "proc": {
+          "pid": 47798,
+          "proc_start": 20260907101531
+        },
+        "folder": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port",
+        "state": "idle",
+        "semantic_state": null,
+        "role": null,
+        "parent": null,
+        "relay": false,
+        "native_extension_delivery": false,
+        "proc_source": "pane",
+        "typing_grace_ms": 60000
+      },
+      "meta": "adopted pij-melodic-dolphin; identity resolves from pane %1 on each command \u2014 no PIJ_SESSION_ID export is required for this harness"
+    }
+  ],
+  "report": [
+    200,
+    {
+      "ok": true,
+      "command": "pij report",
+      "v": 2,
+      "data": {
+        "seat": "pij-conscious-hornet",
+        "seq": 8,
+        "did": "139 baseline report",
+        "next": "139 baseline verification",
+        "line": "reported by pij-conscious-hornet: \"139 baseline report\" \u2192 \"139 baseline verification\" (spine 8)"
+      }
+    }
+  ],
+  "send": [
+    200,
+    {
+      "ok": true,
+      "command": "pij send",
+      "v": 2,
+      "data": {
+        "msg_id": "p139-baseline-positive-control-2",
+        "outcome": {
+          "outcome": "queued",
+          "reason": "extension-stream",
+          "next_retry_at": 0
+        },
+        "at": 1788740143387
+      }
+    }
+  ],
+  "live_frames": [
+    {
+      "build": "pij-rs 0.1.0",
+      "hello": true,
+      "v": 1
+    },
+    {
+      "type": "event",
+      "machine": "JordansacStudio.localdomain",
+      "cursor": 9,
+      "event": {
+        "v": 1,
+        "at": 1788740143387,
+        "kind": "message.pushed",
+        "seat": "pij-melodic-dolphin",
+        "payload": "{\"msg_id\":\"p139-baseline-positive-control-2\",\"from\":\"pij-conscious-hornet\",\"body\":\"plan-139 isolated bus positive control\"}"
+      }
+    },
+    {
+      "type": "event",
+      "machine": "JordansacStudio.localdomain",
+      "cursor": 10,
+      "event": {
+        "v": 1,
+        "at": 1788740143387,
+        "kind": "delivery.outcome",
+        "seat": "pij-melodic-dolphin",
+        "payload": "{\"msg_id\":\"p139-baseline-positive-control-2\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+      }
+    },
+    {
+      "probe_stop": "TimeoutError"
+    }
+  ],
+  "since_frames": [
+    {
+      "build": "pij-rs 0.1.0",
+      "hello": true,
+      "v": 1
+    },
+    {
+      "type": "event",
+      "machine": "JordansacStudio.localdomain",
+      "cursor": 9,
+      "event": {
+        "v": 1,
+        "at": 1788740143387,
+        "kind": "message.pushed",
+        "seat": "pij-melodic-dolphin",
+        "payload": "{\"msg_id\":\"p139-baseline-positive-control-2\",\"from\":\"pij-conscious-hornet\",\"body\":\"plan-139 isolated bus positive control\"}"
+      }
+    },
+    {
+      "type": "event",
+      "machine": "JordansacStudio.localdomain",
+      "cursor": 10,
+      "event": {
+        "v": 1,
+        "at": 1788740143387,
+        "kind": "delivery.outcome",
+        "seat": "pij-melodic-dolphin",
+        "payload": "{\"msg_id\":\"p139-baseline-positive-control-2\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+      }
+    },
+    {
+      "probe_stop": "TimeoutError"
+    }
+  ],
+  "isolation": {
+    "port": 17461,
+    "state_dir": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-139-baseline-50ynx7ug/state",
+    "home": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-139-baseline-50ynx7ug/home",
+    "tmux_socket": "/private/tmp/tmux-501/p139-contract"
+  }
+}

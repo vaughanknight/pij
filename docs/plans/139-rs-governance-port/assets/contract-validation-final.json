@@ -1,0 +1,35 @@
+{
+  "at": "2026-09-07T10:01:42Z",
+  "authority": "crates/testkit/fixtures/golden/api; active plan copies are historical receipts",
+  "routes": 22,
+  "request_response_cases": 45,
+  "refusal_envelopes": 10,
+  "event_collections": {
+    "stream_invariants": 8,
+    "events": 31
+  },
+  "sha256": {
+    "governance-routes.json": "491e407a67fcc2f747361b82206310b80506dfeb1e3b15f07b14846e291b171c",
+    "governance-events.json": "15b95759b8297a84a9667bd8c3e4bb6e8a3ac163911139188376449319bacb8f",
+    "error-envelopes.json": "6a8de7d3aecc5a634c0786b5e79ba0bfae977fbcb992305fb5b5b2108d1a2102",
+    "governance-client-parity.json": "acc298253130983221f5995a459ec8406cef0e9c50fe9d635aad873be6469370"
+  },
+  "history": "Earlier route hash5839f7303eab7207365ac61c0d12345599ff43599ae195ed797fbc8859228c14 predates the snake_case prose correction and stable refusal-ledger promotion; retain it as historical, not current authority.",
+  "permanent_reader_probe": {
+    "roots": [
+      "crates/**/*.rs",
+      ".pi/extensions/pij/**/*.ts"
+    ],
+    "pattern": "docs/plans/139-rs-governance-port|plans/139-rs-governance-port",
+    "matches": 0
+  },
+  "observed_proof": [
+    "u6-red-green-proof.json",
+    "native-raw-byte-proof.json",
+    "live-proof.json"
+  ],
+  "limits": [
+    "Final complete merged Rust/engineering gates and independent review still pending",
+    "Production and chainglass acceptance remains prime-owned"
+  ]
+}

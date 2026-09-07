@@ -1,13 +1,6 @@
 # Batons — serialize exclusive resources
 
-The baton primitive is live: `pij orchestration baton <verb>` — a registry-backed
-lease (one holder, enforced by an atomic lease file under `PIJ_HOME/orchestration/`)
-with pushed notices, a purpose-carrying queue, pin re-verify, blocked-time
-measurement, and a machine log. The **book remains the evidence layer on top**: the
-keeper's hand-written rows carry purposes, terms, annotations, and hazard warnings a
-machine line cannot; the primitive's log is the mechanical truth of who held what,
-when. One o-prime writes the book; everyone, including the o-prime, obeys it — and
-no code path ever writes the book.
+The rs primitive is `pij orchestration baton <verb>`: one holder in the shared SQLite lease store, with purpose-bearing requests, pin re-verification and attributed spine events. It is not a legacy atomic lease file under `PIJ_HOME`. The **book remains annotation/evidence**, not a second lease authority: one o-prime writes human judgment there; no primitive writes the book. Mutation receipts/events do not by themselves prove a pushed keeper notice. See the [stable API](../../../../../docs/how/pij-rs-api.md#baton-leases).
 
 Start from [`../templates/baton-book.md`](../templates/baton-book.md). A baton is
 anything that breaks under two concurrent users or when histories converge: shared
@@ -29,30 +22,17 @@ shared target is always serialized.
 
 1. **Define** the resource once: `pij orchestration baton define <name> --resource
    <text> [--probe <cmd>] [--repo <path>]`.
-2. **Request** with purpose (and optionally `--pin <sha>`, `--evidence <declared
-   return evidence>`): `… request <name> --purpose <text>`. The creator is notified
-   by push; the queue holds requests-with-purposes, never positions — a queue
-   number is not a promise.
+2. **Request** with purpose and optionally `--pin <sha>` / `--evidence <declared return evidence>`: `pij orchestration baton request <name> --purpose <text>`. Persist the request receipt and notify the keeper by the normal supported send. A queue position is not a promise.
 3. **Verify free** with the resource probe and holder liveness. After restart,
    never trust any table alone — probe.
-4. **Grant** by request id: `… grant <name> --to <request-id>`. Grants are PUSHED
-   with delivery receipts; a stale or unverifiable pin demands an explicit
-   `--repin` ack (a firm guide with a self-serve exit — never a keeper gate). The
-   keeper then annotates the book row around the machine line.
+4. **Grant** by request id: `pij orchestration baton grant <name> --to <request-id> --json`. Preserve the returned lease id. A stale or unverifiable pin requires explicit `--repin`; inspect real evidence before doing so. The keeper annotates the book and communicates the receipt; acceptance is not proof the recipient received it.
 5. **Use** only for the recorded purpose. Long holds may contain negotiated,
    explicitly recorded sibling windows (windows stay a book-layer convention — the
    primitive has no sub-leases in v1).
-6. **Return** with evidence: `… return <name> --evidence <text>` — frees the lease,
-   logs, and pushes the notice. Verification of the evidence stays HUMAN: the
-   keeper reads it against the declaration before closing the book row.
-7. **Reclaim is always explicit**: a dead/stalled holder produces exactly ONE pushed
-   alert to the granter and the lease stays held — `… reclaim <name> --evidence
-   <text>` records the judgment. The daemon never auto-reclaims; evidence, not
-   silence, decides.
+6. **Return** the exact observed grant/show lease: `pij orchestration baton return <name> --lease-id <observed-lease-id> --evidence <text>`. State and event commit atomically. Evidence verification remains human; the keeper checks the declared terms before closing the book row.
+7. **Reclaim explicitly**, never because of silence alone: `pij orchestration baton reclaim <name> --lease-id <observed-lease-id> --evidence <text>`. Re-read `pij orchestration baton show <name> --json` before judgment. No daemon auto-reclaim is implied.
 
-`… list` / `… show <name> [--json]` expose holder, queue, purposes, and
-blocked-time (request→grant) — the measured R4.4 signal that feeds worktree-split
-suggestions to the human.
+`pij orchestration baton list --json` and `pij orchestration baton show <name> --json` expose definitions, the current lease and requests. Missing or mismatched `--lease-id` refuses `E-RS-LEASE-STALE`, naming the current lease and remediation; a shim must never resolve a newer lease for an old caller. Request/grant timestamps are evidence; do not invent a blocked-time projection absent from the response.
 
 ## Hard paths (unchanged doctrine — the primitive records them, never decides them)
 
@@ -61,8 +41,7 @@ Worked examples of the reclaim and breach records: [`../exemplars/grant-log.md`]
 - **Self-grant**: the keeper requests, verifies, logs, uses, and returns like
   anyone else — the primitive gives self-grants the exact same path, no keeper
   shortcut. The first real self-grant made the book law instead of decor.
-- **Silent holder**: the alert tells you the holder is gone; whether the purpose
-  completed is a human read of the evidence (a dead holder's commit may exist).
+- **Silent holder**: inspect current process/pane and durable lease evidence, then ask the keeper; silence is neither completion nor permission to reclaim.
 - **Stale pins**: mechanized — grant compares pin vs current HEAD and demands
   `--repin`; an unverifiable HEAD demands it too.
 - **Queued posture**: for a shared-tree fallback, pre-stage the whole batch in
@@ -76,9 +55,7 @@ Worked examples of the reclaim and breach records: [`../exemplars/grant-log.md`]
   explicit reclaims.
 - **Breach**: stop competing use, tell the holder, record it, then fix the paved
   path that invited it. Honor system means the record is the enforcement.
-- **Contention**: `show --json` blocked-time is the datum. Worktrees are already
-  the construction default; persistent timing/runtime contention informs a new
-  sensor, resource split, or human sequencing ruling.
+- **Contention**: preserve actual request/grant times and current lease receipts. Persistent shared-resource contention informs a sensor, resource split or human sequencing ruling; do not claim a derived field the API does not expose.
 
 Fences are sensors — they inform and record merge risk, never block. Batons
 are interlocks — one holder, justified only by a real hazard: shared mutable

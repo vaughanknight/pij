@@ -1,0 +1,110 @@
+{
+  "unit": "u4",
+  "amendment": "supersede-shared-sql-authority",
+  "status": "READY_TO_VALIDATE",
+  "committed": false,
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4",
+  "ruling": {
+    "owner": "pij-minor-unicorn",
+    "relayed_by": "pij-lonely-ikrie",
+    "approved": true,
+    "code": "E-RS-ANSWER-AUTHORITY-SPLIT",
+    "rule": "Supersede only when real queue and real spine share verified SQLite authority. Every mixed/fake combination refuses, naming both backends. No new queue port. Ordinary question and answer unchanged."
+  },
+  "baseline": {
+    "recovery_patch": "docs/plans/139-rs-governance-port/assets/u4-source-recovery.patch",
+    "recovery_patch_sha256": "4ec3a57bfb245439876311e268874e37a932c07eddfaaf11940bbe705d12c89d",
+    "recovery_receipt": "docs/plans/139-rs-governance-port/assets/receipt-u4-recovery.json",
+    "recovery_receipt_sha256": "96d000df65db44c2af34e67180c27505fdb081bfbe529a67a65f2b2d12b0df00",
+    "initial_and_recovery_artifacts_untouched": true
+  },
+  "artifacts": {
+    "source_patch": {
+      "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4/docs/plans/139-rs-governance-port/assets/u4-source-authority.patch",
+      "sha256": "0d41c7104ba252d3a38f09f6a0a7a4251d8bd4a2dc358fbe5f42bfea35e1643d"
+    },
+    "canonical_delta": {
+      "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4/docs/plans/139-rs-governance-port/assets/contracts-delta-u4-authority.json",
+      "sha256": "7cf93deaceb7f67e270d00cd3e8cd9eb3e49cf921bf0cd890a5df5bfc9124b4a"
+    }
+  },
+  "source_files": [
+    {
+      "path": "crates/daemon/src/http/decisions.rs",
+      "baseline_sha256": "76183e8bbe04babdd9291ba5f1727e48f7d648d8b210aabe601f0e49010f041e",
+      "authority_sha256": "f512a6c1d0794a0eddd098af73260c629fa56f3f615caab40d098a0e588fbb83"
+    }
+  ],
+  "composition": {
+    "constructor": "DecisionService::new(store,registry,bus,delivery,queue_backend:AdapterChoice,spine_backend:AdapterChoice)",
+    "adapter_type": "pij_core::config::AdapterChoice",
+    "owner": "PM owns main constructor callsites and canonical fixtures; worker changed its one direct unit constructor only.",
+    "guarantee": "Pass the actual config.adapters.queue and config.adapters.spine. Real/Real is permitted ONLY because build_services constructs SqliteQueue, SqliteOrchestration and SqliteSpine/EventBus from clones of the same persistent_pool. Names are not runtime verification of unrelated pools. Production must preserve this construction guarantee.",
+    "source_evidence": "crates/daemon/src/lib.rs:246-285: real persistence uses shared persistent_pool; fake spine allocates open(\"\"); FakeQueue uses distinct in-memory state.",
+    "ordering": "Check current parent inside EventBus publication boundary first, then backend authority before any store replacement or transport admission. No SQL/Queue changes.",
+    "refusal": "HTTP409, existing v2 pij answer envelope, details.code=E-RS-ANSWER-AUTHORITY-SPLIT plus decision, queue_backend, spine_backend. Both backends also appear in meta.",
+    "fixture_merge": "Apply contracts-delta-u4-authority.json after contracts-delta-u4-supersede.json; merge its three top-level merge_refusals into canonical governance-routes.json refusals and append route invariants. Canonical events unchanged.",
+    "documentation": "Constructor doc and separate contract delta document guarantee/limit. PM/u6 owns canonical user docs.",
+    "integration_tests": "New tests live inside worker-owned crates/daemon/src/http/decisions.rs and call actual crate::build_services. PM-owned governance_composition.rs untouched. The mixed RealQueue/FakeSpine fixture uses Fake registry, avoiding the separate RealRegistry/FakeSpine startup refusal."
+  },
+  "authority_matrix": [
+    {
+      "queue": "real",
+      "spine": "real",
+      "expected": "existing terminality checks; terminal-failed recovery allowed"
+    },
+    {
+      "queue": "real",
+      "spine": "fake",
+      "expected": "E-RS-ANSWER-AUTHORITY-SPLIT"
+    },
+    {
+      "queue": "fake",
+      "spine": "real",
+      "expected": "E-RS-ANSWER-AUTHORITY-SPLIT"
+    },
+    {
+      "queue": "fake",
+      "spine": "fake",
+      "expected": "E-RS-ANSWER-AUTHORITY-SPLIT"
+    }
+  ],
+  "tests": [
+    {
+      "name": "supersede_shared_real_persistence_allows_terminal_failure_after_reopen",
+      "witness": "Actual build_services with real registry/queue/spine and fake external host ports. Pending old job must refuse IN-TRANSIT (proves shared SQL visibility), then terminal ack Failed persists across service reopen; replacement succeeds, different id and audit persist across another reopen; ordinary retry and exactly one replacement inbox message survive."
+    },
+    {
+      "name": "supersede_real_queue_fake_spine_refuses_without_changing_ordinary_answers",
+      "witness": "Actual supported mixed composition. Consumes canonical full error envelope naming real/fake. Asserts unchanged decision and event cursor, one still-deliverable old inbox message, ordinary question/answer/identical retry/self-answer succeed."
+    },
+    {
+      "name": "supersede_fake_queue_real_spine_refuses_without_changing_ordinary_answers",
+      "witness": "Same behavioral refusal/no-mutation/ordinary compatibility contract with fake queue and real spine."
+    },
+    {
+      "name": "supersede_fake_queue_fake_spine_refuses_without_changing_ordinary_answers",
+      "witness": "Same behavioral refusal/no-mutation/ordinary compatibility contract with both fake choices."
+    }
+  ],
+  "verification": {
+    "worker_status": "AUTHORED_NOT_RUN",
+    "no_validators_or_commit": true,
+    "commands_cwd": "/Users/jordanknight/pi-hacking/pij",
+    "commands_after_composition": [
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-daemon http::decisions::tests",
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-daemon --test governance_u4_baseline",
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-daemon --test governance_composition",
+      "harness checks"
+    ],
+    "prerequisites": "PM constructor wiring and canonical refusal fixture merge required before compiling/running new tests. This isolated worktree still lacks PM-owned Services wiring.",
+    "proof_ceiling": "No RED/GREEN, compile-success, smoke, formatting, lint or commit claim. Hashes prove artifact identities only. Initial compile errors are not behavioral RED."
+  },
+  "harness_lesson": {
+    "observation": "A same-pool unit fixture hid a supported configuration with split delivery authority. A SQL absence result proves nothing about active queue state unless construction binds the query to that queue.",
+    "encoded": "Four actual build_services backend cases now defend authority and ordinary-operation compatibility; positive persisted case includes a pending veto to catch falsely labeled Real/Real with disconnected pools.",
+    "suggestion": "Keep this backend matrix in the canonical gate instead of relying only on direct service unit constructors."
+  },
+  "paused_state": "waiting, not operator hold",
+  "pending_policy_questions": []
+}

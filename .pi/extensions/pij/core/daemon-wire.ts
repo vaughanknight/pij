@@ -34,7 +34,7 @@ export interface HealthPayload {
 export interface Registration {
 	readonly supersedes?: string;
 	readonly id: string;
-	readonly harness: "pi" | "omp";
+	readonly harness: "pi" | "omp" | "claude" | "copilot" | "codex";
 	readonly harness_session?: string;
 	readonly folder: string;
 	readonly pane?: string;
@@ -161,6 +161,7 @@ export class DaemonRefusalError extends Error {
 		readonly command: string,
 		readonly kind: DaemonErrorKind | undefined,
 		message: string,
+		readonly rawEnvelope?: string,
 	) {
 		super(message);
 		this.name = "DaemonRefusalError";
@@ -221,7 +222,12 @@ export function decodeEnvelope<T>(text: string): SuccessfulDaemonEnvelope<T> {
 		...(kind === undefined ? {} : { error: kind }),
 	};
 	if (!envelope.ok) {
-		throw new DaemonRefusalError(command, envelope.error, envelope.meta ?? `${command} failed`);
+		throw new DaemonRefusalError(
+			command,
+			envelope.error,
+			envelope.meta ?? `${command} failed`,
+			text,
+		);
 	}
 	if (envelope.data === undefined) throw new Error(`${command} succeeded without data`);
 	return envelope as SuccessfulDaemonEnvelope<T>;

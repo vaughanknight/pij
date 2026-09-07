@@ -1,0 +1,79 @@
+{
+  "unit": "u2",
+  "seat": "pij-written-lansra",
+  "status": "READY_TO_VALIDATE_RETIRED_IDENTITY_DELTA",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u2",
+  "scope": "Refusal-only retired identity receipt enrichment; all role logic and live identity behavior preserved.",
+  "delta": {
+    "path": "docs/plans/139-rs-governance-port/assets/u2-retired-identity-delta.patch",
+    "sha256": "4a2de728d50950401bb0ac71728f57875f35ba0a970a0c851e36ebc307dcfbb9",
+    "bytes": 17315,
+    "files": ["crates/daemon/src/http/identity.rs", "crates/daemon/tests/retired_identity_http.rs"],
+    "base": "Previously handed u2 identity source immediately before this bounded amendment; excludes original role changes and atomic-role delta.",
+    "baseline_snapshot": ".harness/temp/u2-retired-base/crates/daemon/src/http/identity.rs",
+    "composition_note": "PM identity is rustfmt-normalized while u2 baseline is not. Apply only these bounded hunks; if context refuses, use the baseline snapshot to prove formatting-only differences before integrating. No whole-file functional equivalence claim was inferred."
+  },
+  "verification": {
+    "run": false,
+    "not_done": true,
+    "reason": "Source-only wave. No validators, formatting, commits or teardown performed; PM owns composed proof.",
+    "toolchain_observed": {
+      "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21) (Homebrew)",
+      "rustc": "rustc 1.95.0 (59807616e 2026-04-14) (Homebrew)",
+      "omp": "omp/18.0.10",
+      "harness": "0.14.0"
+    }
+  },
+  "contract": {
+    "retired_refusal": "HTTP400, ok:false, error:refused; details.seat identifies the known retired row. details.tombstone_seq is the actual persisted sequence from Spine::latest_matching(retired.id,[seat.tombstone]); meta includes its numeric value.",
+    "no_history": "Missing matching event or missing event.seq omits details.tombstone_seq and explains absence. No timestamp, current cursor or arbitrary event substitutes for it.",
+    "read_failure": "History lookup error retains HTTP400/refused and details.seat, omits tombstone_seq and names the actual error in meta. It never becomes authorization.",
+    "pane_history": "Original first-live match remains authoritative. Only if no live pane owner exists does the resolver inspect retired rows for that exact pane. Exactly one retired match and agreement with any asserted id permits refusal metadata enrichment. Multiple retired matches or contradictory asserted id stay generic refusal.",
+    "no_auth_change": "Never resurrect, authenticate from historical state, select a replacement for a retired assertion, publish an event, or mutate the registry. An actual current live pane owner still resolves exactly as before.",
+    "lookup_bound": "Only latest_matching with mandatory retired seat and exact seat.tombstone kind. No spine.tail hot-path scan."
+  },
+  "changed_api": {
+    "helper": "pub(crate) async fn refuse_tombstoned(state:&AppState, command:&str, seat:&SeatDescriptor)->Option<Response>",
+    "callers": "Exact grep found only resolve_seat's asserted-id arm before change; it is migrated to await. The new unique-retired-pane refusal branch also awaits the helper. LSP returned no worktree references and was not treated as absence proof.",
+    "shared_wiring": "None. Existing identity module and public HTTP router already compile the helper; the new integration test is automatically discovered. No store/core/role module or constructor changes."
+  },
+  "u5_coordination": {
+    "peer": "pij-peaceful-genar",
+    "agreed_test": "crates/daemon/tests/lifecycle_http.rs::close_self_uses_resolved_caller_without_parent_privilege",
+    "first_request": "{seat:pij-worker,reason:owner-close,caller:{TMUX_PANE:%11,cwd:/work/project}} -> HTTP200, closed.data.seq",
+    "retired_self_retries": [
+      "same target/reason plus caller.TMUX_PANE only -> HTTP400, ok:false, details.tombstone_seq == closed.data.seq, meta contains seq.to_string()",
+      "same target/reason plus caller.PIJ_SESSION_ID:pij-worker only -> same HTTP400/receipt assertions"
+    ],
+    "parent_retry": "Live parent caller %10 returns HTTP200 and its whole envelope equals original closed response. This delta leaves that path untouched."
+  },
+  "authored_tests": [
+    "retired_asserted_and_pane_callers_receive_the_original_tombstone_sequence_without_authority",
+    "retired_lookup_selects_latest_tombstone_not_a_later_unrelated_event",
+    "ambiguous_retired_pane_history_refuses_without_guessing_a_tombstone",
+    "contradicted_retired_pane_claim_refuses_without_attributing_its_history",
+    "retired_rows_without_historical_tombstone_events_do_not_invent_sequences",
+    "tombstone_history_failure_stays_a_named_authentication_refusal",
+    "live_pane_resolution_and_replacement_contradictions_keep_existing_behavior"
+  ],
+  "test_design": [
+    "Real SQLite registry and spine via build_services; Registry::tombstone publishes actual retirement events for both asserted-id and pane-only receipt witnesses.",
+    "The universal witness exercises whoami, phonehome and a report write attempt, then proves registry and persisted spine unchanged.",
+    "Two actual tombstones followed by a later seat.put snapshot discriminate bounded latest_matching from first-tombstone or newest-arbitrary-event guesses.",
+    "Missing-history fixture uses a persisted retired seat.put snapshot without a seat.tombstone event; sequence remains absent.",
+    "History failure uses existing FakeSpine.script_latest_matching_error only on the refusal read surface; underlying real registry publisher and persisted history remain unchanged.",
+    "Live reused-pane owner still resolves, while an explicit retired id contradicting it refuses without returning replacement data."
+  ],
+  "commands_after_composition": [
+    "CARGO_TARGET_DIR=$WORKTREE/target cargo test --locked -p pij-daemon --test retired_identity_http",
+    "CARGO_TARGET_DIR=$WORKTREE/target cargo test --locked -p pij-daemon --test lifecycle_http close_self_uses_resolved_caller_without_parent_privilege -- --exact",
+    "CARGO_TARGET_DIR=$WORKTREE/target cargo test --locked -p pij-daemon --lib http::identity_tests",
+    "CARGO_TARGET_DIR=$WORKTREE/target cargo test --locked -p pij-daemon --test role_http",
+    "harness checks --json (PM barrier only)"
+  ],
+  "harness": {
+    "buffer": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u2/.harness/temp/agent/session-buffer.md",
+    "drained": false,
+    "observation": "WIN-003 refusal metadata is observed bounded evidence, never identity authority"
+  }
+}

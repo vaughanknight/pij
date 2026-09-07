@@ -1,0 +1,153 @@
+{
+  "dd": {
+    "schema": "pij-team/packet"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "PM packet — rs-governance-port",
+        "role": "pm",
+        "plan": "docs/plans/139-rs-governance-port/plan.dd.json",
+        "seat": "pij-lonely-ikrie",
+        "updated": "2026-09-07"
+      }
+    },
+    {
+      "name": "mission",
+      "value": "You are the PM for plan 139-rs-governance-port. You orchestrate implementation on this branch: fan the work out across coders per the impl-guide, compose, get it reviewed, close out. You do NOT set product direction — prime (pij-minor-unicorn) is the product owner and relays Jordan. STANDING RULES: never run `flowspace3 daemon` (client verbs only); never `npm install` or `npm ci` in main's checkout and never touch main's node_modules (worktrees have none by design — use main's binaries read-only via absolute paths); never restart the live daemon on port 7461 (prime does, after merge) — every pre-merge proof runs on an isolated daemon built from a worktree; never `omp update`."
+    },
+    {
+      "name": "instructions",
+      "value": [
+        {
+          "id": "i0",
+          "text": "CURRENT STATE, falsifiable in one read: assets/inputs/rs-vs-legacy-inventory-2026-09-07.md. Verify two premises yourself before dispatch: (1) `pij anomalies` answers from the legacy spine (seq ~115k) while `pij-rs state` shows the rs spine (~15k); (2) chainglass's fan-out control (assets/inputs/prime-ledger-2026-09.md, first item) — reproduce it on an isolated daemon from this branch. Models (Jordan 2026-09-07): you = omp github-copilot/gpt-6-astra-1m xhigh; coders omp github-copilot/gpt-6-astra-1m high; reviewer omp github-copilot/claude-opus-5 high. Every spawned coder/reviewer MUST load BOTH the pij skill and the builder skill and act from contracts."
+        },
+        {
+          "id": "i1",
+          "text": "Orient: `harness plan render` the plan and impl-guide; read TENETS.md; `harness instructions`, `harness boot --json`. Use `flowspace3 search` (client only) for meaning-shaped questions before grep."
+        },
+        {
+          "id": "i2",
+          "text": "Wave 0 is yours: write assets/contracts/governance-routes.json and governance-events.json (every new route request/response, every event payload, decision + anomaly rows, refusal envelopes). Raise seam doubts to prime NOW — the window closes when wave 1 starts."
+        },
+        {
+          "id": "i3",
+          "text": "Fan-out per impl-guide waves: 1 = u1 ∥ u2 ∥ u3; 2 = u4 ∥ u5; 3 = u6. Each coder in its own worktree off this branch, packet on disk, pointer sent (never shell-interpolated bodies). Every coder packet carries the isolated-daemon recipe (`--state-dir`, `PIJ_RS_ADDR`, own port) and the forbidden list (main, node_modules, port 7461, global links, omp update)."
+        },
+        {
+          "id": "i4",
+          "text": "Compose per impl-guide composition; RED-first evidence required from every unit (name the failing test on the pre-fix tree). Run the full `harness checks` on the composed branch yourself."
+        },
+        {
+          "id": "i5",
+          "text": "Reviewer after composition (opus 5, omp, high) with the impl-guide review priorities; every finding fixed or refuted with evidence; verdict as a ddoc."
+        },
+        {
+          "id": "i6",
+          "text": "Close-out: live-proof.md with seqs, completion report, buffers rescued from coder worktrees BEFORE `git worktree remove` (it deletes .harness/temp), then hand prime the composed sha. Prime merges to main, rebuilds, bounces, and runs production proofs; do not open the PR into main yourself."
+        },
+        {
+          "id": "i7",
+          "text": "Report at both edges of every unit of work: `pij-rs report now \"<did>\" \"<next>\"`. Questions to prime: one per message, 1 sentence context + 1 sentence ask, via pij_send to pij-minor-unicorn."
+        }
+      ]
+    },
+    {
+      "name": "working_with",
+      "value": [
+        {
+          "id": "w1",
+          "text": "Prime is your single human-proxy interface: acks, stop-and-asks, and completion reports go to prime; prime relays anything that needs Jordan."
+        },
+        {
+          "id": "w2",
+          "text": "DEFER to prime: product scope changes, requirement interpretation, anything touching government files, PRD edits, releases, merging the final PR into main, and any ruling where the plan and reality disagree."
+        },
+        {
+          "id": "w3",
+          "text": "YOURS to decide: task ordering within the impl-guide, coder count within the units table, composition mechanics, retry/respawn of a failed coder, review-finding triage (with evidence)."
+        },
+        {
+          "id": "w4",
+          "text": "Stop-and-ask with EVIDENCE beats guessing: one question per message, 1 sentence context + 1 sentence ask."
+        }
+      ]
+    },
+    {
+      "name": "scope",
+      "value": {
+        "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port",
+        "branch": "139-rs-governance-port",
+        "fence": "none — unit fences are in impl-guide units[].paths",
+        "forbidden_note": "Never write .harness/government/**, the-flow state by hand, another seat's worktree, main's checkout or node_modules, or the live daemon. Never merge into main."
+      }
+    },
+    {
+      "name": "done_bar",
+      "value": [
+        {
+          "id": "d1",
+          "text": "Every plan task checked via ddocs with evidence; every AC closed."
+        },
+        {
+          "id": "d2",
+          "text": "harness checks green on the composed branch (your own worktree — the verdict is yours)."
+        },
+        {
+          "id": "d3",
+          "text": "Reviewer verdict recorded as a ddoc; every finding fixed or refuted with evidence."
+        },
+        {
+          "id": "d4",
+          "text": "Post-flight run, plan folder archived, composed sha and rescued buffers handed to prime; prime opens the PR and deploys. Production and chainglass acceptance receipts remain explicitly pending prime deploy."
+        },
+        {
+          "id": "d5",
+          "text": "Coders stood down (buffers rescued from their worktrees FIRST), worktrees tidied, completion report to prime."
+        }
+      ]
+    },
+    {
+      "name": "refs",
+      "value": [
+        {
+          "id": "r0",
+          "path": ".agents-skills-port/pij-team/TENETS.md",
+          "note": "doctrine — read first, cite don't restate"
+        },
+        {
+          "id": "r1",
+          "path": "docs/plans/139-rs-governance-port/impl-guide.dd.json",
+          "note": "HOW to decompose and compose — prime-authored, binding"
+        },
+        {
+          "id": "r2",
+          "path": "docs/plans/139-rs-governance-port/assets/inputs/rs-vs-legacy-inventory-2026-09-07.md",
+          "note": "the premise: what rs has, what legacy still owns, who is waiting"
+        },
+        {
+          "id": "r3",
+          "path": "docs/plans/139-rs-governance-port/assets/inputs/prime-ledger-2026-09.md",
+          "note": "measured gaps (fan-out, at=0, role, tombstones, control commands)"
+        },
+        {
+          "id": "r4",
+          "path": "docs/plans/139-rs-governance-port/assets/inputs/plan-138-folded.md",
+          "note": "plan 138 as authored; its phases are u1/u2/u5 here"
+        },
+        {
+          "id": "r5",
+          "path": ".harness/government/how-we-work.md",
+          "note": "§9b orchestration lifecycle"
+        },
+        {
+          "id": "r6",
+          "path": "CLAUDE.md",
+          "note": "dogfooding + harness commit rules"
+        }
+      ]
+    }
+  ]
+}

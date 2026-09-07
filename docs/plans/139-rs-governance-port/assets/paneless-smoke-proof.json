@@ -1,0 +1,40 @@
+{
+  "at": "2026-09-07T12:50:47Z",
+  "command": "node_modules/.bin/tsx harness/scripts/smoke.ts team-scaffold",
+  "exit": 0,
+  "duration_seconds": 4.39,
+  "protocol_host_ceiling": "Two real package-shaped external host processes, no model/provider implementation claim",
+  "paneless": {
+    "from": "pij-elegant-jackal",
+    "to": "pij-interesting-frog",
+    "sender_host": {
+      "pid": 26444,
+      "proc_start": 20260907223700
+    },
+    "recipient_host": {
+      "pid": 26497,
+      "proc_start": 20260907223700
+    },
+    "sent": "a10ae4caa6d9c655-0000000000000000",
+    "reply": "a10ae4caa6d9c655-0000000000000001"
+  },
+  "governance": {
+    "parent": "pij-financial-troblum",
+    "worker": "pij-delicious-carp",
+    "project": "private-team-smoke",
+    "stream": "private-team-smoke:workflow",
+    "dispatch": "dispatch-e8e3aafb66c42de547dbb1f328e236a0",
+    "packet_sha256": "78b700cd31ea883a22a92d589df947de539d564db335e9b0d95413f6788c91c8",
+    "cursor": 21
+  },
+  "source_fixes": [
+    "public session wire name rather than internal harness_session",
+    "dispatch.ack rather than invented top-level ack",
+    "node.assignments and node.dispatches collections",
+    "pending canary identified by actual refusal dispatch id; absent proof field is not null-filled"
+  ],
+  "limits": [
+    "Focused scaffold only; full engineering gate still pending",
+    "Native model canary remains separately proven, not by protocol hosts"
+  ]
+}

@@ -1,0 +1,189 @@
+{
+  "status": "READY_TO_VALIDATE_SOURCE_ONLY",
+  "unit": "u1-smoke-gate",
+  "owner": "pij-electoral-orlandine",
+  "pm": "pij-lonely-ikrie",
+  "base": "78531a0ba2f22469ab72289ba9ff6c1635e863e7",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1-gate",
+  "packet": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/u1-smoke-gate-task.json",
+  "shared_contract": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/gate-repair-contract.json",
+  "paneless_contract": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u2-gate/docs/plans/139-rs-governance-port/assets/u2-paneless-prerequisites.json",
+  "rulings": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/gate-repair-rulings.json",
+  "preflight": {
+    "head_observed": "78531a0ba2f22469ab72289ba9ff6c1635e863e7",
+    "identity_observed": {
+      "id": "pij-electoral-orlandine",
+      "harness": "omp",
+      "pane": "%3864",
+      "session": "01a07a71-b2e7-7000-ac96-cd576b83414b"
+    },
+    "own_pane_footer_observed": "GPT-6 Astra (1M), high",
+    "numbered_ack_delivery": "a79f1f3e-a1b3-40bb-aece-dd4ff984e63b"
+  },
+  "patch": {
+    "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1-gate/docs/plans/139-rs-governance-port/assets/u1-smoke-gate.patch",
+    "sha256": "5410bdddb1b4cc5a9dc00822e1c078749c596d39f3e552566c7393ab31d06f35",
+    "format": "git-applicable unified diff against78531; exactly two modified source files and three new harness-only helper files"
+  },
+  "changed_path_sha256": {
+    "harness/scripts/smoke.ts": "87a5aa1842d4d1f58c9be90510acf743946c2da526dfa6ca0032f04258c860d9",
+    "harness/scripts/smoke.test.ts": "023a83d938ba38f5d0cd1459624eff0949dfdc4b0b10a90cea0739c62613c5f9",
+    "harness/driver/governance-fixture.ts": "91f1d4317fc978853c99185d29fcfbf1d9d31c823266e16700564210b842d2d6",
+    "harness/driver/governance-external.ts": "0a9dd3db07e9efc431e2c6817f51a2d22785c1a93819deac7ccfeae1e8745f65",
+    "harness/driver/governance-host.mjs": "f0be3a943a197c109674de818854dddde0d1291ed0895974e0829d59b68233d7"
+  },
+  "baseline_path_sha256": {
+    "harness/scripts/smoke.ts": "8abcee796c9f09a7317a3a680f493a115d5574f35d39f3ee54ddff6d39d16000",
+    "harness/scripts/smoke.test.ts": "b8514c872212705c144a52802d3f9c85bf7fce9d082e5067661d671a519d5200"
+  },
+  "source_modes": {
+    "harness/scripts/smoke.ts": "100644",
+    "harness/scripts/smoke.test.ts": "100644",
+    "harness/driver/governance-fixture.ts": "100644",
+    "harness/driver/governance-external.ts": "100644",
+    "harness/driver/governance-host.mjs": "100644"
+  },
+  "changes_findings_map": [
+    {
+      "path": "harness/scripts/smoke.ts",
+      "symbols": [
+        "runTeamScaffoldSmoke",
+        "runWatchdogSmoke",
+        "parseSmokeEnvelope",
+        "privateSmoke",
+        "privateHomeSnapshot",
+        "main"
+      ],
+      "removes": [
+        "FsRegistry/FsDispatchStore domain seeding",
+        "fake tmux executable and fabricated model footer",
+        "synthetic positive canary ACK",
+        "old plan055 proof-runner dependency",
+        "watchdog SKIP result path",
+        "obsolete legacy/--actor/--slug argv assumptions"
+      ],
+      "adds": [
+        "Real private daemon/native CLI adoption with actual pane/process descriptors",
+        "Public shim project -> stream real Git worktree -> fence -> dispatch -> inbox real claims -> packet SHA ACK -> task/node -> spine receipts -> stream close",
+        "Named E-RS-CANARY-PENDING with nonce and no positive stored canary for inert pane",
+        "Actual watchdog E-RS-UNPORTED in rs and explicit legacy routing with unchanged spine cursor/events, complete roster response, private home directory/file fingerprints",
+        "Complete wire envelope checks preserve native fields; no data unwrapping at subprocess boundary",
+        "Nested primary/cause/cleanup errors retained in FAIL reason"
+      ],
+      "preserved": "Other extension inventory, shell quoting, custom commands, Driver SDK scenario execution and failure behavior remain in original path."
+    },
+    {
+      "path": "harness/scripts/smoke.test.ts",
+      "symbols": [
+        "describe(runWatchdogSmoke)",
+        "describe(parseSmokeEnvelope)"
+      ],
+      "adds": [
+        "Actual real-private-resource watchdog named-refusal/no-mutation regression, not subprocess PASS stub",
+        "Full successful/refused envelope preservation including extra fields",
+        "Flattened data/wrong version/wrong process status/wrong code/signal-terminated response rejection"
+      ],
+      "preserved": "Existing extension inventory, quoting/custom command and import-no-execution tests."
+    },
+    {
+      "path": "harness/driver/governance-fixture.ts",
+      "symbols": [
+        "PrivateGovernanceFixture",
+        "ManagedProcess",
+        "command"
+      ],
+      "purpose": "Necessary harness-only private ownership helper; existing Driver SDK primitives do not provide full foreground-tmux/private native daemon lifecycle.",
+      "adds": [
+        "Short owned /tmp root, explicit narrow runtime environment and private HOME/Claude/XDG/Copilot/Codex/Pi/OMP/state",
+        "Worktree-confined target/debug native binary, private PATH link for shim native bridge; missing binary only has bounded offline local-target Cargo fallback",
+        "Reserved random non7461 port, actual foreground tmux server PID/socket and two real inert panes, inherited TMUX proof",
+        "Observed native listening/offline=false, socket acceptance, healthy ping, actual private key and SQLite store",
+        "Bounded command clients and tracked external hosts; close clients before daemon drain; actual server reap, socket unlink, root deletion and port-closed witnesses; aggregate failures instead of hiding them"
+      ]
+    },
+    {
+      "path": "harness/driver/governance-external.ts",
+      "symbols": [
+        "exerciseExternalRoundtrip",
+        "ExternalHost",
+        "openHost"
+      ],
+      "adds": [
+        "Two separate active Node processes at private matching @anthropic-ai/claude-code/cli.js entrypoints, real OS argv observation and stdout readiness",
+        "Unique CLAUDE_CODE_SESSION_ID per host; TMUX/TMUX_PANE/PIJ_SESSION_ID absent",
+        "Public shim inbox register returns HOST proc tuple, not exited CLI wrapper; repeated registration returns same binding/id/tuple",
+        "Finite empty inbox wait, started recipient CLI, sender send, exact msg_id/body/from/to receipt, post-read empty wait proving Rust queue ACK",
+        "Reverse reply with actual --in-reply-to id, recipient bytes/ids and second read-ACK; final host identity survives multiple wrapper exits"
+      ]
+    },
+    {
+      "path": "harness/driver/governance-host.mjs",
+      "symbols": [
+        "private protocol host request loop"
+      ],
+      "purpose": "Plain Node-executable source copied only into private package-shaped entrypoint. No installed package, model, SDK or provider.",
+      "adds": [
+        "Long-lived real host spawns each public shim CLI as an actual descendant",
+        "Local stdin/stdout fixture control carries untouched subprocess stdout/stderr/status and wrapper PID, not a replacement native identity protocol",
+        "Request timeout kills/reaps owned child; SIGINT/SIGTERM cleanup kills active owned descendant before host reap; try/finally handles result-output failures"
+      ]
+    }
+  ],
+  "exact_scenario_references": [
+    "harness/scripts/smoke.ts::runTeamScaffoldSmoke \u2014 public stream/fence/dispatch/ACK RS success, task/node/spine and modern inert canary refusal",
+    "harness/driver/governance-external.ts::exerciseExternalRoundtrip \u2014 public verified paneless register/wait/send/receive/reply/ACK",
+    "harness/scripts/smoke.ts::runWatchdogSmoke \u2014 native named unported refusal, both generations, no-mutation evidence",
+    "harness/scripts/smoke.test.ts::runWatchdogSmoke/refuses real watchdog mutation under both routing modes without changing private authority",
+    "harness/scripts/smoke.test.ts::parseSmokeEnvelope \u2014 complete response and refusal/status boundary regressions"
+  ],
+  "validation": {
+    "executed": false,
+    "validator_commands": [],
+    "test_results": null,
+    "barrier": "Explicit release forbids worker builds/tests/typecheck/lint/format/commits. No acceptance or success inferred from source readiness.",
+    "editor_feedback": "LSP references/import code action and automatic editor diagnostics only; not a validation/gate receipt.",
+    "pm_cwd": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port",
+    "pm_prerequisites": [
+      "Compose u2 paneless source before invoking external scenario",
+      "Rebuild composed PM target/debug/pij-rs before validation: existing executable local artifact is not freshness-rebuilt by fixture",
+      "Installed Unix tmux supporting foreground -D and pane argv, git, Node/tsx, ps and /bin/sleep",
+      "Absent local artifact requires installed Rust toolchain/offline cache; no network dependency/provider requests are made by fallback"
+    ],
+    "pm_scenarios": [
+      "Existing full harness checks gate after barrier",
+      "just smoke (runs team-scaffold, watchdog and existing extension scenarios; recipe takes no arguments)",
+      "just test harness/scripts/smoke.test.ts"
+    ],
+    "expected_runtime_receipts": [
+      "private-team JSON with real seat/project/stream/dispatch IDs, packet SHA, spine cursor, inert ceiling",
+      "paneless-external JSON with real retained host tuples, send/reply msg_ids and protocol-host ceiling",
+      "watchdog-refusal JSON with named code, preserved cursor, explicit forced-legacy refusal and no-mutation marker"
+    ],
+    "runtime_receipts_exist": false
+  },
+  "scope_guards": [
+    "No .pi source/tests or Rust files edited",
+    "No shared index, dependencies, manifests, toolchain, global config or global links edited",
+    "No canonical route fixtures, plan/flow state or observation buffers edited",
+    "No prior worktree edits or teardown",
+    "No production daemon fixture, default7461 requests, provider calls or credential lookup",
+    "All new runtime fixture files/links/worktrees stay beneath owned private root; only local build output goes in selected worktree target"
+  ],
+  "proof_ceilings": [
+    "Source/test authorship only; all runtime outcomes remain PM-owned and unproven",
+    "Inert panes and active package-shaped protocol hosts prove neither actual Claude/OMP implementation behavior nor a live model turn",
+    "Positive authenticated OMP canary receipt remains separate; none synthesized here",
+    "External smoke exercises verified Claude-flavor host ancestry only; u2 direct tests retain Copilot/Codex ambient evidence contracts",
+    "Recipient started frame proves actual CLI child existence before send, not that the HTTP long-poll handler had already entered; exact returned message and empty subsequent queue read prove transport/ACK",
+    "No destructive reap/PID-reuse race proof claimed by this smoke slice",
+    "Existing executable native artifact freshness is a PM build prerequisite; a local artifact is not implicitly a production authority"
+  ],
+  "friction": [
+    "Native CLI inbox projection differs from shim full claims[]: message.msg_id, not message.id; source assertions now target actual shim wire fields",
+    "External host must be a live ancestor able to spawn CLI children; sleep/argv0-only fixtures cannot satisfy the new paneless law",
+    "Historical positive watchdog runner and fabricated model footer could report unrelated success; permanent smoke now requires actual private authority and named no-write refusal",
+    "Serena replacement is rooted in main checkout and refused absolute gate-worktree path; corrected local lexical mistake with owned-file tools, no main writes",
+    "Editor file overwrite added executable bit automatically; restored baseline smoke.ts100644 before export"
+  ],
+  "encoded_harness_improvement": "Permanent owned-resource smoke replaces inferred/fake authority with actual public transport, native host incarnation, full wire envelopes and cleanup receipts; no new manual governance rule needed."
+}

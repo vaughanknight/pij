@@ -5,8 +5,8 @@ use pij_core::model::{Harness, ProcIdentity, SeatDescriptor, SeatId};
 use pij_core::orchestration::{
     AttributionSource, CapabilityDecision, DescriptorField, Operation, OrchestrationRole,
     OrchestrationService, ParentAttribution, ReconcileDecision, RepoInventory, SpawnRecord,
-    VerifiedDescriptor, derive_parent, descriptors_equivalent, mint_ordinal,
-    plan_descriptor_reconciliation, plan_stream_creation,
+    StreamPlanError, VerifiedDescriptor, derive_parent, descriptors_equivalent, mint_ordinal,
+    plan_descriptor_reconciliation, plan_stream_creation, plan_stream_creation_at_ordinal,
 };
 
 fn descriptor(id: &str) -> SeatDescriptor {
@@ -190,6 +190,79 @@ fn ordinal_minting_unions_clone_worktrees_and_branch_heads() {
         plan.worktree,
         Path::new("/tmp/pij-worktrees/s014-orchestration")
     );
+}
+
+#[test]
+fn explicit_stream_ordinal_preserves_existing_names_and_does_not_mutate_inventory() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../testkit/fixtures/golden/api/governance-routes.json"
+    ))
+    .unwrap();
+    let stream = &fixture["fixture_context"]["records"]["stream"];
+    let ordinal = u32::try_from(stream["ordinal"].as_u64().unwrap()).unwrap();
+    let inventory = RepoInventory {
+        branch_heads: BTreeSet::from([ordinal + 2]),
+        ..RepoInventory::default()
+    };
+    let before = inventory.clone();
+    let plan = plan_stream_creation_at_ordinal(
+        stream["project"].as_str().unwrap(),
+        stream["slug"].as_str().unwrap(),
+        Path::new("/tmp/pij-worktrees"),
+        stream["base_ref"].as_str().unwrap(),
+        &inventory,
+        ordinal,
+    )
+    .unwrap();
+    assert_eq!(plan.ordinal, ordinal);
+    assert_eq!(
+        plan.branch,
+        format!("s{ordinal:03}/{}", stream["slug"].as_str().unwrap())
+    );
+    assert_eq!(
+        plan.worktree,
+        Path::new("/tmp/pij-worktrees").join(format!(
+            "s{ordinal:03}-{}",
+            stream["slug"].as_str().unwrap()
+        ))
+    );
+    assert_eq!(inventory, before);
+}
+
+#[test]
+fn explicit_stream_ordinal_refuses_collisions_in_each_git_namespace() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../testkit/fixtures/golden/api/governance-routes.json"
+    ))
+    .unwrap();
+    let stream = &fixture["fixture_context"]["records"]["stream"];
+    let ordinal = u32::try_from(stream["ordinal"].as_u64().unwrap()).unwrap();
+    for inventory in [
+        RepoInventory {
+            clone: BTreeSet::from([ordinal]),
+            ..RepoInventory::default()
+        },
+        RepoInventory {
+            worktrees: BTreeSet::from([ordinal]),
+            ..RepoInventory::default()
+        },
+        RepoInventory {
+            branch_heads: BTreeSet::from([ordinal]),
+            ..RepoInventory::default()
+        },
+    ] {
+        assert_eq!(
+            plan_stream_creation_at_ordinal(
+                stream["project"].as_str().unwrap(),
+                stream["slug"].as_str().unwrap(),
+                Path::new("/tmp/pij-worktrees"),
+                stream["base_ref"].as_str().unwrap(),
+                &inventory,
+                ordinal,
+            ),
+            Err(StreamPlanError::OrdinalReserved { ordinal })
+        );
+    }
 }
 
 #[test]

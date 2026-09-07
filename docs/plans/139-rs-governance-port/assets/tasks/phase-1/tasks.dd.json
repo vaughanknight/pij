@@ -1,0 +1,82 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Contract + one spine writer",
+        "slug": "phase-1",
+        "status": "draft",
+        "summary": "Contract + one spine writer"
+      }
+    },
+    {
+      "name": "summary",
+      "value": "Contract + one spine writer"
+    },
+    {
+      "name": "tasks",
+      "value": [
+        {
+          "id": "tk-10a1",
+          "title": "u0 — freeze governance-routes.json + event payload samples (PM)",
+          "domain": "contract",
+          "phase": "p1",
+          "state": "checked",
+          "receipt": "assets/contracts/contract-validation.json; baseline-fanout-red.json seq7/8 missing while9/10 delivered"
+        },
+        {
+          "id": "tk-11a1",
+          "title": "u1 — EventBus is the only spine writer; ReportService/Registry publish with at + payload",
+          "domain": "rust",
+          "phase": "p1",
+          "state": "checked",
+          "note": "Composed local contract revalidated on335d20981c37c868f6039724f4a78b621c8bb7e2 by both complete gates (lg-0014). Original RED/GREEN and isolated live witnesses remain historical evidence in lg-0002/lg-0003/lg-0009/lg-0010/lg-0012; production/chainglass acceptance is not claimed.",
+          "receipt": "../../execution-log.dd.json#entries/lg-0014"
+        },
+        {
+          "id": "tk-12a1",
+          "title": "u1 — RED: chainglass positive control fails on main, GREEN after; no-direct-INSERT grep test",
+          "domain": "rust",
+          "phase": "p1",
+          "state": "checked",
+          "note": "Composed local contract revalidated on335d20981c37c868f6039724f4a78b621c8bb7e2 by both complete gates (lg-0014). Original RED/GREEN and isolated live witnesses remain historical evidence in lg-0002/lg-0003/lg-0009/lg-0010/lg-0012; production/chainglass acceptance is not claimed.",
+          "receipt": "../../execution-log.dd.json#entries/lg-0014"
+        }
+      ]
+    },
+    {
+      "name": "done_when",
+      "value": {
+        "tk-10a1": [
+          {
+            "id": "dw-10a1",
+            "assertion": "Canonical routes/events and isolation recipe frozen; fixture consistency receipt passes; baseline two-subscriber RED documented with actual seqs. u0 has no product unit test of its own per impl-guide.",
+            "state": "checked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-11a1": [
+          {
+            "id": "dw-11a1",
+            "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
+            "state": "checked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0001",
+            "proven_by": "../../execution-log.dd.json#entries/lg-0014"
+          }
+        ],
+        "tk-12a1": [
+          {
+            "id": "dw-12a1",
+            "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
+            "state": "checked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0001",
+            "proven_by": "../../execution-log.dd.json#entries/lg-0014"
+          }
+        ]
+      }
+    }
+  ]
+}

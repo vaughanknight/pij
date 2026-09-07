@@ -16,6 +16,12 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WIRE = resolve(HERE, "../../../../crates/testkit/fixtures/wire");
 const fixture = (name: string): string => readFileSync(resolve(WIRE, name), "utf8");
+const ERROR_ENVELOPES = JSON.parse(
+	readFileSync(
+		resolve(HERE, "../../../../crates/testkit/fixtures/golden/api/error-envelopes.json"),
+		"utf8",
+	),
+) as Array<{ command: string; error: string; meta: string }>;
 
 describe("pij-rs envelope", () => {
 	it("pins the exact consumer floor at envelope v2", () => {
@@ -71,35 +77,53 @@ describe("pij-rs envelope", () => {
 		}
 	});
 
-	it("preserves cursor-reset refusals as structured daemon errors", () => {
-		expect(() =>
-			decodeEnvelope(
-				JSON.stringify({
-					ok: false,
-					command: "pij events",
-					v: 2,
-					error: "cursor_reset",
-					meta: "cursor 7 is beyond spine 2",
-				}),
-			),
-		).toThrow(DaemonRefusalError);
+	it.each(
+		ERROR_ENVELOPES,
+	)("recognizes canonical $error refusals and retains exact validated bytes", (envelope) => {
+		const rawEnvelope = ` \n${JSON.stringify({ ...envelope, future: { retained: true } }, null, "\t")}\n`;
 		try {
-			decodeEnvelope(
-				JSON.stringify({
-					ok: false,
-					command: "pij events",
-					v: 2,
-					error: "cursor_reset",
-					meta: "cursor 7 is beyond spine 2",
-				}),
-			);
+			decodeEnvelope(rawEnvelope);
+			throw new Error("refusal envelope was accepted as success");
 		} catch (error) {
+			expect(error).toBeInstanceOf(DaemonRefusalError);
 			expect(error).toMatchObject({
-				command: "pij events",
-				kind: "cursor_reset",
-				message: "cursor 7 is beyond spine 2",
+				command: envelope.command,
+				kind: envelope.error,
+				message: envelope.meta,
+				rawEnvelope,
 			});
 		}
+	});
+
+	it.each(
+		ERROR_ENVELOPES.filter((envelope) => envelope.error.includes("_")),
+	)("rejects a hyphen alias of canonical $error rather than recognizing a daemon refusal", (envelope) => {
+		expect(() =>
+			decodeEnvelope(JSON.stringify({ ...envelope, error: envelope.error.replaceAll("_", "-") })),
+		).toThrow("daemon envelope error must be a known ErrorKind");
+	});
+
+	it.each([
+		["malformed JSON", "not JSON"],
+		["old version", JSON.stringify({ ...ERROR_ENVELOPES[0], v: 1 })],
+		["future version", JSON.stringify({ ...ERROR_ENVELOPES[0], v: 3 })],
+		["invalid success flag", JSON.stringify({ ...ERROR_ENVELOPES[0], ok: "false" })],
+		["unknown error kind", JSON.stringify({ ...ERROR_ENVELOPES[0], error: "future-error-kind" })],
+	] as const)("does not attach unchecked bytes to a %s error", (_label, text) => {
+		let caught: unknown;
+		try {
+			decodeEnvelope(text);
+		} catch (error) {
+			caught = error;
+		}
+		expect(caught).toBeInstanceOf(Error);
+		expect(caught).not.toBeInstanceOf(DaemonRefusalError);
+		expect(caught).not.toHaveProperty("rawEnvelope");
+	});
+
+	it("does not invent raw daemon bytes for a locally constructed refusal", () => {
+		const error = new DaemonRefusalError("auth", "auth", "daemon key is unreadable");
+		expect(error).not.toMatchObject({ rawEnvelope: expect.any(String) });
 	});
 
 	it("keeps no-daemon address and state directory as fields", () => {

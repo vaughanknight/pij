@@ -295,7 +295,11 @@ async fn register_walk_and_sqlite_roundtrip_preserve_identical_process_start() {
         "walk and registration observer use identical local wall fields"
     );
     let pool = pij_store::open("").await.expect("isolated SQLite");
-    let registry = Arc::new(pij_store::SqliteRegistry::new(pool.clone()));
+    let bus = Arc::new(
+        crate::events::EventBus::new(Arc::new(pij_store::SqliteSpine::new(pool.clone())), 16)
+            .expect("shared SQL event bus"),
+    );
+    let registry = Arc::new(pij_store::SqliteRegistry::new(pool.clone(), bus.clone()));
     let mut services = test_services(
         Arc::new(FakeRegistry::new()),
         Arc::new(FakeQueue::new(1_024).expect("queue")),
@@ -311,6 +315,33 @@ async fn register_walk_and_sqlite_roundtrip_preserve_identical_process_start() {
         },
     ));
     services.liveness = Arc::new(liveness);
+    services.spine = bus.clone();
+    services.event_bus = bus.clone();
+    services.roles = Arc::new(super::role::RoleService::new(
+        registry.clone(),
+        pij_store::SqliteOrchestration::new(pool.clone()),
+        bus.clone(),
+    ));
+    services.governance = Arc::new(super::governance::GovernanceService::new(
+        pij_store::SqliteOrchestration::new(pool.clone()),
+        bus,
+        pij_testkit::fresh_dir("pij-identity-governance"),
+    ));
+    services.interaction = Arc::new(pij_harnesses::InteractionGate::with_typing_grace(
+        services.tmux.clone(),
+        std::time::Duration::from_millis(pij_core::config::Config::default().interaction_idle_ms),
+        super::resolve_typing_grace_ms(),
+    ));
+    services.delivery = Arc::new(
+        crate::delivery::DeliveryService::new(
+            services.registry.clone(),
+            services.queue.clone(),
+            services.transport.clone(),
+            services.interaction.clone(),
+            services.event_bus.clone(),
+        )
+        .expect("retargeted delivery"),
+    );
     let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
     let claim = serde_json::json!({"id": "pij-timebase", "harness": "claude", "folder": FOLDER,
         "pane": PANE, "pid": child.shell.id(), "proc_start": 1});
@@ -419,7 +450,11 @@ async fn pane_fallback_preserves_claim_and_rebounds_for_new_unrecognized_process
     let mut child = HarnessChild::new();
     let pane_pid = child.shell.id();
     let pool = pij_store::open("").await.expect("isolated SQLite");
-    let registry = Arc::new(pij_store::SqliteRegistry::new(pool.clone()));
+    let bus = Arc::new(
+        crate::events::EventBus::new(Arc::new(pij_store::SqliteSpine::new(pool.clone())), 16)
+            .expect("shared SQL event bus"),
+    );
+    let registry = Arc::new(pij_store::SqliteRegistry::new(pool.clone(), bus.clone()));
     let mut services = test_services(
         Arc::new(FakeRegistry::new()),
         Arc::new(FakeQueue::new(1_024).expect("queue")),
@@ -436,6 +471,33 @@ async fn pane_fallback_preserves_claim_and_rebounds_for_new_unrecognized_process
     ));
     let liveness = Arc::new(pij_harnesses::proc::ProcLiveness::new());
     services.liveness = liveness.clone();
+    services.spine = bus.clone();
+    services.event_bus = bus.clone();
+    services.roles = Arc::new(super::role::RoleService::new(
+        registry.clone(),
+        pij_store::SqliteOrchestration::new(pool.clone()),
+        bus.clone(),
+    ));
+    services.governance = Arc::new(super::governance::GovernanceService::new(
+        pij_store::SqliteOrchestration::new(pool.clone()),
+        bus,
+        pij_testkit::fresh_dir("pij-identity-governance"),
+    ));
+    services.interaction = Arc::new(pij_harnesses::InteractionGate::with_typing_grace(
+        services.tmux.clone(),
+        std::time::Duration::from_millis(pij_core::config::Config::default().interaction_idle_ms),
+        super::resolve_typing_grace_ms(),
+    ));
+    services.delivery = Arc::new(
+        crate::delivery::DeliveryService::new(
+            services.registry.clone(),
+            services.queue.clone(),
+            services.transport.clone(),
+            services.interaction.clone(),
+            services.event_bus.clone(),
+        )
+        .expect("retargeted delivery"),
+    );
     let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
     let mut bindings = Vec::new();
     let mut identities = Vec::new();

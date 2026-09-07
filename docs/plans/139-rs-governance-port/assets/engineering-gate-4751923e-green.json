@@ -1,0 +1,85 @@
+{
+  "command": "checks",
+  "status": "ok",
+  "timestamp": "2026-09-07T15:28:15.381Z",
+  "data": {
+    "ok": true,
+    "ran": [
+      "local-paths",
+      "typecheck",
+      "lint",
+      "test",
+      "copilot-native",
+      "windows-compat",
+      "smoke",
+      "pkg-audit",
+      "snapshots",
+      "pij-commit-trailers"
+    ],
+    "skipped": [],
+    "results": [
+      {
+        "name": "local-paths",
+        "status": "pass",
+        "code": 0,
+        "proves": "operational files contain no user-specific absolute home paths"
+      },
+      {
+        "name": "typecheck",
+        "status": "pass",
+        "code": 0,
+        "proves": "the TypeScript surface compiles"
+      },
+      {
+        "name": "lint",
+        "status": "pass",
+        "code": 0,
+        "proves": "Biome (errors + warnings) is clean"
+      },
+      {
+        "name": "test",
+        "status": "pass",
+        "code": 0,
+        "proves": "the vitest suite passes"
+      },
+      {
+        "name": "copilot-native",
+        "status": "pass",
+        "code": 0,
+        "proves": "native Copilot extension node:test contracts pass"
+      },
+      {
+        "name": "windows-compat",
+        "status": "pass",
+        "code": 0,
+        "proves": "portable typecheck, lint, registry replacement, inbox, fake, and no-tmux CLI checks pass"
+      },
+      {
+        "name": "smoke",
+        "status": "pass",
+        "code": 0,
+        "proves": "the tmux-driven end-to-end driver scenarios pass"
+      },
+      {
+        "name": "pkg-audit",
+        "status": "pass",
+        "code": 0,
+        "proves": "third-party package vetting surfaces no new findings"
+      },
+      {
+        "name": "snapshots",
+        "status": "pass",
+        "code": 0,
+        "proves": "agent-pack snapshots have not drifted"
+      },
+      {
+        "name": "pij-commit-trailers",
+        "status": "warn",
+        "code": 0,
+        "proves": "branch-local harness commits carry derived pij attribution (advisory)",
+        "output": "{\"status\":\"warn\",\"checked\":3,\"findings\":[{\"sha\":\"4c191a88b7539a709bd563b854aef8dc18566af7\",\"missing\":[\"Pij-Prime\"],\"add\":[],\"unresolved\":[\"Pij-Prime: cannot derive commit-time identity; do not substitute the current seat\"]},{\"sha\":\"d1d8eee33b4922d591300bd2892187593b6bdd95\",\"missing\":[\"Pij-Prime\"],\"add\":[],\"unresolved\":[\"Pij-Prime: cannot derive commit-time identity; do not substitute the current seat\"]},{\"sha\":\"cf8b54979db24715965e5e2fd417899dd30c6393\",\"missing\":[\"Pij-Prime\"],\"add\":[],\"unresolved\":[\"Pij-Prime: cannot derive commit-time identity; do not substitute the current seat\"]}],\"unverified\":[\"4c191a88b7539a709bd563b854aef8dc18566af7: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime\",\"d1d8eee33b4922d591300bd2892187593b6bdd95: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime\",\"cf8b54979db24715965e5e2fd417899dd30c6393: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime\"]}\n"
+      }
+    ]
+  },
+  "next_action": "Required checks green. Review advisory attribution findings with `just pij-commit-trailers`; JSON details are in results[].output."
+}

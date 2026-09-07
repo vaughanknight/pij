@@ -1,0 +1,90 @@
+{
+  "command": "checks",
+  "status": "error",
+  "timestamp": "2026-09-07T10:06:40.670Z",
+  "error": {
+    "code": "checks-failed",
+    "message": "3 check(s) failed: test, windows-compat, smoke.",
+    "details": {
+      "results": [
+        {
+          "name": "local-paths",
+          "status": "pass",
+          "code": 0,
+          "proves": "operational files contain no user-specific absolute home paths"
+        },
+        {
+          "name": "typecheck",
+          "status": "pass",
+          "code": 0,
+          "proves": "the TypeScript surface compiles"
+        },
+        {
+          "name": "lint",
+          "status": "pass",
+          "code": 0,
+          "proves": "Biome (errors + warnings) is clean"
+        },
+        {
+          "name": "test",
+          "status": "fail",
+          "code": 1,
+          "proves": "the vitest suite passes"
+        },
+        {
+          "name": "copilot-native",
+          "status": "pass",
+          "code": 0,
+          "proves": "native Copilot extension node:test contracts pass"
+        },
+        {
+          "name": "windows-compat",
+          "status": "fail",
+          "code": 1,
+          "proves": "portable typecheck, lint, registry replacement, inbox, fake, and no-tmux CLI checks pass"
+        },
+        {
+          "name": "smoke",
+          "status": "fail",
+          "code": 1,
+          "proves": "the tmux-driven end-to-end driver scenarios pass"
+        },
+        {
+          "name": "pkg-audit",
+          "status": "pass",
+          "code": 0,
+          "proves": "third-party package vetting surfaces no new findings"
+        },
+        {
+          "name": "snapshots",
+          "status": "pass",
+          "code": 0,
+          "proves": "agent-pack snapshots have not drifted"
+        },
+        {
+          "name": "pij-commit-trailers",
+          "status": "warn",
+          "code": 0,
+          "proves": "branch-local harness commits carry derived pij attribution (advisory)",
+          "output": "{\"status\":\"warn\",\"checked\":3,\"findings\":[{\"sha\":\"4c191a88b7539a709bd563b854aef8dc18566af7\",\"missing\":[\"Pij-Prime\"],\"add\":[],\"unresolved\":[\"Pij-Prime: cannot derive commit-time identity; do not substitute the current seat\"]},{\"sha\":\"d1d8eee33b4922d591300bd2892187593b6bdd95\",\"missing\":[\"Pij-Prime\"],\"add\":[],\"unresolved\":[\"Pij-Prime: cannot derive commit-time identity; do not substitute the current seat\"]},{\"sha\":\"cf8b54979db24715965e5e2fd417899dd30c6393\",\"missing\":[\"Pij-Prime\"],\"add\":[],\"unresolved\":[\"Pij-Prime: cannot derive commit-time identity; do not substitute the current seat\"]}],\"unverified\":[\"4c191a88b7539a709bd563b854aef8dc18566af7: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime\",\"d1d8eee33b4922d591300bd2892187593b6bdd95: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime\",\"cf8b54979db24715965e5e2fd417899dd30c6393: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime\"]}\n"
+        }
+      ],
+      "failures": [
+        {
+          "name": "test",
+          "output": "    1246|   expect(runCli([\"chore\", \"run\"]).stdout).toContain(\"FULL seat:full-on\u2026\n    1247|   expect(runCli([\"chore\", \"ack\", \"full-on-delta\"]).code).toBe(0);\n\n\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af[40/57]\u23af\n\n FAIL  .pi/extensions/pij/core/chores/drive.test.ts > chore CLI drive-it proof > remove then re-add starts from a clean first observation\nAssertionError: expected 4 to be +0 // Object.is equality\n\n- Expected\n+ Received\n\n- 0\n+ 4\n\n \u276f .pi/extensions/pij/core/chores/drive.test.ts:1261:84\n    1259|\n    1260|  it(\"remove then re-add starts from a clean first observation\", () => {\n    1261|   expect(runCli([\"chore\", \"add\", \"replaceable\", \"--probe\", \"printf sta\u2026\n       |                                                                                    ^\n    1262|   expect(runCli([\"chore\", \"run\"]).stdout).toContain(\"CHANGED-VALUE sea\u2026\n    1263|   expect(runCli([\"chore\", \"ack\", \"replaceable\"]).code).toBe(0);\n\n\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af[41/57]\u23af\n\nerror: Recipe `test` failed on line 92 with exit code 1"
+        },
+        {
+          "name": "windows-compat",
+          "output": "AssertionError: expected { code: 4, \u2026(2) } to match object { code: +0, stderr: '' }\n(1 matching property omitted from actual)\n\n- Expected\n+ Received\n\n  {\n-   \"code\": 0,\n+   \"code\": 4,\n    \"stderr\": \"\",\n  }\n\n \u276f register .pi/extensions/pij/cli.inbox.integration.test.ts:127:18\n    125|  } {\n    126|   const result = runPij([\"inbox\", \"register\", \"--json\"], env);\n    127|   expect(result).toMatchObject({ code: 0, stderr: \"\" });\n       |                  ^\n    128|   return JSON.parse(result.stdout) as { id: string; existing: boolean \u2026\n    129|  }\n \u276f .pi/extensions/pij/cli.inbox.integration.test.ts:423:21\n\n\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af[9/11]\u23af\n\nwindows-compat: focused-tests failed with exit code 1.\nerror: Recipe `windows-compat` failed on line 144 with exit code 1"
+        },
+        {
+          "name": "smoke",
+          "output": "npm run smoke\nE-RS: E-RS-UNPORTED project: rs does not serve /v1/project; see docs/how/pij-rs-api.md#unsupported-status (rs at 127.0.0.1:7461)\n{\n  \"name\": \"watchdog smoke\",\n  \"acs\": [],\n  \"verdict\": \"FAIL\",\n  \"evidence\": {\n    \"isolatedHome\": \"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-watchdog-proof-<scenario>-<run>\"\n  },\n  \"reason\": \"pij watchdog pause smoke-peer --json exited 4: {\\\"ok\\\":false,\\\"command\\\":\\\"pij watchdog\\\",\\\"v\\\":2,\\\"error\\\":\\\"refused\\\",\\\"meta\\\":\\\"E-RS-UNPORTED watchdog: PIJ_DAEMON_GENERATION=legacy is retired; unset it to use rs; see docs/how/pij-rs-api.md#unsupported-status (rs at 127.0.0.1:7461)\\\",\\\"details\\\":{\\\"code\\\":\\\"E-RS-UNPORTED\\\",\\\"verb\\\":\\\"watchdog\\\",\\\"ledger_item\\\":\\\"docs/how/pij-rs-api.md#unsupported-status\\\"}}\"\n}\nerror: Recipe `smoke` failed on line 103 with exit code 1"
+        }
+      ],
+      "skipped": []
+    }
+  },
+  "next_action": "Fix the failing check(s) above (test, windows-compat, smoke), then re-run `harness checks`. Not ship/done-ready until this is green. Review advisory attribution findings with `just pij-commit-trailers`; JSON details are in results[].output."
+}

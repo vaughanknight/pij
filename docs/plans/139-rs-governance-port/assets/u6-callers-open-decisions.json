@@ -1,0 +1,26 @@
+{
+  "status": "RULINGS_RECEIVED_NATIVE_IMPLEMENTATION_PM_OWNED",
+  "base": "78531a0ba2f22469ab72289ba9ff6c1635e863e7",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6-gate",
+  "owner": "pij-lonely-ikrie",
+  "decisions": [
+    {
+      "id": "core-binary-drive-boundary",
+      "path": ".pi/extensions/pij/core/cli.test.ts",
+      "ruling": "PM permits honestly labeled existing store/core integration for the four drives, no hidden legacy executable. Preserve public success pressure in routing/native/u1 smoke and modern canary no-model refusal. Additional failures are source-inferred: full Vitest detail was discarded by the checks tail.",
+      "question": "Preserve the four retired binary drives as honestly labeled real-filesystem/library integration tests, with public v2/native proof remaining in existing routing/Rust suites and PM smoke, or require new public Rust subprocess fixtures here?",
+      "evidence": "stream/fence, dispatch/ack, canary timeout and unobservable-context-tier pass currently seed legacy Fs stores. Their verbs remain ported, but Rust has no old context-tier canary check. Retained library adapters support original domain behaviors without a hidden executable.",
+      "cross_slice": "u2-paneless-prerequisites.json supplies public native host evidence requirements, not a shared helper API. No inbox registration call exists in these six owned files; required direct paneless success remains u2-owned."
+    },
+    {
+      "id": "automatic-baton-notice-gap",
+      "path": ".pi/extensions/pij/orchestration-notice.integration.test.ts",
+      "ruling": "Prime pij-minor-unicorn: REQUIRED. Persist and publish baton.requested, then DeliveryService.send(requester, keeper, notice text). Return {request,seq,notice:delivered|queued|unverified}; no send and notice:null for missing/dissolved keeper. Keep all eight parity cases. Native integration and actual delivery proof remain outside this TS-only source fence, requested from PM.",
+      "question": "Who owns the genuine automatic keeper-notice gap? Preserve this contract rather than silently changing all receipt and message-count expectations.",
+      "evidence": "Assigned crates/daemon/src/http/governance.rs:1098-1122 only persists BatonRequest and publishes baton.requested; response is {request,seq}, without a delivery call/receipt. Eight old executable cases expect automatic notices and delivered/queued/unverified classifications. No retained exported CliBatonNoticeSink exists.",
+      "next": "Migrate all eight caller rows to prime notice projection; do not claim scripted HTTP proves native delivery or legacy filesystem count. PM must supply actual native sent/no-send parity proof."
+    }
+  ],
+  "reachable_work": ["chore refusal/store tests repaired", "bootstrap refusal/library tests repaired", "spine canonical v2/no-legacy-write and current role assertions repaired", "liveness/path source repaired", "core library migration and notice caller parity in progress"],
+  "proof": "Source only. No validation, formatting, commits, production changes or acceptance claim."
+}

@@ -1,0 +1,19 @@
+{
+  "receipt-u1-incarnation-guard.json": "7c43c9390097f81c8b4cd9d1e66668c64f096effb69d425db5511effc339fd32",
+  "u1-incarnation-guard.patch": "5185fbf2c94b5855cd3a52e1686c1c48e3746a747096baabb441a94717576e52",
+  "receipt-u2-retired-identity.json": "db18c42e60d26433520544cb0022ffc2f496a7910b131e7a3a7f0b22a24d83bc",
+  "u2-retired-identity-delta.patch": "4a2de728d50950401bb0ac71728f57875f35ba0a970a0c851e36ebc307dcfbb9",
+  "receipt-u3-canary.json": "2d7a201576f8ec49c92f04a7b4ed22623e10df4c5f12c5179350c45d0d271290",
+  "u3-canary.patch": "f6633b64ded5531607521ac5502a65154596e885e8a5af57d46305352881e636",
+  "receipt-u4.json": "b7f926f637a7677399bcdadd9244f767b9291ee5206ca98a05e9cde895de882a",
+  "receipt-u4-recovery.json": "96d000df65db44c2af34e67180c27505fdb081bfbe529a67a65f2b2d12b0df00",
+  "receipt-u4-authority.json": "4d6fe3ca4227b826e735a9b077c1eda09152f1608e7012059b66d7d0550efea1",
+  "u4-source-recovery.patch": "4ec3a57bfb245439876311e268874e37a932c07eddfaaf11940bbe705d12c89d",
+  "u4-source-authority.patch": "0d41c7104ba252d3a38f09f6a0a7a4251d8bd4a2dc358fbe5f42bfea35e1643d",
+  "contracts-delta-u4-supersede.json": "8e020caa74cb880aa0bbf3ce8b3dd1883d9b5ebd06bcdb8995c4c4f192e5b9ba",
+  "contracts-delta-u4-authority.json": "7cf93deaceb7f67e270d00cd3e8cd9eb3e49cf921bf0cd890a5df5bfc9124b4a",
+  "receipt-u5.json": "6d720197485269551b6485a4ddf1bc646ee66a29e75b604c22d3f3956e577310",
+  "u5-source.patch": "ca62b2c59724fee45e9a715deaf28154a8e60bb9823761dcaca6f0c2e7bd177a",
+  "receipt-u5-proc-refined.json": "12f35995f4c43d33216f1998776360f4dce1462ff3293cc91a7ca52f766d4f0b",
+  "u5-proc-refined.patch": "4fcf703236d1ac77da5369bf34cf485a63910d2da297cdafe8dafdee42b7d3ff"
+}

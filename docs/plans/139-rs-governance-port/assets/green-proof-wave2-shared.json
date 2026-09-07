@@ -1,0 +1,14 @@
+{
+  "at": "2026-09-07T05:28:02Z",
+  "source_base": "5a8a25013e0bffdabfbcd05438ed19febc26b891",
+  "source_status": "uncommitted composed initial wave2 plus terminal-only recovery; authority-split guard still pending",
+  "command": "/Users/jordanknight/.cargo/bin/cargo test --locked --no-fail-fast -p pij-core -p pij-store -p pij-harnesses -p pij-daemon -p pij-cli",
+  "cwd": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port",
+  "result": {
+    "passed": 774,
+    "suites": 53,
+    "ignored": 5
+  },
+  "raw": "artifact://307",
+  "scope": "Proves composed core/store/harness/HTTP/CLI behavior including actual dead-host recovery, active-roster tombstone exclusion, migration upgrade and shared-SQL answer recovery. Not final gate or mixed/fake recovery acceptance."
+}

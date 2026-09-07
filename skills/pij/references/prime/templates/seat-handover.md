@@ -8,13 +8,7 @@
 
 ## Boot path for the incoming seat
 
-1. **Pi/OMP: the extension registered the incoming seat at boot; run `pij whoami`
-   to confirm, never adopt or inbox register. Claude/Copilot/Codex: run `pij adopt
-   "$TMUX_PANE" --harness <h>` FIRST.** Then lever 0. Persist the incoming seat
-   with `pij orchestration prime set --json`; confirm its id appears in `pij list
-   --prime --here --json` before changing any writer line. Until step 5 retires
-   the outgoing marker, both seats are intentionally prime; this bounded overlap
-   prevents a discovery gap during writer transfer.
+1. **Native Pi/OMP/Copilot extension seats keep extension-owned registration.** Other supported tmux seats adopt only their exact current pane per C1. Resolve incoming identity with `pij whoami --json`, then lever 0. Persist `pij orchestration prime set <incoming-pij-id> --json`; preserve the returned designation/seq and corroborate its spine event before writer transfer. No `list --prime` or tree projection exists; display role is not designation. Until step 5 retires the outgoing marker, the explicitly ruled designation overlap prevents a discovery gap.
 2. Read and write this pack under `<government-root>`; resolve it via
    [Governance branch — the rules](../rituals/bootstrap.md#governance-branch--the-rules).
    Read authoritative store facts and remaining unmigrated prose:
@@ -34,10 +28,7 @@
    4b. Govern **store-native** from here (ruled default): self-migrate
    load-bearing facts lazily as you touch them — the rule and verb mapping
    live in [`../rituals/store-native.md`](../rituals/store-native.md).
-5. After the outgoing seat's FINAL send, retire its live marker with
-   `pij orchestration prime retire <outgoing-pij-id> --json`, verify it is absent
-   from current-only `pij list --prime --here --json`, then confirm
-   `pij tree <outgoing-pij-id> --all --json` retains it as `oldPrime: true`.
+5. After the outgoing seat's FINAL send, run `pij orchestration prime retire <outgoing-pij-id> --json`. Verify its returned `prime.state` is retired and retain the seq; read `pij spine events --peer <outgoing-pij-id> --json` for the historical record. No `oldPrime` tree/list field is implied. This retires designation, not the process or pane.
 
 ## Live state inherited
 

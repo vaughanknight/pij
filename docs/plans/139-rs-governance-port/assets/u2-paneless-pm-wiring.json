@@ -1,0 +1,29 @@
+{
+  "status": "PM_COMPOSITION_REQUIRED_NOT_APPLIED_BY_U2",
+  "owner": "pij-lonely-ikrie",
+  "reason": "Existing native paneless registration meta still says every client must export PIJ_SESSION_ID; verified external shim now resolves host/session without export.",
+  "edits": [
+    {
+      "path": "crates/daemon/src/http/mod.rs",
+      "symbol": "register",
+      "location": "format string inside descriptor.pane.is_none().then near baseline750-754",
+      "before": "export PIJ_SESSION_ID={} \u2014 this paneless seat has no observable pane, so subsequent commands require the registered id",
+      "after": "verified external shim callers resolve this paneless seat from their native host/session automatically; other clients must pass id {0} explicitly or export PIJ_SESSION_ID={0}",
+      "preserve": "Keep the existing descriptor.id formatting argument, Option/meta condition, full envelope, registration logic and native response fields unchanged."
+    },
+    {
+      "path": "crates/daemon/src/http/tests.rs",
+      "symbol": "paneless_registration_returns_the_identity_export_it_requires",
+      "location": "exact meta assertion near baseline1410",
+      "before": "export PIJ_SESSION_ID=pij-paneless \u2014 this paneless seat has no observable pane, so subsequent commands require the registered id",
+      "after": "verified external shim callers resolve this paneless seat from their native host/session automatically; other clients must pass id pij-paneless explicitly or export PIJ_SESSION_ID=pij-paneless",
+      "preserve": "Existing success and explicit native identity/export contract remain asserted; wording recognizes the newly supported ambient bridge rather than downgrading admission."
+    }
+  ],
+  "unchanged_shared_files": [
+    "crates/cli/src/client.rs",
+    "Envelope raw_json",
+    "docs/how/pij-platform.md"
+  ],
+  "proof": "PM applies these two wording edits and validates composed artifact; u2 did not edit either file or run tests."
+}

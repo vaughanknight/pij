@@ -1,0 +1,181 @@
+{
+  "status": "READY_TO_VALIDATE",
+  "acceptance": "SOURCE_ONLY_NOT_ACCEPTED",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6-gate",
+  "base": "78531a0ba2f22469ab72289ba9ff6c1635e863e7",
+  "branch": "139-rs-governance-port-u6-gate",
+  "identity": {
+    "seat": "pij-general-miriam",
+    "parent": "pij-lonely-ikrie",
+    "harness": "omp",
+    "model": "github-copilot/gpt-6-astra-1m",
+    "effort": "high",
+    "session": "01a07acd-40cf-7000-8230-1ce08414a55c",
+    "pane": "%3863",
+    "registered_folder": "/Users/jordanknight/pi-hacking/pij",
+    "registration_preserved": true
+  },
+  "release": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/u6-callers-gate-task.json",
+  "contract": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/gate-repair-contract.json",
+  "rulings": [
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/gate-repair-rulings.json",
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6-gate/docs/plans/139-rs-governance-port/assets/u6-callers-open-decisions.json"
+  ],
+  "basis": "Apply the original six-file patch against78531, then the listed incremental amendment. If the original delivery is already composed, apply only the amendment; do not replay it or the original61-file handoff. changed_paths records final post-amendment bytes.",
+  "patch": {
+    "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6-gate/docs/plans/139-rs-governance-port/assets/u6-callers-gate-source.patch",
+    "sha256": "8f2b6512a757e781ff3967a2727cb3a680cd95d095dd6524f2a8acffbf156865",
+    "bytes": 102585,
+    "changed_source_files": 6
+  },
+  "changed_paths": {
+    ".pi/extensions/pij/core/chores/drive.test.ts": {
+      "preimage_sha256": "c34e6f757edc53cf686f84fce88a7414e45e48555f6cb959c6e5ecfbcf322d8d",
+      "postimage_sha256": "e75b35f650ba058e40ec37dfd2cc76c57d3139fb47e5072e994123671b04bdd7",
+      "bytes": 49150,
+      "preimage_path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6-gate/docs/plans/139-rs-governance-port/assets/u6-callers-preimages/core__chores__drive.test.ts.preimage"
+    },
+    ".pi/extensions/pij/core/cli.test.ts": {
+      "preimage_sha256": "58e4aa6863ce5e32822c7724e8b26c7c433f85e374e6777f75b3b6cf26085a71",
+      "postimage_sha256": "72b842c3f9da01af1e3bee5ab7c193e0b7cce5fa55e87efab4013d448546935e",
+      "bytes": 351670,
+      "preimage_path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6-gate/docs/plans/139-rs-governance-port/assets/u6-callers-preimages/core__cli.test.ts.preimage"
+    },
+    ".pi/extensions/pij/acceptance-sweep.test.ts": {
+      "preimage_sha256": "201cfc4cf334129b70a69c96a67def58ac5261551d80bdadd7527cb7a168b482",
+      "postimage_sha256": "7805955d06c61200a5ecc9074d815fcbea297b8cdb91b994371270339244be3c",
+      "bytes": 30942,
+      "preimage_path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6-gate/docs/plans/139-rs-governance-port/assets/u6-callers-preimages/acceptance-sweep.test.ts.preimage"
+    },
+    ".pi/extensions/pij/core/liveness-cost.test.ts": {
+      "preimage_sha256": "dcfdd02e057daf5c95971b337c180b9499bddd1ab82eac6920b3b6c56ff13d6e",
+      "postimage_sha256": "6f55e9ec7291fb9c0055490436ef591356612f04eacb5d35fbbf11bd37cb55b6",
+      "bytes": 14759,
+      "preimage_path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6-gate/docs/plans/139-rs-governance-port/assets/u6-callers-preimages/core__liveness-cost.test.ts.preimage"
+    },
+    ".pi/extensions/pij/daemon.bootstrap.test.ts": {
+      "preimage_sha256": "25ba44ab6e3fd2c914b386b669b141ae927c3c43e54fcc55af993eb7cd9894a6",
+      "postimage_sha256": "5ee673ec1c97e1c12f2c01965f646e70f844ea572fbcc441d441bdebd1cf2aaf",
+      "bytes": 16795,
+      "preimage_path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6-gate/docs/plans/139-rs-governance-port/assets/u6-callers-preimages/daemon.bootstrap.test.ts.preimage"
+    },
+    ".pi/extensions/pij/orchestration-notice.integration.test.ts": {
+      "preimage_sha256": "23df8734f868d26f0586fdfec576c60e42ea7635faa724beaf5b57f05a059d78",
+      "postimage_sha256": "8612374dff364c1e76d9f2cdf821411755ad357e6b863ceb06278f8b3a11df5b",
+      "bytes": 8170,
+      "preimage_path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6-gate/docs/plans/139-rs-governance-port/assets/u6-callers-preimages/orchestration-notice.integration.test.ts.preimage"
+    }
+  },
+  "findings_to_repairs": {
+    ".pi/extensions/pij/core/chores/drive.test.ts": "Retained pure cases plus real store/probe integration. Public chore refusals cover scopes/identity/generation with unchanged tree metadata/bytes and process/probe tripwires; no second executable.",
+    ".pi/extensions/pij/daemon.bootstrap.test.ts": "Retained runDaemon/FsFocusStore library behavior. Retired cli.ts home-import scrape replaced by public daemon/path refusal with unchanged private tree and responsive inert lock holder without signals/network connections.",
+    ".pi/extensions/pij/acceptance-sweep.test.ts": "Preserved historical pure-store sweep; native canonical spine-render text/cursor fixture drives actual shim via private scripted HTTP with exact bytes and no legacy write. Current kickoff role/parent assertions replace retired link/--role command.",
+    ".pi/extensions/pij/core/cli.test.ts": "PM-approved migration of four old bin drives to existing real Fs stores/channel/worktree and core dispatch: git paths, fences, durable packet SHA/ack, wait intent and historical context-tier behavior preserved. Actual public help asserts rs route; no hidden executable. Existing pure suites untouched.",
+    ".pi/extensions/pij/core/liveness-cost.test.ts": "Retained library dispatch observes exact ProcessPort probe arrays: list once per selected row, state twice for target only, across registry size/filter/output modes. Real NodeProcess signal-zero spy and full-tree per-pid guards retained; retired cli.ts inventory entry removed.",
+    ".pi/extensions/pij/orchestration-notice.integration.test.ts": "All eight keeper cases retained as explicitly scripted caller-wire parity for prime-required data.notice, with exact complete raw envelope, method/argv/caller/auth and unchanged legacy decoys. No copied sink; native sends, queue persistence and classification are expressly NOT proven here. Follow-up: idle Pi is queued until ReaderRead (#374); stale case means native Dead/Recycled incarnation evidence, never heartbeat-age retention."
+  },
+  "evidence_ceiling": {
+    "observed": "PM full gate reported57 failed tests; retained cache names seven failing files, six assigned here. Shared gate result and its chore40/41 tail were read, not rerun.",
+    "source_inferred": "Per-test classifications beyond retained tail are inferred from assigned source. PM confirmed complete original Vitest detail was discarded by checks25-line tail.",
+    "worker_validation": "NONE: no builds, tests, typecheck, lint, formatter, diagnostics requests, harness gates, commits or hooks. Source reads/edits, LSP navigation, preimages, hashes and peer coordination only.",
+    "scripted_hosts": "Private scripted HTTP in caller tests is wire-boundary proof only. Private inert process in administration refusal tests is a signal/ownership tripwire, not a model or daemon acceptance proof."
+  },
+  "paneless": {
+    "prerequisites": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u2-gate/docs/plans/139-rs-governance-port/assets/u2-paneless-prerequisites.json",
+    "disposition": "No public inbox register caller occurs in the six owned files. Existing pure ambient identity tests retained; u2 owns real host admission and full v2 data.id/pull claims. No legacy FsRegistry/FsChannel fixture is presented as Rust registration."
+  },
+  "native_notice_required": {
+    "status": "REQUIRED_PRODUCT_CHANGE_AND_NATIVE_PROOF_OUTSIDE_U6_TS_FENCE",
+    "ruling_owner": "pij-minor-unicorn",
+    "composition_owner": "pij-lonely-ikrie",
+    "source_gap": "crates/daemon/src/http/governance.rs:1098-1122 at78531 persisted/published baton.requested but did not call DeliveryService.send or project notice.",
+    "required_mechanism": "Persist request and publish baton.requested, then DeliveryService.send(from=requester,to=keeper,notice text). Response {request,seq,notice:delivered|queued|unverified}. Missing/dissolved keeper: no send, notice:null. PM notified; scripted caller tests cannot discharge this requirement.",
+    "parity_rows": [
+      {
+        "keeper": "idle live pi",
+        "notice": "queued",
+        "native_send_calls": 1,
+        "original_persisted_notice_messages": 1,
+        "reason": "#374 honest-receipt rule: idle Pi extension stream is queued until ReaderRead; idle does not prove delivery."
+      },
+      {
+        "keeper": "working live pi",
+        "notice": "queued",
+        "native_send_calls": 1,
+        "original_persisted_notice_messages": 1
+      },
+      {
+        "keeper": "fresh live control-plane",
+        "notice": "queued",
+        "native_send_calls": 1,
+        "original_persisted_notice_messages": 1
+      },
+      {
+        "keeper": "stale native incarnation (legacy control-plane case)",
+        "notice": "unverified",
+        "native_send_calls": 1,
+        "original_persisted_notice_messages": 1,
+        "reason": "Prime-approved Recycled incarnation witness from existing proc_start-aware core liveness, not restored heartbeat-age policy."
+      },
+      {
+        "keeper": "dead",
+        "notice": "unverified",
+        "native_send_calls": 1,
+        "original_persisted_notice_messages": 1
+      },
+      {
+        "keeper": "missing",
+        "notice": null,
+        "native_send_calls": 0,
+        "original_persisted_notice_messages": 0
+      },
+      {
+        "keeper": "dissolved pull",
+        "notice": null,
+        "native_send_calls": 0,
+        "original_persisted_notice_messages": 0
+      },
+      {
+        "keeper": "live bound pull",
+        "notice": "queued",
+        "native_send_calls": 1,
+        "original_persisted_notice_messages": 1
+      }
+    ],
+    "persistence_note": "Original eight cases checked persisted notice counts as well as receipt classification. Counts are retained in the rows for native parity ownership; TS scripted replies do not measure either actual sends or native persistence.",
+    "implementation_owner": "pij-adjacent-falcon (u4), fresh78531 worktree; confirmed by PM",
+    "pm_confirmation": "Migrate all8 TS notice callers to required response, retain states and missing/dissolved no-send semantics. Scripted HTTP proves wire only. u4 owns native implementation plus8-case persistence/delivery proof. PM integrates shared fixture and removes unsupported-notice ledger claim after native proof.",
+    "honest_receipt_followup": "Prime follow-ups relayed by pij-adjacent-falcon: idle live Pi is queued until ReaderRead; confirmed socket/native delivery is delivered. Unverified iff existing core liveness returns Dead or Recycled (proc_start-aware). Active targets use actual queued/delivered receipt; missing/dissolved remain null. All original send and persisted-message counts unchanged."
+  },
+  "public_proof_ownership": {
+    "owner": "pij-electoral-orlandine and PM native suites",
+    "u1_source_ack": "harness/scripts/smoke.ts::runTeamScaffoldSmoke preserves real private Rust project/stream create+close, fence set+show, dispatch->recipient inbox read ACK->packet SHA ACK, task/node/spine receipts. canary --wait=20 must refuse E-RS-CANARY-PENDING with no stored positive canary. Protocol hosts are not models. u1 reported no validation run.",
+    "historical_tier": "The retained core library unobservable-context-tier success is not public Rust/model evidence."
+  },
+  "pm_next": [
+    "Apply six-file patch after checking recorded preimage basis; source is paused and unformatted.",
+    "Compose required native keeper-notice behavior and real eight-case sent/no-send/persistence proof; do not count scripted TS wire rows as native parity.",
+    "Compose u2 paneless and u1 actual smoke sources; PM owns docs/how/pij-platform.md consistency.",
+    "After the shared source barrier, run just format and canonical type/lint/test/full gate. Targeted files are exactly changed_paths; no worker validation has been performed."
+  ],
+  "friction": [
+    "Native pij rulings sometimes landed in internal subagents; all siblings were told to forward verbatim to Main. PM encoded durable gate-repair-rulings.json so intercepted turns do not erase decisions.",
+    "One scout returned stale main/index evidence for the worktree. Rejected it after confirming assigned cli.ts187 lines and native governance.rs2306 lines; corrected findings used absolute assigned paths. Those stale claims were not used in source.",
+    "checks retained only a25-line failure tail. Proposed encoding: preserve complete raw per-sensor output alongside summaries so scoped repairs have observed, not reconstructed, diagnostics."
+  ],
+  "preservation": "No edits to Rust, routing, cli.inbox.integration.test.ts, harness smoke, dependencies/settings/links, previous worktrees, production daemon or observation buffers. No production/inbox transport-log reads. Source-only readiness is not gate/model/chainglass acceptance.",
+  "amendments": [
+    {
+      "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6-gate/docs/plans/139-rs-governance-port/assets/u6-notice-honest-receipt-amendment.patch",
+      "sha256": "55a0c768a0764d93c3d497e8b056c2b54812474d6a1610a6542be28196ee4ca8",
+      "bytes": 1817,
+      "source_path": ".pi/extensions/pij/orchestration-notice.integration.test.ts",
+      "source_preimage_sha256": "5559ef5b2ab8456e29c33f670a6450682baaf682138c597439deb51fb28cd52d",
+      "source_postimage_sha256": "8612374dff364c1e76d9f2cdf821411755ad357e6b863ceb06278f8b3a11df5b",
+      "source_preimage_path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6-gate/docs/plans/139-rs-governance-port/assets/u6-notice-amendment-preimage.ts.preimage",
+      "previous_receipt_path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6-gate/docs/plans/139-rs-governance-port/assets/u6-callers-gate-receipt-before-notice-amendment.json.preimage",
+      "previous_receipt_sha256": "d88c39d38fc6df7a46fca8534402c5e5b420af45a56d0a756d6b41cc8a8fb4ac",
+      "scope": "Only two authorized notice row labels, idle-Pi expected notice, and two rationale comments. All eight cases and every send/persistence count preserved. No validators/formatters/commits."
+    }
+  ]
+}

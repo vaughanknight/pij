@@ -1,0 +1,167 @@
+{
+  "dd": {
+    "schema": "pij-team/packet"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Coder u4 — anomalies view, report verify, decisions",
+        "role": "coder",
+        "plan": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4/docs/plans/139-rs-governance-port/plan.dd.json",
+        "seat": "unbound; registry identity required at canary",
+        "updated": "2026-09-07"
+      }
+    },
+    {
+      "name": "mission",
+      "value": "Build exactly u4: Derive anomaly rows (status-stale, unverified-done, open-question, unacked-dispatch, dead-seat) from rs data; `report verify`; decision rows from `report question`, `pij-rs decisions`, `pij-rs answer` delivering to the asker via /v1/send. No product scope decisions; ask PM."
+    },
+    {
+      "name": "instructions",
+      "value": [
+        {
+          "id": "i0",
+          "text": "FIRST set cwd /Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4; ABSOLUTE paths for all file tools because spawn root is main. Load BOTH pij and builder skills. Read this packet, your impl-guide row, and canonical governance routes/events JSON before proposing changes."
+        },
+        {
+          "id": "i1",
+          "text": "Canary + ACK before code: run pij whoami and quote exact output, quote actual OMP footer model/effort, then numbered implementation plan and evidence-backed seam questions via pij_send to pij-lonely-ikrie. Model is github-copilot/gpt-6-astra-1m high on OMP. Wait for PM to rule ack."
+        },
+        {
+          "id": "i2",
+          "text": "Author named baseline-compatible HTTP/CLI regressions and unit tests FIRST. Consume canonical contract fixtures rather than restating schemas. No compile-error-only RED; regression must run against old route behavior. PM owns RED/GREEN execution receipts."
+        },
+        {
+          "id": "i3",
+          "text": "CONCURRENT EDIT WAVE: skip every build/test/formatter/linter/harness boot/check and do not commit. Implement source/tests, then report READY_TO_VALIDATE with exact commands and a snap-in recipe and HOLD. PM validates after every editing seat pauses, composes, and commits. READY is not DONE."
+        },
+        {
+          "id": "i4",
+          "text": "Stay in your owned fence. Migration owner for this unit: 0015; use existing SqliteOrchestration/shared pool, never duplicate SQL in daemon/core. PM owns all common lib.rs/module/Route/Services/CLI wiring and dependency metadata."
+        },
+        {
+          "id": "i5",
+          "text": "Follow governance-routes.json#isolation for any later runtime proof: private port/state-dir/HOME/Claude+XDG homes/TMUX socket for daemon AND clients. Never main writes, main node_modules writes, npm install/ci in main, port7461 fixtures, global links/settings writes, production restart/bounce, flowspace3 daemon, or omp update. Never inspect pij inbox logs."
+        },
+        {
+          "id": "i6",
+          "text": "Use flowspace3 search before meaning-shaped discovery (client only), exact grep for identifiers, LSP for symbols but scope-check: worktree LSP can index main and falsely return zero refs. Record friction with harness observe; never drain or clear buffers."
+        },
+        {
+          "id": "i7",
+          "text": "Report start/end via pij-rs report now; messages via pij_send to PM. OMP may misroute live parent messages into internal scouts: explicitly relay to main context. Do not infer silence means approval."
+        },
+        {
+          "id": "i8",
+          "text": "READY receipt assets/receipt-u4.json includes changed paths, constructor signatures/call order/CLI Route match arms, named tests and pre-fix RED strategy, toolchain versions, and ASSUMPTIONS about sibling state/order/ownership. No stubs, fake fallbacks, unimplemented subverbs, or undocumented scope cuts."
+        },
+        {
+          "id": "i9",
+          "text": "Use u3 bulk methods on SqliteOrchestration: list_dispatches(None)->Vec<Dispatch>, list_tasks(None)->Vec<TaskAssignment>, list_projects(), list_streams(None), list_roles(). Consume shared core row DTOs; no per-seat N+1 or duplicate governance store. Decisions own migration0015 and store/decisions.rs."
+        },
+        {
+          "id": "i10",
+          "text": "Anomalies are derived, not persisted. One named core 30min status-stale constant, strict > threshold, legacy parked-seat suppression and exact legacy detail; separate existing 10min stderr nudge unchanged. Real seq evidence and exact relay wrapper required. Five requested kinds all implemented."
+        },
+        {
+          "id": "i11",
+          "text": "report verify must bind to specific latest done seq and resolved parent; subsequent done reopens anomaly. Do not mutate done into verified state without receipt. Question persists an open decision; report clear does not silently resolve it; overdue decisions surface for responsible parent."
+        },
+        {
+          "id": "i12",
+          "text": "Answer auth is resolved asker/self or recorded parent. Prime ruling: self-answer closes via decision.answered with answerer and answer_msg_id=null, NO redundant push. Different authorized answerer pushes from answerer to asker via existing DeliveryService; /send from==to refusal unchanged. Preserve stable message linkage/idempotence; refusal does not silently close a decision."
+        },
+        {
+          "id": "i13",
+          "text": "Core/HTTP/service tests must cover unrelated-answer refusal, self-answer no-push, actual other-answer inbox message, duplicate/conflicting answer, persisted reopen/parent view, verify-after-new-done. PM cross-unit proof lives daemon/tests/governance_composition.rs; do not edit it."
+        },
+        {
+          "id": "i14",
+          "text": "Existing crates/core/src/anomalies.rs and tests already contain pure rs anomaly logic (not yet the requested HTTP governance surface). Reuse/cleanly migrate that implementation, never create a competing detector. Current prime ruling overrides older clock-only/parked-detection semantics: anomaly threshold30min with parked suppression, stderr nudge10min remains distinct. Preserve existing supported anomaly/disposition capabilities unless a real conflict is ruled; raise it at ACK."
+        },
+        {
+          "id": "i15",
+          "text": "Current shared publication API is EventBus::publish_committed<T,F> over owned Send+static Future<Result<(Event,T)>>, cancellation-shielded after lock admission; Sqlite store callback returns event.seq after atomic commit. Destructive state/event transitions must be atomic; partial failures allowed only non-destructive idempotent operations whose surviving row reconstructs the event. Role assert/unset now use this atomic seam too. Coherent fake event/governance persistence is SQL in-memory, not an independent FakeSpine."
+        }
+      ]
+    },
+    {
+      "name": "working_with",
+      "value": [
+        {
+          "id": "w1",
+          "text": "The PM is your interface: acks, questions, done reports. You never message prime or Jordan directly unless the PM's seat is dead."
+        },
+        {
+          "id": "w2",
+          "text": "DEFER to the PM: interface changes (they affect sibling units), dependency additions, schema/migration changes, anything outside your paths."
+        },
+        {
+          "id": "w3",
+          "text": "Your evidence outranks the packet: if the brief is wrong, say so at ack or stop-and-ask with the measurement — do not silently code around it."
+        }
+      ]
+    },
+    {
+      "name": "scope",
+      "value": {
+        "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4",
+        "branch": "139-rs-governance-port-u4",
+        "fence": "crates/store/migrations/0015_*.sql; crates/store/src/decisions.rs (new); crates/daemon/src/http/{anomalies,decisions}.rs (new); crates/core/src/{anomalies,decisions}.rs (new); crates/daemon/src/http/report.rs (verify/question leaves); crates/cli/src/{anomalies,decisions}.rs (new); PM owns shared wiring.",
+        "forbidden_note": "Main/other worktrees/node_modules/global links/settings/prod daemon/government writes forbidden. Never hand-write .the-flow-state.json, the-flow.json, the-flow.md. Parent owns composition and final proof; no PR/merge/deploy."
+      }
+    },
+    {
+      "name": "done_bar",
+      "value": [
+        {
+          "id": "d1",
+          "text": "Every owned contract behavior implemented; fixtures/tests defend real boundary and refusal cases."
+        },
+        {
+          "id": "d2",
+          "text": "Named baseline-compatible regression plus exact PM validation commands; READY_TO_VALIDATE never implies green."
+        },
+        {
+          "id": "d3",
+          "text": "After edit barrier PM executes proof, composes, and runs full harness checks; production and chainglass are prime-owned."
+        },
+        {
+          "id": "d4",
+          "text": "Complete snap-in recipe + assumptions + changed paths + unharvested buffer supplied; no own merge/deploy."
+        }
+      ]
+    },
+    {
+      "name": "refs",
+      "value": [
+        {
+          "id": "r0",
+          "path": "skill://pij-team/TENETS.md",
+          "note": "doctrine"
+        },
+        {
+          "id": "r1",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4/docs/plans/139-rs-governance-port/impl-guide.dd.json",
+          "note": "binding unit/wave"
+        },
+        {
+          "id": "r2",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4/docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json",
+          "note": "requests/responses/refusals/isolation"
+        },
+        {
+          "id": "r3",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4/docs/plans/139-rs-governance-port/assets/contracts/governance-events.json",
+          "note": "event payloads/live ordering"
+        },
+        {
+          "id": "r4",
+          "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4/docs/plans/139-rs-governance-port/assets/tasks/phase-1/execution.log.md",
+          "note": "ruled seams and real environment receipts"
+        }
+      ]
+    }
+  ]
+}

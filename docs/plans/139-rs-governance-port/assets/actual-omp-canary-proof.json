@@ -1,0 +1,159 @@
+{
+  "at": "2026-09-07T08:03:20Z",
+  "source_base": "e22833b0d0caf00d95346008dab1587005d0173d",
+  "source_note": "Binary includes current uncommitted u2 identity projection completion; exact binary hash below",
+  "binary_sha256": "e1462a73c505e4645dc23e37e1da020ec8caf621f5fbd7d9e03a943f4a3d7c1f",
+  "daemon": {
+    "address": "127.0.0.1:62668",
+    "state_dir": "/private/tmp/p139-model-canary.F3t5Uz/state",
+    "socket": "/tmp/p139-model-canary.F3t5Uz/tmux.sock",
+    "pid": 36702,
+    "offline": false
+  },
+  "registration": {
+    "seq": 18,
+    "descriptor": {
+      "id": "pij-entire-zakalwe",
+      "harness": "omp",
+      "session": "01a07adf-437a-7000-8fd7-7d7db6852ad0",
+      "pane": "%3",
+      "proc": {
+        "pid": 41894,
+        "proc_start": 20260907175726
+      },
+      "folder": "/private/tmp/p139-model-canary.F3t5Uz/work",
+      "state": "idle",
+      "semantic_state": null,
+      "role": null,
+      "parent": "pij-thoughtful-emu",
+      "relay": false,
+      "cross_session_inbound_accept": false,
+      "native_extension_delivery": false,
+      "spawn_id": "s-7a840500bd64f85847cb261cbf6f9966",
+      "model": "github-copilot/gpt-6-astra-1m",
+      "effort": "high"
+    }
+  },
+  "packet": {
+    "expected_model": "github-copilot/gpt-6-astra-1m",
+    "instruction": "Read this exact nonce-bearing packet and acknowledge its dispatch via the pushed pij ack instruction; do not acknowledge another packet.",
+    "kind": "pij-canary",
+    "nonce": "nonce-c2c39ddbdbd6db68036e72a39eb4cc1e",
+    "process": {
+      "pid": 41894,
+      "proc_start": 20260907175726
+    },
+    "recipient": "pij-entire-zakalwe",
+    "session": "01a07adf-437a-7000-8fd7-7d7db6852ad0"
+  },
+  "packet_sha256": "c865652805ac865bbba543aa80ea7ccb3578eecda8fb6c16115bdf0bf951950a",
+  "pass_frame": {
+    "type": "event",
+    "machine": "JordansacStudio.localdomain",
+    "cursor": 27,
+    "event": {
+      "v": 1,
+      "at": 1788767938647,
+      "kind": "dispatch",
+      "seat": "pij-entire-zakalwe",
+      "payload": "{\"action\":\"canary-passed\",\"actor\":\"pij-thoughtful-emu\",\"record\":{\"ack\":{\"at\":1788767935624,\"packet_sha256\":\"c865652805ac865bbba543aa80ea7ccb3578eecda8fb6c16115bdf0bf951950a\",\"seat\":\"pij-entire-zakalwe\"},\"acknowledged_at\":1788767935624,\"canary\":{\"evaluator\":\"pij-thoughtful-emu\",\"model\":\"github-copilot/gpt-6-astra-1m\",\"nonce\":\"nonce-c2c39ddbdbd6db68036e72a39eb4cc1e\",\"passed_at\":1788767938647},\"created_at\":1788767901782,\"delivered_at\":1788767901787,\"from\":\"pij-thoughtful-emu\",\"id\":\"dispatch-451558ccdaa848bce0c9605f30341fa1\",\"msg_id\":\"dispatch-451558ccdaa848bce0c9605f30341fa1\",\"packet_path\":\"/private/tmp/p139-model-canary.F3t5Uz/state/pane-signals/governance-packets/nonce-c2c39ddbdbd6db68036e72a39eb4cc1e.json\",\"packet_sha256\":\"c865652805ac865bbba543aa80ea7ccb3578eecda8fb6c16115bdf0bf951950a\",\"state\":\"acked\",\"to\":\"pij-entire-zakalwe\"}}"
+    }
+  },
+  "decoded_pass": {
+    "action": "canary-passed",
+    "actor": "pij-thoughtful-emu",
+    "record": {
+      "ack": {
+        "at": 1788767935624,
+        "packet_sha256": "c865652805ac865bbba543aa80ea7ccb3578eecda8fb6c16115bdf0bf951950a",
+        "seat": "pij-entire-zakalwe"
+      },
+      "acknowledged_at": 1788767935624,
+      "canary": {
+        "evaluator": "pij-thoughtful-emu",
+        "model": "github-copilot/gpt-6-astra-1m",
+        "nonce": "nonce-c2c39ddbdbd6db68036e72a39eb4cc1e",
+        "passed_at": 1788767938647
+      },
+      "created_at": 1788767901782,
+      "delivered_at": 1788767901787,
+      "from": "pij-thoughtful-emu",
+      "id": "dispatch-451558ccdaa848bce0c9605f30341fa1",
+      "msg_id": "dispatch-451558ccdaa848bce0c9605f30341fa1",
+      "packet_path": "/private/tmp/p139-model-canary.F3t5Uz/state/pane-signals/governance-packets/nonce-c2c39ddbdbd6db68036e72a39eb4cc1e.json",
+      "packet_sha256": "c865652805ac865bbba543aa80ea7ccb3578eecda8fb6c16115bdf0bf951950a",
+      "state": "acked",
+      "to": "pij-entire-zakalwe"
+    }
+  },
+  "reap_dry_run": {
+    "ok": true,
+    "command": "pij reap",
+    "v": 2,
+    "data": {
+      "after": 4,
+      "before": 4,
+      "candidates": [
+        {
+          "pane": "absent",
+          "process": "dead",
+          "reason": "process-dead-and-pane-absent",
+          "seat": "pij-yawning-gabriel"
+        }
+      ],
+      "dry_run": true,
+      "reaped": [],
+      "unverifiable": []
+    }
+  },
+  "reap_run": {
+    "ok": true,
+    "command": "pij reap",
+    "v": 2,
+    "data": {
+      "after": 3,
+      "before": 4,
+      "candidates": [
+        {
+          "pane": "absent",
+          "process": "dead",
+          "reason": "process-dead-and-pane-absent",
+          "seat": "pij-yawning-gabriel"
+        }
+      ],
+      "dry_run": false,
+      "reaped": [
+        {
+          "seat": "pij-yawning-gabriel",
+          "seq": 28
+        }
+      ],
+      "unverifiable": []
+    }
+  },
+  "prior_failed_attempts": [
+    "Tool-shell caller identity contamination was refused before dispatch; fixed by env-clear client wrapper",
+    "Initial5m OMP deadline expired during private onboarding; message delivered but model never ran; fresh post-setup session used"
+  ],
+  "proof_ceiling": "Actual authenticated OMP model turn, native extension delivery, real packet read+SHA ack, fresh bind observation and live pass event. Not a claim of perfect recipient instruction compliance.",
+  "privacy_note": "Recipient performed unwanted printenv during discovery. Raw native transcript and fixture logs are not retained; no credential value is copied into this receipt or repository. Global credential DB was read-only; credential stayed out of argv. Teardown follows.",
+  "teardown": {
+    "daemon": "hub stop p139-model-daemon: exited143",
+    "tmux_and_models": "hub stop p139-model-tmux: exited0",
+    "owned_pid_absence": {
+      "pids": [
+        81685,
+        41894,
+        36702,
+        9265
+      ],
+      "probe": "ps with explicit PIJ_PID/PIJ_LSTART/PIJ_COMM headers",
+      "exit": 1,
+      "stdout": "PIJ_PID PIJ_LSTART PIJ_COMM",
+      "stderr": ""
+    },
+    "fixture_deleted": true,
+    "raw_transcripts_retained": false,
+    "observation_buffers_found": 0
+  }
+}

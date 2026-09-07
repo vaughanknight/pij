@@ -1,0 +1,163 @@
+{
+  "unit": "u4",
+  "amendment": "terminal-only-answer-supersede",
+  "apply_to": "PM-owned canonical governance-routes.json and governance-events.json; do not replace entire fixtures",
+  "route": {
+    "method": "POST",
+    "path": "/v1/answer",
+    "append_cases": [
+      {
+        "id": "decision-answer-supersede",
+        "request": {
+          "decision": "decision-139-proof",
+          "answer": "u4 owns recovery; u3 retains migration 0014",
+          "caller": {
+            "TMUX_PANE": "%10",
+            "cwd": "/work/project"
+          },
+          "supersede": true
+        },
+        "shim_request": {
+          "argv": [
+            "answer",
+            "--supersede",
+            "decision-139-proof",
+            "u4 owns recovery; u3 retains migration 0014"
+          ],
+          "caller": {
+            "TMUX_PANE": "%10",
+            "cwd": "/work/project"
+          }
+        },
+        "response": {
+          "ok": true,
+          "command": "pij answer",
+          "v": 2,
+          "data": {
+            "decision": {
+              "id": "decision-139-proof",
+              "asked_by": "pij-worker",
+              "parent": "pij-previous-parent",
+              "question": "Which branch owns the shared migration?",
+              "state": "answered",
+              "asked_at": 1788739200000,
+              "question_seq": 101,
+              "answer": "u4 owns recovery; u3 retains migration 0014",
+              "answered_by": "pij-parent",
+              "answered_at": 1788739200006,
+              "answer_msg_id": "decision-139-proof-answer-102"
+            },
+            "seq": 103
+          }
+        }
+      }
+    ],
+    "append_invariants": [
+      "Only the current recorded parent may use answer --supersede <decision> <answer> (typed supersede=true); the asker, former parent and unrelated seats cannot supersede.",
+      "Supersede is restricted to a terminal non-delivered answer: failed/no-queue prepared intent or an already-recorded terminal expired-unknown outcome. Never use elapsed time to infer expiry.",
+      "An answer in transit cannot be withdrawn; wait for its terminal outcome. Pending/running jobs and direct-delivery reservations refuse E-RS-ANSWER-IN-TRANSIT with old answer_msg_id and job_state; delivered/acked answers refuse E-RS-ANSWER-DELIVERED.",
+      "Existing delivery claim expiry returns to pending, not terminal expired-unknown, and therefore remains refused. No queue cancellation, withdrawal, new transport, or custom retry is introduced.",
+      "The decision.answer-superseded event and fresh open prepared row commit atomically. The event retains the old answer_msg_id, answered_by and answer under superseded. A new answer_msg_id derives from the actual allocated supersession event seq, never MAX/COUNT guesses.",
+      "Ordinary identical retry uses the newly persisted answer_msg_id. Final closure verifies that exact msg id; an obsolete completion cannot close the replacement answer.",
+      "Delivery proof includes durable delivery.outcome history and done queue rows after bounded delivered-id eviction. A surviving pre-injection reservation with no completed audit is conservatively in transit.",
+      "DeliveryOutcome::Refused is terminal (core/model.rs); its completed audit permits explicit replacement even if the old pre-injection marker remains. DeliveryOutcome::Held is pending and vetoes supersede even after marker eviction. Every replacement still passes ordinary DeliveryService acceptance and may itself be refused."
+    ]
+  },
+  "merge_refusals": {
+    "answer_in_transit_pending": {
+      "http_status": 409,
+      "cli_exit_nonzero": true,
+      "response": {
+        "ok": false,
+        "command": "pij answer",
+        "v": 2,
+        "error": "refused",
+        "meta": "E-RS-ANSWER-IN-TRANSIT an answer in transit cannot be withdrawn; wait for its terminal outcome",
+        "details": {
+          "decision": "decision-139-proof",
+          "answer_msg_id": "decision-139-proof-answer",
+          "job_state": "pending",
+          "code": "E-RS-ANSWER-IN-TRANSIT"
+        }
+      }
+    },
+    "answer_in_transit_claimed": {
+      "http_status": 409,
+      "cli_exit_nonzero": true,
+      "response": {
+        "ok": false,
+        "command": "pij answer",
+        "v": 2,
+        "error": "refused",
+        "meta": "E-RS-ANSWER-IN-TRANSIT an answer in transit cannot be withdrawn; wait for its terminal outcome",
+        "details": {
+          "decision": "decision-139-proof",
+          "answer_msg_id": "decision-139-proof-answer",
+          "job_state": "running",
+          "code": "E-RS-ANSWER-IN-TRANSIT"
+        }
+      }
+    },
+    "answer_delivered": {
+      "http_status": 409,
+      "cli_exit_nonzero": true,
+      "response": {
+        "ok": false,
+        "command": "pij answer",
+        "v": 2,
+        "error": "refused",
+        "meta": "E-RS-ANSWER-DELIVERED a delivered or acknowledged answer cannot be superseded",
+        "details": {
+          "decision": "decision-139-proof",
+          "answer_msg_id": "decision-139-proof-answer",
+          "job_state": "delivered",
+          "code": "E-RS-ANSWER-DELIVERED"
+        }
+      }
+    }
+  },
+  "events": {
+    "append": [
+      {
+        "id": "decision-answer-superseded",
+        "owner": "u4",
+        "decoded_payload": {
+          "actor": "pij-parent",
+          "action": "answer-superseded",
+          "record": {
+            "id": "decision-139-proof",
+            "asked_by": "pij-worker",
+            "parent": "pij-previous-parent",
+            "question": "Which branch owns the shared migration?",
+            "state": "open",
+            "asked_at": 1788739200000,
+            "question_seq": 101,
+            "answer": "u4 owns recovery; u3 retains migration 0014",
+            "answered_by": "pij-parent",
+            "answered_at": null,
+            "answer_msg_id": "decision-139-proof-answer-102"
+          },
+          "superseded": {
+            "answer_msg_id": "decision-139-proof-answer",
+            "answered_by": "pij-previous-parent",
+            "answer": "u3 owns migration 0014"
+          }
+        },
+        "frame": {
+          "type": "event",
+          "machine": "fixture-machine",
+          "cursor": 102,
+          "event": {
+            "v": 1,
+            "at": 1788739200005,
+            "kind": "decision.answer-superseded",
+            "seat": "pij-worker",
+            "payload": "{\"actor\":\"pij-parent\",\"action\":\"answer-superseded\",\"record\":{\"id\":\"decision-139-proof\",\"asked_by\":\"pij-worker\",\"parent\":\"pij-previous-parent\",\"question\":\"Which branch owns the shared migration?\",\"state\":\"open\",\"asked_at\":1788739200000,\"question_seq\":101,\"answer\":\"u4 owns recovery; u3 retains migration 0014\",\"answered_by\":\"pij-parent\",\"answered_at\":null,\"answer_msg_id\":\"decision-139-proof-answer-102\"},\"superseded\":{\"answer_msg_id\":\"decision-139-proof-answer\",\"answered_by\":\"pij-previous-parent\",\"answer\":\"u3 owns migration 0014\"}}"
+          }
+        }
+      }
+    ]
+  },
+  "docs_text": "An answer in transit cannot be withdrawn; wait for its terminal outcome.",
+  "expired_unknown_note": "There is no delivery-job expired-unknown state producer in the current queue: an expired delivery claim returns to pending. Already terminal failed outcomes may carry that reason; this amendment does not synthesize expiry or alter queue policy."
+}

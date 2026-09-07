@@ -1,0 +1,143 @@
+{
+  "unit": "u4",
+  "seat": "pij-adjacent-falcon",
+  "status": "READY_TO_VALIDATE",
+  "validation_status": "NOT_RUN_BY_WORKER",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4",
+  "base_checkpoint_as_supplied": "0a7a267",
+  "committed": false,
+  "canary": {
+    "whoami": "pij session: pij-adjacent-falcon\nfolder:      /Users/jordanknight/pi-hacking/pij\nstate:       idle\nrole:        —\ndata dir:    — (rs seats have no data dir; the legacy store's concept)",
+    "pane": "%3999",
+    "observed_footer_model": "GPT-6 Astra (1M)",
+    "observed_footer_effort": "high",
+    "provider_model_from_packet": "github-copilot/gpt-6-astra-1m"
+  },
+  "changed_paths": {
+    "crates/core/src/anomalies.rs": "355d3e9dc3e898e196d942d22eadba5d417386cd832150c524fcf3d968e92b6a",
+    "crates/core/src/decisions.rs": "2906e7686546ec15474aa542a085bd0727be502a44b17b08711d29e1bb9278d4",
+    "crates/store/migrations/0015_decisions.sql": "f8333271613c8a05d66c201ce86b10051259ad5a7ff4ca362fb5440870b687b6",
+    "crates/store/src/decisions.rs": "384e1ddef7f6b32b59fd281ba2c092191b99529a9fafd77a3eeaeb2a52014de3",
+    "crates/store/src/spine.rs": "81b5664d0101d783962e13e38821110654e3c2754288bd18b0af5f64ba3bb27d",
+    "crates/store/tests/anomaly_dispositions.rs": "cd964222bce4e993f9a9d9ce783a603cde189b107c63e4c86a6d8e663f74ecf8",
+    "crates/daemon/src/http/anomalies.rs": "3d6b085f330067e9ecb66e371cd7b87ab041776a7b2f610ffa59e2528d124517",
+    "crates/daemon/src/http/decisions.rs": "40d460bdadd527d5ed61490a80cf40300aaf8e0968b7a5699ab32a408474346b",
+    "crates/daemon/src/http/report.rs": "bc8b3e7501a5b45dda741c207da8425d2b61e1a84f4cba057cced42ce6ff3d57",
+    "crates/daemon/tests/governance_u4_baseline.rs": "ab9bec92c7a5901e5808ad92dbf1cec10d5b57a6c7ba000a336b51fdc6332f59",
+    "crates/daemon/tests/report_http.rs": "a56967b6b056deaec439b05df5ebad04d72e17402fbf4d6780d87cc6c15a59a8",
+    "crates/cli/src/anomalies.rs": "73938e9cb771e571435d3b166fe4a807d5619bfa509812a22b3a5e00efc95491",
+    "crates/cli/src/decisions.rs": "68391a65102c36ee2aaa16ef18b657131c917c8accf5353b3ad5dc7f6ec6ea53"
+  },
+  "implementation": [
+    "Extends the existing pure detector and retains occurrence acknowledgement/clear semantics, observable/remediation fields, and legacy delivered-unacked-stale spelling. AnomalyWire borrows detector evidence and renders the frozen detail/evidence/relay shape.",
+    "STATUS_STALE_MS is 1800000; equality does not flag; waiting/hold/blocked/question suppress ordinary card drift. The existing 600000ms report stderr nudge is unchanged.",
+    "Open decisions project current parent, with current prime fallback for visibility only. Historical parent-at-ask remains in stored rows/opened events; reads do not write. Overdue decisions produce responsible-seat status-stale independently of fresh cards.",
+    "Dead-seat requires positive dead/recycled incarnation evidence and an actual matching seat.put seq. Probe failure is never converted to dead. Dispatch projection consumes the canonical dispatch event with action=delivered, not the fixture case id dispatch-delivered.",
+    "Question row and finalized decision.opened event commit atomically first. Existing semantic-state publication runs only after that bus operation returns. A second-step failure returns E-RS-QUESTION-PARTIAL with durable decision and seq.",
+    "Answers persist immutable outbound intent before existing DeliveryService.accept; self-answer has no push/msg id. Other-answer refusal leaves an open prepared row. Accepted closure plus decision.answered is atomic. Current parent is checked again inside the final publication boundary.",
+    "Verify authorizes only the current parent, selects the latest actual report.state done seq, and optionally checks an explicit assignment_id against task node and lifetime. Unscoped done never invents an assignment. Exact referenced done_seq controls anomaly closure.",
+    "GET here=<absolute-path>, POST --here from caller scope, seat filters, and real assignment.project filters are supported. Malformed scope errors carry the unscoped-status guidance; valid filtered views are not refused."
+  ],
+  "snap_in": {
+    "module_exports": [
+      "crates/core/src/lib.rs: add pub mod decisions; existing anomalies module stays.",
+      "crates/store/src/lib.rs: add pub mod decisions; no new pool or persistence backend.",
+      "crates/daemon/src/http/mod.rs: add pub mod anomalies; pub mod decisions;",
+      "crates/cli/src/lib.rs: add pub mod anomalies; pub mod decisions;"
+    ],
+    "schema": "crates/store/src/migrate.rs: bump SCHEMA_VERSION from14 to15 (or final composed highest migration). sqlx::migrate! already discovers 0015_decisions.sql; keep 0014 owned by u3 unchanged.",
+    "service_signatures": [
+      "DecisionService::new(store: SqliteOrchestration, registry: Arc<dyn Registry>, bus: Arc<EventBus>, delivery: Arc<DeliveryService>) -> Self",
+      "AnomalyService::new(store: SqliteOrchestration, registry: Arc<dyn Registry>, bus: Arc<EventBus>, liveness: Arc<dyn LivenessPort>) -> Self",
+      "append_generated_in_transaction(connection: &mut SqliteConnection, draft: Event, finalize_payload: impl FnOnce(Seq) -> String) -> Result<Event> (pub(crate), store only)"
+    ],
+    "call_order": "Existing spine_pool -> raw SqliteSpine -> common EventBus -> published registry -> DeliveryService; then construct decisions and anomalies from SqliteOrchestration::new(spine_pool.clone()) and Arc clones of those resources BEFORE the existing GovernanceService construction consumes spine_pool. No spawned workers are needed for u4.",
+    "services_fields": [
+      "pub decisions: Arc<http::decisions::DecisionService>",
+      "pub anomalies: Arc<http::anomalies::AnomalyService>"
+    ],
+    "http_endpoint_registry": [
+      "Add Endpoint::{Anomalies,Decisions,Answer}, include all three in Endpoint::ALL and update its count relative to the composed enum.",
+      "Endpoint::path maps /v1/anomalies, /v1/decisions, /v1/answer. Canonical method POST; add all three to method()/debug_assert POST match lists.",
+      "Endpoint::Anomalies => router.route(endpoint.path(), get(anomalies::list_get).post(anomalies::list_post))",
+      "Endpoint::Decisions => router.route(endpoint.path(), get(decisions::list_get).post(decisions::list_post))",
+      "Endpoint::Answer => router.route(endpoint.path(), post(decisions::answer_post))",
+      "In existing report handler replace only Question(note) arm with decisions::question(&state, &seat, &note).await. This helper OWNS both steps; do not also call declaration_response.",
+      "Add ReportCall::Verify { target, assignment } => decisions::verify(&state, &seat, &target, assignment).await. Existing actor identity resolution and every other report arm remain intact."
+    ],
+    "cli_command_registry": [
+      "Actual CLI enum is Command (not Route). Add Anomalies, Decisions, Answer each with #[arg(trailing_var_arg = true, allow_hyphen_values = true)] args: Vec<String>.",
+      "Command::name: map to pij anomalies, pij decisions, pij answer.",
+      "Command::Anomalies { args } => emit(&pij_cli::anomalies::anomalies(&client, &args, &caller_context()).await, cli.json || args.iter().any(|arg| arg == \"--json\"))",
+      "Command::Decisions { args } => emit(&pij_cli::decisions::decisions(&client, &args, &caller_context()).await, cli.json || args.iter().any(|arg| arg == \"--json\"))",
+      "Command::Answer { args } => emit(&pij_cli::decisions::answer(&client, &args, &caller_context()).await, cli.json || args.iter().any(|arg| arg == \"--json\"))",
+      "Existing Command::Report raw argv forwarding already carries verify; no new independent report parser in CLI."
+    ]
+  },
+  "proof": {
+    "executed": false,
+    "reason": "Explicit concurrent-wave instruction: skip every build, test, formatter, linter, harness boot/check and commit. PM executes only after all editing seats pause and shared wiring is composed.",
+    "red_strategy": "Copy ONLY crates/daemon/tests/governance_u4_baseline.rs, existing support/governance_http.rs and canonical contract JSON into PM's isolated pre-fix checkpoint. Run cargo test -p pij-daemon --test governance_u4_baseline. This witness imports no new u4 Rust symbols; old report question returns no decision and old report verify refuses, so failures are observable HTTP/assertion failures, not compile-error-only RED. The fixtures/helper already exist at supplied checkpoint0a7a267.",
+    "command_cwd": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4",
+    "environment": {"CARGO_TARGET_DIR": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4/target"},
+    "commands_after_composition": [
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-core anomalies::tests",
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-core decisions::tests",
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-store decisions::tests",
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-store --test anomaly_dispositions",
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-daemon http::decisions::tests",
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-daemon http::report::tests",
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-daemon --test governance_u4_baseline",
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-daemon --test report_http",
+      "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-cli decisions::tests",
+      "harness checks (PM full composed done gate, after formatting/shared wiring)"
+    ],
+    "named_regressions": [
+      "u4_baseline_question_survives_clear_and_self_answer_pushes_nothing",
+      "u4_baseline_unrelated_answer_refuses_without_closing_question",
+      "u4_baseline_parent_verify_binds_done_and_new_done_reopens_anomaly",
+      "u4_baseline_get_and_post_scope_filters_keep_valid_rows_and_refuse_guessed_here",
+      "status_staleness_uses_thirty_minutes_and_suppresses_parked_states",
+      "verification_of_another_done_does_not_close_latest_claim",
+      "open_decision_stales_responsible_parent_despite_fresh_card",
+      "five_governance_kinds_match_canonical_rows_and_real_sequences",
+      "answer_authority_follows_reparenting_not_historical_parent_or_role",
+      "decision_survives_reopen_and_prepared_answer_remains_open",
+      "failed_answer_event_rolls_back_decision_closure",
+      "verification_checks_explicit_assignment_node_and_done_association",
+      "generated_payload_failure_rolls_back_draft_and_decision",
+      "dispositions_survive_reopen_and_clear_holds_until_source_evidence_changes",
+      "reparenting_moves_live_question_and_revokes_old_answer_authority",
+      "self_answer_closes_without_any_delivery_push_or_queue_row",
+      "question_second_step_failure_exposes_durable_decision_and_does_not_deadlock",
+      "rejected_other_answer_keeps_prepared_decision_open",
+      "verify_requires_parent_and_names_the_exact_latest_done",
+      "delivered_dispatch_projection_consumes_the_canonical_event_literal",
+      "verify_accepts_seat_only_and_explicit_assignment_but_not_ignored_filters",
+      "anomaly_decision_answer_commands_preserve_canonical_argv_and_envelopes"
+    ],
+    "runtime_smoke": "PM owns real private daemon/CLI proof on u4 port17465 or PM port17461, following canonical isolation: private state-dir/HOME/CLAUDE_CONFIG_DIR/XDG_CONFIG_HOME/TMUX socket for server and clients. No production restart or port7461. Cross-unit proof file governance_composition.rs was not edited."
+  },
+  "toolchain_observed": {
+    "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+    "cargo": "cargo 1.98.0 (797e8a9bc 2026-08-05)",
+    "harness": "0.14.0",
+    "omp": "omp/18.0.10"
+  },
+  "ASSUMPTIONS": [
+    "PM applies shared module/Endpoint/Command/Services/schema wiring before GREEN. Worker source alone is deliberately not a composed build.",
+    "PM aligns canonical governance-routes.json to the approved legacy delivered-unacked-stale kind/relay value before golden execution. Worker has not included any contract-fixture edits in source delivery.",
+    "Existing u3 dispatch delivery observer is supervised by composition, and its published kind remains dispatch with action=delivered. No per-seat governance SQL reads were added.",
+    "Explicit --assignment verification requires actual done payload.assignment_id; report state without that association remains unscoped. The worker does not infer task identity from time or current task membership.",
+    "Pending prime ruling: immutable prepared answer intent can strand a decision if the author loses current-parent authority after an ambiguous delivery. Current source refuses replacement with E-RS-ANSWER-CONFLICT; no recovery, new transport, or custom retry was invented. PM escalated this exact tradeoff and instructed preserving conservative source pending ruling.",
+    "Existing unrelated report refusal wording stays inherited; only obsolete verify-unavailable test was migrated to the real unknown-target refusal. Documentation and canonical guide/flow ownership remain with PM/u6."
+  ],
+  "safety_classification": "Current-parent authorization decides who may answer/verify and is policy. Durable-acceptance-before-close is a one-directional safety interlock: removing it permits more decision closures; it never authorizes a different answerer. SQL state/event atomicity is retained for closure.",
+  "harness": {
+    "unharvested_buffer": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4/.harness/temp/agent/session-buffer.md",
+    "capture": "DL-001: worktree LSP returned zero AnomalyView refs despite a real store integration test consumer; explicit worktree grep located it.",
+    "encoded_improvement": "Generated-payload rollback and reopen-equality tests defend the newly exposed event self-reference seam with actual allocated seq rather than MAX/COUNT guesses.",
+    "offer": "At PM closeout, encode a scope-aware reference preflight that reports LSP workspace root and refuses to treat an ungrounded zero-reference answer as absence.",
+    "drained": false
+  }
+}

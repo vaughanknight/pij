@@ -51,14 +51,16 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use axum::extract::State;
 use axum::response::Response;
-use pij_core::model::{Harness, SeatId};
+use pij_core::model::{Harness, Msg, SeatDescriptor, SeatId};
 use pij_core::ports::SeatFilter;
 
 use super::identity::{self, CallerContext, Resolved};
 use super::{AppState, envelope, internal, refused};
+use crate::delivery::{NativeInboxIdentity, paneless_pull};
 
 pub(crate) const SEND: &str = "pij send";
 pub(crate) const INBOX: &str = "pij inbox";
@@ -204,6 +206,7 @@ pub(crate) struct SendCall {
     pub to: SeatId,
     pub body: String,
     pub command: Option<String>,
+    pub in_reply_to: Option<String>,
 }
 
 /// Parse a body send or one allowlisted, bodyless control command.
@@ -228,6 +231,7 @@ pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<
     let mut positionals: Vec<&str> = Vec::new();
     let mut saw_body_file = false;
     let mut command = None;
+    let mut in_reply_to = None;
     let mut rest = tokens.collect::<Vec<_>>().into_iter().peekable();
     while let Some(token) = rest.next() {
         let flag = token
@@ -276,6 +280,18 @@ pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<
                         .to_string(),
                 );
             }
+            "in-reply-to" => {
+                if in_reply_to.is_some() {
+                    return Err("--in-reply-to may be supplied only once".to_string());
+                }
+                let value = token
+                    .split_once('=')
+                    .map(|(_, value)| value)
+                    .or_else(|| rest.next())
+                    .filter(|value| !value.trim().is_empty() && !value.starts_with("--"))
+                    .ok_or_else(|| "--in-reply-to needs a message id".to_string())?;
+                in_reply_to = Some(value.to_string());
+            }
             "file" | "caption" => {
                 return Err(format!(
                     "rs cannot serve `pij send --{name}`: it attaches a path BY REFERENCE and \
@@ -321,6 +337,7 @@ pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<
             to: SeatId::from(*to),
             body: String::new(),
             command: Some(command),
+            in_reply_to,
         });
     }
     // The two body channels are exclusive, and BOTH must be refused rather than
@@ -361,6 +378,7 @@ pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<
         to: SeatId::from(*to),
         body,
         command: None,
+        in_reply_to,
     })
 }
 
@@ -416,17 +434,30 @@ pub(crate) async fn shim_send(State(state): State<AppState>, body: axum::body::B
                 body: call.body,
                 command,
                 msg_id: state.services.delivery.next_message_id(),
-                in_reply_to: None,
+                in_reply_to: call.in_reply_to,
                 caller: request.caller,
             },
         )
         .await;
     }
     let from = match subject(&state, SEND, request.caller.as_ref()).await {
-        Subject::Seat(seat) => seat,
-        Subject::Refusal(response) => return response,
+        Ok(seat) => seat.id,
+        Err(response) => return *response,
     };
-    match state.services.delivery.send(from, call.to, call.body).await {
+    match state
+        .services
+        .delivery
+        .accept(Msg {
+            from,
+            to: call.to,
+            body: call.body,
+            msg_id: state.services.delivery.next_message_id(),
+            from_machine: None,
+            in_reply_to: call.in_reply_to,
+            command: None,
+        })
+        .await
+    {
         Ok(receipt) => super::envelope(
             axum::http::StatusCode::OK,
             &pij_core::model::Envelope::ok(SEND, receipt),
@@ -448,19 +479,54 @@ pub(crate) async fn shim_inbox(State(state): State<AppState>, body: axum::body::
         Decoded::Request(request) => request,
         Decoded::Refusal(response) => return response,
     };
-    if let Err(why) = parse_inbox(&request.argv) {
-        return refused(INBOX, why);
-    }
-    let reader = match subject(&state, INBOX, request.caller.as_ref()).await {
-        Subject::Seat(seat) => seat,
-        Subject::Refusal(response) => return response,
+    let wait = match parse_inbox(&request.argv) {
+        Ok(wait) => wait,
+        Err(why) => return refused(INBOX, why),
     };
-    // `wait: false`, always. A blocking claim would hold this request open for
-    // the caller's whole timeout, and the shim has no way to cancel it.
-    match state.services.delivery.claim_inbox(&reader, false).await {
-        Ok(claims) => super::envelope(
+    let reader = match subject(&state, INBOX, request.caller.as_ref()).await {
+        Ok(seat) => seat,
+        Err(response) => return *response,
+    };
+    let pull = paneless_pull(&reader);
+    if wait != InboxWait::NoWait && !pull {
+        return refused(
+            INBOX,
+            "inbox --wait requires a verified paneless pull seat; pushed seats cannot wait",
+        );
+    }
+    let identity = inbox_identity(request.caller.as_ref(), &reader);
+    if wait != InboxWait::NoWait && !identity.matches(&reader) {
+        return refused(
+            INBOX,
+            "inbox --wait requires the registered native session and live host tuple",
+        );
+    }
+    let result = if pull && identity.native_session.is_some() {
+        state
+            .services
+            .delivery
+            .claim_pull_inbox(
+                &reader.id,
+                wait != InboxWait::NoWait,
+                match wait {
+                    InboxWait::Timeout(duration) => Some(duration),
+                    _ => None,
+                },
+                &identity,
+                state.services.liveness.as_ref(),
+            )
+            .await
+    } else {
+        state
+            .services
+            .delivery
+            .claim_native_inbox(&reader.id, false, &identity)
+            .await
+    };
+    match result {
+        Ok(page) => super::envelope(
             axum::http::StatusCode::OK,
-            &pij_core::model::Envelope::ok(INBOX, claims),
+            &pij_core::model::Envelope::ok(INBOX, page.claims),
         ),
         Err(error) => super::inbox_failure(error),
     }
@@ -483,9 +549,8 @@ pub(crate) async fn shim_inbox(State(state): State<AppState>, body: axum::body::
 /// already ignores its `seat` field for attribution — it keys on the job's
 /// serial key — so nothing is weakened by not sending one.)
 ///
-/// Copilot requires its native tuple at the service boundary. This legacy shim
-/// cannot supply one, so neither claim nor ack may retire native work. Other
-/// harnesses retain machine-grade acknowledgement with queue-owned attribution.
+/// External pull readers forward the same native session and host incarnation
+/// used at claim time; the service rechecks it before retiring the queue row.
 pub(crate) async fn shim_inbox_ack(
     State(state): State<AppState>,
     body: axum::body::Bytes,
@@ -497,16 +562,16 @@ pub(crate) async fn shim_inbox_ack(
     // The reader is derived BEFORE the ack, so an unresolvable caller cannot
     // retire another seat's message.
     let reader = match subject(&state, INBOX, request.caller.as_ref()).await {
-        Subject::Seat(reader) => reader,
-        Subject::Refusal(response) => return response,
+        Ok(reader) => reader,
+        Err(response) => return *response,
     };
     match state
         .services
         .delivery
         .acknowledge_inbox(
-            &reader,
+            &reader.id,
             request.job_id,
-            &crate::delivery::NativeInboxIdentity::default(),
+            &inbox_identity(request.caller.as_ref(), &reader),
             None,
         )
         .await
@@ -549,50 +614,75 @@ fn decode_ack(body: &[u8]) -> DecodedAck {
     }
 }
 
-/// Which `pij inbox` shapes rs serves.
-///
-/// `register` is NOT among them and must never reach here — the route table's
-/// per-leaf policy holds it back, and this refusal is the second line of that
-/// defence rather than the first. Its reason is unchanged and is not this
-/// plan's to withdraw: the paneless ready form names no pane and no process, so
-/// rs has no bind evidence to derive, and an rs refusal never falls back — a
-/// routed `inbox register` would stop paneless seats registering ANYWHERE,
-/// where today they register in legacy and work. Jordan's ruling of 2026-09-01
-/// replaces that refusal with an admission GRADE; until the graded path is live
-/// (s120) the denial stands, because striking a deny reason in a unit that does
-/// not supply its replacement leaves the justification gone and the hazard.
-pub(crate) fn parse_inbox(argv: &[String]) -> Result<(), String> {
-    let mut tokens = argv.iter().map(String::as_str);
+/// Optional inbox wait; the only finite completion without a claim is timeout.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum InboxWait {
+    NoWait,
+    Infinite,
+    Timeout(Duration),
+}
+
+/// Registration has its own native `/v1/register` contract, never this argv route.
+pub(crate) fn parse_inbox(argv: &[String]) -> Result<InboxWait, String> {
+    let mut tokens = argv.iter().map(String::as_str).peekable();
     match tokens.next() {
         Some("inbox") => {}
         Some(other) => return Err(format!("'{other}' is not the inbox verb")),
-        None => return Err("usage: pij inbox [check]".to_string()),
+        None => return Err("usage: pij inbox [check] [--wait [ms]]".to_string()),
     }
-    for token in tokens {
+    let mut wait = InboxWait::NoWait;
+    while let Some(token) = tokens.next() {
         match token {
             "check" | "--json" => {}
-            "register" => {
-                return Err(
-                    "rs does not serve `pij inbox register`. It is the PANELESS ready form: it \
-                     names no pane and no process, so there is no bind evidence for rs to \
-                     corroborate, and an rs refusal never falls back — routing it would stop \
-                     paneless seats registering anywhere, where today they register in legacy \
-                     and work. Tracked as s120 (admission becomes a GRADE, not a gate)."
-                        .to_string(),
-                );
-            }
-            "--wait" => {
-                return Err(
-                    "rs does not serve `pij inbox --wait`: a blocking claim would hold the \
-                     request open for the caller's whole timeout with no way to cancel it. A \
-                     pushed seat must not block on it at all; a pull peer should use legacy."
-                        .to_string(),
-                );
+            "register" => return Err("pij inbox register uses the native /v1/register endpoint, not the shim inbox route".to_string()),
+            token if token == "--wait" || token.starts_with("--wait=") => {
+                if wait != InboxWait::NoWait {
+                    return Err("--wait may be supplied only once".to_string());
+                }
+                let value = token.split_once('=').map(|(_, value)| value).or_else(|| {
+                    tokens.peek().filter(|next| !next.starts_with("--")).copied()
+                        .and_then(|_| tokens.next())
+                });
+                wait = match value {
+                    None => InboxWait::Infinite,
+                    Some(value) => {
+                        let ms = value.parse::<u64>().ok().filter(|ms| *ms > 0)
+                            .ok_or_else(|| "--wait needs a positive integer duration in milliseconds".to_string())?;
+                        InboxWait::Timeout(Duration::from_millis(ms))
+                    }
+                };
             }
             other => return Err(format!("unknown inbox argument `{other}`")),
         }
     }
-    Ok(())
+    Ok(wait)
+}
+
+fn inbox_identity(caller: Option<&CallerContext>, seat: &SeatDescriptor) -> NativeInboxIdentity {
+    if seat.harness != Harness::Copilot && !paneless_pull(seat) {
+        return NativeInboxIdentity::default();
+    }
+    let Some(caller) = caller else {
+        return NativeInboxIdentity::default();
+    };
+    let native_session = match seat.harness {
+        Harness::Claude => caller.claude_session.as_ref(),
+        Harness::Copilot => caller.copilot_session.as_ref(),
+        Harness::Codex => caller.codex_session.as_ref(),
+        _ => None,
+    }
+    .or(caller.harness_session.as_ref())
+    .cloned();
+    // Existing non-Copilot asserted-id callers remain machine-grade. A PID
+    // without native session evidence is still diagnostic, not a pull identity.
+    if seat.harness != Harness::Copilot && native_session.is_none() {
+        return NativeInboxIdentity::default();
+    }
+    NativeInboxIdentity {
+        native_session,
+        pid: caller.pid,
+        proc_start: caller.proc_start,
+    }
 }
 
 /// A decode's two answers.
@@ -603,12 +693,6 @@ pub(crate) fn parse_inbox(argv: &[String]) -> Result<(), String> {
 /// an answer this route gives on purpose.
 enum Decoded {
     Request(Box<ShimRequest>),
-    Refusal(Response),
-}
-
-/// The acting seat, or the refusal to send back. See [`Decoded`].
-enum Subject {
-    Seat(SeatId),
     Refusal(Response),
 }
 
@@ -638,11 +722,35 @@ async fn subject(
     state: &AppState,
     command: &'static str,
     caller: Option<&CallerContext>,
-) -> Subject {
+) -> std::result::Result<SeatDescriptor, Box<Response>> {
     let asserted = caller.and_then(|caller| caller.session_id.clone());
     let pane = caller.and_then(|caller| caller.pane.clone());
     match identity::resolve_seat(state, command, asserted, pane).await {
-        Resolved::Seat(descriptor, _) => Subject::Seat(descriptor.id),
-        Resolved::Refusal(response) => Subject::Refusal(response),
+        Resolved::Seat(descriptor, _) => {
+            let native = inbox_identity(caller, &descriptor);
+            if paneless_pull(&descriptor)
+                && (descriptor.harness == Harness::Copilot || native.native_session.is_some())
+            {
+                if !native.matches(&descriptor) {
+                    return Err(Box::new(refused(
+                        command,
+                        "native incarnation mismatch: caller session and host tuple must match the registered paneless pull seat",
+                    )));
+                }
+                let proc = descriptor.proc.expect("paneless pull has a host identity");
+                match state.services.liveness.proc_start(proc.pid).await {
+                    Ok(Some(start)) if start == proc.proc_start => {}
+                    Ok(_) => {
+                        return Err(Box::new(refused(
+                            command,
+                            "paneless pull host is no longer live at its registered process start",
+                        )));
+                    }
+                    Err(error) => return Err(Box::new(internal(command, error))),
+                }
+            }
+            Ok(descriptor)
+        }
+        Resolved::Refusal(response) => Err(Box::new(response)),
     }
 }

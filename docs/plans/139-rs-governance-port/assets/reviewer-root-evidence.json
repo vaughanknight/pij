@@ -1,0 +1,25 @@
+{
+  "recorded_at": "2026-09-07T15:46:49Z",
+  "command": [
+    "pij-rs",
+    "list",
+    "--json"
+  ],
+  "cwd": "/Users/jordanknight/pi-hacking/pij",
+  "matched_public_descriptor": [
+    {
+      "id": "pij-zany-reptile",
+      "folder": "/Users/jordanknight/pi-hacking/pij",
+      "session": "01a07c38-90fe-7000-bd9b-d502b368ff43",
+      "parent": "pij-lonely-ikrie",
+      "proc": {
+        "pid": 69055,
+        "proc_start": 20260908001435
+      },
+      "pane": "%4233"
+    }
+  ],
+  "proves": "Read-only registry folder/session/process/pane evidence; registration folder is not inferred from the absolute review workspace",
+  "mutation_performed": false,
+  "limitation": "Registry folder is not by itself proof of native tool cwd; the reviewer must distinguish these in its runtime observation."
+}

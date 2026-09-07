@@ -1,0 +1,3540 @@
+diff --git a/.pi/extensions/pij/adapters/generation-router.test.ts b/.pi/extensions/pij/adapters/generation-router.test.ts
+index 3945498e..e09073d1 100644
+--- a/.pi/extensions/pij/adapters/generation-router.test.ts
++++ b/.pi/extensions/pij/adapters/generation-router.test.ts
+@@ -309,7 +309,7 @@ describe("routeVerb end to end", () => {
+ 	it.each([
+ 		["adopt", undefined, { PIJ_DAEMON_GENERATION: "legacy" }],
+ 		["spawn", undefined, {}],
+-		["inbox", "register", {}],
++		["register", undefined, {}],
+ 		["unknown-command", undefined, {}],
+ 	] as const)("%s %s refuses before reading credentials or making a request", async (verb, leaf, env) => {
+ 		const calls: Call[] = [];
+@@ -765,3 +765,88 @@ describe("mailbox rendering precedes acknowledgement", () => {
+ 		expect(acks).toBe(1);
+ 	});
+ });
++
++describe("verified ambient native admission bridge", () => {
++	const host = { pid: 9001, proc_start: 20260907120000 };
++	const callerStart = 20260907120100;
++	const fixtureIdentity = (harness: "claude" | "copilot" | "codex") => ({ harness, harnessSessionId: "native-session" });
++	const registered = (harness: string) => JSON.stringify({
++		ok: true, command: "pij register", v: 2,
++		data: { id: "pij-ambient-host", harness, session: "native-session", pane: null, proc: host, native_extension_delivery: false, binding: "same" },
++	});
++
++	it.each(["claude", "copilot", "codex"] as const)("%s registration forwards evidence to the native allocator and retains the complete envelope", async (harness) => {
++		const requests: unknown[] = [];
++		const raw = registered(harness);
++		const result = await routeVerb("inbox", "register", ["inbox", "register", "--json"], deps((url, init) => {
++			if (url.endsWith("/health")) return new Response(HEALTH);
++			expect(new URL(url).pathname).toBe("/v1/register");
++			requests.push(JSON.parse(String(init?.body)));
++			return new Response(raw);
++		}, { ambientIdentity: () => fixtureIdentity(harness), cwd: () => "/work/external", pid: () => 9002, procStart: () => callerStart, env: { PIJ_SESSION_ID: "pij-stale", PIJ_PARENT_ID: "pij-parent" } }));
++		expect(result.outcome.kind).toBe("rs");
++		expect(requests).toEqual([{ id: "", harness, harness_session: "native-session", folder: "/work/external", pid: 9002, proc_start: callerStart, relay: false, parent: "pij-parent" }]);
++		expect(renderRsAnswer(result.row, result.payload, ["inbox", "register", "--json"], result.rawEnvelope)).toEqual({ kind: "json", text: raw });
++		expect(result.acknowledge).toBeUndefined();
++	});
++
++	it("a repaired ambient identity and observed HOST tuple survive claim and post-output ack", async () => {
++		const requests: { path: string; body: unknown }[] = [];
++		const env = { PIJ_SESSION_ID: "pij-stale", COPILOT_AGENT_SESSION_ID: "native-session" };
++		const claims = [{ job_id: 71, message: { from: "pij-sender", body: "literal `$(text)`\nreply", msg_id: "m1", in_reply_to: "m0" } }];
++		const result = await routeVerb("inbox", undefined, ["inbox", "--wait", "10", "--json"], deps((url, init) => {
++			const path = new URL(url).pathname;
++			if (path === "/health") return new Response(HEALTH);
++			requests.push({ path, body: JSON.parse(String(init?.body)) });
++			if (path === "/v1/register") return new Response(registered("copilot"));
++			return new Response(JSON.stringify({ ok: true, command: "pij inbox", v: 2, data: path.endsWith("/ack") ? 72 : claims }));
++		}, { env, ambientIdentity: () => fixtureIdentity("copilot"), cwd: () => "/work/external", pid: () => 9002, procStart: () => callerStart }));
++		expect(result.outcome.kind).toBe("rs");
++		expect(result.payload).toEqual(claims);
++		expect(requests.map(({ path }) => path)).toEqual(["/v1/register", "/v1/shim/inbox"]);
++		expect(await result.acknowledge?.()).toBeUndefined();
++		const caller = { pijSessionId: "pij-ambient-host", copilotAgentSessionId: "native-session", cwd: "/work/external", pid: host.pid, procStart: host.proc_start };
++		expect(requests[1]?.body).toEqual({ argv: ["inbox", "--wait", "10", "--json"], caller });
++		expect(requests[2]).toEqual({ path: "/v1/shim/inbox/ack", body: { caller, job_id: 71 } });
++		expect(env.PIJ_SESSION_ID).toBe("pij-stale");
++	});
++
++	it.each(["send", "whoami", "phonehome"])("%s resolves ambient identity before forwarding its untouched argv", async (verb) => {
++		const argv = verb === "send" ? [verb, "pij-other", "body text", "--in-reply-to", "m0"] : [verb];
++		let request: unknown;
++		const result = await routeVerb(verb, undefined, argv, deps((url, init) => {
++			if (url.endsWith("/health")) return new Response(HEALTH);
++			if (url.endsWith("/register")) return new Response(registered("claude"));
++			request = JSON.parse(String(init?.body));
++			return new Response(JSON.stringify({ ok: true, command: `pij ${verb}`, v: 2, data: {} }));
++		}, { ambientIdentity: () => fixtureIdentity("claude"), cwd: () => "/work/external", pid: () => 9002, procStart: () => callerStart }));
++		expect(result.outcome.kind).toBe("rs");
++		expect(request).toEqual({ argv, caller: { pijSessionId: "pij-ambient-host", claudeCodeSessionId: "native-session", cwd: "/work/external", pid: host.pid, procStart: host.proc_start } });
++	});
++
++	it("native admission refusal is terminal and preserved rather than using an inherited seat", async () => {
++		const calls: Call[] = [];
++		const raw = '{"ok":false,"command":"pij register","v":2,"error":"refused","meta":"host/session conflict"}\n';
++		const result = await routeVerb("send", undefined, ["send", "pij-other", "hello"], deps(answering(raw, 400), { ambientIdentity: () => fixtureIdentity("claude"), env: { PIJ_SESSION_ID: "pij-stale" }, cwd: () => "/work", pid: () => 9002, procStart: () => callerStart }, calls));
++		expect(result.outcome.kind).toBe("rs-error");
++		expect(result.rawEnvelope).toBe(raw);
++		expect(calls.map(({ url }) => new URL(url).pathname)).toEqual(["/health", "/v1/register"]);
++	});
++
++	it("already registered panes read whoami without ambient discovery or native allocation", async () => {
++		const calls: Call[] = [];
++		const raw = '{"ok":true,"command":"pij whoami","v":2,"data":{"id":"pij-pane","harness":"omp","pane":"%44"}}';
++		const result = await routeVerb("inbox", "register", ["inbox", "register"], deps(answering(raw), { env: { TMUX_PANE: "%44" }, ambientIdentity: () => { throw new Error("pane must not discover ambient files"); } }, calls));
++		expect(result.outcome.kind).toBe("rs");
++		expect(result.rawEnvelope).toBe(raw);
++		expect(calls.map(({ url }) => new URL(url).pathname)).toEqual(["/health", "/v1/whoami"]);
++		expect(renderRsAnswer(result.row, result.payload, ["inbox", "register"]).kind).toBe("rendered");
++	});
++
++	it("register without ambient or registered identity refuses instead of posting an empty native claim", async () => {
++		const calls: Call[] = [];
++		const result = await routeVerb("inbox", "register", ["inbox", "register", "--json"], deps(answering("{}"), { ambientIdentity: () => null }, calls));
++		expect(result.outcome).toMatchObject({ kind: "rs-error", code: "E-AMBIG" });
++		expect(calls.map(({ url }) => new URL(url).pathname)).toEqual(["/health"]);
++	});
++});
+diff --git a/.pi/extensions/pij/adapters/generation-router.ts b/.pi/extensions/pij/adapters/generation-router.ts
+index d444ea13..b988ccd2 100644
+--- a/.pi/extensions/pij/adapters/generation-router.ts
++++ b/.pi/extensions/pij/adapters/generation-router.ts
+@@ -1,17 +1,30 @@
+ /** I/O for the closed rs routing inventory. No legacy registry is consulted. */
+ import { spawn } from "node:child_process";
+-import { readFile as readFd } from "node:fs";
++import {
++	accessSync,
++	constants as fsConstants,
++	readFile as readFd,
++	readdirSync,
++	statSync,
++} from "node:fs";
+ import { readFile as fsReadFile } from "node:fs/promises";
+ import { homedir, constants as osConstants } from "node:os";
+ import { join } from "node:path";
++import {
++	type AmbientNativeIdentity,
++	resolveAmbientNativeIdentity,
++} from "../core/current-session.js";
+ import {
+ 	DaemonRefusalError,
+ 	decodeEnvelope,
+ 	PijNoDaemonError,
+ 	PijWireSkewError,
++	type Registration,
++	type RustSeatDescriptor,
+ } from "../core/daemon-wire.js";
+ import {
+ 	buildCallerContext,
++	type CallerContext,
+ 	classifyRsResponse,
+ 	decidePreCall,
+ 	describeOutcome,
+@@ -24,6 +37,12 @@ import {
+ 	routingRefusalEnvelope,
+ 	unported,
+ } from "../core/generation-routing.js";
++import {
++	codexRolloutForSession,
++	codexTranscriptRoot,
++	listCodexRollouts,
++} from "../core/harness/codex.js";
++import { resolveCopilotCurrentSession } from "../core/harness/copilot.js";
+ import {
+ 	type DaemonLocation,
+ 	daemonLocation,
+@@ -40,6 +59,8 @@ export interface GenerationRouterDeps {
+ 	readonly cwd?: (() => string) | undefined;
+ 	readonly pid?: (() => number) | undefined;
+ 	readonly procStart?: ((pid: number) => number) | undefined;
++	/** Validated native session files, never a legacy registry or an inferred host PID. */
++	readonly ambientIdentity?: (() => AmbientNativeIdentity | null) | undefined;
+ 	/** Only the explicitly declared native row may call this; streams are inherited. */
+ 	readonly runNative?: ((args: readonly string[]) => Promise<number>) | undefined;
+ }
+@@ -63,9 +84,65 @@ export function defaultRouterDeps(): GenerationRouterDeps {
+ 		cwd: () => process.cwd(),
+ 		pid: () => process.pid,
+ 		procStart: observedProcessStart,
++		ambientIdentity: () => ambientIdentity(process.env, homedir()),
+ 	};
+ }
+ 
++function ambientIdentity(env: NodeJS.ProcessEnv, home: string): AmbientNativeIdentity | null {
++	const readDir = (path: string): string[] => {
++		try {
++			return readdirSync(path);
++		} catch {
++			return [];
++		}
++	};
++	let copilotCurrentSessionId: string | undefined;
++	if (env.COPILOT_AGENT_SESSION_ID?.trim()) {
++		const resolved = resolveCopilotCurrentSession(
++			env.COPILOT_AGENT_SESSION_ID,
++			(root) => readDir(root).flatMap((name) => {
++				try {
++					const entry = statSync(join(root, name));
++					return [{ name, mtimeMs: entry.mtimeMs, isDirectory: entry.isDirectory() }];
++				} catch {
++					return [];
++				}
++			}),
++			home,
++		);
++		if (!resolved.ok) throw new Error(`E-AMBIG: ${resolved.message}`);
++		copilotCurrentSessionId = resolved.sessionId;
++	}
++	let codexCurrentSession: { threadId: string; transcriptPath: string } | undefined;
++	const threadId = env.CODEX_THREAD_ID?.trim().toLowerCase();
++	if (threadId) {
++		const transcriptPath = codexRolloutForSession(
++			listCodexRollouts(readDir, codexTranscriptRoot(home)),
++			threadId,
++			(path) => {
++				try {
++					accessSync(path, fsConstants.R_OK);
++					return statSync(path).isFile();
++				} catch {
++					return false;
++				}
++			},
++		);
++		if (transcriptPath === null)
++			throw new Error("E-AMBIG: CODEX_THREAD_ID has no matching readable native rollout");
++		codexCurrentSession = { threadId, transcriptPath };
++	}
++	const resolved = resolveAmbientNativeIdentity({
++		...(env.CLAUDE_CODE_SESSION_ID === undefined ? {} : { claudeCodeSessionId: env.CLAUDE_CODE_SESSION_ID }),
++		...(copilotCurrentSessionId === undefined ? {} : { copilotCurrentSessionId }),
++		...(codexCurrentSession === undefined ? {} : { codexCurrentSession }),
++	});
++	if (!resolved.ok) throw new Error(`${resolved.code}: ${resolved.message}`);
++	if (threadId && resolved.value?.harness !== "codex")
++		throw new Error("E-AMBIG: CODEX_THREAD_ID is not a valid native session id");
++	return resolved.value;
++}
++
+ export interface RouteResult {
+ 	readonly outcome: RouteOutcome;
+ 	readonly payload?: unknown;
+@@ -276,7 +353,50 @@ export async function routeVerb(
+ 		return probe.rawEnvelope === undefined
+ 			? refused(failure, row)
+ 			: { outcome: failure, row, rawEnvelope: probe.rawEnvelope };
+-	return callRs(verb, row, argv, location, deps, force === "rs", query);
++	let caller = buildCallerContext(deps.env, callerProcessFacts(deps));
++	const register = verb === "inbox" && leaf === "register";
++	if (register && argv.filter((arg) => arg !== "--json").join(" ") !== "inbox register")
++		return refused({ kind: "rs-error", verb, addr: location.addr, detail: "inbox register takes only --json" }, row);
++	if (!caller.tmuxPane && ["inbox", "send", "whoami", "phonehome"].includes(verb)) {
++		const identity = deps.ambientIdentity?.();
++		if (identity) {
++			const registerRow = findRoute("inbox", "register", table);
++			if (registerRow === undefined || !("rsPath" in registerRow))
++				return refused(unported(verb, location.addr, "native ambient registration is not in this routing inventory"), row);
++			if (caller.pid === undefined || caller.procStart === undefined || !caller.cwd)
++				return refused({ kind: "rs-error", verb, addr: location.addr, detail: "ambient registration requires observed caller process start and cwd" }, row);
++			const registration: Registration = {
++				id: "",
++				harness: identity.harness,
++				harness_session: identity.harnessSessionId,
++				folder: caller.cwd,
++				pid: caller.pid,
++				proc_start: caller.procStart,
++				relay: false,
++				...(caller.pijParentId === undefined ? {} : { parent: caller.pijParentId }),
++			};
++			const registered = await callRs("inbox", registerRow, ["inbox", "register"], location, deps, force === "rs", caller, undefined, registration);
++			if (registered.outcome.kind !== "rs") return registered;
++			const descriptor = registered.payload as RustSeatDescriptor | undefined;
++			const host = descriptor?.proc;
++			if (!descriptor?.id || descriptor.harness !== identity.harness || descriptor.pane != null || !host ||
++				!Number.isSafeInteger(host.pid) || host.pid <= 0 || !Number.isSafeInteger(host.proc_start) || host.proc_start <= 0)
++				return refused({ kind: "rs-unreadable", verb, addr: location.addr, detail: "native registration returned no matching paneless host identity" }, row);
++			if (register) return registered;
++			// The daemon observed this host; an inherited PIJ_SESSION_ID never overrides it.
++			caller = { ...caller, pijSessionId: descriptor.id, pid: host.pid, procStart: host.proc_start };
++			if (identity.harness === "claude") caller = { ...caller, claudeCodeSessionId: identity.harnessSessionId };
++			else if (identity.harness === "copilot") caller = { ...caller, copilotAgentSessionId: identity.harnessSessionId };
++			else caller = { ...caller, codexThreadId: identity.harnessSessionId };
++		}
++	}
++	if (register) {
++		if (!caller.tmuxPane && !caller.pijSessionId)
++			return refused({ kind: "rs-error", verb, addr: location.addr, code: "E-AMBIG", detail: "cannot detect a current Claude, Copilot, or Codex session; run inside an agent tool shell" }, row);
++		// Already-admitted panes/IDs are reads, not a second registration or a client minter.
++		return callRs(verb, { ...row, rsPath: "/v1/whoami" }, ["whoami"], location, deps, force === "rs", caller);
++	}
++	return callRs(verb, row, argv, location, deps, force === "rs", caller, query);
+ }
+ 
+ async function callRs(
+@@ -286,7 +406,9 @@ async function callRs(
+ 	location: DaemonLocation,
+ 	deps: GenerationRouterDeps,
+ 	forced: boolean,
++	caller: CallerContext,
+ 	query?: URLSearchParams,
++	registration?: Registration,
+ ): Promise<RouteResult> {
+ 	const { addr, stateDir } = location;
+ 	let key: string;
+@@ -300,7 +422,6 @@ async function callRs(
+ 	const suffix = query?.toString();
+ 	const url = `http://${addr}${row.rsPath}${suffix ? `?${suffix}` : ""}`;
+ 	const headers = { Authorization: `Bearer ${key}` };
+-	const caller = buildCallerContext(deps.env, callerProcessFacts(deps));
+ 	let bodyLiteral: string | undefined;
+ 	const bodyFileAt = row.readsBodyFile ? argv.indexOf("--body-file") : -1;
+ 	if (bodyFileAt !== -1) {
+@@ -334,11 +455,9 @@ async function callRs(
+ 				: {
+ 						method: "POST",
+ 						headers: { ...headers, "Content-Type": "application/json" },
+-						body: JSON.stringify(
+-							bodyLiteral === undefined
+-								? { argv, caller }
+-								: { argv, caller, body_literal: bodyLiteral },
+-						),
++						body: JSON.stringify(registration ?? (bodyLiteral === undefined
++							? { argv, caller }
++							: { argv, caller, body_literal: bodyLiteral })),
+ 					},
+ 		);
+ 		body = await response.text();
+@@ -380,7 +499,7 @@ async function callRs(
+ 	const acknowledge =
+ 		row.acknowledgePath === undefined
+ 			? undefined
+-			: buildAcknowledge(row.acknowledgePath, payload, url, headers, deps);
++			: buildAcknowledge(row.acknowledgePath, payload, url, headers, deps, caller);
+ 	return {
+ 		outcome,
+ 		payload,
+@@ -396,6 +515,7 @@ function buildAcknowledge(
+ 	url: string,
+ 	headers: Record<string, string>,
+ 	deps: GenerationRouterDeps,
++	caller: CallerContext,
+ ): (() => Promise<string | undefined>) | undefined {
+ 	const claims: unknown[] = Array.isArray(payload) ? payload : [];
+ 	const jobIds = claims
+@@ -405,7 +525,6 @@ function buildAcknowledge(
+ 		);
+ 	if (jobIds.length === 0) return undefined;
+ 	const ackUrl = new URL(path, url).href;
+-	const caller = buildCallerContext(deps.env, callerProcessFacts(deps));
+ 	return async () => {
+ 		for (const jobId of jobIds) {
+ 			try {
+diff --git a/.pi/extensions/pij/adapters/generation-seam.test.ts b/.pi/extensions/pij/adapters/generation-seam.test.ts
+index df95f182..6dd4ee15 100644
+--- a/.pi/extensions/pij/adapters/generation-seam.test.ts
++++ b/.pi/extensions/pij/adapters/generation-seam.test.ts
+@@ -275,7 +275,6 @@ describe("leaf routing leaves grammar with the daemon", () => {
+ 	});
+ 
+ 	it.each([
+-		"register",
+ 		"frobnicate",
+ 	])("inbox %s is a named refusal, not a bare-inbox read", async (leaf) => {
+ 		const seen: Seen[] = [];
+@@ -321,7 +320,7 @@ describe("leaf routing leaves grammar with the daemon", () => {
+ });
+ 
+ describe("generation diagnostics report capability attempts, not completed operations", () => {
+-	it("expands the actual inbox leaves and labels the unported leaf", async () => {
++	it("expands actual inbox leaves without performing registration", async () => {
+ 		const seen: Seen[] = [];
+ 		const decisions = await probeDecisionOnly(["inbox"], deps(seen));
+ 		expect(decisions.map((decision) => decision.verb)).toEqual([
+@@ -329,8 +328,8 @@ describe("generation diagnostics report capability attempts, not completed opera
+ 			"inbox check",
+ 			"inbox register",
+ 		]);
+-		expect(decisions.map((decision) => decision.generation)).toEqual(["rs", "rs", "rs-failed"]);
+-		expect(decisions[2]?.line).toContain("E-RS-UNPORTED");
++		expect(decisions.map((decision) => decision.generation)).toEqual(["rs", "rs", "rs"]);
++		expect(decisions[2]?.line).toContain("/v1/register");
+ 		expect(seen).toEqual([]);
+ 	});
+ 
+diff --git a/.pi/extensions/pij/cli.inbox.integration.test.ts b/.pi/extensions/pij/cli.inbox.integration.test.ts
+index 0074ff46..1f70eac0 100644
+--- a/.pi/extensions/pij/cli.inbox.integration.test.ts
++++ b/.pi/extensions/pij/cli.inbox.integration.test.ts
+@@ -1,9 +1,10 @@
+-import { spawn, spawnSync } from "node:child_process";
++// Real private Rust daemon + public TS CLI descendants of active package-shaped hosts.
++// These are deterministic process/protocol tests, not model-backed harness canaries.
++import { type ChildProcess, spawn } from "node:child_process";
+ import {
+ 	existsSync,
+ 	mkdirSync,
+ 	mkdtempSync,
+-	readdirSync,
+ 	readFileSync,
+ 	realpathSync,
+ 	rmSync,
+@@ -11,462 +12,649 @@ import {
+ } from "node:fs";
+ import { createRequire } from "node:module";
+ import { tmpdir } from "node:os";
+-import { join } from "node:path";
++import { dirname, join, resolve } from "node:path";
+ import { pathToFileURL } from "node:url";
+ import { afterEach, beforeEach, describe, expect, it } from "vitest";
+-import { FsChannel } from "./adapters/channel.js";
++import { observedProcessStart } from "./adapters/daemon-http.js";
+ import { FsEventLog } from "./adapters/event-log.js";
+-import { FsRegistry } from "./adapters/fs-registry.js";
+-import { PA_VERB_CLASSIFICATION } from "./core/orchestration/pa-capability.js";
+-import type { DeliveredMessage, SessionDescriptor } from "./core/types.js";
+ 
+ const nodeRequire = createRequire(import.meta.url);
+ const TSX_CLI = nodeRequire.resolve("tsx/cli");
++const TSX = nodeRequire.resolve("tsx");
+ const CLI = join(import.meta.dirname, "cli.ts");
+-
++const REPO_ROOT = resolve(import.meta.dirname, "../../..");
++// Build before this suite: cargo build -p pij-cli --bin pij-rs (from this worktree).
++// Never build during a test or silently select an installed production daemon.
++const RS_BINARY = join(
++	resolve(REPO_ROOT, process.env.CARGO_TARGET_DIR ?? "target"),
++	"debug",
++	process.platform === "win32" ? "pij-rs.exe" : "pij-rs",
++);
++
++type Harness = "claude" | "copilot" | "codex";
+ interface CliRun {
+ 	readonly code: number;
+ 	readonly stdout: string;
+ 	readonly stderr: string;
+ }
++interface Envelope<T> {
++	v: number;
++	command: string;
++	ok: boolean;
++	data: T;
++	meta?: string;
++	error?: string;
++}
++interface Descriptor {
++	id: string;
++	harness: string;
++	session: string;
++	pane: string | null;
++	proc: { pid: number; proc_start: number };
++	folder: string;
++	relay: boolean;
++	native_extension_delivery: boolean;
++	binding?: "created" | "same" | "rebound";
++}
++interface Receipt {
++	msg_id: string;
++	outcome: { outcome: string; origin?: string };
++	at: number;
++}
++interface Claim {
++	job_id: number;
++	message: { from: string; to: string; body: string; msg_id: string; in_reply_to?: string };
++	native_consumer: { native_session: string; pid: number; proc_start: number };
++}
++interface OwnedProcess {
++	child: ChildProcess;
++	completed: Promise<CliRun>;
++	output: () => { stdout: string; stderr: string };
++	closed: () => boolean;
++}
++interface Host {
++	process: OwnedProcess;
++	harness: Harness;
++	session: string;
++	launch: (argv: readonly string[], env?: Record<string, string>) => Promise<{
++		pid: number;
++		completed: Promise<CliRun>;
++	}>;
++	run: (argv: readonly string[], env?: Record<string, string>) => Promise<CliRun>;
++}
++
++async function until<T>(label: string, observe: () => T | undefined, timeout = 10_000): Promise<T> {
++	const deadline = Date.now() + timeout;
++	while (Date.now() < deadline) {
++		const value = observe();
++		if (value !== undefined) return value;
++		await new Promise<void>((resolve) => setTimeout(resolve, 20));
++	}
++	throw new Error(`timed out observing ${label}`);
++}
++
++function success<T>(run: CliRun, command: string): Envelope<T> {
++	expect(run, `${command}: ${run.stderr || run.stdout}`).toMatchObject({ code: 0, stderr: "" });
++	const envelope = JSON.parse(run.stdout) as Envelope<T>;
++	expect(envelope).toMatchObject({ v: 2, command, ok: true });
++	expect(envelope).toHaveProperty("data");
++	expect(envelope).not.toHaveProperty("error");
++	return envelope;
++}
++
++function refusal(run: CliRun, reason: RegExp): void {
++	expect(run).toMatchObject({ code: 4, stderr: "" });
++	const envelope = JSON.parse(run.stdout) as Envelope<never>;
++	expect(envelope).toMatchObject({ v: 2, ok: false, error: expect.any(String) });
++	expect(envelope.command).toEqual(expect.any(String));
++	expect(envelope).not.toHaveProperty("data");
++	expect(envelope.meta).toMatch(reason);
++}
+ 
+-describe("portable pij CLI baseline", () => {
++describe("public pij inbox lifecycle against a private Rust daemon", () => {
++	let root: string;
+ 	let pijHome: string;
+ 	let folder: string;
+ 	let agentHome: string;
++	let stateDir: string;
++	let addr: string;
++	let daemon: OwnedProcess | undefined;
++	let tmuxServer: OwnedProcess | undefined;
++	let hostSequence: number;
++	const children = new Set<OwnedProcess>();
++	const hosts: Host[] = [];
++	const streamClosers: Array<() => Promise<void>> = [];
+ 
+ 	beforeEach(() => {
+-		pijHome = mkdtempSync(join(tmpdir(), "pij-portable-home-"));
+-		folder = realpathSync(mkdtempSync(join(tmpdir(), "pij-portable-cwd-")));
+-		agentHome = realpathSync(mkdtempSync(join(tmpdir(), "pij-portable-agent-home-")));
++		root = realpathSync(mkdtempSync(join(tmpdir(), "pij-native-inbox-")));
++		pijHome = join(root, "legacy-home");
++		folder = join(root, "cwd");
++		agentHome = join(root, "home");
++		stateDir = join(root, "rs-state");
++		for (const path of [pijHome, folder, agentHome, stateDir, join(root, "tmux")]) {
++			mkdirSync(path, { recursive: true });
++		}
++		addr = "127.0.0.1:0";
++		daemon = undefined;
++		tmuxServer = undefined;
++		hostSequence = 0;
+ 	});
+ 
+-	afterEach(() => {
+-		rmSync(pijHome, { recursive: true, force: true });
+-		rmSync(folder, { recursive: true, force: true });
+-		rmSync(agentHome, { recursive: true, force: true });
+-	});
++	function own(child: ChildProcess): OwnedProcess {
++		let stdout = "";
++		let stderr = "";
++		let closed = false;
++		let failure: Error | undefined;
++		child.stdout?.setEncoding("utf8").on("data", (chunk: string) => { stdout += chunk; });
++		child.stderr?.setEncoding("utf8").on("data", (chunk: string) => { stderr += chunk; });
++		child.once("error", (error) => { failure = error; });
++		const completed = new Promise<CliRun>((resolve, reject) => {
++			child.once("close", (code, signal) => {
++				closed = true;
++				if (failure) reject(failure);
++				else resolve({ code: code ?? (signal === null ? 1 : 128), stdout, stderr });
++			});
++		});
++		// A process may fail before its readiness/result is awaited; retain the rejection.
++		void completed.catch(() => undefined);
++		const owned = { child, completed, output: () => ({ stdout, stderr }), closed: () => closed };
++		children.add(owned);
++		return owned;
++	}
+ 
+-	function writeDescriptor(id: string): SessionDescriptor {
+-		const dataDir = join(pijHome, id);
+-		const descriptor: SessionDescriptor = {
+-			id,
+-			folder,
+-			dataDir,
+-			eventsPath: join(dataDir, "events.ndjson"),
+-			pid: process.pid,
+-			startedAt: "2026-07-12T00:00:00.000Z",
+-			state: "idle",
+-		};
+-		mkdirSync(join(dataDir, "inbox"), { recursive: true });
+-		writeFileSync(join(pijHome, `${id}.json`), JSON.stringify(descriptor));
+-		return descriptor;
++	async function stop(owned: OwnedProcess, signal: NodeJS.Signals): Promise<CliRun> {
++		if (!owned.closed()) owned.child.kill(signal);
++		const kill = setTimeout(() => { if (!owned.closed()) owned.child.kill("SIGKILL"); }, 5000);
++		try {
++			return await owned.completed;
++		} finally {
++			clearTimeout(kill);
++		}
+ 	}
+ 
++	afterEach(async () => {
++		// One failed assertion/stream must not bypass any host's descendant drain.
++		const cleanup = await Promise.allSettled([
++			...streamClosers.splice(0).map(async (close) => close()),
++			...hosts.splice(0).map(async (host) => {
++				const exit = await stop(host.process, "SIGTERM");
++				expect(exit, exit.stderr).toMatchObject({ code: 0, stderr: "" });
++			}),
++			(async () => {
++				if (!daemon) return;
++				const exit = await stop(daemon, "SIGINT");
++				expect(exit, exit.stderr).toMatchObject({ code: 0 });
++				expect(exit.stdout).toContain("pij-rs daemon: shutting down");
++			})(),
++		]);
++		if (tmuxServer) {
++			const server = tmuxServer;
++			cleanup.push(...await Promise.allSettled([(async () => {
++				const stopped = await runTmux(["kill-server"]);
++				expect(stopped, stopped.stderr).toMatchObject({ code: 0 });
++				expect(await server.completed).toMatchObject({ code: 0 });
++			})()]));
++		}
++		cleanup.push(...await Promise.allSettled([...children].map(async (child) => {
++			await stop(child, child === tmuxServer ? "SIGTERM" : "SIGKILL");
++		})));
++		children.clear();
++		rmSync(root, { recursive: true, force: true });
++		for (const result of cleanup) if (result.status === "rejected") throw result.reason;
++	});
++
+ 	function cliEnv(overrides: Record<string, string> = {}): NodeJS.ProcessEnv {
+ 		return {
+-			...process.env,
++			PATH: process.env.PATH,
++			SystemRoot: process.env.SystemRoot,
+ 			HOME: agentHome,
+ 			USERPROFILE: agentHome,
++			CLAUDE_CONFIG_DIR: join(agentHome, ".claude"),
++			XDG_CONFIG_HOME: join(agentHome, ".config"),
++			TMPDIR: root,
++			TMUX_TMPDIR: join(root, "tmux"),
++			NODE_NO_WARNINGS: "1",
+ 			PIJ_HOME: pijHome,
+-			PIJ_DAEMON_GENERATION: "legacy",
+-			PIJ_SESSION_ID: "",
+-			TMUX: "",
+-			TMUX_PANE: "",
+-			CLAUDE_CODE_SESSION_ID: "",
+-			COPILOT_AGENT_SESSION_ID: "",
+-			CODEX_THREAD_ID: "",
++			PIJ_RS_STATE_DIR: stateDir,
++			PIJ_RS_ADDR: addr,
+ 			...overrides,
+ 		};
+ 	}
+ 
+-	function runPij(
+-		args: readonly string[],
+-		envOverrides: Record<string, string> = {},
+-		timeout = 10_000,
+-	): CliRun {
+-		const result = spawnSync(process.execPath, [TSX_CLI, CLI, ...args], {
+-			cwd: folder,
+-			env: cliEnv(envOverrides),
+-			encoding: "utf8",
+-			timeout,
+-		});
+-		if (result.error) throw result.error;
+-		return {
+-			code: result.status ?? 1,
+-			stdout: result.stdout,
+-			stderr: result.stderr,
+-		};
++	function runTmux(argv: readonly string[]): Promise<CliRun> {
++		return own(spawn("tmux", ["-S", join(root, "tmux.sock"), ...argv], {
++			cwd: folder, env: cliEnv(), stdio: "pipe", timeout: 10_000, killSignal: "SIGKILL",
++		})).completed;
+ 	}
+ 
+-	function ambientFixture(
+-		harness: "claude" | "copilot" | "codex",
+-		sessionId: string,
+-	): Record<string, string> {
+-		if (harness === "claude") return { CLAUDE_CODE_SESSION_ID: sessionId };
+-		if (harness === "copilot") {
+-			mkdirSync(join(agentHome, ".copilot", "session-state", sessionId), {
+-				recursive: true,
+-			});
+-			return { COPILOT_AGENT_SESSION_ID: sessionId };
+-		}
+-		const rolloutDir = join(agentHome, ".codex", "sessions", "2026", "07", "12");
+-		mkdirSync(rolloutDir, { recursive: true });
+-		writeFileSync(
+-			join(rolloutDir, `rollout-2026-07-12T00-00-00-${sessionId}.jsonl`),
+-			`${JSON.stringify({ type: "session_meta", payload: { cwd: folder } })}\n`,
+-		);
+-		return { CODEX_THREAD_ID: sessionId };
++	async function privateTmux(): Promise<void> {
++		if (tmuxServer) return;
++		tmuxServer = own(spawn("tmux", ["-S", join(root, "tmux.sock"), "-f", "/dev/null", "-D"], {
++			cwd: folder, env: cliEnv(), stdio: "pipe",
++		}));
++		const server = tmuxServer;
++		await until("private tmux server socket", () => {
++			if (server.closed()) throw new Error(`tmux exited: ${JSON.stringify(server.output())}`);
++			return existsSync(join(root, "tmux.sock")) ? true : undefined;
++		});
++		const ready = await runTmux(["show-options", "-s", "exit-empty"]);
++		expect(ready, ready.stderr).toMatchObject({ code: 0 });
++		// The server must have a session for real list-panes to succeed. This
++		// resource is not the claimed harness host and proves no model/pane binding.
++		const session = await runTmux([
++			"new-session", "-d", "-s", "pij-inbox-fixture", "-c", folder, "exec /bin/sleep 300",
++		]);
++		expect(session, session.stderr).toMatchObject({ code: 0 });
+ 	}
+ 
+-	function register(env: Record<string, string>): {
+-		readonly id: string;
+-		readonly existing: boolean;
+-	} {
+-		const result = runPij(["inbox", "register", "--json"], env);
+-		expect(result).toMatchObject({ code: 0, stderr: "" });
+-		return JSON.parse(result.stdout) as { id: string; existing: boolean };
++	async function bindPaned(harness: "claude" | "pi" | "omp", pane: string): Promise<Descriptor> {
++		await privateTmux();
++		const host = await startHost("claude", `paned-compatibility-${harness}`);
++		const pid = host.process.child.pid!;
++		// Public native compatibility admission accepts a live asserted process
++		// when this PRIVATE server has no observation for the named pane. No
++		// fabricated registry files, no real-pane or OMP/model-runtime claim.
++		const envelope = await http<Descriptor>("/v1/register", {
++			id: `pij-paned-${harness}`, harness, folder, pane,
++			pid, proc_start: observedProcessStart(pid),
++			HARNESS_SESSION_ID: host.session, relay: false, native_extension_delivery: false,
++		});
++		expect(envelope).toMatchObject({ v: 2, command: "pij register", ok: true, data: {
++			id: `pij-paned-${harness}`, harness, pane, session: host.session,
++			proc: { pid, proc_start: observedProcessStart(pid) }, binding: "created",
++		} });
++		return envelope.data;
+ 	}
+ 
+-	function bindPushedSeat(
+-		sessionId: string,
+-		paneId: string,
+-	): { readonly id: string; readonly ambientEnv: Record<string, string> } {
+-		const ambientEnv = ambientFixture("claude", sessionId);
+-		const registration = register(ambientEnv);
+-		const registry = new FsRegistry(pijHome);
+-		const descriptor = registry.read(registration.id);
+-		if (!descriptor) throw new Error("missing pushed-seat descriptor");
+-		registry.write({
+-			...descriptor,
+-			deliveryMode: "push",
+-			paneId,
+-			lifecycle: "bound",
++	async function http<T>(path: string, body?: unknown): Promise<Envelope<T>> {
++		const response = await fetch(`http://${addr}${path}`, {
++			method: body === undefined ? "GET" : "POST",
++			headers: {
++				Authorization: `Bearer ${readFileSync(join(stateDir, "daemon.key"), "utf8").trim()}`,
++				"Content-Type": "application/json",
++			},
++			body: body === undefined ? undefined : JSON.stringify(body),
++			signal: AbortSignal.timeout(10_000),
+ 		});
+-		return { id: registration.id, ambientEnv };
++		const text = await response.text();
++		expect(response.status, text).toBe(200);
++		return success<T>({ code: 0, stdout: text, stderr: "" }, JSON.parse(text).command);
+ 	}
+ 
+-	function spawnPij(
+-		args: readonly string[],
+-		envOverrides: Record<string, string>,
+-		timeout: number,
+-	): {
+-		readonly output: () => { stdout: string; stderr: string };
+-		readonly completed: Promise<CliRun>;
+-	} {
+-		const child = spawn(process.execPath, [TSX_CLI, CLI, ...args], {
++	async function startDaemon(): Promise<void> {
++		if (daemon) return;
++		if (!existsSync(RS_BINARY)) {
++			throw new Error(`Missing worktree daemon ${RS_BINARY}; build with cargo build -p pij-cli --bin pij-rs in ${REPO_ROOT} (honoring CARGO_TARGET_DIR) before running this suite`);
++		}
++		daemon = own(spawn(RS_BINARY, [
++			"--state-dir", stateDir, "--addr", "127.0.0.1:0", "daemon", "--bind", "127.0.0.1:0",
++		], {
+ 			cwd: folder,
+-			env: cliEnv(envOverrides),
++			env: cliEnv({ TMUX: `${join(root, "tmux.sock")},0,0` }),
+ 			stdio: "pipe",
+-			timeout,
+-		});
+-		let stdout = "";
+-		let stderr = "";
+-		child.stdout.setEncoding("utf8");
+-		child.stderr.setEncoding("utf8");
+-		child.stdout.on("data", (chunk: string) => {
+-			stdout += chunk;
+-		});
+-		child.stderr.on("data", (chunk: string) => {
+-			stderr += chunk;
+-		});
+-		const completed = new Promise<CliRun>((resolve, reject) => {
+-			child.once("error", reject);
+-			child.once("close", (code) => {
+-				resolve({ code: code ?? 1, stdout, stderr });
+-			});
+-		});
+-		return { output: () => ({ stdout, stderr }), completed };
++		}));
++		const process = daemon;
++		addr = await until("private daemon listening banner", () => {
++			const output = process.output();
++			const match = `${output.stdout}\n${output.stderr}`.match(/pij-rs daemon: listening on (127\.0\.0\.1:\d+)/);
++			if (match) return match[1];
++			if (process.closed()) throw new Error(`daemon exited before readiness: ${output.stdout}\n${output.stderr}`);
++			return undefined;
++		}, 20_000);
++		expect(addr).not.toBe("127.0.0.1:0");
++		expect(addr).not.toBe("127.0.0.1:7461");
++		const health = await http<{ status: string }>("/health");
++		expect(health.data.status).toBe("healthy");
++	}
++
++	function runPij(argv: readonly string[], env: Record<string, string> = {}): Promise<CliRun> {
++		return own(spawn(process.execPath, ["--import", TSX, CLI, ...argv], {
++			cwd: folder, env: cliEnv(env), stdio: "pipe", timeout: 20_000, killSignal: "SIGKILL",
++		})).completed;
+ 	}
+ 
+-	async function waitForOutput(
+-		run: { readonly output: () => { stdout: string; stderr: string } },
+-		text: string,
+-		timeout = 5000,
+-	): Promise<void> {
+-		const deadline = Date.now() + timeout;
+-		while (Date.now() < deadline) {
+-			if (run.output().stdout.includes(text)) return;
+-			await new Promise<void>((resolve) => setTimeout(resolve, 50));
++	function ambientFixture(harness: Harness, session: string): Record<string, string> {
++		if (harness === "claude") return { CLAUDE_CODE_SESSION_ID: session };
++		if (harness === "copilot") {
++			mkdirSync(join(agentHome, ".copilot", "session-state", session), { recursive: true });
++			return { COPILOT_AGENT_SESSION_ID: session };
+ 		}
+-		throw new Error(`timed out waiting for subprocess output: ${text}`);
++		const rolloutDir = join(agentHome, ".codex", "sessions", "2026", "07", "12");
++		mkdirSync(rolloutDir, { recursive: true });
++		writeFileSync(join(rolloutDir, `rollout-2026-07-12T00-00-00-${session}.jsonl`),
++			`${JSON.stringify({ type: "session_meta", payload: { id: session, cwd: folder } })}\n`);
++		return { CODEX_THREAD_ID: session };
+ 	}
+ 
+-	it("runs whoami through process.execPath and the tsx entrypoint without tmux", {
+-		timeout: 15_000,
+-	}, () => {
+-		const descriptor = writeDescriptor("pij-portable-a");
+-
+-		const result = runPij(["whoami", "--json"], { PIJ_SESSION_ID: descriptor.id });
+-
+-		expect(result).toMatchObject({ code: 0, stderr: "" });
+-		// plan 078: whoami now also projects the seat's role and, for a PA, the
+-		// verbs it will be refused — a capability boundary whose input the caller
+-		// cannot read is the s075 opened.actor defect, so the gate had to come
+-		// with a way to ask BEFORE attempting. An unroled seat reads null and a
+-		// map that is uniformly `allow`; toEqual is kept deliberately (not
+-		// toMatchObject) so a future addition to this surface has to be noticed
+-		// here — that strictness caught plan 084's additive `conditionalVerbs` key
+-		// weeks after being written, and downgrading it would silence the only
+-		// mechanism in this codebase that detects the exact defect plan 094 exists
+-		// to fix.
+-		//
+-		// PLAN 094 (#153): the two lists are gone, replaced by one exhaustive map.
+-		// The map is split out of the toEqual rather than transcribed into it,
+-		// because a literal of every key is exhaustive BY TRANSCRIPTION — it pins
+-		// today's verbs and silently accepts tomorrow's. Compared against
+-		// `PA_VERB_CLASSIFICATION` the pin TRACKS the table, so a verb added
+-		// without a classification goes red on its own. Both halves stay strict:
+-		// a new scalar field trips the `toEqual`, a new verb trips the key set.
+-		const { verbs, ...scalars } = JSON.parse(result.stdout) as Record<string, unknown> & {
+-			verbs: Record<string, string>;
+-		};
+-		expect(scalars).toEqual({
+-			id: descriptor.id,
+-			folder,
+-			dataDir: descriptor.dataDir,
+-			state: "idle",
+-			pid: process.pid,
+-			orchestrationRole: null,
+-			capabilitySchema: 2,
++	async function startHost(harness: Harness, session: string): Promise<Host> {
++		await startDaemon();
++		const entry = {
++			claude: "@anthropic-ai/claude-code/cli.js",
++			copilot: "@github/copilot/index.js",
++			codex: "@openai/codex/bin/codex.js",
++		}[harness];
++		const hostPath = join(root, `host-${++hostSequence}`, "node_modules", entry);
++		mkdirSync(dirname(hostPath), { recursive: true });
++		// This live IPC host actually launches/owns the public CLI, rather than
++		// spoofing argv0 or keeping an unrelated idle process alive as a fixture.
++		writeFileSync(hostPath, `
++const { spawn } = require("node:child_process");
++const children = new Set();
++let stopping = false;
++const send = (message) => { if (process.connected) process.send(message); };
++const finish = () => {
++  if (stopping && children.size === 0) {
++    if (process.connected) process.disconnect();
++    process.exitCode = 0;
++  }
++};
++const stop = () => {
++  stopping = true;
++  for (const child of children) child.kill("SIGKILL");
++  finish();
++};
++process.on("SIGTERM", stop);
++process.on("SIGINT", stop);
++process.on("disconnect", stop);
++process.on("message", ({ id, argv, env }) => {
++  if (stopping) return;
++  const child = spawn(process.execPath, ["--import", ${JSON.stringify(TSX)}, ${JSON.stringify(CLI)}, ...argv], {
++    cwd: ${JSON.stringify(folder)}, env: { ...process.env, ...env },
++    stdio: ["ignore", "pipe", "pipe"], timeout: 20000, killSignal: "SIGKILL",
++  });
++  children.add(child);
++  let stdout = "", stderr = "", error;
++  child.stdout.setEncoding("utf8").on("data", (chunk) => { stdout += chunk; });
++  child.stderr.setEncoding("utf8").on("data", (chunk) => { stderr += chunk; });
++  child.once("spawn", () => send({ type: "started", id, pid: child.pid }));
++  child.once("error", (value) => { error = value.message; });
++  child.once("close", (code) => {
++    children.delete(child);
++    send({ type: "completed", id, result: { code: code ?? 1, stdout, stderr }, error });
++    finish();
++  });
++});
++send({ type: "ready", pid: process.pid });
++`);
++		const sessionArgs = harness === "codex" ? ["resume", session] : ["--session-id", session];
++		const owned = own(spawn(process.execPath, [hostPath, ...sessionArgs], {
++			cwd: folder, env: cliEnv(ambientFixture(harness, session)), stdio: ["ignore", "pipe", "pipe", "ipc"],
++		}));
++		let ready = false;
++		let next = 0;
++		const started = new Map<number, number>();
++		const results = new Map<number, { result: CliRun; error?: string }>();
++		owned.child.on("message", (message: { type: string; id: number; pid: number; result: CliRun; error?: string }) => {
++			if (message.type === "ready") ready = message.pid === owned.child.pid;
++			if (message.type === "started") started.set(message.id, message.pid);
++			if (message.type === "completed") results.set(message.id, message);
+ 		});
+-		expect(Object.keys(verbs).sort()).toEqual(Object.keys(PA_VERB_CLASSIFICATION).sort());
+-		// Stated positively, because an unroled seat's capability used to be
+-		// carried by an EMPTY LIST — an absence a reader could not tell from a
+-		// build that had no gate at all.
+-		expect([...new Set(Object.values(verbs))]).toEqual(["allow"]);
+-	});
+-
+-	it("delivers a raw message through the real CLI into an isolated PIJ_HOME", {
+-		timeout: 15_000,
+-	}, () => {
+-		const sender = writeDescriptor("pij-portable-a");
+-		const receiver = writeDescriptor("pij-portable-b");
++		const check = () => {
++			if (owned.closed()) throw new Error(`host exited: ${JSON.stringify(owned.output())}`);
++		};
++		const launch: Host["launch"] = async (argv, env = {}) => {
++			check();
++			const id = ++next;
++			owned.child.send({ id, argv, env });
++			const pid = await until("host-owned CLI spawn", () => {
++				check();
++				if (results.get(id)?.error) throw new Error(results.get(id)?.error);
++				return started.get(id);
++			});
++			const completed = until("host-owned CLI completion", () => {
++				check();
++				const answer = results.get(id);
++				if (answer?.error) throw new Error(answer.error);
++				return answer?.result;
++			}, 25_000);
++			void completed.catch(() => undefined);
++			return { pid, completed };
++		};
++		const host: Host = { process: owned, harness, session, launch,
++			run: async (argv, env) => (await launch(argv, env)).completed };
++		hosts.push(host);
++		await until("active host IPC readiness", () => { check(); return ready ? true : undefined; });
++		return host;
++	}
+ 
+-		const result = runPij(["send", receiver.id, "hello portable", "--json"], {
+-			PIJ_SESSION_ID: sender.id,
++	async function register(host: Host, env: Record<string, string> = {}): Promise<Descriptor> {
++		const run = await host.launch(["inbox", "register", "--json"], env);
++		const envelope = success<Descriptor>(await run.completed, "pij register");
++		expect(envelope.data).toMatchObject({
++			id: expect.stringMatching(/^pij-/), harness: host.harness, session: host.session,
++			pane: null, folder, relay: false, native_extension_delivery: false,
++			proc: { pid: host.process.child.pid, proc_start: observedProcessStart(host.process.child.pid!) },
+ 		});
++		expect(envelope.data.proc.pid).not.toBe(run.pid);
++		expect(envelope.data).not.toHaveProperty("descriptor");
++		expect(envelope.data).not.toHaveProperty("existing");
++		return envelope.data;
++	}
+ 
+-		expect(result).toMatchObject({ code: 0, stderr: "" });
+-		expect(JSON.parse(result.stdout)).toMatchObject({
+-			from: sender.id,
+-			to: receiver.id,
+-			kind: "text",
+-		});
+-		const inboxDir = join(receiver.dataDir, "inbox");
+-		const messageNames = readdirSync(inboxDir).filter(
+-			(name) => name.startsWith("msg-") && name.endsWith(".json"),
+-		);
+-		expect(messageNames).toHaveLength(1);
+-		const messageName = messageNames[0];
+-		expect(messageName).toBeDefined();
+-		const delivered = JSON.parse(
+-			readFileSync(join(inboxDir, messageName as string), "utf8"),
+-		) as DeliveredMessage;
+-		expect(delivered).toMatchObject({
+-			from: sender.id,
+-			to: receiver.id,
+-			body: "hello portable",
+-		});
+-		expect(messageName).toBe(`msg-${delivered.messageId}.json`);
+-	});
++	function expectClaims(run: CliRun, reader: Descriptor, messages: Claim["message"][]): Claim[] {
++		const envelope = success<Claim[]>(run, "pij inbox");
++		expect(envelope).toEqual({ v: 2, command: "pij inbox", ok: true, data: envelope.data });
++		expect(envelope.data).toHaveLength(messages.length);
++		for (const [index, message] of messages.entries()) {
++			expect(envelope.data[index]).toEqual({
++				job_id: expect.any(Number), message,
++				native_consumer: { native_session: reader.session, ...reader.proc },
++			});
++		}
++		return envelope.data;
++	}
+ 
+-	it.each([
+-		{
+-			label: "Claude",
+-			harness: "claude" as const,
+-			sessionId: "claude-portable-current",
+-		},
+-		{
+-			label: "Copilot",
+-			harness: "copilot" as const,
+-			sessionId: "11111111-2222-4333-8444-555555555555",
+-		},
+-		{
+-			label: "Codex",
+-			harness: "codex" as const,
+-			sessionId: "aaaaaaaa-1111-4222-8333-bbbbbbbbbbbb",
+-		},
+-	])("$label ambient registration is idempotent and finite wait returns JSON", {
+-		timeout: 30_000,
+-	}, ({ harness, sessionId }) => {
+-		const env = ambientFixture(harness, sessionId);
+-		const first = register(env);
+-		expect(first.existing).toBe(false);
+-		expect(register(env)).toMatchObject({ id: first.id, existing: true });
+-		expect(new FsRegistry(pijHome).read(first.id)).toMatchObject({
+-			id: first.id,
+-			harness,
+-			harnessSessionId: sessionId,
+-			deliveryMode: "pull",
+-			lifecycle: "bound",
+-		});
++	async function send(host: Host, to: string, body: string, inReplyTo?: string): Promise<Receipt> {
++		const argv = ["send", to, body, "--json"];
++		if (inReplyTo) argv.push("--in-reply-to", inReplyTo);
++		const envelope = success<Receipt>(await host.run(argv), "pij send");
++		expect(envelope).toEqual({ v: 2, command: "pij send", ok: true, data: {
++			msg_id: expect.any(String), outcome: expect.objectContaining({ outcome: "queued" }), at: expect.any(Number),
++		} });
++		return envelope.data;
++	}
+ 
+-		const timed = runPij(["inbox", "check", "--wait", "10", "--json"], env);
+-		expect(timed).toMatchObject({ code: 0, stderr: "" });
+-		expect(JSON.parse(timed.stdout)).toEqual({
+-			self: first.id,
+-			messages: [],
+-			timedOut: true,
++	async function watchOutcomes(): Promise<{
++		outcomes: Array<{ seat: string; msg_id: string; outcome: Receipt["outcome"]; transport: string }>;
++		waitFor: (msgId: string) => Promise<void>;
++	}> {
++		const controller = new AbortController();
++		const response = await fetch(`http://${addr}/v1/events?scope=local`, {
++			headers: { Authorization: `Bearer ${readFileSync(join(stateDir, "daemon.key"), "utf8").trim()}` },
++			signal: controller.signal,
+ 		});
+-	});
+-
+-	it("refuses inbox --wait immediately for a pushed-delivery seat", {
+-		timeout: 15_000,
+-	}, () => {
+-		const pushed = bindPushedSeat("claude-pushed-wait", "%42");
+-
+-		const result = runPij(["inbox", "--wait"], { ...pushed.ambientEnv, TMUX_PANE: "%42" }, 5000);
++		expect(response.status).toBe(200);
++		if (!response.body) throw new Error("event stream has no body");
++		const outcomes: Array<{ seat: string; msg_id: string; outcome: Receipt["outcome"]; transport: string }> = [];
++		let failure: unknown;
++		const reader = response.body.getReader();
++		const completed = (async () => {
++			const decoder = new TextDecoder();
++			let pending = "";
++			try {
++				for (;;) {
++					const { value, done } = await reader.read();
++					if (done) break;
++					pending += decoder.decode(value, { stream: true });
++					let end: number;
++					while ((end = pending.indexOf("\n")) >= 0) {
++						const frame = JSON.parse(pending.slice(0, end));
++						pending = pending.slice(end + 1);
++						if (frame.type === "event" && frame.event.kind === "delivery.outcome") {
++							outcomes.push({ seat: frame.event.seat, ...JSON.parse(frame.event.payload) });
++						}
++					}
++				}
++			} catch (error) {
++				if (!controller.signal.aborted) failure = error;
++			} finally { reader.releaseLock(); }
++		})();
++		streamClosers.push(async () => { controller.abort(); await completed; if (failure) throw failure; });
++		return { outcomes, waitFor: async (msgId) => {
++			await until("daemon delivery outcome event", () => {
++				if (failure) throw failure;
++				return outcomes.some((event) => event.msg_id === msgId) ? true : undefined;
++			});
++		} };
++	}
+ 
+-		expect(result).toMatchObject({ code: 2, stdout: "" });
+-		expect(result.stderr).toBe(
+-			"error: this seat is a pushed-delivery peer (claude, pane %42); it receives turns pushed by the daemon and must not block on 'pij inbox --wait'. End your turn instead.\n",
+-		);
++	it("runs whoami from a live external host without PIJ_SESSION_ID or tmux", { timeout: 30_000 }, async () => {
++		const host = await startHost("claude", "claude-portable-whoami");
++		const descriptor = await register(host);
++		const { binding: _binding, typing_grace_ms: _grace, proc_source: _source, ...persisted } = descriptor as Descriptor & {
++			typing_grace_ms?: number; proc_source?: string;
++		};
++		const answer = success<Descriptor>(await host.run(["whoami", "--json"]), "pij whoami");
++		expect(answer).toEqual({ v: 2, command: "pij whoami", ok: true, data: persisted });
++		expect(answer.data.proc.pid).toBe(host.process.child.pid);
+ 	});
+ 
+-	it("keeps finite inbox waits available to pull-delivery seats", {
+-		timeout: 15_000,
+-	}, () => {
+-		const ambientEnv = ambientFixture("claude", "claude-pull-wait");
+-		const registration = register(ambientEnv);
+-
+-		const result = runPij(["inbox", "--wait", "10", "--json"], ambientEnv);
+-
+-		expect(result).toMatchObject({ code: 0, stderr: "" });
+-		expect(JSON.parse(result.stdout)).toEqual({
+-			self: registration.id,
+-			messages: [],
+-			timedOut: true,
+-		});
++	it("delivers literal raw text and correlated replies through public CLI inbox reads", { timeout: 40_000 }, async () => {
++		const sender = await startHost("claude", "claude-portable-raw");
++		const receiver = await startHost("copilot", "11111111-2222-4333-8444-555555555555");
++		const from = await register(sender);
++		const to = await register(receiver);
++		const body = "raw `backticks` $(not-a-command) 'quotes' \\\nsecond line";
++		const sent = await send(sender, to.id, body);
++		expectClaims(await receiver.run(["inbox", "check", "--json"]), to, [
++			{ from: from.id, to: to.id, body, msg_id: sent.msg_id },
++		]);
++		const reply = await send(receiver, from.id, "literal reply", sent.msg_id);
++		expectClaims(await sender.run(["inbox", "--json"]), from, [
++			{ from: to.id, to: from.id, body: "literal reply", msg_id: reply.msg_id, in_reply_to: sent.msg_id },
++		]);
++		expectClaims(await receiver.run(["inbox", "--json"]), to, []);
++		expectClaims(await sender.run(["inbox", "check", "--json"]), from, []);
++		refusal(await sender.run(["send", from.id, "must not self-send", "--json"]), /self|itself/i);
+ 	});
+ 
+-	it("registers an already-bound pushed seat from TMUX_PANE without ambient identity", {
+-		timeout: 15_000,
+-	}, () => {
+-		const pushed = bindPushedSeat("claude-pane-register", "%43");
++	it.each([
++		{ label: "Claude", harness: "claude" as const, session: "claude-portable-current" },
++		{ label: "Copilot", harness: "copilot" as const, session: "11111111-2222-4333-8444-555555555555" },
++		{ label: "Codex", harness: "codex" as const, session: "aaaaaaaa-1111-4222-8333-bbbbbbbbbbbb" },
++	])("$label ambient registration binds the host idempotently and finite wait returns v2 JSON", { timeout: 40_000 }, async ({ harness, session }) => {
++		const host = await startHost(harness, session);
++		const first = await register(host);
++		expect(first.binding).toBe("created");
++		expect(await register(host)).toMatchObject({ id: first.id, binding: "same", proc: first.proc });
++		expect(success<Descriptor>(await host.run(["whoami", "--json"]), "pij whoami").data)
++			.toMatchObject({ id: first.id, session, proc: first.proc, native_extension_delivery: false });
++		const start = performance.now();
++		expectClaims(await host.run(["inbox", "check", "--wait", "100", "--json"]), first, []);
++		expect(performance.now() - start).toBeGreaterThanOrEqual(100);
++		const roster = await http<{ seats: Descriptor[] }>("/v1/seats?scope=local");
++		expect(roster.data.seats.map((seat) => seat.id)).toEqual([first.id]);
++	});
+ 
+-		const result = runPij(["inbox", "register", "--json"], { TMUX_PANE: "%43" });
++	it("keeps bare finite inbox waits available to external pull seats", { timeout: 30_000 }, async () => {
++		const host = await startHost("claude", "claude-pull-wait");
++		const descriptor = await register(host);
++		expectClaims(await host.run(["inbox", "--wait", "10", "--json"]), descriptor, []);
++	});
+ 
+-		expect(result).toMatchObject({ code: 0, stderr: "" });
+-		expect(JSON.parse(result.stdout)).toMatchObject({
+-			id: pushed.id,
+-			harness: "claude",
+-			harnessSessionId: "claude-pane-register",
+-			deliveryMode: "push",
+-			existing: true,
+-		});
++	it("refuses an infinite inbox wait for a paned pushed-delivery compatibility seat", { timeout: 30_000 }, async () => {
++		const seat = await bindPaned("claude", "%2147483645");
++		refusal(await runPij(["inbox", "--wait", "--json"], { TMUX_PANE: seat.pane! }), /push|paneless|pull/i);
+ 	});
+ 
+-	it("registers a self-registered OMP seat from TMUX_PANE without ambient identity", {
+-		timeout: 15_000,
+-	}, () => {
+-		const descriptor = writeDescriptor("pij-omp-pane-register");
+-		const harnessSessionId = "019f8def-1111-4222-8333-bbbbbbbbbbbb";
+-		new FsRegistry(pijHome).write({
+-			...descriptor,
+-			harness: "pi",
+-			harnessSessionId,
+-			paneId: "%44",
+-		});
++	it("inbox register returns pure whoami for an already-bound Claude pane without ambient identity", { timeout: 30_000 }, async () => {
++		const seat = await bindPaned("claude", "%2147483646");
++		const env = { TMUX_PANE: seat.pane! };
++		const before = success<Descriptor>(await runPij(["whoami", "--json"], env), "pij whoami");
++		const registered = success<Descriptor>(await runPij(["inbox", "register", "--json"], env), "pij whoami");
++		expect(registered).toEqual(before);
++		expect(registered.data).toMatchObject({ id: seat.id, harness: "claude", pane: seat.pane, session: seat.session });
++		expect(registered.data).not.toHaveProperty("binding");
++		expect(registered.data).not.toHaveProperty("existing");
++		expect((await http<{ seats: Descriptor[] }>("/v1/seats?scope=local")).data.seats.map((row) => row.id)).toEqual([seat.id]);
++	});
+ 
+-		const result = runPij(["inbox", "register", "--json"], { TMUX_PANE: "%44" });
++	it.each(["pi", "omp"] as const)("inbox register preserves self-registered %s pane compatibility and human guidance", { timeout: 30_000 }, async (harness) => {
++		const seat = await bindPaned(harness, "%2147483647");
++		const env = { TMUX_PANE: seat.pane! };
++		const before = success<Descriptor>(await runPij(["whoami", "--json"], env), "pij whoami");
++		const registered = success<Descriptor>(await runPij(["inbox", "register", "--json"], env), "pij whoami");
++		expect(registered).toEqual(before);
++		expect(registered.data).toMatchObject({ id: seat.id, harness, pane: seat.pane, session: seat.session });
++		expect(registered.data).not.toHaveProperty("binding");
++		const taught = await runPij(["inbox", "register"], env);
++		expect(taught).toEqual({ code: 0, stderr: "", stdout:
++			"pi/omp seats self-register at boot; you are already reachable — run `pij whoami` to confirm, never adopt\n" });
++		expect((await http<{ seats: Descriptor[] }>("/v1/seats?scope=local")).data.seats.map((row) => row.id)).toEqual([seat.id]);
++	});
+ 
+-		expect(result).toMatchObject({ code: 0, stderr: "" });
+-		expect(JSON.parse(result.stdout)).toMatchObject({
+-			id: descriptor.id,
+-			harness: "pi",
+-			harnessSessionId,
+-			existing: true,
+-		});
++	it("repairs stale PIJ_SESSION_ID without replacing authoritative native identity", { timeout: 40_000 }, async () => {
++		const host = await startHost("claude", "claude-stale-session-repair");
++		const first = await register(host, { PIJ_SESSION_ID: "pij-stale-missing" });
++		expect(first.binding).toBe("created");
++		expect(await register(host, { PIJ_SESSION_ID: "pij-stale-missing" }))
++			.toMatchObject({ id: first.id, binding: "same", proc: first.proc });
++		expect(success<Descriptor>(await host.run(["whoami", "--json"]), "pij whoami").data.id).toBe(first.id);
++	});
+ 
+-		const taught = runPij(["inbox", "register"], { TMUX_PANE: "%44" });
+-		expect(taught).toMatchObject({ code: 0, stderr: "" });
+-		expect(taught.stdout).toBe(
+-			"pi/omp seats self-register at boot; you are already reachable — run `pij whoami` to confirm, never adopt\n",
+-		);
++	it("refuses conflicting native session evidence observed in the host argv", { timeout: 30_000 }, async () => {
++		const host = await startHost("claude", "claude-host-original");
++		const first = await register(host);
++		refusal(await host.run(["inbox", "register", "--json"], { CLAUDE_CODE_SESSION_ID: "claude-child-conflict" }), /session.*differ|conflict/i);
++		expect(success<Descriptor>(await host.run(["whoami", "--json"]), "pij whoami").data.id).toBe(first.id);
++		const roster = await http<{ seats: Descriptor[] }>("/v1/seats?scope=local");
++		expect(roster.data.seats.map((seat) => seat.id)).toEqual([first.id]);
+ 	});
+ 
+-	it("keeps register fail-loud when ambient identity and TMUX_PANE are both absent", {
+-		timeout: 15_000,
+-	}, () => {
+-		const result = runPij(["inbox", "register", "--json"]);
++	it("keeps register fail-loud with neither ambient identity nor a pane", { timeout: 30_000 }, async () => {
++		await startDaemon();
++		refusal(await runPij(["inbox", "register", "--json"]), /E-AMBIG|cannot detect|identity/i);
++		expect((await http<{ seats: Descriptor[] }>("/v1/seats?scope=local")).data.seats).toEqual([]);
++	});
+ 
+-		expect(result).toMatchObject({ code: 2, stdout: "" });
+-		expect(result.stderr).toBe(
+-			"E-AMBIG: cannot detect a current Claude, Copilot, or Codex session; run inside an agent tool shell\n",
+-		);
++	it("refuses ambiguous ambient identities rather than selecting a harness", { timeout: 30_000 }, async () => {
++		const host = await startHost("claude", "claude-ambiguous");
++		refusal(await host.run(["inbox", "register", "--json"],
++			ambientFixture("copilot", "22222222-2222-4333-8444-555555555555")), /E-AMBIG|ambig|multiple/i);
++		expect((await http<{ seats: Descriptor[] }>("/v1/seats?scope=local")).data.seats).toEqual([]);
+ 	});
+ 
+-	// SKIPPED ON WINDOWS (Jordan's ruling, 2026-07-30). This spawns real OS
+-	// processes that race for the same files; on the Windows CI runner it failed
+-	// intermittently at roughly a 50% rate while passing on every rerun and on
+-	// every local run. Two DIFFERENT concurrency tests failed the same way the
+-	// same day, which points at the runner's file locking under concurrent
+-	// access rather than at either test.
+-	//
+-	// The coverage loss is real and deliberately narrow: this is the ONLY
+-	// multi-process assertion for the pull-inbox delivery round trip on Windows. Windows atomic-replace
+-	// behaviour is still covered by the single-process tests (see the passing
+-	// "retries transient Windows replace failures" case), and the full race
+-	// still runs on darwin and linux, so a genuine regression in the logic is
+-	// caught there. What is no longer covered is Windows-specific behaviour
+-	// under real process contention — if that is ever suspected, run this file
+-	// on Windows by hand rather than trusting CI green.
+-	it.skipIf(process.platform === "win32")(
+-		"round-trips wait → dead-pid send → read → delivered receipt without tmux or daemon",
+-		{
+-			timeout: 30_000,
+-		},
+-		async () => {
+-			const receiverEnv = ambientFixture("claude", "claude-portable-receiver");
+-			const senderEnv = ambientFixture("claude", "claude-portable-sender");
+-			const receiver = register(receiverEnv);
+-			const sender = register(senderEnv);
+-
+-			const receiverWait = spawnPij(["inbox", "--wait"], receiverEnv, 15_000);
+-			await waitForOutput(receiverWait, "waiting for pij inbox messages");
+-			const competingSenderInbox = spawnPij(
+-				["inbox", "check", "--wait", "3000", "--json"],
+-				senderEnv,
+-				8000,
+-			);
+-			await new Promise<void>((resolve) => setTimeout(resolve, 250));
+-
+-			const registry = new FsRegistry(pijHome);
+-			const receiverDescriptor = registry.read(receiver.id);
+-			if (!receiverDescriptor) throw new Error("missing receiver descriptor");
+-			registry.write({ ...receiverDescriptor, pid: 2_147_483_647 });
+-
+-			const sent = runPij(
+-				["send", receiver.id, "hello from portable sender", "--wait", "10000"],
+-				senderEnv,
+-				15_000,
+-			);
+-			const received = await receiverWait.completed;
+-			const competing = await competingSenderInbox.completed;
+-
+-			expect(sent).toMatchObject({ code: 0, stderr: "" });
+-			expect(sent.stdout).toContain("queued (pull-inbox): awaiting the peer's own inbox check");
+-			expect(sent.stdout).toContain("receipt → delivered");
+-			expect(received).toMatchObject({ code: 0, stderr: "" });
+-			expect(received.stdout).toContain(`${sender.id}: `);
+-			expect(received.stdout).toContain("hello from portable sender");
+-			expect(competing).toMatchObject({ code: 0, stderr: "" });
+-			expect(JSON.parse(competing.stdout)).toEqual({
+-				self: sender.id,
+-				messages: [],
+-				timedOut: true,
+-			});
++	it("refuses ambient-only registration without a matching real host ancestor", { timeout: 30_000 }, async () => {
++		await startDaemon();
++		refusal(await runPij(["inbox", "register", "--json"], ambientFixture("claude", "claude-no-matching-host")), /ancestor|host|session/i);
++		expect((await http<{ seats: Descriptor[] }>("/v1/seats?scope=local")).data.seats).toEqual([]);
++	});
+ 
+-			const senderEvents = new FsEventLog(pijHome, sender.id).read({ type: "receipt" });
+-			expect(senderEvents).toHaveLength(1);
+-			expect(JSON.stringify(senderEvents)).toContain("delivered");
+-			expect(new FsChannel(pijHome).listUnread(sender.id)).toEqual({
+-				ok: true,
+-				value: [],
+-			});
+-		},
+-	);
++	it("round-trips concurrent wait, send, output acknowledgement and a correlated reply exactly once", { timeout: 60_000 }, async () => {
++		const receiver = await startHost("copilot", "33333333-2222-4333-8444-555555555555");
++		const sender = await startHost("codex", "bbbbbbbb-1111-4222-8333-bbbbbbbbbbbb");
++		const to = await register(receiver);
++		const from = await register(sender);
++		const audit = await watchOutcomes();
++		const waiting = await receiver.launch(["inbox", "--wait", "--json"]);
++		const competing = await sender.launch(["inbox", "check", "--wait", "1000", "--json"]);
++		expect(waiting.pid).not.toBe(to.proc.pid);
++		expect(competing.pid).not.toBe(from.proc.pid);
++		const sent = await send(sender, to.id, "hello from portable sender");
++		const received = expectClaims(await waiting.completed, to, [
++			{ from: from.id, to: to.id, body: "hello from portable sender", msg_id: sent.msg_id },
++		]);
++		expect(received[0]?.job_id).toBeGreaterThan(0);
++		expectClaims(await competing.completed, from, []);
++		const replyWait = await sender.launch(["inbox", "--wait", "--json"]);
++		const reply = await send(receiver, from.id, "reply from reader", sent.msg_id);
++		expectClaims(await replyWait.completed, from, [
++			{ from: to.id, to: from.id, body: "reply from reader", msg_id: reply.msg_id, in_reply_to: sent.msg_id },
++		]);
++		expectClaims(await receiver.run(["inbox", "check", "--json"]), to, []);
++		expectClaims(await sender.run(["inbox", "check", "--json"]), from, []);
++		// A later committed outcome is an ordered stream barrier, not a sleep
++		// guessed to be long enough for asynchronous receipt publication.
++		const barrier = await send(sender, to.id, "audit barrier");
++		await audit.waitFor(barrier.msg_id);
++		for (const [msgId, seat] of [[sent.msg_id, to.id], [reply.msg_id, from.id]]) {
++			expect(audit.outcomes.filter((event) => event.msg_id === msgId && event.outcome.outcome === "delivered"))
++				.toEqual([{ seat, msg_id: msgId, outcome: { outcome: "delivered", origin: "reader-read" }, transport: "inbox" }]);
++		}
++		expectClaims(await receiver.run(["inbox", "--json"]), to, [
++			{ from: from.id, to: to.id, body: "audit barrier", msg_id: barrier.msg_id },
++		]);
++	});
+ 
+ 	it("appendOnce hard-link race publishes one atomic event across two processes", {
+ 		timeout: 30_000,
+@@ -503,32 +691,11 @@ process.stdout.write(result);
+ 		const barrier = join(raceRoot, "barrier");
+ 		const readyA = join(raceRoot, "ready-a");
+ 		const readyB = join(raceRoot, "ready-b");
+-		const spawnWorker = (ready: string): Promise<CliRun> => {
+-			const child = spawn(
+-				process.execPath,
+-				[TSX_CLI, workerPath, raceHome, "sender", "receipt-envelope:r1", ready, barrier],
+-				{
+-					cwd: folder,
+-					env: cliEnv(),
+-					stdio: "pipe",
+-					timeout: 10_000,
+-				},
+-			);
+-			let stdout = "";
+-			let stderr = "";
+-			child.stdout.setEncoding("utf8");
+-			child.stderr.setEncoding("utf8");
+-			child.stdout.on("data", (chunk: string) => {
+-				stdout += chunk;
+-			});
+-			child.stderr.on("data", (chunk: string) => {
+-				stderr += chunk;
+-			});
+-			return new Promise<CliRun>((resolve, reject) => {
+-				child.once("error", reject);
+-				child.once("close", (code) => resolve({ code: code ?? 1, stdout, stderr }));
+-			});
+-		};
++		const spawnWorker = (ready: string): Promise<CliRun> => own(spawn(
++			process.execPath,
++			[TSX_CLI, workerPath, raceHome, "sender", "receipt-envelope:r1", ready, barrier],
++			{ cwd: folder, env: cliEnv(), stdio: "pipe", timeout: 10_000, killSignal: "SIGKILL" },
++		)).completed;
+ 
+ 		const workerA = spawnWorker(readyA);
+ 		const workerB = spawnWorker(readyB);
+diff --git a/.pi/extensions/pij/cli.ts b/.pi/extensions/pij/cli.ts
+index 4f77562e..30970599 100755
+--- a/.pi/extensions/pij/cli.ts
++++ b/.pi/extensions/pij/cli.ts
+@@ -16,6 +16,7 @@ import {
+ 
+ const SEND_USAGE = `pij send <id> <text> [--json]
+   pij send <id> --body-file <path|-> [--json]
++  --in-reply-to <msg-id> preserves reply correlation without changing the body.
+   --body-file reads literal UTF-8 text from a path or stdin, without shell evaluation.
+   Backticks and $(...) substitute in YOUR shell before pij starts: quoted relay text is UNSAFE.
+   Use a file or a quoted heredoc: pij send <id> --body-file - <<'PIJ'
+@@ -27,6 +28,12 @@ const LIST_USAGE = `pij list [--harness <h>] [--folder <path>] [--parent <id>] [
+   --role and --here are unsupported and refused.
+   Native pij-rs list accepts no filters; this query mapping belongs to the shim.`;
+ 
++const INBOX_USAGE = `pij inbox register [--json]
++  Register a verified external Claude/Copilot/Codex host through rs; existing panes are read back.
++  pij inbox [check] [--wait [ms]] [--json]
++  Paneless pull only for --wait; omit ms to wait for mail, or set a finite timeout.
++  JSON is the complete v2 envelope; received claims are acknowledged only after output.`;
++
+ function routeDescription(row: RsRouteRow): string {
+ 	const label = `pij ${row.verb}${row.leaf === undefined ? "" : ` ${row.leaf}`}`;
+ 	if ("unported" in row) return `${label}: E-RS-UNPORTED — ${row.unported}`;
+@@ -42,6 +49,7 @@ function usage(): string {
+ 		"HTTP --json preserves the complete validated v2 response envelope.",
+ 		"commit-trailers preserves native output even with --json.",
+ 		LIST_USAGE,
++		INBOX_USAGE,
+ 		"sessions accepts only bare invocation or --json; all filters are refused.",
+ 		"pij generation [verb] [--json] — read-only routing diagnostic",
+ 		"pij --version",
+@@ -123,7 +131,7 @@ async function bootThroughGenerationRouting(): Promise<void> {
+ 		argv[1] === "--help" && (argv.length === 2 || (argv.length === 3 && argv[2] === "--json"));
+ 	if (localHelp && helpRow !== undefined && "rsPath" in helpRow) {
+ 		await writeOutput(
+-			verb === "send" ? SEND_USAGE : verb === "list" ? LIST_USAGE : routeDescription(helpRow),
++			verb === "send" ? SEND_USAGE : verb === "list" ? LIST_USAGE : verb === "inbox" ? INBOX_USAGE : routeDescription(helpRow),
+ 		);
+ 		return;
+ 	}
+diff --git a/.pi/extensions/pij/core/daemon-wire.ts b/.pi/extensions/pij/core/daemon-wire.ts
+index 2c0f443b..581e78d4 100644
+--- a/.pi/extensions/pij/core/daemon-wire.ts
++++ b/.pi/extensions/pij/core/daemon-wire.ts
+@@ -34,7 +34,7 @@ export interface HealthPayload {
+ export interface Registration {
+ 	readonly supersedes?: string;
+ 	readonly id: string;
+-	readonly harness: "pi" | "omp";
++	readonly harness: "pi" | "omp" | "claude" | "copilot" | "codex";
+ 	readonly harness_session?: string;
+ 	readonly folder: string;
+ 	readonly pane?: string;
+diff --git a/.pi/extensions/pij/core/generation-routing.test.ts b/.pi/extensions/pij/core/generation-routing.test.ts
+index 2f37f396..59a228d8 100644
+--- a/.pi/extensions/pij/core/generation-routing.test.ts
++++ b/.pi/extensions/pij/core/generation-routing.test.ts
+@@ -364,13 +364,12 @@ describe("the shim has no minter (ac-1147)", () => {
+ });
+ 
+ describe("mailbox leaf boundaries", () => {
+-	it("registration refuses by name without denying read siblings", () => {
++	it("registration uses native HTTP admission without changing read siblings", () => {
+ 		expect(findRoute("inbox", "register")).toMatchObject({
+-			unported: expect.stringContaining("bind evidence"),
++			rsPath: "/v1/register", method: "POST",
+ 		});
+ 		expect(pre({ verb: "inbox", leaf: "register" })).toMatchObject({
+-			kind: "rs-error",
+-			code: "E-RS-UNPORTED",
++			kind: "try-rs",
+ 		});
+ 		for (const leaf of [undefined, "check"]) {
+ 			expect(findRoute("inbox", leaf)).toMatchObject({
+diff --git a/.pi/extensions/pij/core/generation-routing.ts b/.pi/extensions/pij/core/generation-routing.ts
+index d764ddf7..5b020cdc 100644
+--- a/.pi/extensions/pij/core/generation-routing.ts
++++ b/.pi/extensions/pij/core/generation-routing.ts
+@@ -52,6 +52,13 @@ function renderAdopt(payload: unknown): string {
+ 	return `adopted ${id} (${where}, ${bound}) — peers can now: pij send ${id} "<text>"`;
+ }
+ 
++function renderRegister(payload: unknown): string {
++	const harness = text(payload, "harness");
++	if (harness === "pi" || harness === "omp")
++		return "pi/omp seats self-register at boot; you are already reachable — run `pij whoami` to confirm, never adopt";
++	return `registered ${text(payload, "id") ?? "?"} (${harness ?? "?"}, ${text(payload, "pane") === undefined ? "paneless pull" : "pane push"})`;
++}
++
+ function renderWhoami(payload: unknown): string {
+ 	return [
+ 		`pij session: ${text(payload, "id") ?? "?"}`,
+@@ -204,9 +211,10 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
+ 	{
+ 		verb: "inbox",
+ 		leaf: "register",
+-		unported:
+-			"paneless registration has no verified rs bind evidence; use supported native admission",
+-		why: "Never register a second legacy seat",
++		rsPath: "/v1/register",
++		method: "POST",
++		render: renderRegister,
++		why: "Resolve registered panes or admit verified external pull hosts through native rs registration",
+ 	},
+ 	{
+ 		verb: "bg",
+diff --git a/crates/daemon/src/delivery/mod.rs b/crates/daemon/src/delivery/mod.rs
+index 4fe3ddfd..ce47cf80 100644
+--- a/crates/daemon/src/delivery/mod.rs
++++ b/crates/daemon/src/delivery/mod.rs
+@@ -16,7 +16,7 @@ use pij_core::model::{
+     DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome, Receipt,
+     SeatDescriptor, SeatId, SemanticState,
+ };
+-use pij_core::ports::{DeliveryAck, DeliveryEnqueue, Queue, Registry, Transport};
++use pij_core::ports::{DeliveryAck, DeliveryEnqueue, LivenessPort, Queue, Registry, Transport};
+ use pij_harnesses::{InteractionGate, StagedSubmission};
+ use serde::{Deserialize, Serialize};
+ use tokio_stream::StreamExt;
+@@ -46,14 +46,14 @@ pub struct InboxClaim {
+     pub native_consumer: Option<NativeInboxIdentity>,
+ }
+ 
+-/// Runtime identity supplied on native Copilot claims and acknowledgements.
+-/// Optional wire fields preserve existing non-Copilot clients; Copilot requires all three.
++/// Runtime identity supplied by native extensions and verified external pull readers.
++/// Optional wire fields preserve existing machine-grade non-Copilot clients.
+ #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+ pub struct NativeInboxIdentity {
+-    /// Native session supplied by the attached Copilot runtime.
++    /// Exact harness-native session registered for the current host.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub native_session: Option<String>,
+-    /// Actual Copilot host PID, never the extension child or pane shell.
++    /// Actual harness host PID, never an extension child or transient CLI.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub pid: Option<u32>,
+     /// Observed start stamp of that host process.
+@@ -66,7 +66,7 @@ impl NativeInboxIdentity {
+         self.native_session.is_some() || self.pid.is_some() || self.proc_start.is_some()
+     }
+ 
+-    fn matches(&self, seat: &SeatDescriptor) -> bool {
++    pub(crate) fn matches(&self, seat: &SeatDescriptor) -> bool {
+         seat.proc.is_some_and(|identity| {
+             self.pid == Some(identity.pid) && self.proc_start == Some(identity.proc_start)
+         }) && self.native_session.as_deref().is_some_and(|session| {
+@@ -75,6 +75,16 @@ impl NativeInboxIdentity {
+     }
+ }
+ 
++/// A registered external pull seat, never an extension, relay, or pane consumer.
++pub(crate) fn paneless_pull(seat: &SeatDescriptor) -> bool {
++    matches!(seat.harness, Harness::Claude | Harness::Copilot | Harness::Codex)
++        && seat.pane.is_none()
++        && !seat.relay
++        && !seat.native_extension_delivery
++        && seat.proc.is_some()
++        && seat.harness_session.as_deref().is_some_and(|session| !session.is_empty())
++}
++
+ fn native_refusal(reason: impl Into<String>) -> PijError {
+     PijError::Adapter {
+         adapter: "daemon/native-inbox".to_string(),
+@@ -535,7 +545,9 @@ impl DeliveryService {
+                             .await?
+                         {
+                             DeliveryEnqueue::Queued { not_before_ms, .. } => {
+-                                let reason = if extension_stream {
++                                let reason = if paneless_pull(&recipient) {
++                                    None
++                                } else if extension_stream {
+                                     Some(
+                                         if recipient.harness == Harness::Copilot
+                                             && !recipient.native_extension_delivery
+@@ -618,7 +630,7 @@ impl DeliveryService {
+     /// Queue failures or a corrupt/misdirected delivery payload.
+     pub async fn claim_inbox(&self, seat: &SeatId, wait: bool) -> Result<Vec<InboxClaim>> {
+         Ok(self
+-            .claim_inbox_inner(seat, wait, &NativeInboxIdentity::default())
++            .claim_inbox_inner(seat, wait, &NativeInboxIdentity::default(), None)
+             .await?
+             .claims)
+     }
+@@ -630,7 +642,59 @@ impl DeliveryService {
+         wait: bool,
+         identity: &NativeInboxIdentity,
+     ) -> Result<NativeInboxPage> {
+-        self.claim_inbox_inner(seat, wait, identity).await
++        self.claim_inbox_inner(seat, wait, identity, None).await
++    }
++
++    /// Pull only from a verified paneless host. Subscribe before claiming and
++    /// cancel only the idle wait on timeout; never abandon an in-flight claim.
++    pub(crate) async fn claim_pull_inbox(
++        &self,
++        seat: &SeatId,
++        wait: bool,
++        timeout: Option<Duration>,
++        identity: &NativeInboxIdentity,
++        liveness: &dyn LivenessPort,
++    ) -> Result<NativeInboxPage> {
++        if !wait {
++            return self.claim_inbox_inner(seat, false, identity, Some(liveness)).await;
++        }
++        let mut wake = self.event_bus.subscribe_live(
++            EventFilter::kinds([
++                OUTCOME_EVENT_KIND,
++                "delivery.released",
++                "report.state",
++                "report.now",
++            ])
++            .for_seat(seat.clone()),
++        );
++        let deadline = timeout
++            .map(|timeout| {
++                tokio::time::Instant::now().checked_add(timeout).ok_or_else(|| {
++                    native_refusal("inbox wait duration exceeds the supported clock range")
++                })
++            })
++            .transpose()?;
++        loop {
++            let page = self
++                .claim_inbox_inner(seat, false, identity, Some(liveness))
++                .await?;
++            if !page.claims.is_empty() {
++                return Ok(page);
++            }
++            if deadline.is_some_and(|deadline| tokio::time::Instant::now() >= deadline) {
++                return Ok(NativeInboxPage::default());
++            }
++            let event = match deadline {
++                Some(deadline) => match tokio::time::timeout_at(deadline, wake.next()).await {
++                    Ok(event) => event,
++                    Err(_) => return Ok(NativeInboxPage::default()),
++                },
++                None => wake.next().await,
++            };
++            if event.is_none() {
++                return Err(native_refusal("inbox event stream closed before a message arrived"));
++            }
++        }
+     }
+ 
+     async fn inbox_recipient(
+@@ -641,7 +705,9 @@ impl DeliveryService {
+         let recipient = self.registry.get(seat).await?;
+         match recipient {
+             Some(recipient) if recipient.harness == Harness::Copilot => {
+-                if recipient.tombstoned_at.is_some() || !recipient.native_extension_delivery {
++                if recipient.tombstoned_at.is_some()
++                    || (!recipient.native_extension_delivery && !paneless_pull(&recipient))
++                {
+                     return Err(native_refusal(
+                         "native-extension-unavailable: Copilot requires current native registration",
+                     ));
+@@ -653,11 +719,19 @@ impl DeliveryService {
+                 }
+                 Ok(Some(recipient))
+             }
++            Some(recipient)
++                if identity.supplied()
++                    && recipient.tombstoned_at.is_none()
++                    && paneless_pull(&recipient)
++                    && identity.matches(&recipient) =>
++            {
++                Ok(Some(recipient))
++            }
+             None if identity.supplied() => Err(native_refusal(
+                 "native-extension-unavailable: Copilot requires current native registration",
+             )),
+             _ if identity.supplied() => Err(native_refusal(
+-                "native incarnation no longer belongs to a current Copilot seat",
++                "native incarnation does not match a current external pull seat",
+             )),
+             recipient => Ok(recipient),
+         }
+@@ -675,7 +749,7 @@ impl DeliveryService {
+         let observed = self
+             .inbox_recipient(seat, identity)
+             .await?
+-            .filter(|recipient| recipient.harness == Harness::Copilot)
++            .filter(|recipient| recipient.harness == Harness::Copilot && recipient.native_extension_delivery)
+             .ok_or_else(|| {
+                 native_refusal("native typing observation requires current native registration")
+             })?;
+@@ -704,7 +778,7 @@ impl DeliveryService {
+         let current = self
+             .inbox_recipient(seat, identity)
+             .await?
+-            .filter(|recipient| recipient.harness == Harness::Copilot)
++            .filter(|recipient| recipient.harness == Harness::Copilot && recipient.native_extension_delivery)
+             .ok_or_else(|| {
+                 native_refusal("native typing observation requires current native registration")
+             })?;
+@@ -757,6 +831,7 @@ impl DeliveryService {
+         seat: &SeatId,
+         wait: bool,
+         identity: &NativeInboxIdentity,
++        pull_liveness: Option<&dyn LivenessPort>,
+     ) -> Result<NativeInboxPage> {
+         let kinds = [delivery_kind(seat)];
+         let mut wake = wait.then(|| {
+@@ -769,9 +844,21 @@ impl DeliveryService {
+             // Keep mutation excluded through handoff; no pane IO occurs here.
+             let native_guard = self.native_lock.lock().await;
+             let observed = self.inbox_recipient(seat, identity).await?;
++            if let Some(liveness) = pull_liveness {
++                let recipient = observed.as_ref().filter(|seat| paneless_pull(seat))
++                    .ok_or_else(|| native_refusal("inbox --wait requires a verified paneless pull seat; pushed seats cannot wait"))?;
++                if !identity.matches(recipient) {
++                    return Err(native_refusal("native incarnation mismatch for paneless pull"));
++                }
++                let proc = recipient.proc.expect("paneless pull has a host identity");
++                if liveness.proc_start(proc.pid).await? != Some(proc.proc_start) {
++                    return Err(native_refusal("paneless pull host is no longer live at its registered process start"));
++                }
++            }
+             let native = observed
+                 .as_ref()
+                 .is_some_and(|seat| seat.harness == Harness::Copilot);
++            let tuple_bound = native || identity.supplied();
+             if let Some(reason) = self
+                 .revalidate_inbox_observation(seat, identity, observed.as_ref())
+                 .await?
+@@ -784,7 +871,7 @@ impl DeliveryService {
+             if let Some((job_id, job)) = self.queue.claim(&kinds, seat.as_str()).await? {
+                 if let Some(recipient) = observed
+                     .as_ref()
+-                    .filter(|seat| seat.harness == Harness::Copilot)
++                    .filter(|_| tuple_bound)
+                 {
+                     // Lease expiry may invalidate a running attempt independently
+                     // of registration. Never hand out or retry its successor.
+@@ -844,7 +931,7 @@ impl DeliveryService {
+                     });
+                 }
+                 let payload = payload.expect("validated delivery payload");
+-                if native
++                if tuple_bound
+                     && let Some(reason) =
+                         native_target_mismatch(payload.native_target_session.as_deref(), identity)
+                 {
+@@ -876,7 +963,7 @@ impl DeliveryService {
+                     claims: vec![InboxClaim {
+                         job_id,
+                         message,
+-                        native_consumer: native.then(|| identity.clone()),
++                        native_consumer: tuple_bound.then(|| identity.clone()),
+                     }],
+                     held_reason: None,
+                 });
+@@ -973,7 +1060,7 @@ impl DeliveryService {
+         if self
+             .inbox_recipient(&recipient, identity)
+             .await?
+-            .is_some_and(|seat| seat.harness == Harness::Copilot)
++            .is_some_and(|seat| seat.harness == Harness::Copilot || identity.supplied())
+         {
+             if seat != &recipient {
+                 return Err(native_refusal(
+@@ -1278,7 +1365,7 @@ fn native_target_mismatch(target: Option<&str>, identity: &NativeInboxIdentity)
+ 
+ fn delivery_job(msg: &Msg, recipient: Option<&SeatDescriptor>) -> Result<Job> {
+     let native_target_session = recipient
+-        .filter(|seat| seat.harness == Harness::Copilot && seat.native_extension_delivery)
++        .filter(|seat| (seat.harness == Harness::Copilot && seat.native_extension_delivery) || paneless_pull(seat))
+         .and_then(|seat| seat.harness_session.as_deref());
+     let payload = serde_json::to_string(&DeliveryPayload {
+         message: msg,
+@@ -1398,7 +1485,7 @@ mod tests {
+     };
+     use pij_harnesses::InteractionGate;
+     use pij_testkit::fakes::{
+-        CountingSpine, FakeQueue, FakeRegistry, FakeSpine, FakeTmux, FakeTransport,
++        CountingSpine, FakeLiveness, FakeQueue, FakeRegistry, FakeSpine, FakeTmux, FakeTransport,
+     };
+     use serde_json::Value;
+     use tokio::sync::Notify;
+@@ -3440,6 +3527,156 @@ mod tests {
+         }
+     }
+ 
++    #[tokio::test]
++    async fn external_pull_claim_and_ack_preserve_native_tuple_without_extension_attestation() {
++        for harness in [Harness::Claude, Harness::Copilot, Harness::Codex] {
++            let fixture = fixture(FakeTransport::unreachable());
++            let mut seat = native_seat(None);
++            seat.harness = harness;
++            seat.native_extension_delivery = false;
++            let liveness = FakeLiveness::new().with_proc(seat.proc.unwrap());
++            register(&fixture, seat.clone()).await;
++            let sent = fixture.service.send("sender".into(), seat.id.clone(), "exact body\n").await.unwrap();
++            assert!(!matches!(&sent.outcome, DeliveryOutcome::Queued { reason: Some(reason), .. } if reason == "native-extension-unavailable" || reason == "extension-stream"));
++            let identity = native_identity();
++            for wrong in [
++                NativeInboxIdentity::default(),
++                NativeInboxIdentity { native_session: Some("other".into()), ..identity.clone() },
++                NativeInboxIdentity { pid: Some(138), ..identity.clone() },
++                NativeInboxIdentity { proc_start: Some(1371), ..identity.clone() },
++            ] {
++                assert!(fixture.service.claim_pull_inbox(&seat.id, false, None, &wrong, &liveness).await.is_err());
++                assert_eq!(fixture.queue.live_len(), 1);
++            }
++            assert!(fixture.service.claim_pull_inbox(&seat.id, false, None, &identity, &FakeLiveness::new()).await.is_err());
++            let page = fixture.service.claim_pull_inbox(&seat.id, false, None, &identity, &liveness).await.unwrap();
++            assert_eq!(page.claims.len(), 1);
++            let claim = &page.claims[0];
++            assert_eq!(claim.message.msg_id, sent.msg_id);
++            assert_eq!(claim.message.body, "exact body\n");
++            assert_eq!(claim.native_consumer.as_ref(), Some(&identity));
++            assert!(fixture.service.acknowledge_inbox(&"other-seat".into(), claim.job_id, &identity, None).await.is_err());
++            let wrong = NativeInboxIdentity { proc_start: Some(1371), ..identity.clone() };
++            assert!(fixture.service.acknowledge_inbox(&seat.id, claim.job_id, &wrong, None).await.is_err());
++            if harness == Harness::Copilot {
++                assert!(fixture.service.acknowledge_inbox(&seat.id, claim.job_id, &Default::default(), None).await.is_err());
++                assert!(fixture.service.native_typing_snapshot(&seat.id, &identity, 0).await.is_err(), "pull does not attest an extension");
++            }
++            assert!(fixture.queue.claimed_delivery(claim.job_id).await.unwrap().is_some());
++            fixture.service.acknowledge_inbox(&seat.id, claim.job_id, &identity, None).await.unwrap();
++            assert!(fixture.service.claim_pull_inbox(&seat.id, false, None, &identity, &liveness).await.unwrap().claims.is_empty());
++        }
++    }
++
++    #[tokio::test(start_paused = true)]
++    async fn paneless_wait_times_out_or_wakes_for_real_work_and_can_be_cancelled() {
++        let fixture = fixture(FakeTransport::unreachable());
++        let mut seat = native_seat(None);
++        seat.native_extension_delivery = false;
++        let liveness = FakeLiveness::new().with_proc(seat.proc.unwrap());
++        register(&fixture, seat.clone()).await;
++        let identity = native_identity();
++        let started = tokio::time::Instant::now();
++        let page = fixture.service.claim_pull_inbox(&seat.id, true, Some(Duration::from_millis(25)), &identity, &liveness).await.unwrap();
++        assert!(page.claims.is_empty());
++        assert!(tokio::time::Instant::now() - started >= Duration::from_millis(25));
++
++        // Poll until subscribed, then cancel. No detached consumer may steal later work.
++        {
++            let waiting = fixture.service.claim_pull_inbox(&seat.id, true, None, &identity, &liveness);
++            tokio::pin!(waiting);
++            tokio::select! {
++                biased;
++                result = &mut waiting => panic!("infinite wait completed without work: {result:?}"),
++                () = tokio::task::yield_now() => {}
++            }
++        }
++        let waiting = fixture.service.claim_pull_inbox(&seat.id, true, None, &identity, &liveness);
++        tokio::pin!(waiting);
++        tokio::select! {
++            biased;
++            result = &mut waiting => panic!("infinite wait completed without work: {result:?}"),
++            () = tokio::task::yield_now() => {}
++        }
++        let sent = fixture.service.send("sender".into(), seat.id.clone(), "wake").await.unwrap();
++        let page = waiting.await.unwrap();
++        assert_eq!(page.claims.len(), 1);
++        assert_eq!(page.claims[0].message.msg_id, sent.msg_id);
++    }
++
++    #[tokio::test]
++    async fn paneless_wait_refuses_pushed_modes_and_rechecks_owner_after_wake() {
++        let fixture = fixture(FakeTransport::unreachable());
++        let identity = native_identity();
++        for (pane, extension, relay) in [(Some("%137"), false, false), (None, true, false), (None, false, true)] {
++            let mut seat = native_seat(pane);
++            seat.native_extension_delivery = extension;
++            seat.relay = relay;
++            let liveness = FakeLiveness::new().with_proc(seat.proc.unwrap());
++            register(&fixture, seat.clone()).await;
++            assert!(fixture.service.claim_pull_inbox(&seat.id, true, None, &identity, &liveness).await.is_err());
++            if pane.is_some() && !extension {
++                assert!(fixture.service.claim_native_inbox(&seat.id, false, &identity).await.is_err(), "paned Copilot still needs native attestation");
++            }
++        }
++        let mut seat = native_seat(None);
++        seat.native_extension_delivery = false;
++        let liveness = FakeLiveness::new().with_proc(seat.proc.unwrap());
++        register(&fixture, seat.clone()).await;
++        let waiting = fixture.service.claim_pull_inbox(&seat.id, true, None, &identity, &liveness);
++        tokio::pin!(waiting);
++        tokio::select! {
++            biased;
++            result = &mut waiting => panic!("empty wait completed: {result:?}"),
++            () = tokio::task::yield_now() => {}
++        }
++        seat.proc.as_mut().unwrap().proc_start += 1;
++        register(&fixture, seat.clone()).await;
++        fixture.service.send("sender".into(), seat.id.clone(), "new owner only").await.unwrap();
++        assert!(waiting.await.is_err());
++        assert_eq!(fixture.queue.live_len(), 1);
++    }
++
++    #[tokio::test]
++    async fn paneless_wait_holds_until_release_and_never_rehomes_old_native_work() {
++        let fixture = fixture(FakeTransport::unreachable());
++        let mut seat = native_seat(None);
++        seat.native_extension_delivery = false;
++        seat.semantic_state = Some(SemanticState::Hold);
++        let liveness = FakeLiveness::new().with_proc(seat.proc.unwrap());
++        let identity = native_identity();
++        register(&fixture, seat.clone()).await;
++        fixture.service.send("sender".into(), seat.id.clone(), "held body").await.unwrap();
++        let waiting = fixture.service.claim_pull_inbox(&seat.id, true, None, &identity, &liveness);
++        tokio::pin!(waiting);
++        tokio::select! {
++            biased;
++            result = &mut waiting => panic!("hold is not successful empty completion: {result:?}"),
++            () = tokio::task::yield_now() => {}
++        }
++        seat.semantic_state = None;
++        register(&fixture, seat.clone()).await;
++        fixture.service.event_bus.publish(Event {
++            seq: None,
++            v: 1,
++            at: 1_235,
++            kind: "report.state".into(),
++            seat: Some(seat.id.clone()),
++            payload: "{}".into(),
++        }).await.unwrap();
++        let page = waiting.await.unwrap();
++        assert_eq!(page.claims[0].message.body, "held body");
++        fixture.service.acknowledge_inbox(&seat.id, page.claims[0].job_id, &identity, None).await.unwrap();
++        fixture.service.send("sender".into(), seat.id.clone(), "original session only").await.unwrap();
++        seat.harness_session = Some("replacement-native-session".into());
++        register(&fixture, seat.clone()).await;
++        let replacement = NativeInboxIdentity { native_session: seat.harness_session.clone(), ..identity };
++        let held = fixture.service.claim_pull_inbox(&seat.id, false, None, &replacement, &liveness).await.unwrap();
++        assert!(held.claims.is_empty());
++        assert!(held.held_reason.unwrap().starts_with("native-target-session:native-137"));
++        assert_eq!(fixture.queue.live_len(), 1, "old native context retains its queued body");
++    }
++
+     #[tokio::test]
+     async fn copilot_first_arrival_is_native_only_even_without_capability() {
+         for attached in [false, true] {
+diff --git a/crates/daemon/src/http/shim.rs b/crates/daemon/src/http/shim.rs
+index b7f9898f..3141f05b 100644
+--- a/crates/daemon/src/http/shim.rs
++++ b/crates/daemon/src/http/shim.rs
+@@ -51,12 +51,14 @@
+ 
+ use std::collections::HashMap;
+ use std::path::{Path, PathBuf};
++use std::time::Duration;
+ 
+ use axum::extract::State;
+ use axum::response::Response;
+-use pij_core::model::{Harness, SeatId};
++use pij_core::model::{Harness, Msg, SeatDescriptor, SeatId};
+ use pij_core::ports::SeatFilter;
+ 
++use crate::delivery::{NativeInboxIdentity, paneless_pull};
+ use super::identity::{self, CallerContext, Resolved};
+ use super::{AppState, envelope, internal, refused};
+ 
+@@ -204,6 +206,7 @@ pub(crate) struct SendCall {
+     pub to: SeatId,
+     pub body: String,
+     pub command: Option<String>,
++    pub in_reply_to: Option<String>,
+ }
+ 
+ /// Parse a body send or one allowlisted, bodyless control command.
+@@ -228,6 +231,7 @@ pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<
+     let mut positionals: Vec<&str> = Vec::new();
+     let mut saw_body_file = false;
+     let mut command = None;
++    let mut in_reply_to = None;
+     let mut rest = tokens.collect::<Vec<_>>().into_iter().peekable();
+     while let Some(token) = rest.next() {
+         let flag = token
+@@ -276,6 +280,18 @@ pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<
+                         .to_string(),
+                 );
+             }
++            "in-reply-to" => {
++                if in_reply_to.is_some() {
++                    return Err("--in-reply-to may be supplied only once".to_string());
++                }
++                let value = token
++                    .split_once('=')
++                    .map(|(_, value)| value)
++                    .or_else(|| rest.next())
++                    .filter(|value| !value.trim().is_empty() && !value.starts_with("--"))
++                    .ok_or_else(|| "--in-reply-to needs a message id".to_string())?;
++                in_reply_to = Some(value.to_string());
++            }
+             "file" | "caption" => {
+                 return Err(format!(
+                     "rs cannot serve `pij send --{name}`: it attaches a path BY REFERENCE and \
+@@ -321,6 +337,7 @@ pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<
+             to: SeatId::from(*to),
+             body: String::new(),
+             command: Some(command),
++            in_reply_to,
+         });
+     }
+     // The two body channels are exclusive, and BOTH must be refused rather than
+@@ -361,6 +378,7 @@ pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<
+         to: SeatId::from(*to),
+         body,
+         command: None,
++        in_reply_to,
+     })
+ }
+ 
+@@ -416,17 +434,25 @@ pub(crate) async fn shim_send(State(state): State<AppState>, body: axum::body::B
+                 body: call.body,
+                 command,
+                 msg_id: state.services.delivery.next_message_id(),
+-                in_reply_to: None,
++                in_reply_to: call.in_reply_to,
+                 caller: request.caller,
+             },
+         )
+         .await;
+     }
+     let from = match subject(&state, SEND, request.caller.as_ref()).await {
+-        Subject::Seat(seat) => seat,
++        Subject::Seat(seat) => seat.id,
+         Subject::Refusal(response) => return response,
+     };
+-    match state.services.delivery.send(from, call.to, call.body).await {
++    match state.services.delivery.accept(Msg {
++        from,
++        to: call.to,
++        body: call.body,
++        msg_id: state.services.delivery.next_message_id(),
++        from_machine: None,
++        in_reply_to: call.in_reply_to,
++        command: None,
++    }).await {
+         Ok(receipt) => super::envelope(
+             axum::http::StatusCode::OK,
+             &pij_core::model::Envelope::ok(SEND, receipt),
+@@ -448,19 +474,37 @@ pub(crate) async fn shim_inbox(State(state): State<AppState>, body: axum::body::
+         Decoded::Request(request) => request,
+         Decoded::Refusal(response) => return response,
+     };
+-    if let Err(why) = parse_inbox(&request.argv) {
+-        return refused(INBOX, why);
+-    }
++    let wait = match parse_inbox(&request.argv) {
++        Ok(wait) => wait,
++        Err(why) => return refused(INBOX, why),
++    };
+     let reader = match subject(&state, INBOX, request.caller.as_ref()).await {
+         Subject::Seat(seat) => seat,
+         Subject::Refusal(response) => return response,
+     };
+-    // `wait: false`, always. A blocking claim would hold this request open for
+-    // the caller's whole timeout, and the shim has no way to cancel it.
+-    match state.services.delivery.claim_inbox(&reader, false).await {
+-        Ok(claims) => super::envelope(
++    let pull = paneless_pull(&reader);
++    if wait != InboxWait::NoWait && !pull {
++        return refused(INBOX, "inbox --wait requires a verified paneless pull seat; pushed seats cannot wait");
++    }
++    let identity = inbox_identity(request.caller.as_ref(), &reader);
++    if wait != InboxWait::NoWait && !identity.matches(&reader) {
++        return refused(INBOX, "inbox --wait requires the registered native session and live host tuple");
++    }
++    let result = if pull && identity.native_session.is_some() {
++        state.services.delivery.claim_pull_inbox(
++            &reader.id,
++            wait != InboxWait::NoWait,
++            match wait { InboxWait::Timeout(duration) => Some(duration), _ => None },
++            &identity,
++            state.services.liveness.as_ref(),
++        ).await
++    } else {
++        state.services.delivery.claim_native_inbox(&reader.id, false, &identity).await
++    };
++    match result {
++        Ok(page) => super::envelope(
+             axum::http::StatusCode::OK,
+-            &pij_core::model::Envelope::ok(INBOX, claims),
++            &pij_core::model::Envelope::ok(INBOX, page.claims),
+         ),
+         Err(error) => super::inbox_failure(error),
+     }
+@@ -483,9 +527,8 @@ pub(crate) async fn shim_inbox(State(state): State<AppState>, body: axum::body::
+ /// already ignores its `seat` field for attribution — it keys on the job's
+ /// serial key — so nothing is weakened by not sending one.)
+ ///
+-/// Copilot requires its native tuple at the service boundary. This legacy shim
+-/// cannot supply one, so neither claim nor ack may retire native work. Other
+-/// harnesses retain machine-grade acknowledgement with queue-owned attribution.
++/// External pull readers forward the same native session and host incarnation
++/// used at claim time; the service rechecks it before retiring the queue row.
+ pub(crate) async fn shim_inbox_ack(
+     State(state): State<AppState>,
+     body: axum::body::Bytes,
+@@ -504,9 +547,9 @@ pub(crate) async fn shim_inbox_ack(
+         .services
+         .delivery
+         .acknowledge_inbox(
+-            &reader,
++            &reader.id,
+             request.job_id,
+-            &crate::delivery::NativeInboxIdentity::default(),
++            &inbox_identity(request.caller.as_ref(), &reader),
+             None,
+         )
+         .await
+@@ -549,50 +592,67 @@ fn decode_ack(body: &[u8]) -> DecodedAck {
+     }
+ }
+ 
+-/// Which `pij inbox` shapes rs serves.
+-///
+-/// `register` is NOT among them and must never reach here — the route table's
+-/// per-leaf policy holds it back, and this refusal is the second line of that
+-/// defence rather than the first. Its reason is unchanged and is not this
+-/// plan's to withdraw: the paneless ready form names no pane and no process, so
+-/// rs has no bind evidence to derive, and an rs refusal never falls back — a
+-/// routed `inbox register` would stop paneless seats registering ANYWHERE,
+-/// where today they register in legacy and work. Jordan's ruling of 2026-09-01
+-/// replaces that refusal with an admission GRADE; until the graded path is live
+-/// (s120) the denial stands, because striking a deny reason in a unit that does
+-/// not supply its replacement leaves the justification gone and the hazard.
+-pub(crate) fn parse_inbox(argv: &[String]) -> Result<(), String> {
+-    let mut tokens = argv.iter().map(String::as_str);
++/// Optional inbox wait; the only finite completion without a claim is timeout.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub(crate) enum InboxWait {
++    NoWait,
++    Infinite,
++    Timeout(Duration),
++}
++
++/// Registration has its own native `/v1/register` contract, never this argv route.
++pub(crate) fn parse_inbox(argv: &[String]) -> Result<InboxWait, String> {
++    let mut tokens = argv.iter().map(String::as_str).peekable();
+     match tokens.next() {
+         Some("inbox") => {}
+         Some(other) => return Err(format!("'{other}' is not the inbox verb")),
+-        None => return Err("usage: pij inbox [check]".to_string()),
++        None => return Err("usage: pij inbox [check] [--wait [ms]]".to_string()),
+     }
+-    for token in tokens {
++    let mut wait = InboxWait::NoWait;
++    while let Some(token) = tokens.next() {
+         match token {
+             "check" | "--json" => {}
+-            "register" => {
+-                return Err(
+-                    "rs does not serve `pij inbox register`. It is the PANELESS ready form: it \
+-                     names no pane and no process, so there is no bind evidence for rs to \
+-                     corroborate, and an rs refusal never falls back — routing it would stop \
+-                     paneless seats registering anywhere, where today they register in legacy \
+-                     and work. Tracked as s120 (admission becomes a GRADE, not a gate)."
+-                        .to_string(),
+-                );
+-            }
+-            "--wait" => {
+-                return Err(
+-                    "rs does not serve `pij inbox --wait`: a blocking claim would hold the \
+-                     request open for the caller's whole timeout with no way to cancel it. A \
+-                     pushed seat must not block on it at all; a pull peer should use legacy."
+-                        .to_string(),
+-                );
++            "register" => return Err("pij inbox register uses the native /v1/register endpoint, not the shim inbox route".to_string()),
++            token if token == "--wait" || token.starts_with("--wait=") => {
++                if wait != InboxWait::NoWait {
++                    return Err("--wait may be supplied only once".to_string());
++                }
++                let value = token.split_once('=').map(|(_, value)| value).or_else(|| {
++                    tokens.peek().filter(|next| !next.starts_with("--")).copied()
++                        .and_then(|_| tokens.next())
++                });
++                wait = match value {
++                    None => InboxWait::Infinite,
++                    Some(value) => {
++                        let ms = value.parse::<u64>().ok().filter(|ms| *ms > 0)
++                            .ok_or_else(|| "--wait needs a positive integer duration in milliseconds".to_string())?;
++                        InboxWait::Timeout(Duration::from_millis(ms))
++                    }
++                };
+             }
+             other => return Err(format!("unknown inbox argument `{other}`")),
+         }
+     }
+-    Ok(())
++    Ok(wait)
++}
++
++fn inbox_identity(caller: Option<&CallerContext>, seat: &SeatDescriptor) -> NativeInboxIdentity {
++    if seat.harness != Harness::Copilot && !paneless_pull(seat) {
++        return NativeInboxIdentity::default();
++    }
++    let Some(caller) = caller else { return NativeInboxIdentity::default() };
++    let native_session = match seat.harness {
++        Harness::Claude => caller.claude_session.as_ref(),
++        Harness::Copilot => caller.copilot_session.as_ref(),
++        Harness::Codex => caller.codex_session.as_ref(),
++        _ => None,
++    }.or(caller.harness_session.as_ref()).cloned();
++    // Existing non-Copilot asserted-id callers remain machine-grade. A PID
++    // without native session evidence is still diagnostic, not a pull identity.
++    if seat.harness != Harness::Copilot && native_session.is_none() {
++        return NativeInboxIdentity::default();
++    }
++    NativeInboxIdentity { native_session, pid: caller.pid, proc_start: caller.proc_start }
+ }
+ 
+ /// A decode's two answers.
+@@ -608,7 +668,7 @@ enum Decoded {
+ 
+ /// The acting seat, or the refusal to send back. See [`Decoded`].
+ enum Subject {
+-    Seat(SeatId),
++    Seat(SeatDescriptor),
+     Refusal(Response),
+ }
+ 
+@@ -642,7 +702,23 @@ async fn subject(
+     let asserted = caller.and_then(|caller| caller.session_id.clone());
+     let pane = caller.and_then(|caller| caller.pane.clone());
+     match identity::resolve_seat(state, command, asserted, pane).await {
+-        Resolved::Seat(descriptor, _) => Subject::Seat(descriptor.id),
++        Resolved::Seat(descriptor, _) => {
++            let native = inbox_identity(caller, &descriptor);
++            if paneless_pull(&descriptor)
++                && (descriptor.harness == Harness::Copilot || native.native_session.is_some())
++            {
++                if !native.matches(&descriptor) {
++                    return Subject::Refusal(refused(command, "native incarnation mismatch: caller session and host tuple must match the registered paneless pull seat"));
++                }
++                let proc = descriptor.proc.expect("paneless pull has a host identity");
++                match state.services.liveness.proc_start(proc.pid).await {
++                    Ok(Some(start)) if start == proc.proc_start => {}
++                    Ok(_) => return Subject::Refusal(refused(command, "paneless pull host is no longer live at its registered process start")),
++                    Err(error) => return Subject::Refusal(internal(command, error)),
++                }
++            }
++            Subject::Seat(descriptor)
++        }
+         Resolved::Refusal(response) => Subject::Refusal(response),
+     }
+ }
+diff --git a/crates/daemon/src/http/types.rs b/crates/daemon/src/http/types.rs
+index 400f86d1..70fe287e 100644
+--- a/crates/daemon/src/http/types.rs
++++ b/crates/daemon/src/http/types.rs
+@@ -18,7 +18,8 @@ pub struct Registration {
+     /// impostor naming someone else's seat is exactly what #19 is about.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub supersedes: Option<SeatId>,
+-    /// Claimed seat id. An empty native Copilot claim requests canonical allocation.
++    /// Claimed seat id. Empty requests canonical allocation for native Copilot
++    /// extension delivery or a verified paneless external harness ancestor.
+     pub id: String,
+     /// Claimed harness spelling; admission refuses unknown values rather than guessing.
+     pub harness: String,
+@@ -27,7 +28,8 @@ pub struct Registration {
+     /// Claimed tmux pane, when the seat has one.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub pane: Option<String>,
+-    /// Claimed process id; must travel with `proc_start`.
++    /// Claimed process id; must travel with `proc_start`. Empty-ID paneless
++    /// claims identify the requesting CLI; the daemon binds its observed host ancestor.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub pid: Option<u32>,
+     /// Claimed process start time; must travel with `pid`.
+diff --git a/crates/daemon/src/registration.rs b/crates/daemon/src/registration.rs
+index 24fcbed8..5f2ce057 100644
+--- a/crates/daemon/src/registration.rs
++++ b/crates/daemon/src/registration.rs
+@@ -45,6 +45,12 @@ struct NativeHandoff {
+     prebind: Option<SeatDescriptor>,
+ }
+ 
++enum RegistrationMode<'a> {
++    Ordinary,
++    NativeExtension(&'a NativeHandoff),
++    Paneless(&'a [ProcIdentity]),
++}
++
+ impl RegistrationService {
+     pub(crate) fn new(
+         registry: Arc<dyn Registry>,
+@@ -82,7 +88,101 @@ impl RegistrationService {
+         claim: Registration,
+         harness_session: Option<String>,
+     ) -> std::result::Result<(SeatDescriptor, PutBinding), RegistrationError> {
+-        self.register_inner(claim, harness_session, None).await
++        if claim.id.is_empty()
++            && matches!(Harness::parse(&claim.harness), Some(Harness::Claude | Harness::Copilot | Harness::Codex))
++        {
++            return self
++                .register_paneless_with_observer(claim, harness_session, observe_native_process)
++                .await;
++        }
++        self.register_inner(claim, harness_session, RegistrationMode::Ordinary)
++            .await
++    }
++
++    async fn register_paneless_with_observer<F, Fut>(
++        &self,
++        mut claim: Registration,
++        harness_session: Option<String>,
++        mut observe: F,
++    ) -> std::result::Result<(SeatDescriptor, PutBinding), RegistrationError>
++    where
++        F: FnMut(u32) -> Fut,
++        Fut: Future<Output = std::result::Result<Option<NativeProcess>, RegistrationError>>,
++    {
++        let harness = Harness::parse(&claim.harness)
++            .filter(|harness| matches!(harness, Harness::Claude | Harness::Copilot | Harness::Codex))
++            .ok_or_else(|| paneless_refusal("requires Claude, Copilot, or Codex"))?;
++        if !claim.id.is_empty()
++            || claim.pane.is_some()
++            || claim.relay
++            || claim.supersedes.is_some()
++            || claim.spawn_id.is_some()
++        {
++            return Err(paneless_refusal(
++                "requires an empty id, no pane/spawn/supersedes, and relay false",
++            ));
++        }
++        let session = harness_session
++            .as_deref()
++            .filter(|session| {
++                !session.is_empty()
++                    && !session.chars().any(|ch| ch.is_whitespace() || ch.is_control())
++            })
++            .ok_or_else(|| paneless_refusal("requires an exact nonempty native session"))?;
++        let caller = match (claim.pid, claim.proc_start) {
++            (Some(pid), Some(proc_start)) if pid > 0 && proc_start > 0 => {
++                ProcIdentity { pid, proc_start }
++            }
++            _ => return Err(paneless_refusal("requires a complete nonzero pid/proc_start tuple")),
++        };
++        let ancestry = tokio::time::timeout(Duration::from_secs(2), async {
++            self.require_process(caller).await?;
++            let mut ancestry = Vec::with_capacity(8);
++            let mut current = caller;
++            loop {
++                if ancestry.len() == 32 || ancestry.contains(&current) {
++                    return Err(paneless_refusal("host ancestry is cyclic or exceeds 32 processes"));
++                }
++                let process = observe(current.pid)
++                    .await?
++                    .ok_or_else(|| paneless_refusal("a caller/ancestor process disappeared"))?;
++                ancestry.push(current);
++                if process.is_external_host(harness) {
++                    if !process.matches_external_session(harness, session) {
++                        return Err(paneless_refusal("observed harness session differs from the claim"));
++                    }
++                    break;
++                }
++                // A nested harness must not inherit an outer harness's session.
++                // Stop at the nearest recognized external host, even if the
++                // requested harness appears farther up the process tree.
++                if [Harness::Claude, Harness::Copilot, Harness::Codex]
++                    .into_iter()
++                    .any(|candidate| candidate != harness && process.is_external_host(candidate))
++                {
++                    return Err(paneless_refusal("nearest external harness differs from the claim"));
++                }
++                if process.parent == 0 {
++                    return Err(paneless_refusal("no matching external harness ancestor"));
++                }
++                let parent = self.observe_identity(process.parent).await?;
++                if parent.proc_start > current.proc_start {
++                    return Err(paneless_refusal("an ancestor pid was reused after its child started"));
++                }
++                current = parent;
++            }
++            for identity in &ancestry {
++                self.require_process(*identity).await?;
++            }
++            Ok(ancestry)
++        })
++        .await
++        .map_err(|_| paneless_refusal("host observation exceeded two seconds"))??;
++        let host = ancestry.last().expect("observed external harness ancestor");
++        claim.pid = Some(host.pid);
++        claim.proc_start = Some(host.proc_start);
++        self.register_inner(claim, harness_session, RegistrationMode::Paneless(&ancestry))
++            .await
+     }
+ 
+     /// Attest extension delivery only after observing the actual Copilot host.
+@@ -141,7 +241,7 @@ impl RegistrationService {
+                 identity,
+             )
+             .await?;
+-        self.register_inner(claim, harness_session, Some(&dead_native))
++        self.register_inner(claim, harness_session, RegistrationMode::NativeExtension(&dead_native))
+             .await
+     }
+ 
+@@ -325,7 +425,7 @@ impl RegistrationService {
+         &self,
+         mut claim: Registration,
+         harness_session: Option<String>,
+-        handoff: Option<&NativeHandoff>,
++        mode: RegistrationMode<'_>,
+     ) -> std::result::Result<(SeatDescriptor, PutBinding), RegistrationError> {
+         if claim
+             .role
+@@ -336,7 +436,11 @@ impl RegistrationService {
+                 "role must be a nonempty string".to_string(),
+             ));
+         }
+-        let native = handoff.is_some();
++        let (native, paneless, handoff) = match mode {
++            RegistrationMode::Ordinary => (false, None, None),
++            RegistrationMode::NativeExtension(proof) => (true, None, Some(proof)),
++            RegistrationMode::Paneless(ancestry) => (false, Some(ancestry), None),
++        };
+         let dead_native = handoff.map_or(&[][..], |proof| proof.dead.as_slice());
+         let harness_session = harness_session.filter(|session| !session.trim().is_empty());
+         let proc = match (claim.pid, claim.proc_start) {
+@@ -365,6 +469,11 @@ impl RegistrationService {
+         // Re-read the entire roster under shared mutation exclusion: two different
+         // seat IDs can still contend for the same process, session, or pane.
+         let _guard = self.registration_lock.lock().await;
++        if let Some(ancestry) = paneless {
++            for identity in ancestry {
++                self.require_process(*identity).await?;
++            }
++        }
+         let seats = self
+             .registry
+             .list(SeatFilter::default())
+@@ -418,6 +527,10 @@ impl RegistrationService {
+                     .to_string();
+             }
+         }
++        if paneless.is_some() {
++            let session = harness_session.as_deref().expect("validated paneless session");
++            claim.id = paneless_target(&claim, session, proc, &seats)?;
++        }
+         let claimed_id = SeatId::from(claim.id.clone());
+         let existing = registration_target(&claim, native, &seats);
+         // Native-only ownership is a harness invariant, not a live-process flag.
+@@ -521,32 +634,6 @@ impl RegistrationService {
+                 "unrecognised harness after admission".to_string(),
+             ));
+         };
+-        if harness == Harness::Claude {
+-            for report in ensure_claude_inbound_accept(&self.claude_homes) {
+-                if let Some(error) = report.error.as_deref() {
+-                    eprintln!("pij-rs claude inbound: {}: {error}", report.home.display());
+-                    continue;
+-                }
+-                if report.changed {
+-                    self.event_bus
+-                        .publish(Event {
+-                            seq: None,
+-                            v: wire::EVENT_VERSION,
+-                            at: system_time_ms()?,
+-                            kind: "config.claude-inbound-ensured".to_string(),
+-                            seat: Some(claimed_id.clone()),
+-                            payload: serde_json::json!({
+-                                "home": report.home,
+-                                "before": report.before,
+-                                "after": report.after,
+-                            })
+-                            .to_string(),
+-                        })
+-                        .await
+-                        .map_err(RegistrationError::Runtime)?;
+-                }
+-            }
+-        }
+         let mut descriptor = existing
+             .cloned()
+             .unwrap_or_else(|| SeatDescriptor::new(claimed_id, harness, claim.folder.clone()));
+@@ -602,6 +689,41 @@ impl RegistrationService {
+                     && same_native_owner(owner, &descriptor)
+             });
+ 
++
++        if paneless.is_some() && existing == Some(&descriptor) {
++            let role = self.roles.read_role(&descriptor.id).await
++                .map_err(RegistrationError::Runtime)?;
++            if claim.role.as_ref().is_none_or(|claimed| role.as_ref() == Some(claimed)) {
++                descriptor.role = role;
++                return Ok((descriptor, PutBinding { inserted: false, previous_proc: proc }));
++            }
++        }
++        if harness == Harness::Claude {
++            for report in ensure_claude_inbound_accept(&self.claude_homes) {
++                if let Some(error) = report.error.as_deref() {
++                    eprintln!("pij-rs claude inbound: {}: {error}", report.home.display());
++                    continue;
++                }
++                if report.changed {
++                    self.event_bus
++                        .publish(Event {
++                            seq: None,
++                            v: wire::EVENT_VERSION,
++                            at: system_time_ms()?,
++                            kind: "config.claude-inbound-ensured".to_string(),
++                            seat: Some(descriptor.id.clone()),
++                            payload: serde_json::json!({
++                                "home": report.home,
++                                "before": report.before,
++                                "after": report.after,
++                            })
++                            .to_string(),
++                        })
++                        .await
++                        .map_err(RegistrationError::Runtime)?;
++                }
++            }
++        }
+         // Retire only a proven-dead native resource owner, never its queued work.
+         // Same-conversation resume updates its original address instead.
+         for observed in dead_native.iter().filter(|seat| seat.id != descriptor.id) {
+@@ -679,6 +801,49 @@ fn native_refusal(reason: impl std::fmt::Display) -> RegistrationError {
+     RegistrationError::Refused(format!("native Copilot registration refused: {reason}"))
+ }
+ 
++fn paneless_refusal(reason: impl std::fmt::Display) -> RegistrationError {
++    RegistrationError::Refused(format!("paneless external registration refused: {reason}"))
++}
++
++fn paneless_target(
++    claim: &Registration,
++    session: &str,
++    identity: Option<ProcIdentity>,
++    seats: &[SeatDescriptor],
++) -> std::result::Result<String, RegistrationError> {
++    let identity = identity.expect("validated external host identity");
++    let mut target = None;
++    for seat in seats.iter().filter(|seat| seat.tombstoned_at.is_none()) {
++        let same_session = seat.harness.as_str() == claim.harness
++            && seat.harness_session.as_deref() == Some(session);
++        let same_pid = seat.proc.is_some_and(|proc| proc.pid == identity.pid);
++        if !same_session && !same_pid {
++            continue;
++        }
++        if !same_session
++            || seat.proc != Some(identity)
++            || seat.pane.is_some()
++            || seat.relay
++            || seat.native_extension_delivery
++            || seat.spawn_id.is_some()
++        {
++            return Err(paneless_refusal(format!(
++                "host process or native session conflicts with seat `{}`", seat.id
++            )));
++        }
++        if target.replace(seat).is_some() {
++            return Err(paneless_refusal("native session has multiple Pij addresses"));
++        }
++    }
++    if let Some(target) = target {
++        return Ok(target.id.to_string());
++    }
++    memorable_pij_id_candidates(&format!("{}\0{session}", claim.harness))
++        .find(|candidate| seats.iter().all(|seat| seat.id != *candidate))
++        .map(|id| id.to_string())
++        .ok_or_else(|| paneless_refusal("memorable Pij ID space is exhausted"))
++}
++
+ fn registration_target<'a>(
+     claim: &Registration,
+     native: bool,
+@@ -831,6 +996,68 @@ struct NativeProcess {
+ }
+ 
+ impl NativeProcess {
++    fn is_external_host(&self, harness: Harness) -> bool {
++        if harness == Harness::Copilot {
++            return self.is_copilot_host();
++        }
++        let (binary, entry) = match harness {
++            Harness::Claude => ("claude", "@anthropic-ai/claude-code/cli.js"),
++            Harness::Codex => ("codex", "@openai/codex/bin/codex.js"),
++            _ => return false,
++        };
++        let executable = Path::new(&self.executable).file_name();
++        let argv0 = self.argv.first().and_then(|arg| Path::new(arg).file_name());
++        if executable != argv0 {
++            return false;
++        }
++        executable == Some(std::ffi::OsStr::new(binary))
++            || (executable == Some(std::ffi::OsStr::new("node"))
++                && self.argv.get(1).is_some_and(|script| Path::new(script).ends_with(entry)))
++    }
++
++    fn matches_external_session(&self, harness: Harness, session: &str) -> bool {
++        let start = if Path::new(&self.executable).file_name() == Some(std::ffi::OsStr::new("node")) {
++            2
++        } else {
++            1
++        };
++        let argv = &self.argv[start..];
++        // A Claude fork names both its source conversation and its new identity.
++        let fork = harness == Harness::Claude && argv.iter().any(|arg| arg == "--fork-session");
++        let mut pinned = false;
++        let mut args = argv.iter().peekable();
++        while let Some(arg) = args.next() {
++            if arg == "--" {
++                break;
++            }
++            let (flag, inline) = arg.split_once('=')
++                .map_or((arg.as_str(), None), |(flag, value)| (flag, Some(value)));
++            let session_flag = match harness {
++                Harness::Claude => matches!(flag, "--session-id" | "--resume" | "-r"),
++                Harness::Copilot => matches!(flag, "--session-id" | "--resume"),
++                Harness::Codex => flag == "resume",
++                _ => false,
++            };
++            if !session_flag {
++                continue;
++            }
++            let value = inline.or_else(|| args.peek()
++                .filter(|value| !value.starts_with('-')).map(|value| value.as_str()));
++            if flag == "--session-id" {
++                pinned = value == Some(session);
++                if !pinned {
++                    return false;
++                }
++            } else if !fork && value.is_some_and(|value| value != session) {
++                return false;
++            }
++            if inline.is_none() && value.is_some() {
++                args.next();
++            }
++        }
++        !fork || pinned
++    }
++
+     fn is_copilot_host(&self) -> bool {
+         let executable = Path::new(&self.executable)
+             .file_name()
+@@ -2444,4 +2671,459 @@ mod tests {
+         );
+         let _ = fs::remove_dir_all(root);
+     }
++
++    const PANELLESS_CLI: ProcIdentity = ProcIdentity { pid: 9000, proc_start: 200 };
++    const PANELLESS_SHELL: ProcIdentity = ProcIdentity { pid: 9001, proc_start: 180 };
++    const PANELLESS_NEXT_CLI: ProcIdentity = ProcIdentity { pid: 9002, proc_start: 210 };
++
++    fn paneless_claim(harness: Harness) -> Registration {
++        let mut claim = native_claim("");
++        claim.harness = harness.as_str().to_string();
++        claim.pane = None;
++        claim.pid = Some(PANELLESS_CLI.pid);
++        claim.proc_start = Some(PANELLESS_CLI.proc_start);
++        claim
++    }
++
++    fn paneless_liveness() -> Arc<dyn LivenessPort> {
++        Arc::new(FakeLiveness::new().with_proc(HOST)
++            .with_proc(PANELLESS_CLI).with_proc(PANELLESS_SHELL).with_proc(PANELLESS_NEXT_CLI))
++    }
++
++    fn paneless_process(pid: u32, harness: Harness, node: bool) -> Option<NativeProcess> {
++        if pid == PANELLESS_CLI.pid || pid == PANELLESS_NEXT_CLI.pid {
++            return Some(NativeProcess {
++                parent: PANELLESS_SHELL.pid,
++                executable: "/opt/pij/pij".into(),
++                argv: vec!["/opt/pij/pij".into(), "inbox".into()],
++            });
++        }
++        if pid == PANELLESS_SHELL.pid {
++            return Some(NativeProcess {
++                parent: HOST.pid,
++                executable: "/bin/sh".into(),
++                argv: vec!["sh".into(), "-c".into(), "copilot claude codex".into()],
++            });
++        }
++        if pid != HOST.pid {
++            return None;
++        }
++        let executable = if node { "/usr/bin/node".to_string() } else {
++            format!("/opt/bin/{}", harness.as_str())
++        };
++        let mut argv = vec![executable.clone()];
++        if node {
++            argv.push(format!("/private/fixture/node_modules/{}", match harness {
++                Harness::Claude => "@anthropic-ai/claude-code/cli.js",
++                Harness::Copilot => "@github/copilot/index.js",
++                Harness::Codex => "@openai/codex/bin/codex.js",
++                _ => unreachable!("external harness fixture"),
++            }));
++        }
++        Some(NativeProcess { parent: 0, executable, argv })
++    }
++
++    async fn pull_register(
++        service: &RegistrationService,
++        claim: Registration,
++        session: &str,
++        node: bool,
++    ) -> std::result::Result<(SeatDescriptor, pij_core::ports::PutBinding), RegistrationError> {
++        let harness = Harness::parse(&claim.harness).expect("fixture harness");
++        service.register_paneless_with_observer(claim, Some(session.into()), |pid| {
++            ready(Ok(paneless_process(pid, harness, node)))
++        }).await
++    }
++
++    #[tokio::test]
++    async fn paneless_all_external_harnesses_bind_actual_host_not_cli_or_shell() {
++        for harness in [Harness::Claude, Harness::Copilot, Harness::Codex] {
++            for node in [false, true] {
++                let (service, registry) = native_service(Vec::new(), paneless_liveness()).await;
++                let (seat, binding) = pull_register(&service, paneless_claim(harness), SESSION, node)
++                    .await.expect("verified external ancestor");
++                let expected = pij_core::names::memorable_pij_id_candidates(
++                    &format!("{}\0{SESSION}", harness.as_str())
++                ).next().expect("canonical candidate");
++                assert_eq!(seat.id, expected);
++                assert_eq!(seat.harness, harness);
++                assert_eq!(seat.proc, Some(HOST));
++                assert_eq!(seat.harness_session.as_deref(), Some(SESSION));
++                assert_eq!(seat.pane, None);
++                assert!(!seat.relay);
++                assert!(!seat.native_extension_delivery);
++                assert!(binding.inserted);
++                assert_eq!(binding.previous_proc, None);
++                assert_eq!(registry.get(&seat.id).await.unwrap(), Some(seat));
++            }
++        }
++    }
++
++    #[test]
++    fn paneless_host_matcher_rejects_shell_text_forged_argv_and_unrecognized_node_entries() {
++        for harness in [Harness::Claude, Harness::Copilot, Harness::Codex] {
++            let mut process = paneless_process(HOST.pid, harness, false).unwrap();
++            process.executable = "/bin/sh".into();
++            assert!(!process.is_external_host(harness));
++            process = paneless_process(HOST.pid, harness, false).unwrap();
++            process.argv[0] = "sh".into();
++            assert!(!process.is_external_host(harness));
++            for entry in ["-e", "/tmp/extension.mjs", "/tmp/npm-loader.js", "/tmp/index.js"] {
++                process = paneless_process(HOST.pid, harness, true).unwrap();
++                process.argv[1] = entry.into();
++                assert!(!process.is_external_host(harness));
++            }
++            process = paneless_process(HOST.pid, harness, true).unwrap();
++            process.argv[1] = process.argv[1].replace("node_modules/@", "node_modules/not-@");
++            assert!(!process.is_external_host(harness));
++        }
++    }
++
++    #[tokio::test]
++    async fn paneless_refuses_missing_or_wrong_harness_ancestor_without_writes() {
++        for harness in [Harness::Claude, Harness::Copilot, Harness::Codex] {
++            for missing in [false, true] {
++                let (service, registry) = native_service(Vec::new(), paneless_liveness()).await;
++                refused(service.register_paneless_with_observer(
++                    paneless_claim(harness), Some(SESSION.into()), |pid| {
++                        let mut process = paneless_process(pid, harness, false);
++                        if pid == HOST.pid {
++                            if missing { process = None; } else {
++                                process.as_mut().unwrap().executable = "/bin/sh".into();
++                            }
++                        }
++                        ready(Ok(process))
++                    },
++                ).await);
++                assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
++            }
++        }
++    }
++
++    #[tokio::test]
++    async fn paneless_requires_empty_id_exact_session_complete_tuple_and_pull_shape() {
++        let (service, registry) = native_service(Vec::new(), paneless_liveness()).await;
++        for session in [None, Some(""), Some(" "), Some(" session"), Some("session\n")] {
++            refused(service.register_with_harness_session(
++                paneless_claim(Harness::Copilot), session.map(str::to_string),
++            ).await);
++        }
++        for case in 0..11 {
++            let mut claim = paneless_claim(Harness::Copilot);
++            match case {
++                0 => claim.id = "pij-unverified-name".into(),
++                1 => claim.pane = Some("%137".into()),
++                2 => claim.relay = true,
++                3 => claim.spawn_id = Some("spawn".into()),
++                4 => claim.supersedes = Some("pij-old".into()),
++                5 => claim.pid = None,
++                6 => claim.proc_start = None,
++                7 => claim.pid = Some(0),
++                8 => claim.proc_start = Some(0),
++                9 => claim.harness = "omp".into(),
++                10 => claim.role = Some(" ".into()),
++                _ => unreachable!(),
++            }
++            refused(service.register_paneless_with_observer(
++                claim, Some(SESSION.into()), |pid| ready(Ok(paneless_process(pid, Harness::Copilot, false))),
++            ).await);
++        }
++        assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
++    }
++
++    #[test]
++    fn paneless_observed_session_argv_must_match_including_claude_fork_identity() {
++        for (harness, flag) in [
++            (Harness::Claude, "--session-id"), (Harness::Claude, "--resume"),
++            (Harness::Claude, "-r"), (Harness::Copilot, "--session-id"),
++            (Harness::Copilot, "--resume"), (Harness::Codex, "resume"),
++        ] {
++            for node in [false, true] {
++                let mut process = paneless_process(HOST.pid, harness, node).unwrap();
++                process.argv.extend([flag.into(), SESSION.into()]);
++                assert!(process.matches_external_session(harness, SESSION));
++                assert!(!process.matches_external_session(harness, "another-session"));
++                if flag.starts_with("--") {
++                    process.argv.pop();
++                    *process.argv.last_mut().unwrap() = format!("{flag}={SESSION}");
++                    assert!(process.matches_external_session(harness, SESSION));
++                    assert!(!process.matches_external_session(harness, "another-session"));
++                }
++            }
++        }
++        let mut process = paneless_process(HOST.pid, Harness::Claude, false).unwrap();
++        process.argv.extend(["--resume", "source-session", "--fork-session", "--session-id", SESSION]
++            .into_iter().map(str::to_string));
++        assert!(process.matches_external_session(Harness::Claude, SESSION));
++        assert!(!process.matches_external_session(Harness::Claude, "source-session"));
++        process.argv.truncate(2);
++        assert!(process.matches_external_session(Harness::Claude, SESSION), "bare resume picker");
++        for flag in ["--continue", "-c"] {
++            let mut process = paneless_process(HOST.pid, Harness::Claude, false).unwrap();
++            process.argv.extend([flag.into(), "unrelated prompt text".into()]);
++            assert!(process.matches_external_session(Harness::Claude, SESSION),
++                "boolean continue does not make prompt text session evidence");
++        }
++    }
++
++    #[tokio::test]
++    async fn paneless_session_argv_conflict_refuses_before_registration() {
++        for harness in [Harness::Claude, Harness::Copilot, Harness::Codex] {
++            let (service, registry) = native_service(Vec::new(), paneless_liveness()).await;
++            refused(service.register_paneless_with_observer(
++                paneless_claim(harness), Some(SESSION.into()), |pid| {
++                    let mut process = paneless_process(pid, harness, false);
++                    if pid == HOST.pid {
++                        process.as_mut().unwrap().argv.extend([
++                            if harness == Harness::Codex { "resume" } else { "--session-id" }.into(),
++                            "conflicting-session".into(),
++                        ]);
++                    }
++                    ready(Ok(process))
++                },
++            ).await);
++            assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
++        }
++    }
++
++    #[tokio::test]
++    async fn paneless_rechecks_incarnation_after_observation_and_lock_wait() {
++        for during_lock in [false, true] {
++            let liveness = Arc::new(MovingStart(AtomicU64::new(HOST.proc_start)));
++            let (service, registry) = native_service(Vec::new(), liveness.clone()).await;
++            let mut claim = paneless_claim(Harness::Codex);
++            claim.pid = Some(HOST.pid);
++            claim.proc_start = Some(HOST.proc_start);
++            let observed = Notify::new();
++            let guard = if during_lock { Some(service.registration_lock.lock().await) } else { None };
++            let pending = service.register_paneless_with_observer(claim, Some(SESSION.into()), |pid| {
++                observed.notify_one();
++                if !during_lock { liveness.0.store(HOST.proc_start + 1, Ordering::SeqCst); }
++                ready(Ok(paneless_process(pid, Harness::Codex, false)))
++            });
++            tokio::pin!(pending);
++            if during_lock {
++                tokio::select! {
++                    _ = observed.notified() => {}
++                    result = &mut pending => panic!("registration must wait for the lock: {result:?}"),
++                }
++                liveness.0.store(HOST.proc_start + 1, Ordering::SeqCst);
++            }
++            drop(guard);
++            refused(pending.await);
++            assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
++        }
++    }
++
++    #[tokio::test]
++    async fn paneless_repeated_cli_wrappers_reuse_host_address_without_mutation() {
++        use pij_core::events::EventFilter;
++        use tokio_stream::StreamExt;
++
++        for harness in [Harness::Claude, Harness::Copilot, Harness::Codex] {
++            let (service, registry) = native_service(Vec::new(), paneless_liveness()).await;
++            let mut claim = paneless_claim(harness);
++            claim.role = Some("coder".into());
++            let (first, _) = pull_register(&service, claim.clone(), SESSION, true).await.unwrap();
++            assert_eq!(first.role.as_deref(), Some("coder"));
++            let mut subscription = service.event_bus.subscribe(None, EventFilter::default()).await.unwrap();
++            let writes = registry.calls().iter().filter(|call| call.starts_with("put:")).count();
++            claim.pid = Some(PANELLESS_NEXT_CLI.pid);
++            claim.proc_start = Some(PANELLESS_NEXT_CLI.proc_start);
++            let (same, binding) = pull_register(&service, claim.clone(), SESSION, true).await.unwrap();
++            assert_eq!(same, first);
++            assert!(!binding.inserted);
++            assert_eq!(binding.previous_proc, Some(HOST));
++            assert_eq!(registry.calls().iter().filter(|call| call.starts_with("put:")).count(), writes);
++            tokio::select! {
++                biased;
++                event = subscription.next() => panic!("unchanged repeat emitted {event:?}"),
++                _ = ready(()) => {}
++            }
++            service.roles.assert_role(&same.id, &same.id, Some("reviewer".into())).await.unwrap();
++            claim.role = None;
++            let (authoritative, _) = pull_register(&service, claim, SESSION, true).await.unwrap();
++            assert_eq!(authoritative.role.as_deref(), Some("reviewer"));
++            assert_eq!(registry.calls().iter().filter(|call| call.starts_with("put:")).count(), writes);
++        }
++    }
++
++    #[tokio::test]
++    async fn paneless_refuses_ambiguous_session_stale_tuple_and_false_push_attestation() {
++        for harness in [Harness::Claude, Harness::Copilot, Harness::Codex] {
++            for case in 0..10 {
++                let mut incumbent = SeatDescriptor::new("pij-incumbent", harness, "/isolated/native-registration");
++                incumbent.proc = Some(HOST);
++                incumbent.harness_session = Some(SESSION.into());
++                match case {
++                    0 => incumbent.proc = Some(OTHER_HOST),
++                    1 => incumbent.proc = Some(ProcIdentity { proc_start: HOST.proc_start + 1, ..HOST }),
++                    2 => incumbent.harness_session = Some("other-session".into()),
++                    3 => incumbent.harness = Harness::Omp,
++                    4 => incumbent.pane = Some("%137".into()),
++                    5 => incumbent.relay = true,
++                    6 => incumbent.native_extension_delivery = true,
++                    7 => incumbent.spawn_id = Some("spawn".into()),
++                    8 => incumbent.tombstoned_at = Some(1),
++                    9 => {},
++                    _ => unreachable!(),
++                }
++                let mut seats = vec![incumbent.clone()];
++                if case == 9 {
++                    let mut duplicate = incumbent.clone();
++                    duplicate.id = "pij-duplicate".into();
++                    seats.push(duplicate);
++                }
++                let (service, registry) = native_service(seats, paneless_liveness()).await;
++                refused(pull_register(&service, paneless_claim(harness), SESSION, false).await);
++                assert_eq!(registry.get(&incumbent.id).await.unwrap(), Some(incumbent));
++                assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
++            }
++        }
++    }
++
++    #[tokio::test]
++    async fn paneless_allocator_reserves_existing_names_and_serializes_repeat_claims() {
++        let seed = format!("codex\0{SESSION}");
++        let mut candidates = pij_core::names::memorable_pij_id_candidates(&seed);
++        let occupied = SeatDescriptor::new(candidates.next().unwrap(), Harness::Omp, "/unrelated");
++        let expected = candidates.next().unwrap();
++        let (service, registry) = native_service(vec![occupied.clone()], paneless_liveness()).await;
++        let (left, right) = tokio::join!(
++            pull_register(&service, paneless_claim(Harness::Codex), SESSION, false),
++            pull_register(&service, paneless_claim(Harness::Codex), SESSION, false),
++        );
++        let (left, first) = left.unwrap();
++        let (right, second) = right.unwrap();
++        assert_eq!(left.id, expected);
++        assert_eq!(right.id, expected);
++        assert_ne!(first.inserted, second.inserted);
++        assert_eq!(registry.calls().iter().filter(|call| call.starts_with("put:")).count(), 1);
++        assert_eq!(registry.get(&occupied.id).await.unwrap(), Some(occupied));
++    }
++
++    struct PanelessCallerStart(AtomicU64);
++
++    #[async_trait::async_trait]
++    impl LivenessPort for PanelessCallerStart {
++        async fn proc_start(&self, pid: u32) -> pij_core::error::Result<Option<u64>> {
++            Ok(if pid == PANELLESS_CLI.pid { Some(self.0.load(Ordering::SeqCst)) }
++                else if pid == PANELLESS_SHELL.pid { Some(PANELLESS_SHELL.proc_start) }
++                else if pid == HOST.pid { Some(HOST.proc_start) }
++                else { None })
++        }
++    }
++
++    #[tokio::test]
++    async fn paneless_sandwich_rechecks_cli_even_when_host_incarnation_is_unchanged() {
++        let liveness = Arc::new(PanelessCallerStart(AtomicU64::new(PANELLESS_CLI.proc_start)));
++        let (service, registry) = native_service(Vec::new(), liveness.clone()).await;
++        refused(service.register_paneless_with_observer(
++            paneless_claim(Harness::Claude), Some(SESSION.into()), |pid| {
++                if pid == HOST.pid {
++                    liveness.0.store(PANELLESS_CLI.proc_start + 1, Ordering::SeqCst);
++                }
++                ready(Ok(paneless_process(pid, Harness::Claude, false)))
++            },
++        ).await);
++        assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
++    }
++
++    #[tokio::test]
++    async fn paneless_ancestry_refuses_cycles_newer_parents_and_more_than_32_processes() {
++        for newer_parent in [false, true] {
++            let liveness: Arc<dyn LivenessPort> = if newer_parent {
++                Arc::new(FakeLiveness::new().with_proc(PANELLESS_CLI).with_proc(ProcIdentity {
++                    proc_start: PANELLESS_CLI.proc_start + 1, ..PANELLESS_SHELL
++                }))
++            } else { paneless_liveness() };
++            let (service, registry) = native_service(Vec::new(), liveness).await;
++            refused(service.register_paneless_with_observer(
++                paneless_claim(Harness::Copilot), Some(SESSION.into()), |pid| {
++                    let mut process = paneless_process(pid, Harness::Copilot, false).unwrap();
++                    if !newer_parent { process.parent = pid; }
++                    ready(Ok(Some(process)))
++                },
++            ).await);
++            assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
++        }
++        let mut liveness = FakeLiveness::new();
++        for pid in 100..=132 {
++            liveness = liveness.with_proc(ProcIdentity { pid, proc_start: 200 });
++        }
++        let (service, registry) = native_service(Vec::new(), Arc::new(liveness)).await;
++        let mut claim = paneless_claim(Harness::Codex);
++        claim.pid = Some(100);
++        let calls = AtomicU64::new(0);
++        refused(service.register_paneless_with_observer(claim, Some(SESSION.into()), |pid| {
++            calls.fetch_add(1, Ordering::SeqCst);
++            ready(Ok(Some(NativeProcess {
++                parent: pid + 1, executable: "/bin/sh".into(), argv: vec!["sh".into()],
++            })))
++        }).await);
++        assert_eq!(calls.load(Ordering::SeqCst), 32);
++        assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
++    }
++
++    #[tokio::test]
++    async fn paneless_host_observation_has_a_wall_clock_bound() {
++        let (service, registry) = native_service(Vec::new(), paneless_liveness()).await;
++        tokio::time::pause();
++        let error = service.register_paneless_with_observer(
++            paneless_claim(Harness::Copilot), Some(SESSION.into()), |_| {
++                std::future::pending::<std::result::Result<Option<NativeProcess>, RegistrationError>>()
++            },
++        ).await.expect_err("bounded paneless host observation");
++        assert!(error.to_string().contains("two seconds"));
++        assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
++    }
++
++    #[tokio::test]
++    async fn paneless_nearest_external_host_refuses_inherited_other_harness_session_without_writes() {
++        for requested in [Harness::Claude, Harness::Copilot, Harness::Codex] {
++            for nearest in [Harness::Claude, Harness::Copilot, Harness::Codex] {
++                if nearest == requested { continue; }
++                for node in [false, true] {
++                    let (service, registry) = native_service(Vec::new(), paneless_liveness()).await;
++                    let outer_observations = AtomicU64::new(0);
++                    let error = service.register_paneless_with_observer(
++                        paneless_claim(requested), Some(SESSION.into()), |pid| {
++                            let process = if pid == PANELLESS_SHELL.pid {
++                                let mut host = paneless_process(HOST.pid, nearest, node).unwrap();
++                                host.parent = HOST.pid;
++                                Some(host)
++                            } else {
++                                if pid == HOST.pid {
++                                    outer_observations.fetch_add(1, Ordering::SeqCst);
++                                }
++                                paneless_process(pid, requested, node)
++                            };
++                            ready(Ok(process))
++                        },
++                    ).await.expect_err("nearest external harness is the identity boundary");
++                    assert!(error.to_string().contains("nearest external harness differs"));
++                    assert_eq!(outer_observations.load(Ordering::SeqCst), 0);
++                    assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
++                }
++            }
++        }
++    }
++
++    #[tokio::test]
++    async fn paneless_dispatch_preserves_ordinary_empty_id_admission_for_other_harnesses() {
++        let (service, registry) = native_service(Vec::new(), paneless_liveness()).await;
++        for harness in ["pi", "omp", "unknown-harness"] {
++            let mut claim = paneless_claim(Harness::Copilot);
++            claim.harness = harness.into();
++            claim.pid = None;
++            claim.proc_start = None;
++            let ordinary = service.register_inner(claim.clone(), None, super::RegistrationMode::Ordinary)
++                .await.expect_err("ordinary empty id refused");
++            let dispatched = service.register_with_harness_session(claim, None)
++                .await.expect_err("unrelated harness still uses ordinary admission");
++            assert_eq!(dispatched.to_string(), ordinary.to_string());
++            assert!(!dispatched.to_string().contains("paneless external"));
++        }
++        assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
++    }
+ }
+diff --git a/crates/daemon/tests/shim_http.rs b/crates/daemon/tests/shim_http.rs
+index 84fa8229..42550589 100644
+--- a/crates/daemon/tests/shim_http.rs
++++ b/crates/daemon/tests/shim_http.rs
+@@ -9,9 +9,11 @@
+ //! So every test here drives the REAL routes with the shim's REAL body shape.
+ 
+ use std::net::SocketAddr;
++use std::time::Duration;
+ 
+ use pij_core::config::{AdapterChoice, Adapters, Config};
+-use pij_core::model::{Envelope, Harness, SeatDescriptor};
++use pij_core::model::{Envelope, Harness, ProcIdentity, SeatDescriptor};
++use pij_core::ports::LivenessPort;
+ use pij_daemon::http::{HttpConfig, router_with_config};
+ use pij_testkit::FreshStore;
+ 
+@@ -197,8 +199,7 @@ async fn an_asserted_sender_that_contradicts_the_pane_is_refused() {
+     server.abort();
+ }
+ 
+-/// `inbox register` never reaches rs by the route table's policy; this is the
+-/// second line of that defence, and it refuses BY NAME with the reason intact.
++/// Registration is native HTTP-only; argv inbox requests may not create seats.
+ #[tokio::test]
+ async fn inbox_register_is_refused_by_name_with_its_reason() {
+     let (addr, server, _store) = daemon().await;
+@@ -212,12 +213,8 @@ async fn inbox_register_is_refused_by_name_with_its_reason() {
+     assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+     let payload: Envelope<serde_json::Value> = response.json().await.expect("envelope");
+     let meta = payload.meta.unwrap_or_default();
+-    assert!(meta.contains("PANELESS"), "{meta}");
+-    assert!(meta.contains("never falls back"), "{meta}");
+-    assert!(
+-        meta.contains("s120"),
+-        "the refusal must name its successor: {meta}"
+-    );
++    assert!(meta.contains("/v1/register"), "{meta}");
++    assert!(meta.contains("not the shim inbox route"), "{meta}");
+ 
+     server.abort();
+ }
+@@ -485,3 +482,184 @@ async fn an_unresolvable_caller_cannot_acknowledge() {
+ 
+     server.abort();
+ }
++
++async fn pull_seat(harness: Harness) -> (SeatDescriptor, serde_json::Value) {
++    let pid = std::process::id();
++    let proc_start = pij_harnesses::proc::ProcLiveness::new()
++        .proc_start(pid).await.unwrap().expect("test host is live");
++    let mut seat = SeatDescriptor::new(RECIPIENT, harness, "/abs/tree");
++    seat.proc = Some(ProcIdentity { pid, proc_start });
++    seat.harness_session = Some("native-pull-session".into());
++    let mut caller = serde_json::json!({
++        "PIJ_SESSION_ID": RECIPIENT,
++        "pid": pid,
++        "procStart": proc_start,
++    });
++    let key = match harness {
++        Harness::Claude => "CLAUDE_CODE_SESSION_ID",
++        Harness::Copilot => "COPILOT_AGENT_SESSION_ID",
++        Harness::Codex => "CODEX_THREAD_ID",
++        _ => unreachable!("external pull fixture"),
++    };
++    caller[key] = serde_json::json!("native-pull-session");
++    (seat, caller)
++}
++
++#[tokio::test]
++async fn external_shim_pull_round_trip_retains_body_reply_and_explicit_ack() {
++    for harness in [Harness::Claude, Harness::Copilot, Harness::Codex] {
++        let (reader, caller) = pull_seat(harness).await;
++        assert!(!reader.native_extension_delivery);
++        let mut sender = SeatDescriptor::new(SENDER, Harness::Claude, "/abs/tree");
++        sender.pane = Some(PANE.into());
++        let (addr, server, _store) = daemon_with_seats(vec![sender, reader]).await;
++        let text = "  exact body\nwith a trailing newline\n";
++        let sent: Envelope<serde_json::Value> = post(addr, "/v1/shim/send", serde_json::json!({
++            "argv": ["send", RECIPIENT, text], "caller": {"tmuxPane": PANE}
++        })).await.json().await.unwrap();
++        let message_id = sent.data.unwrap()["msg_id"].clone();
++        let claims: Envelope<Vec<serde_json::Value>> = post(addr, "/v1/shim/inbox", serde_json::json!({
++            "argv": ["inbox", "--wait", "1000"], "caller": caller
++        })).await.json().await.unwrap();
++        let claims = claims.data.unwrap();
++        assert_eq!(claims.len(), 1);
++        assert_eq!(claims[0]["message"]["body"], text);
++        assert_eq!(claims[0]["message"]["msg_id"], message_id);
++        assert_eq!(claims[0]["native_consumer"]["pid"], caller["pid"]);
++        assert_eq!(claims[0]["native_consumer"]["proc_start"], caller["procStart"]);
++        assert_eq!(claims[0]["native_consumer"]["native_session"], "native-pull-session");
++        let job_id = claims[0]["job_id"].clone();
++        for field in ["pid", "procStart"] {
++            let mut wrong = caller.clone();
++            wrong[field] = serde_json::json!(wrong[field].as_u64().unwrap() + 1);
++            let response = post(addr, "/v1/shim/inbox/ack", serde_json::json!({"caller": wrong, "job_id": job_id})).await;
++            assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
++        }
++        let mut wrong_session = caller.clone();
++        for key in ["CLAUDE_CODE_SESSION_ID", "COPILOT_AGENT_SESSION_ID", "CODEX_THREAD_ID"] {
++            if wrong_session.get(key).is_some() {
++                wrong_session[key] = serde_json::json!("wrong-native-session");
++            }
++        }
++        assert_eq!(post(addr, "/v1/shim/inbox/ack", serde_json::json!({"caller": wrong_session, "job_id": job_id})).await.status(), reqwest::StatusCode::BAD_REQUEST);
++        assert_eq!(post(addr, "/v1/shim/inbox/ack", serde_json::json!({"caller": caller, "job_id": job_id})).await.status(), reqwest::StatusCode::OK);
++        let reply = "  reply body\n";
++        assert_eq!(post(addr, "/v1/shim/send", serde_json::json!({
++            "argv": ["send", SENDER, reply, "--in-reply-to", message_id], "caller": caller
++        })).await.status(), reqwest::StatusCode::OK);
++        let replies: Envelope<Vec<serde_json::Value>> = post(addr, "/v1/shim/inbox", serde_json::json!({
++            "argv": ["inbox"], "caller": {"tmuxPane": PANE}
++        })).await.json().await.unwrap();
++        let replies = replies.data.unwrap();
++        assert_eq!(replies.len(), 1);
++        assert_eq!(replies[0]["message"]["body"], reply);
++        assert_eq!(replies[0]["message"]["in_reply_to"], message_id);
++        assert_eq!(post(addr, "/v1/shim/inbox/ack", serde_json::json!({"caller": {"tmuxPane": PANE}, "job_id": replies[0]["job_id"]})).await.status(), reqwest::StatusCode::OK);
++        assert_eq!(post(addr, "/v1/shim/send", serde_json::json!({"argv": ["send", RECIPIENT, "self"], "caller": caller})).await.status(), reqwest::StatusCode::BAD_REQUEST);
++        let empty: Envelope<Vec<serde_json::Value>> = post(addr, "/v1/shim/inbox", serde_json::json!({"argv": ["inbox"], "caller": caller})).await.json().await.unwrap();
++        assert!(empty.data.unwrap().is_empty());
++        server.abort();
++    }
++}
++
++#[tokio::test]
++async fn shim_wait_timeout_is_an_empty_claims_envelope_and_rejects_invalid_durations() {
++    let (reader, caller) = pull_seat(Harness::Copilot).await;
++    let (addr, server, _store) = daemon_with_seats(vec![reader]).await;
++    for argv in [serde_json::json!(["inbox", "--wait", "10", "--json"]), serde_json::json!(["inbox", "check", "--wait=10"])] {
++        let response = post(addr, "/v1/shim/inbox", serde_json::json!({"argv": argv, "caller": caller})).await;
++        assert_eq!(response.status(), reqwest::StatusCode::OK);
++        let page: Envelope<Vec<serde_json::Value>> = response.json().await.unwrap();
++        assert!(page.data.unwrap().is_empty());
++    }
++    for args in [serde_json::json!(["--wait", "0"]), serde_json::json!(["--wait", "-1"]), serde_json::json!(["--wait", "1.5"]), serde_json::json!(["--wait="]), serde_json::json!(["--wait", "abc"]), serde_json::json!(["--wait", "1", "--wait"])] {
++        let mut argv = vec![serde_json::json!("inbox")];
++        argv.extend(args.as_array().unwrap().iter().cloned());
++        assert_eq!(post(addr, "/v1/shim/inbox", serde_json::json!({"argv": argv, "caller": caller})).await.status(), reqwest::StatusCode::BAD_REQUEST);
++    }
++    server.abort();
++}
++
++#[tokio::test]
++async fn shim_infinite_wait_receives_later_work_and_panels_cannot_wait() {
++    let (reader, caller) = pull_seat(Harness::Codex).await;
++    let mut sender = SeatDescriptor::new(SENDER, Harness::Claude, "/abs/tree");
++    sender.pane = Some(PANE.into());
++    let (addr, server, _store) = daemon_with_seats(vec![sender, reader]).await;
++    let waiting = post(addr, "/v1/shim/inbox", serde_json::json!({"argv": ["inbox", "--wait", "--json"], "caller": caller}));
++    tokio::pin!(waiting);
++    assert!(tokio::time::timeout(Duration::from_millis(20), &mut waiting).await.is_err());
++    assert_eq!(post(addr, "/v1/shim/send", serde_json::json!({"argv": ["send", RECIPIENT, "later"], "caller": {"tmuxPane": PANE}})).await.status(), reqwest::StatusCode::OK);
++    let response = tokio::time::timeout(Duration::from_secs(2), waiting).await.expect("event wakes pending request");
++    assert_eq!(response.status(), reqwest::StatusCode::OK);
++    let claims: Envelope<Vec<serde_json::Value>> = response.json().await.unwrap();
++    assert_eq!(claims.data.unwrap()[0]["message"]["body"], "later");
++    let refused = post(addr, "/v1/shim/inbox", serde_json::json!({"argv": ["inbox", "--wait"], "caller": {"tmuxPane": PANE}})).await;
++    assert_eq!(refused.status(), reqwest::StatusCode::BAD_REQUEST);
++    let refusal: Envelope<serde_json::Value> = refused.json().await.unwrap();
++    assert!(refusal.meta.unwrap().contains("pushed seats cannot wait"));
++    server.abort();
++}
++
++#[tokio::test]
++async fn shim_pull_refuses_recycled_host_before_claim_or_ack() {
++    let (mut reader, mut caller) = pull_seat(Harness::Copilot).await;
++    reader.proc.as_mut().unwrap().proc_start += 1;
++    caller["procStart"] = serde_json::json!(reader.proc.unwrap().proc_start);
++    let (addr, server, _store) = daemon_with_seats(vec![reader]).await;
++    for (path, body) in [
++        ("/v1/shim/inbox", serde_json::json!({"argv": ["inbox"], "caller": caller})),
++        ("/v1/shim/inbox/ack", serde_json::json!({"job_id": 1, "caller": caller})),
++    ] {
++        let response = post(addr, path, body).await;
++        assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
++        let refusal: Envelope<serde_json::Value> = response.json().await.unwrap();
++        assert!(refusal.meta.unwrap().contains("no longer live"));
++    }
++    server.abort();
++}
++
++#[tokio::test]
++async fn existing_paneless_non_copilot_callers_keep_bare_asserted_id_semantics() {
++    for harness in [Harness::Claude, Harness::Codex] {
++        let (reader, _) = pull_seat(harness).await;
++        let mut sender = SeatDescriptor::new(SENDER, Harness::Claude, "/abs/tree");
++        sender.pane = Some(PANE.into());
++        let (addr, server, _store) = daemon_with_seats(vec![sender, reader]).await;
++        // Old shims supplied their transient PID only, without native evidence.
++        let caller = serde_json::json!({"PIJ_SESSION_ID": RECIPIENT, "pid": 1});
++        assert_eq!(post(addr, "/v1/shim/send", serde_json::json!({"argv": ["send", SENDER, "old sender"], "caller": caller})).await.status(), reqwest::StatusCode::OK);
++        assert_eq!(post(addr, "/v1/shim/send", serde_json::json!({"argv": ["send", RECIPIENT, "old reader"], "caller": {"tmuxPane": PANE}})).await.status(), reqwest::StatusCode::OK);
++        let claims: Envelope<Vec<serde_json::Value>> = post(addr, "/v1/shim/inbox", serde_json::json!({"argv": ["inbox"], "caller": caller})).await.json().await.unwrap();
++        let claims = claims.data.unwrap();
++        assert_eq!(claims[0]["message"]["body"], "old reader");
++        assert!(claims[0].get("native_consumer").is_none());
++        assert_eq!(post(addr, "/v1/shim/inbox/ack", serde_json::json!({"caller": caller, "job_id": claims[0]["job_id"]})).await.status(), reqwest::StatusCode::OK);
++        let empty: Envelope<Vec<serde_json::Value>> = post(addr, "/v1/shim/inbox", serde_json::json!({"argv": ["inbox"], "caller": caller})).await.json().await.unwrap();
++        assert!(empty.data.unwrap().is_empty());
++        server.abort();
++    }
++}
++
++#[tokio::test]
++async fn reply_option_validates_once_and_does_not_lex_literal_body() {
++    let (addr, server, _store) = daemon().await;
++    for args in [
++        serde_json::json!(["send", RECIPIENT, "body", "--in-reply-to"]),
++        serde_json::json!(["send", RECIPIENT, "body", "--in-reply-to="]),
++        serde_json::json!(["send", RECIPIENT, "body", "--in-reply-to", "a", "--in-reply-to", "b"]),
++    ] {
++        assert_eq!(post(addr, "/v1/shim/send", serde_json::json!({"argv": args, "caller": {"tmuxPane": PANE}})).await.status(), reqwest::StatusCode::BAD_REQUEST);
++    }
++    let body = "--in-reply-to is literal body text\n";
++    assert_eq!(post(addr, "/v1/shim/send", serde_json::json!({
++        "argv": ["send", RECIPIENT, "--body-file", "-", "--in-reply-to=original-id"],
++        "body_literal": body,
++        "caller": {"tmuxPane": PANE}
++    })).await.status(), reqwest::StatusCode::OK);
++    let claims: Envelope<Vec<serde_json::Value>> = post(addr, "/v1/shim/inbox", serde_json::json!({"argv": ["inbox"], "caller": {"tmuxPane": RECIPIENT_PANE}})).await.json().await.unwrap();
++    let claims = claims.data.unwrap();
++    assert_eq!(claims[0]["message"]["body"], body);
++    assert_eq!(claims[0]["message"]["in_reply_to"], "original-id");
++    server.abort();
++}
+diff --git a/docs/how/pij-rs-api.md b/docs/how/pij-rs-api.md
+index 10889cf6..f894d9d9 100644
+--- a/docs/how/pij-rs-api.md
++++ b/docs/how/pij-rs-api.md
+@@ -49,6 +49,51 @@ Self or the target's **current recorded parent** may assert/unset its role; an u
+ 
+ Sources: [`identity.rs`](../../crates/daemon/src/http/identity.rs), [`role.rs`](../../crates/daemon/src/http/role.rs), [`types.rs`](../../crates/daemon/src/http/types.rs), [`governance.rs`](../../crates/daemon/src/http/governance.rs).
+ 
++## Verified paneless external admission
++
++`pij inbox register --json` is served through Rust authority for external
++Claude/Copilot/Codex callers without `TMUX` or `TMUX_PANE`. The accepted address
++is `data.id` in the complete v2 envelope, not a top-level id. The bridge validates
++`CLAUDE_CODE_SESSION_ID`, or `COPILOT_AGENT_SESSION_ID` plus its matching UUID
++session-state directory, or `CODEX_THREAD_ID` plus its matching readable native
++rollout. It never allocates a name or writes a legacy registry/channel.
++
++Native `/v1/register` receives an empty id, exact harness/session, folder and
++requesting CLI process tuple. The daemon observes the nearest matching live
++external harness ancestor, checks process incarnations and conflicting session
++arguments, and allocates/reuses the canonical address under the shared registry
++lock. The stored and returned `data.proc` belongs to that **host**, never the
++short-lived CLI. Unchanged repeat admission returns `binding:"same"` without a
++registry/event mutation. Inherited stale ids do not override verified native
++identity; absent/conflicting host evidence refuses. Ordinary native registration
++and extension-owned Copilot admission retain their separate protections.
++
++From the same verified native host/session, no manual `PIJ_SESSION_ID` export is
++needed for the shim's whoami, phonehome, send or inbox paths. `PEER_ID` below is
++another peer's actual registration `data.id`; `MSG_ID` is the message being answered:
++
++```bash
++pij inbox register --json
++pij whoami --json
++pij phonehome --json
++pij send "$PEER_ID" 'literal text' --json
++pij inbox --wait 30000 --json
++pij send "$PEER_ID" 'reply text' --in-reply-to "$MSG_ID" --json
++```
++
++`inbox --wait` without milliseconds waits indefinitely; a positive finite timeout
++returns an empty claims array when no mail arrives. Success remains the complete
++v2 envelope with `data:[...]`; claims contain `job_id` and the original `message`,
++including reply correlation. The CLI acknowledges only after successful output.
++Self-send remains refused. Paneless pull has `pane:null` and
++`native_extension_delivery:false`: it is not extension push attestation or a
++model canary, and pushed/extension-owned seats must not run a competing wait.
++Bare native clients still need the explicit registered identity their API takes.
++
++Sources: [`registration.rs`](../../crates/daemon/src/registration.rs),
++[`shim.rs`](../../crates/daemon/src/http/shim.rs),
++[`generation-router.ts`](../../.pi/extensions/pij/adapters/generation-router.ts).
++
+ ## Seat roster rows and absence
+ 
+ `GET /v1/seats` returns the v2 `pij seats` envelope with `data: {seats: [...], unavailable: [...]}`, not a bare row array. Each unavailable peer is `{machine, reason}`; retained rows from that peer are stale last-known data, so an empty `unavailable` list and an empty roster are different facts. Active results exclude tombstoned rows. Local rows are role-joined, stamped with the serving machine alias, and projected with `generation: "rs"`.
+@@ -232,7 +277,7 @@ This anchor is permanent; refusals and shipped consumers must not depend on an a
+ - **List/sessions filters:** shim `pij list` forwards declared `harness`, `folder`, `parent` and `scope=local` query values to GET `/v1/seats`; this is exact query forwarding, not a second Rust parser. Native `pij-rs list` is still bare/`--json`. `pij sessions` routes GET `/v1/shim/sessions` with no query flags or legacy union. Unsupported `--role`, `--here`, `--prime`, `--archived` and tree semantics refuse instead of being dropped. Prime designation has no dedicated list/getter projection here: use actual designation receipts/events and authoritative government/human evidence; role assertion or an empty filtered view cannot prove absence.
+ - **Baton projections/notices:** request/grant handlers expose durable records/events, not a blocked-time field or an automatic keeper-push receipt. Use returned request/lease ids and timestamps; notify the keeper by the supported message channel and verify actual delivery rather than claiming it from a mutation receipt. Source: `governance.rs::orchestration_command`.
+ - **Unported command surfaces:** `agent`, `path`, `telegram`, `models`, `watch`, `unwatch`, `chore`, `watchdog`, `focus`, `tree` and `link` refuse through the shim. This does not remove already composed sidecar internals; it does not advertise those old administrative grammars as a native port. In particular, there is no rs reparent/root-placement command equivalent to link.
+-- **Inbox/admission:** shim `inbox register`, unlisted inbox leaves and legacy wait/attachment semantics are not a fallback registration channel. Paneless adopt cannot derive bind evidence and refuses. Native `register` needs verified process identity; never fabricate it from the CLI. Existing extension-owned registration/receive paths stay owned by that extension.
++- **Inbox/admission:** verified external `inbox register` and `inbox --wait [ms]` are [supported](#verified-paneless-external-admission), not gaps. Paneless adopt, unlisted inbox leaves, generic shim `register`, send `--wait` and attachment semantics remain refused. Never fabricate host process evidence or use a legacy fallback; extension-owned registration/receive stays owned by that extension.
+ - **Control and bg are supported, not gaps:** remote compact/new/reload, compact-self and bg create/list/tail/kill remain shipped. Controls carry no body; acceptance is not execution. Copilot and paneless controls refuse; new/reload require self or recorded parent plus target arming, not a prime role. Never replace refusal with slash text or sendkeys. bg remains daemon-owned detached execution with durable completion injection, bounded server-side log reads and owner/parent authorization; it introduces no answer queue cancellation.
+ - **Native commit-trailers data gap:** forwarding is supported, but `commit_trailers::run` currently calls `derive` with no repository-designation input and does not query current assignment. It reads role-joined self/local seats, then uses a complete recorded-parent root as the explicit interim fallback. `Pij-Plan` derives from worktree path, branch or local flow context. Do not claim designation/current-assignment lookup or use stale legacy rows to fill either gap.
+ - **StateCard:** inspect its `unsupported` notes instead of manufacturing missing telemetry/lifecycle fields. Optional/null role is absence of assertion, not proof that the role port is unavailable.
+diff --git a/skills/pij/references/00-routing.md b/skills/pij/references/00-routing.md
+index 9a92f53e..79921040 100644
+--- a/skills/pij/references/00-routing.md
++++ b/skills/pij/references/00-routing.md
+@@ -33,17 +33,39 @@ For the remaining modes, detect once per run: callable in-process `pij_spawn` 
+ 
+ | Intent | pi push | tmux control-plane push | external pull |
+ |---|---|---|---|
+-| prereq | **Extension-owned registration: no adopt/inbox register.** | running rs daemon + exact-pane adoption: `pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}` | verified native registration; shim inbox register refuses |
++| prereq | **Extension-owned registration: no adopt/inbox register.** | running rs daemon + exact-pane adoption: `pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}` | `pij inbox register --json` from a verified Claude/Copilot/Codex tool shell; accepted id is `data.id` |
+ | spawn | explicitly available in-process host tool, or native CLI | `pij-rs spawn --harness <h> --cwd <absolute-path> --parent <id> …` | no tmux launch without an available tmux context |
+-| message | `pij_send({to, message})` | `pij send <id> '<text>'` | verified identity, then the supported native/shim send |
+-| receive | automatic injected turn | automatic daemon-injected turn | verified pull-owned native `pij-rs inbox --wait`; never a competing extension receiver |
++| message | `pij_send({to, message})` | `pij send <id> '<text>'` | `pij send <id> '<text>' --json` from the same native host/session |
++| receive | automatic injected turn | automatic daemon-injected turn | `pij inbox --wait [ms] [--json]`; never a competing extension receiver |
+ | compact peer | `pij_send({to, command:"compact"})` | `pij send <id> --command compact` | same structured command, subject to target support |
+ | peek | host transcript or owner-scoped tmux capture | host transcript or owner-scoped tmux capture | supported host transcript only; shim tail refuses |
+ | retire | owner-authorized host teardown is distinct from rs tombstone | `pij close <id>` tombstones only, self/current-parent | same rs ownership, no force bypass |
+ 
+ Tmux self-adopt uses only the exact nonempty `$TMUX_PANE` of the current process. Carry the supported `--parent` claim when the environment names the true governor; omitted parent is unsaid and preserves an existing value. Existing-seat structural repair through `link` is unported, so never omit parent assuming that command can fix it later. Native extensions retain ownership of their own registration.
+ 
+-Empty or absent `TMUX_PANE` is not permission to discover or guess another pane. Paneless adopt and shim inbox register cannot derive bind evidence and refuse. Native `register` requires independently corroborated process identity; never bind to the short-lived CLI pid. A verified pull-owned seat can use native inbox waiting; absence of that prerequisite is a named gap, not a legacy fallback.
++Empty or absent `TMUX_PANE` is not permission to discover or guess another pane.
++Paneless adopt still refuses; **`pij inbox register --json` is the supported
++external pull bridge to native `/v1/register`**, not a generic shim `register`
++verb or a legacy store. Prerequisites are the current `CLAUDE_CODE_SESSION_ID`,
++or a UUID `COPILOT_AGENT_SESSION_ID` with its matching `~/.copilot/session-state/<id>`
++directory, or a UUID `CODEX_THREAD_ID` with its matching readable date-nested
++rollout under `~/.codex/sessions`. Multiple valid identities refuse.
++
++The CLI must descend from the matching live harness host. rs observes process
++ancestry and start stamps, rejects a nearer conflicting harness/session, and
++binds the **host** incarnation rather than the transient CLI/shell. Repeated
++registration of the same host/session returns the same `data.id`; an inherited
++or stale `PIJ_SESSION_ID` is replaced only after that native admission succeeds.
++Subsequent shim whoami/phonehome/send/inbox resolve the same native identity
++without a manual export. Missing evidence is a named refusal, never permission
++to fabricate a process or fall back to FsRegistry/FsChannel.
++
++Pull seats have `pane:null` and `native_extension_delivery:false`. `inbox --wait`
++blocks for mail; a positive millisecond argument bounds the wait. JSON remains a
++complete v2 envelope whose `data` is a claims array (empty on finite timeout),
++not an unwrapped `messages` object. The CLI prints before acknowledging; claim
++acceptance is not model completion. Native-extension-owned Copilot/Pi/OMP seats
++keep their automatic receiver and must not start this pull consumer.
+ 
+ Model names and permission/launch behavior belong to the selected native harness and installed rs source, not legacy spawn defaults.
+ 
+diff --git a/skills/pij/references/routes/ready.md b/skills/pij/references/routes/ready.md
+index 4d266014..a8a8365c 100644
+--- a/skills/pij/references/routes/ready.md
++++ b/skills/pij/references/routes/ready.md
+@@ -12,9 +12,9 @@ prime or operator will push the next turn.
+    STOP — run NO pij identity command (no adopt, no inbox register).**
+    Copilot with its native `pij_send` tool is also extension-owned: reply `Ready.`
+    and stop without a competing identity/adopt/inbox command.
+-   Copilot without the native tool must report native setup unavailable and stop;
+-   adopting or starting a CLI pull receiver is not a delivery fallback. Otherwise,
+-   detect only the delivery owner:
++   Copilot without the native tool but with a pane must report native setup
++   unavailable; do not start a competing pull receiver. Without a pane it may
++   use the verified external pull path below. Otherwise, detect the delivery owner:
+    - With an exact non-empty `$TMUX_PANE`, resolve `<h>` from the current host
+      (`claude` or `codex` — NEVER `pi`: pi/omp seats self-register at
+      boot and `pij adopt` rejects `--harness pi` by design) and run exactly
+@@ -22,7 +22,13 @@ prime or operator will push the next turn.
+      Carry the parent whenever the env has one — it is a self-declaration of who
+      governs you, validated and persisted, and it is the ONLY moment it can be
+      recorded without someone later remembering. Never discover or guess another pane.
+-   - With no `$TMUX_PANE`, do not invent a pane or run shim inbox registration: rs cannot derive paneless bind evidence that way. Report the named admission prerequisite and stop; a verified native register/extension channel is required, never legacy fallback.
++   - With no `$TMUX_PANE`, run `pij inbox register --json` from the current
++     Claude/Copilot/Codex tool shell. Read the accepted id at the complete v2
++     envelope's `data.id`. The bridge checks the established native session
++     environment/files; rs observes the matching long-lived harness ancestor
++     and stores its `(pid, proc_start)`, never the short-lived CLI's process.
++     Missing, conflicting or unverified evidence refuses: do not invent a pane,
++     process tuple, seat id or legacy fallback. See § C1 for exact prerequisites.
+ 2. **Verify the write, never the print.** Read `pij whoami --json` and `pij phonehome --json`: the complete v2 data must name this seat and corroborate its binding. A tombstoned identity refuses even if an old pid is live. No `revive --attach` repair is ported; native revive requires an explicit tombstoned seat and relaunches it. After reboot/long gaps, every old pane/pid conclusion is stale.
+ 3. Once verified, reply with exactly:
+ 
+@@ -30,7 +36,14 @@ prime or operator will push the next turn.
+ Ready.
+ ```
+ 
+-4. **STOP.** In push mode, ending the turn is the wait. Never start a competing inbox receiver. Only an already verified pull-owned native seat may use `pij-rs inbox --wait`; shim `inbox --wait` and auto-registration are unsupported. See the stable [Unsupported status](../../../../docs/how/pij-rs-api.md#unsupported-status), not a legacy workaround.
++4. **Wait through the delivery owner.** In push/extension mode, ending the turn
++   is the wait; never start a competing inbox receiver. In verified external pull
++   mode, use `pij inbox --wait` (or `pij inbox --wait 30000 --json` for a finite
++   wait). The same native session resolves the registered id without exporting
++   `PIJ_SESSION_ID`; claims are acknowledged only after successful output.
++   Never poll `pij state`, and never treat paneless pull as native-extension
++   push attestation. See [Unsupported status](../../../../docs/how/pij-rs-api.md#unsupported-status)
++   for genuinely unported verbs, not a legacy workaround.
+ 
+ ## Hard boundary
+ 

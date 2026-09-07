@@ -3,12 +3,17 @@
 //! Each route does one cheap statement or one durable enqueue (R4). Auth wraps
 //! the completed router, so adding an endpoint cannot accidentally bypass it.
 
+pub mod anomalies;
 mod auth;
 mod background;
 mod client;
+pub mod decisions;
 mod exposure;
+pub mod governance;
 mod identity;
+mod lifecycle;
 mod report;
+pub mod role;
 mod shim;
 mod types;
 
@@ -149,10 +154,27 @@ enum Endpoint {
     /// would reach this daemon as a bare URL with the `<id>` — this verb's only
     /// argument — dropped at the seam. Ruled POST-canonical by the plan-114 PM.
     State,
+    Role,
+    Close,
+    Reap,
+    Anomalies,
+    Decisions,
+    Answer,
+    Project,
+    Stream,
+    Fence,
+    Dispatch,
+    Ack,
+    Canary,
+    Attest,
+    Task,
+    Node,
+    Orchestration,
+    Spine,
 }
 
 impl Endpoint {
-    const ALL: [Self; 26] = [
+    const ALL: [Self; 43] = [
         Self::Health,
         Self::Register,
         Self::Spawn,
@@ -179,6 +201,23 @@ impl Endpoint {
         Self::ShimInbox,
         Self::ShimInboxAck,
         Self::ShimSessions,
+        Self::Role,
+        Self::Close,
+        Self::Reap,
+        Self::Anomalies,
+        Self::Decisions,
+        Self::Answer,
+        Self::Project,
+        Self::Stream,
+        Self::Fence,
+        Self::Dispatch,
+        Self::Ack,
+        Self::Canary,
+        Self::Attest,
+        Self::Task,
+        Self::Node,
+        Self::Orchestration,
+        Self::Spine,
     ];
 
     const fn path(self) -> &'static str {
@@ -204,6 +243,23 @@ impl Endpoint {
             Self::Whoami => "/v1/whoami",
             Self::Phonehome => "/v1/phonehome",
             Self::State => "/v1/state",
+            Self::Role => "/v1/role",
+            Self::Close => "/v1/close",
+            Self::Reap => "/v1/reap",
+            Self::Anomalies => "/v1/anomalies",
+            Self::Decisions => "/v1/decisions",
+            Self::Answer => "/v1/answer",
+            Self::Project => "/v1/project",
+            Self::Stream => "/v1/stream",
+            Self::Fence => "/v1/fence",
+            Self::Dispatch => "/v1/dispatch",
+            Self::Ack => "/v1/ack",
+            Self::Canary => "/v1/canary",
+            Self::Attest => "/v1/attest",
+            Self::Task => "/v1/task",
+            Self::Node => "/v1/node",
+            Self::Orchestration => "/v1/orchestration",
+            Self::Spine => "/v1/spine",
             // PLAN 119 — a DISTINCT, VERSIONED path for shim-originated calls, never
             // an overload of `/v1/send` / `/v1/inbox`. Those structs tolerate
             // unknown fields, so the additive shape would have an older daemon
@@ -232,6 +288,23 @@ impl Endpoint {
             | Self::Report => Method::POST,
             Self::Adopt | Self::Whoami | Self::Phonehome => Method::POST,
             Self::State => Method::POST,
+            Self::Role
+            | Self::Close
+            | Self::Reap
+            | Self::Anomalies
+            | Self::Decisions
+            | Self::Answer
+            | Self::Project
+            | Self::Stream
+            | Self::Fence
+            | Self::Dispatch
+            | Self::Ack
+            | Self::Canary
+            | Self::Attest
+            | Self::Task
+            | Self::Node
+            | Self::Orchestration
+            | Self::Spine => Method::POST,
             Self::ShimSend | Self::ShimCompactSelf | Self::ShimInbox | Self::ShimInboxAck => {
                 Method::POST
             }
@@ -314,6 +387,7 @@ fn router_with_optional_federation(
         Arc::clone(&services.liveness),
         Arc::clone(&services.event_bus),
         pij_harnesses::claude_homes(),
+        Arc::clone(&services.roles),
     )
     .with_native_lock(services.delivery.native_lock());
     let state = AppState {
@@ -351,6 +425,23 @@ fn router_with_optional_federation(
                     | Endpoint::ShimCompactSelf
                     | Endpoint::ShimInbox
                     | Endpoint::ShimInboxAck
+                    | Endpoint::Role
+                    | Endpoint::Close
+                    | Endpoint::Reap
+                    | Endpoint::Anomalies
+                    | Endpoint::Decisions
+                    | Endpoint::Answer
+                    | Endpoint::Project
+                    | Endpoint::Stream
+                    | Endpoint::Fence
+                    | Endpoint::Dispatch
+                    | Endpoint::Ack
+                    | Endpoint::Canary
+                    | Endpoint::Attest
+                    | Endpoint::Task
+                    | Endpoint::Node
+                    | Endpoint::Orchestration
+                    | Endpoint::Spine
             ) {
                 Method::POST
             } else {
@@ -390,6 +481,29 @@ fn router_with_optional_federation(
             ),
             Endpoint::Phonehome => router.route(endpoint.path(), post(identity::phonehome)),
             Endpoint::State => router.route(endpoint.path(), post(seat_state)),
+            Endpoint::Role => router.route(endpoint.path(), post(role::role)),
+            Endpoint::Close => router.route(endpoint.path(), post(lifecycle::close)),
+            Endpoint::Reap => router.route(endpoint.path(), post(lifecycle::reap)),
+            Endpoint::Anomalies => router.route(
+                endpoint.path(),
+                get(anomalies::list_get).post(anomalies::list_post),
+            ),
+            Endpoint::Decisions => router.route(
+                endpoint.path(),
+                get(decisions::list_get).post(decisions::list_post),
+            ),
+            Endpoint::Answer => router.route(endpoint.path(), post(decisions::answer_post)),
+            Endpoint::Project => router.route(endpoint.path(), post(governance::handle)),
+            Endpoint::Stream => router.route(endpoint.path(), post(governance::handle)),
+            Endpoint::Fence => router.route(endpoint.path(), post(governance::handle)),
+            Endpoint::Dispatch => router.route(endpoint.path(), post(governance::handle)),
+            Endpoint::Ack => router.route(endpoint.path(), post(governance::handle)),
+            Endpoint::Canary => router.route(endpoint.path(), post(governance::handle)),
+            Endpoint::Attest => router.route(endpoint.path(), post(governance::handle)),
+            Endpoint::Task => router.route(endpoint.path(), post(governance::handle)),
+            Endpoint::Node => router.route(endpoint.path(), post(governance::handle)),
+            Endpoint::Orchestration => router.route(endpoint.path(), post(governance::handle)),
+            Endpoint::Spine => router.route(endpoint.path(), post(governance::handle)),
             Endpoint::ShimSend => router.route(endpoint.path(), post(shim::shim_send)),
             Endpoint::ShimCompactSelf => router.route(endpoint.path(), post(shim::shim_send)),
             Endpoint::ShimInbox => router.route(endpoint.path(), post(shim::shim_inbox)),
@@ -635,7 +749,7 @@ async fn register(
         Ok((descriptor, report)) => {
             let meta = descriptor.pane.is_none().then(|| {
                 format!(
-                    "export PIJ_SESSION_ID={} — this paneless seat has no observable pane, so subsequent commands require the registered id",
+                    "verified external shim callers resolve this paneless seat from their native host/session automatically; other clients must pass id {0} explicitly or export PIJ_SESSION_ID={0}",
                     descriptor.id
                 )
             });
@@ -1918,6 +2032,10 @@ async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequ
         }
         Err(error) => return internal("pij state", error),
     };
+    let seat = match state.services.roles.project_seat(seat).await {
+        Ok(seat) => seat,
+        Err(error) => return internal("pij state", error),
+    };
 
     // Liveness is OBSERVED, never inferred from the row. `pij_core::liveness`
     // owns the three-way verdict (active / dead / recycled); re-deriving it here
@@ -2136,6 +2254,9 @@ async fn seats(State(state): State<AppState>, Query(query): Query<SeatQuery>) ->
         Ok(seats) => seats,
         Err(error) => return internal("pij seats", error),
     };
+    if let Err(error) = state.services.roles.join_roles(&mut local).await {
+        return internal("pij seats", error);
+    }
     for seat in &mut local {
         seat.machine = Some(state.machine_alias.clone());
     }
@@ -2153,7 +2274,8 @@ async fn seats(State(state): State<AppState>, Query(query): Query<SeatQuery>) ->
         }
     };
     roster.seats.retain(|seat| {
-        query.harness.is_none_or(|harness| seat.harness == harness)
+        seat.tombstoned_at.is_none()
+            && query.harness.is_none_or(|harness| seat.harness == harness)
             && query
                 .folder
                 .as_ref()
@@ -2341,14 +2463,12 @@ fn system_time_ms() -> Result<u64> {
 /// trust.
 #[derive(Debug, Deserialize)]
 struct ReportRequest {
-    /// The reporting seat, sent explicitly. This is what `pij-rs report …` uses:
-    /// the CLI resolves the seat client-side, where the environment actually is.
+    /// Optional agreement claim. Caller evidence is resolved by the daemon;
+    /// contradictory explicit and environment claims are refused together.
     #[serde(default)]
     seat: Option<String>,
-    /// The forwarded caller context. The shim sends an allowlisted set of
-    /// environment facts rather than a blanket dump; only the session id
-    /// identifies the seat, so only it is read here — a field this handler does
-    /// not consult is a field it cannot be misled by.
+    /// Forwarded identity evidence, never a blanket environment dump.
+    /// The shared ladder checks both the session id and observable pane.
     #[serde(default)]
     caller: Option<CallerContext>,
     argv: Vec<String>,
@@ -2411,10 +2531,23 @@ async fn report(State(state): State<AppState>, Json(request): Json<ReportRequest
     // and when a pane and an asserted id disagree it refuses both rather than
     // preferring the claim — so this is strictly stronger than what it replaces,
     // which accepted a bare asserted id on an existence check alone.
-    let asserted = request
-        .seat
-        .or_else(|| request.caller.as_ref().and_then(|c| c.session_id.clone()))
+    let explicit = request.seat.filter(|id| !id.trim().is_empty());
+    let caller_seat = request
+        .caller
+        .as_ref()
+        .and_then(|caller| caller.session_id.clone())
         .filter(|id| !id.trim().is_empty());
+    if let (Some(explicit), Some(caller_seat)) = (&explicit, &caller_seat)
+        && explicit != caller_seat
+    {
+        return refused(
+            command,
+            format!(
+                "report asserts `{explicit}` but caller.PIJ_SESSION_ID names `{caller_seat}`; identity claims must agree"
+            ),
+        );
+    }
+    let asserted = explicit.or(caller_seat);
     let pane = request
         .caller
         .as_ref()
@@ -2536,15 +2669,9 @@ async fn report(State(state): State<AppState>, Json(request): Json<ReportRequest
             )
             .await
         }
-        report::ReportCall::Question(note) => {
-            declaration_response(
-                command,
-                &reports,
-                &seat,
-                Some(SemanticState::Question),
-                Some(note),
-            )
-            .await
+        report::ReportCall::Question(note) => decisions::question(&state, &seat, &note).await,
+        report::ReportCall::Verify { target, assignment } => {
+            decisions::verify(&state, &seat, &target, assignment).await
         }
         report::ReportCall::Clear => {
             declaration_response(command, &reports, &seat, None, None).await

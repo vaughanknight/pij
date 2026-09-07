@@ -543,6 +543,11 @@ pub struct Envelope<T> {
     /// when a refusal has no structured evidence beyond its error category.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
+    /// Original validated client response, excluded from the wire representation.
+    /// JSON clients retain its ordering, whitespace, and unknown fields. A newly
+    /// synthesized response must not inherit a source it no longer represents.
+    #[serde(skip)]
+    pub raw_json: Option<String>,
 }
 
 impl<T> Envelope<T> {
@@ -556,6 +561,7 @@ impl<T> Envelope<T> {
             meta: None,
             error: None,
             details: None,
+            raw_json: None,
         }
     }
 
@@ -569,6 +575,7 @@ impl<T> Envelope<T> {
             meta: Some(meta.into()),
             error: None,
             details: None,
+            raw_json: None,
         }
     }
 
@@ -582,6 +589,7 @@ impl<T> Envelope<T> {
             meta: Some(meta.into()),
             error: Some(error),
             details: None,
+            raw_json: None,
         }
     }
 }

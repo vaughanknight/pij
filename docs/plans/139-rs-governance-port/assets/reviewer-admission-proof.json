@@ -1,0 +1,35 @@
+{
+  "at": "2026-09-07T14:28:49Z",
+  "peer": "pij-zany-reptile",
+  "requested": {
+    "harness": "omp",
+    "model": "github-copilot/claude-opus-5",
+    "effort": "high"
+  },
+  "observed": {
+    "native_session": "01a07c38-90fe-7000-bd9b-d502b368ff43",
+    "omp_version": "18.0.10",
+    "model": "github-copilot/claude-opus-5",
+    "thinking": "high",
+    "resolvedModelIsFallback": false,
+    "pane": "%4233",
+    "wrapper_pid": 69039,
+    "agent_pid": 69055,
+    "footer": "Opus 5 1M (Copilot) \u00b7 high"
+  },
+  "nonce_matched": true,
+  "evidence": [
+    "actual nonce read/reply in a genuine model turn",
+    "native whoami identity",
+    "PM explicitly targeted tmux%4233 capture and display",
+    "peer corrected own env/targeted pane and ps parent chain",
+    "session model_change/thinking_level_change independent of launch argv"
+  ],
+  "correction": {
+    "initial_wrong_pane": "%2304 / prime",
+    "cause": "Untargeted tmux display inspected active pane rather than owned pane",
+    "disposition": "Retracted by peer; PM and targeted own-pane observation confirmed%4233. No prime pane action taken."
+  },
+  "provider_attestation": "Runtime/session model observed; no independent provider-server attestation claimed",
+  "release": "Admission accepted; review not released until repaired final source pin is provided"
+}

@@ -24,12 +24,15 @@
 //!    persists nothing. Answering from a re-read makes that class of defect
 //!    unrepresentable rather than merely tested-against.
 
+use std::fmt::Write as _;
+
 use axum::extract::{Json, Query, State};
 use axum::http::StatusCode;
 use axum::response::Response;
-use pij_core::model::{Envelope, SeatDescriptor, SeatId};
+use pij_core::model::{Envelope, ErrorKind, SeatDescriptor, SeatId};
 use pij_core::ports::SeatFilter;
 use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 
 use super::{
     AppState, Registration, RegistrationResponse, allocate_memorable_id, envelope, internal,
@@ -161,6 +164,13 @@ pub struct IdentityRequest {
     /// A caller trying to NAME the seat. Refused — see `ac-1147`.
     #[serde(default)]
     pub id: Option<String>,
+    /// Explicit adoption role; omission preserves and explicit null refuses.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "super::types::deserialize_asserted_role"
+    )]
+    pub role: Option<String>,
 }
 
 /// `?seat=&pane=` for the read verbs.
@@ -190,6 +200,8 @@ pub struct Phonehome {
     pub harness: String,
     /// Its pane, when it has one.
     pub pane: Option<String>,
+    /// Its current seat_roles assignment, never a descriptor's stale copy.
+    pub role: Option<String>,
     /// Is the process this seat was bound to still the process that is running?
     ///
     /// NOT "did something answer". The pair `(pid, proc_start)` is re-observed:
@@ -241,6 +253,8 @@ pub(crate) struct AdoptArgs {
     pub harness: Option<String>,
     /// The declared governing seat.
     pub parent: Option<String>,
+    /// Role assertion; absence leaves the existing seat_roles row untouched.
+    pub role: Option<String>,
     /// True for the paneless `inbox register` form the ready route uses when a
     /// seat has no `$TMUX_PANE`.
     pub paneless: bool,
@@ -287,6 +301,15 @@ pub(crate) fn parse_adopt_argv(argv: &[String]) -> Result<AdoptArgs, String> {
                         .ok_or_else(|| "--parent needs a value".to_string())?
                         .to_string(),
                 );
+            }
+            "--role" => {
+                let role = tokens
+                    .next()
+                    .filter(|role| !role.trim().is_empty() && !role.starts_with("--"))
+                    .ok_or_else(|| "--role needs a nonempty value".to_string())?;
+                if args.role.replace(role.to_string()).is_some() {
+                    return Err("--role may be supplied only once".to_string());
+                }
             }
             // Output-shape flags. They change how a CLI prints, and this route
             // does not print — accepting them is honest, storing them is not.
@@ -336,20 +359,47 @@ pub(crate) fn is_live(seat: &SeatDescriptor) -> bool {
 /// `bound: true` for a seat nothing can address — identity and reporting claiming
 /// success while delivery refuses the same recipient. The liveness of the process
 /// makes the wrong answer more convincing, not more true.
-pub(crate) fn refuse_tombstoned(command: &str, seat: &SeatDescriptor) -> Option<Response> {
+pub(crate) async fn refuse_tombstoned(
+    state: &AppState,
+    command: &str,
+    seat: &SeatDescriptor,
+) -> Option<Response> {
     if is_live(seat) {
         return None;
     }
-    Some(refused(
-        command,
-        format!(
-            "seat `{}` is tombstoned and is not an identity: {}. A dead row can still name a live              pid — supersession keeps the process identity — so confirming it would report a              binding for a seat nothing can address.",
-            seat.id,
-            seat.tombstone_reason
-                .as_deref()
-                .unwrap_or("no reason recorded"),
-        ),
-    ))
+    let mut meta = format!(
+        "seat `{}` is tombstoned and is not an identity: {}. A dead row can still name a live pid — supersession keeps the process identity — so confirming it would report a binding for a seat nothing can address.",
+        seat.id,
+        seat.tombstone_reason
+            .as_deref()
+            .unwrap_or("no reason recorded"),
+    );
+    let mut details = json!({ "seat": seat.id });
+    // This is evidence attached to an existing refusal, never a new identity
+    // ladder. Read one seat's latest tombstone; unrelated later rows cannot win.
+    match state
+        .services
+        .spine
+        .latest_matching(&seat.id, &["seat.tombstone"])
+        .await
+    {
+        Ok(Some(event)) => match event.seq {
+            Some(seq) => {
+                details["tombstone_seq"] = json!(seq);
+                write!(&mut meta, " Original tombstone event: spine {}.", seq.0)
+                    .expect("writing to String cannot fail");
+            }
+            None => meta.push_str(" Historical tombstone event has no recorded sequence."),
+        },
+        Ok(None) => meta.push_str(" No historical tombstone event sequence is available."),
+        Err(error) => {
+            write!(&mut meta, " Tombstone history lookup failed: {error}.")
+                .expect("writing to String cannot fail");
+        }
+    }
+    let mut answer: Envelope<Value> = Envelope::refused(command, ErrorKind::Refused, meta);
+    answer.details = Some(details);
+    Some(envelope(StatusCode::BAD_REQUEST, &answer))
 }
 
 const ADOPT: &str = "pij adopt";
@@ -377,6 +427,15 @@ pub(crate) async fn adopt(
     let args = match parse_adopt_argv(&request.argv) {
         Ok(args) => args,
         Err(reason) => return refused(ADOPT, reason),
+    };
+    let role = match (request.role, args.role) {
+        (Some(_), Some(_)) => {
+            return refused(
+                ADOPT,
+                "role must be supplied as a typed field or --role, not both",
+            );
+        }
+        (typed, argv) => typed.or(argv),
     };
     let pane = request
         .pane
@@ -528,6 +587,7 @@ pub(crate) async fn adopt(
         provider: None,
         effort: None,
         parent,
+        role,
         relay: incumbent.is_some_and(|seat| seat.relay),
     };
     let registration = &state.registration;
@@ -546,6 +606,10 @@ pub(crate) async fn adopt(
     // expressed from here.
     match state.services.registry.get(&seat_id).await {
         Ok(Some(persisted)) => {
+            let persisted = match state.services.roles.project_seat(persisted).await {
+                Ok(persisted) => persisted,
+                Err(error) => return internal(ADOPT, error),
+            };
             let mut answer = Envelope::ok(
                 ADOPT,
                 RegistrationResponse {
@@ -606,6 +670,10 @@ async fn whoami_resolved(
 ) -> Response {
     match resolve_seat(&state, WHOAMI, asserted, pane).await {
         Resolved::Seat(descriptor, _) => {
+            let descriptor = match state.services.roles.project_seat(descriptor).await {
+                Ok(descriptor) => descriptor,
+                Err(error) => return internal(WHOAMI, error),
+            };
             envelope(StatusCode::OK, &Envelope::ok(WHOAMI, descriptor))
         }
         Resolved::Refusal(response) => response,
@@ -661,12 +729,17 @@ pub(crate) async fn phonehome(
         .or(caller.codex_session.as_deref())
         .map(str::trim)
         .filter(|session| !session.is_empty());
+    let descriptor = match state.services.roles.project_seat(descriptor).await {
+        Ok(descriptor) => descriptor,
+        Err(error) => return internal(PHONEHOME, error),
+    };
     let mut answer = Envelope::ok(
         PHONEHOME,
         Phonehome {
             seat: descriptor.id.clone(),
             harness: descriptor.harness.to_string(),
             pane: descriptor.pane.clone(),
+            role: descriptor.role,
             bound,
             pid: descriptor.proc.map(|proc| proc.pid),
             proc_start: descriptor.proc.map(|proc| proc.proc_start),
@@ -723,21 +796,44 @@ pub(crate) async fn resolve_seat(
         ));
     }
     if let Some(pane) = pane.as_deref() {
-        let seats = match state.services.registry.list(SeatFilter::default()).await {
+        let mut seats = match state.services.registry.list(SeatFilter::default()).await {
             Ok(seats) => seats,
             Err(error) => return Resolved::Refusal(internal(command, error)),
         };
-        let Some(seat) = seats
-            .into_iter()
-            .find(|seat| is_live(seat) && seat.pane.as_deref() == Some(pane))
-        else {
-            return Resolved::Refusal(refused(
-                command,
-                format!(
-                    "no live seat in the rs store owns pane `{pane}` — this seat is not registered \
-                     here. Run `pij adopt \"$TMUX_PANE\" --harness <h>` first."
-                ),
-            ));
+        let seat = match seats
+            .iter()
+            .position(|seat| is_live(seat) && seat.pane.as_deref() == Some(pane))
+        {
+            Some(index) => seats.swap_remove(index),
+            None => {
+                // A pane's unambiguous retired history can explain a refusal,
+                // but cannot authenticate its caller or choose a replacement.
+                let mut history = seats
+                    .iter()
+                    .filter(|seat| !is_live(seat) && seat.pane.as_deref() == Some(pane));
+                let retired = match (history.next(), history.next()) {
+                    (Some(retired), None)
+                        if asserted
+                            .as_deref()
+                            .is_none_or(|id| id == retired.id.as_str()) =>
+                    {
+                        Some(retired)
+                    }
+                    _ => None,
+                };
+                if let Some(retired) = retired
+                    && let Some(refusal) = refuse_tombstoned(state, command, retired).await
+                {
+                    return Resolved::Refusal(refusal);
+                }
+                return Resolved::Refusal(refused(
+                    command,
+                    format!(
+                        "no live seat in the rs store owns pane `{pane}` — this seat is not registered \
+                         here. Run `pij adopt \"$TMUX_PANE\" --harness <h>` first."
+                    ),
+                ));
+            }
         };
         if seat.id.0 == crate::background::BG_ACTOR {
             return Resolved::Refusal(refused(
@@ -762,7 +858,7 @@ pub(crate) async fn resolve_seat(
     }
     let asserted = SeatId::from(asserted.expect("one of the two is present"));
     match state.services.registry.get(&asserted).await {
-        Ok(Some(seat)) => match refuse_tombstoned(command, &seat) {
+        Ok(Some(seat)) => match refuse_tombstoned(state, command, &seat).await {
             Some(refusal) => Resolved::Refusal(refusal),
             None => Resolved::Seat(seat, ResolvedBy::AssertedId),
         },

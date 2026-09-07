@@ -10,6 +10,7 @@ use serde::Deserialize;
 
 use crate::events::EventBus;
 use crate::http::Registration;
+use crate::http::role::RoleService;
 use crate::registration::RegistrationService;
 
 const ADAPTER: &str = "daemon/claude-bind";
@@ -27,6 +28,7 @@ impl ClaudeBinder {
         registry: Arc<dyn Registry>,
         liveness: Arc<dyn LivenessPort>,
         event_bus: Arc<EventBus>,
+        roles: Arc<RoleService>,
     ) -> Self {
         let home = env::var_os("HOME").map(PathBuf::from);
         Self::from_home(
@@ -36,6 +38,7 @@ impl ClaudeBinder {
             event_bus,
             pij_harnesses::claude_homes(),
             pij_harnesses::proc::local_utc_offset_minutes,
+            roles,
         )
     }
 
@@ -46,12 +49,14 @@ impl ClaudeBinder {
         event_bus: Arc<EventBus>,
         claude_homes: Vec<PathBuf>,
         utc_offset_minutes: fn() -> Result<i32>,
+        roles: Arc<RoleService>,
     ) -> Self {
         let registration = RegistrationService::new(
             Arc::clone(&registry),
             Arc::clone(&liveness),
             Arc::clone(&event_bus),
             claude_homes,
+            roles,
         );
         Self {
             home,
@@ -105,6 +110,7 @@ impl ClaudeBinder {
             provider: seat.provider.clone(),
             effort: seat.effort.clone(),
             parent: seat.parent.clone(),
+            role: None,
             relay: seat.relay,
         };
         match self.registration.register(claim).await {
@@ -202,6 +208,18 @@ mod tests {
         Arc::new(EventBus::new(Arc::new(FakeSpine::new()), 8).expect("event bus"))
     }
 
+    async fn role_service(
+        registry: Arc<dyn Registry>,
+        bus: Arc<EventBus>,
+    ) -> Arc<crate::http::role::RoleService> {
+        let pool = pij_store::open("").await.expect("isolated role storage");
+        Arc::new(crate::http::role::RoleService::new(
+            registry,
+            pij_store::SqliteOrchestration::new(pool),
+            bus,
+        ))
+    }
+
     struct TestHome(PathBuf);
 
     impl TestHome {
@@ -271,13 +289,16 @@ mod tests {
                 proc_start: 20260831101500,
             }),
         );
+        let bus = event_bus();
+        let roles = role_service(registry.clone(), bus.clone()).await;
         let binder = ClaudeBinder::from_home(
             Some(home.0.clone()),
             registry.clone(),
             liveness,
-            event_bus(),
+            bus,
             Vec::new(),
             zero_utc_offset,
+            roles,
         );
 
         assert_eq!(binder.bind_once().await.unwrap(), 1);
@@ -305,13 +326,16 @@ mod tests {
                 proc_start: 20260831101500,
             }),
         );
+        let bus = event_bus();
+        let roles = role_service(registry.clone(), bus.clone()).await;
         let binder = ClaudeBinder::from_home(
             Some(home.0.clone()),
             registry.clone(),
             liveness,
-            event_bus(),
+            bus,
             Vec::new(),
             zero_utc_offset,
+            roles,
         );
 
         assert_eq!(binder.bind_once().await.unwrap(), 0);
@@ -344,13 +368,16 @@ mod tests {
                 proc_start: 20260831101500,
             }),
         );
+        let bus = event_bus();
+        let roles = role_service(registry.clone(), bus.clone()).await;
         let binder = ClaudeBinder::from_home(
             Some(home.0.clone()),
             registry.clone(),
             liveness,
-            event_bus(),
+            bus,
             Vec::new(),
             zero_utc_offset,
+            roles,
         );
 
         assert_eq!(binder.bind_once().await.unwrap(), 0);

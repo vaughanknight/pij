@@ -1,0 +1,306 @@
+{
+  "status": "READY_TO_VALIDATE",
+  "unit": "u3",
+  "identity": "pij-general-miriam",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u3",
+  "branch": "139-rs-governance-port-u3",
+  "base_sha": "d964233d4cbf45400a6b2fc5f873de48909e7e38",
+  "source_edits": "PAUSED",
+  "validation": "No build/test/formatter/linter/harness-check/commit command was executed and no diagnostic request was issued during the concurrent wave. The write tool returned automatic Biome metadata for JSON artifacts; this is not source or runtime proof. Static source review is not runtime proof. PM owns composed validation and acceptance.",
+  "source_patch": {
+    "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u3/docs/plans/139-rs-governance-port/assets/u3-source.patch",
+    "sha256": "cc5c3115f07b1b4252b417445a89d70cbc0eb00559f3a38fa900cef59b2e74ea",
+    "bytes_utf8": 218787,
+    "files": [
+      "crates/cli/src/governance.rs",
+      "crates/core/src/orchestration/governance.rs",
+      "crates/core/src/orchestration/inventory.rs",
+      "crates/core/tests/orchestration.rs",
+      "crates/daemon/src/http/governance.rs",
+      "crates/daemon/tests/governance_u3.rs",
+      "crates/daemon/tests/governance_u3_baseline.rs",
+      "crates/daemon/tests/support/governance_http.rs",
+      "crates/store/migrations/0014_governance.sql",
+      "crates/store/src/dispatch.rs",
+      "crates/store/src/governance.rs",
+      "crates/store/src/orchestration.rs",
+      "crates/store/tests/governance.rs",
+      "crates/store/tests/orchestration.rs"
+    ],
+    "verification": "Actual shasum -a 256 and stat -f %z agree with generated content. No git apply/check was run."
+  },
+  "artifact_size_note": {
+    "write_tool_reported_bytes": 218783,
+    "stat_bytes": 218787,
+    "finding": "write tool reported a conflicting size; actual file checksum and stat match the generated UTF-8 patch, so the measured size above is retained without changing the artifact"
+  },
+  "canonical_contracts": {
+    "restored_from": "d3236d486e845a16e4856d7f9ee349d7d23c8b4d",
+    "paths": [
+      "docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json",
+      "docs/plans/139-rs-governance-port/assets/contracts/governance-events.json"
+    ],
+    "restore_result": "git restore exited 0",
+    "source_patch_excludes_contracts": true
+  },
+  "store_recipe": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u3/docs/plans/139-rs-governance-port/assets/receipt-u3-store.json",
+  "integration": {
+    "modules": [
+      "crates/daemon/src/http/mod.rs: pub mod governance;",
+      "crates/cli/src/lib.rs: pub mod governance;",
+      "core orchestration/mod.rs and store lib.rs: exact exports/modules in receipt-u3-store.json; no worker edits to these files"
+    ],
+    "shared_pool": "ONE migrated pool; production registry/spine/queue/orchestration/roles/governance share clones. Explicit all-fake mode uses ONE pij_store::open(\"\") memory pool, never a second filesystem/global DB.",
+    "construction_order": [
+      "open shared pool once",
+      "raw SqliteSpine -> Arc<EventBus> (u1)",
+      "SqliteRegistry::new(pool.clone(), event_bus as Arc<dyn RegistryPublisher>)",
+      "RoleService::new(registry.clone(), SqliteOrchestration::new(pool.clone()), event_bus.clone())",
+      "GovernanceService::new(SqliteOrchestration::new(pool.clone()), event_bus.clone(), pane_signal_dir.join(\"governance-packets\"))"
+    ],
+    "services_fields": [
+      "pub governance: Arc<crate::http::governance::GovernanceService>",
+      "pub roles: Arc<crate::http::role::RoleService>"
+    ],
+    "packet_directory": "Constructor receives an explicitly state-scoped private directory. The recipe uses existing build_services pane_signal_dir; fixture callers must pass their unique private path. Do not derive this directory from caller.cwd or use a shared temp root.",
+    "http_handler": "pub(crate) async fn governance::handle(State<AppState>, OriginalUri, Json<GovernanceRequest>) -> Response; GovernanceRequest { argv:Vec<String>, caller:CallerContext }. Handler resolves caller via existing identity::resolve_seat and checks argv family matches route.",
+    "http_routes": [
+      {
+        "variant": "Project",
+        "path": "/v1/project",
+        "method": "POST",
+        "route_arm": "Endpoint::Project => router.route(endpoint.path(), post(governance::handle))"
+      },
+      {
+        "variant": "Stream",
+        "path": "/v1/stream",
+        "method": "POST",
+        "route_arm": "Endpoint::Stream => router.route(endpoint.path(), post(governance::handle))"
+      },
+      {
+        "variant": "Fence",
+        "path": "/v1/fence",
+        "method": "POST",
+        "route_arm": "Endpoint::Fence => router.route(endpoint.path(), post(governance::handle))"
+      },
+      {
+        "variant": "Dispatch",
+        "path": "/v1/dispatch",
+        "method": "POST",
+        "route_arm": "Endpoint::Dispatch => router.route(endpoint.path(), post(governance::handle))"
+      },
+      {
+        "variant": "Ack",
+        "path": "/v1/ack",
+        "method": "POST",
+        "route_arm": "Endpoint::Ack => router.route(endpoint.path(), post(governance::handle))"
+      },
+      {
+        "variant": "Canary",
+        "path": "/v1/canary",
+        "method": "POST",
+        "route_arm": "Endpoint::Canary => router.route(endpoint.path(), post(governance::handle))"
+      },
+      {
+        "variant": "Attest",
+        "path": "/v1/attest",
+        "method": "POST",
+        "route_arm": "Endpoint::Attest => router.route(endpoint.path(), post(governance::handle))"
+      },
+      {
+        "variant": "Task",
+        "path": "/v1/task",
+        "method": "POST",
+        "route_arm": "Endpoint::Task => router.route(endpoint.path(), post(governance::handle))"
+      },
+      {
+        "variant": "Node",
+        "path": "/v1/node",
+        "method": "POST",
+        "route_arm": "Endpoint::Node => router.route(endpoint.path(), post(governance::handle))"
+      },
+      {
+        "variant": "Orchestration",
+        "path": "/v1/orchestration",
+        "method": "POST",
+        "route_arm": "Endpoint::Orchestration => router.route(endpoint.path(), post(governance::handle))"
+      },
+      {
+        "variant": "Spine",
+        "path": "/v1/spine",
+        "method": "POST",
+        "route_arm": "Endpoint::Spine => router.route(endpoint.path(), post(governance::handle))"
+      }
+    ],
+    "http_exhaustive_maps": "Add all 11 variants to Endpoint, ALL (adjust length alongside sibling additions), path(), method() POST arms, existing POST debug assertion, and router match. Keep existing outer bearer ring.",
+    "cli_transport": "PM makes DaemonClient::post<T:DeserializeOwned,B:Serialize+?Sized> pub(crate); governance.rs reuses it unchanged. No second client/semantic parser/serializer.",
+    "cli_api": "pub async fn governance(client:&DaemonClient, family:&str, args:&[String], caller:&CallerContext)->Envelope<Value>; args EXCLUDE family, helper attaches it once.",
+    "cli_variants": {
+      "Project": "Project { #[arg(trailing_var_arg = true, allow_hyphen_values = true)] args: Vec<String> }",
+      "Stream": "Stream { #[arg(trailing_var_arg = true, allow_hyphen_values = true)] args: Vec<String> }",
+      "Fence": "Fence { #[arg(trailing_var_arg = true, allow_hyphen_values = true)] args: Vec<String> }",
+      "Dispatch": "Dispatch { #[arg(trailing_var_arg = true, allow_hyphen_values = true)] args: Vec<String> }",
+      "Ack": "Ack { #[arg(trailing_var_arg = true, allow_hyphen_values = true)] args: Vec<String> }",
+      "Canary": "Canary { #[arg(trailing_var_arg = true, allow_hyphen_values = true)] args: Vec<String> }",
+      "Attest": "Attest { #[arg(trailing_var_arg = true, allow_hyphen_values = true)] args: Vec<String> }",
+      "Task": "Task { #[arg(trailing_var_arg = true, allow_hyphen_values = true)] args: Vec<String> }",
+      "Node": "Node { #[arg(trailing_var_arg = true, allow_hyphen_values = true)] args: Vec<String> }",
+      "Orchestration": "Orchestration { #[arg(trailing_var_arg = true, allow_hyphen_values = true)] args: Vec<String> }",
+      "Spine": "Spine { #[arg(trailing_var_arg = true, allow_hyphen_values = true)] args: Vec<String> }"
+    },
+    "cli_match_arms": {
+      "Project": "Command::Project { args } => emit(&pij_cli::governance::governance(&client, \"project\", &args, &caller_context()).await, cli.json)",
+      "Stream": "Command::Stream { args } => emit(&pij_cli::governance::governance(&client, \"stream\", &args, &caller_context()).await, cli.json)",
+      "Fence": "Command::Fence { args } => emit(&pij_cli::governance::governance(&client, \"fence\", &args, &caller_context()).await, cli.json)",
+      "Dispatch": "Command::Dispatch { args } => emit(&pij_cli::governance::governance(&client, \"dispatch\", &args, &caller_context()).await, cli.json)",
+      "Ack": "Command::Ack { args } => emit(&pij_cli::governance::governance(&client, \"ack\", &args, &caller_context()).await, cli.json)",
+      "Canary": "Command::Canary { args } => emit(&pij_cli::governance::governance(&client, \"canary\", &args, &caller_context()).await, cli.json)",
+      "Attest": "Command::Attest { args } => emit(&pij_cli::governance::governance(&client, \"attest\", &args, &caller_context()).await, cli.json)",
+      "Task": "Command::Task { args } => emit(&pij_cli::governance::governance(&client, \"task\", &args, &caller_context()).await, cli.json)",
+      "Node": "Command::Node { args } => emit(&pij_cli::governance::governance(&client, \"node\", &args, &caller_context()).await, cli.json)",
+      "Orchestration": "Command::Orchestration { args } => emit(&pij_cli::governance::governance(&client, \"orchestration\", &args, &caller_context()).await, cli.json)",
+      "Spine": "Command::Spine { args } => emit(&pij_cli::governance::governance(&client, \"spine\", &args, &caller_context()).await, cli.json)"
+    },
+    "cli_command_name_arms": {
+      "Project": "Command::Project { .. } => \"pij project\"",
+      "Stream": "Command::Stream { .. } => \"pij stream\"",
+      "Fence": "Command::Fence { .. } => \"pij fence\"",
+      "Dispatch": "Command::Dispatch { .. } => \"pij dispatch\"",
+      "Ack": "Command::Ack { .. } => \"pij ack\"",
+      "Canary": "Command::Canary { .. } => \"pij canary\"",
+      "Attest": "Command::Attest { .. } => \"pij attest\"",
+      "Task": "Command::Task { .. } => \"pij task\"",
+      "Node": "Command::Node { .. } => \"pij node\"",
+      "Orchestration": "Command::Orchestration { .. } => \"pij orchestration\"",
+      "Spine": "Command::Spine { .. } => \"pij spine\""
+    },
+    "role_delegation": "orchestration role set/unset uses state.services.roles.assert_role; exactly one role mutation/event owner. RoleReceipt maps {role:{seat,role,assigned_by,assigned_at},seq}; RoleError::into_response(\"pij orchestration\") passes refusals unchanged.",
+    "atomic_bridge": "u1 EventBus::publish_committed<T,F>(&self,F)->Result<(Seq,T)> with owned Send + static Future<Result<(Event,T)>>. Store callback begins transaction, CASes row, calls sole store::spine::append_in_transaction, commits, stamps event.seq, returns Event+row. Daemon never republishes committed event.",
+    "destructive_methods": [
+      "return_baton(&str,&SeatId,&str,&str,u64)->Result<(Event,BatonLease)>",
+      "reclaim_baton(&str,&str,&SeatId,&str,u64)->Result<(Event,BatonLease)>",
+      "unset_prime(&SeatId,&SeatId,u64)->Result<(Event,PrimeDesignation)>"
+    ],
+    "error_seam": "PM adds approved PijError::GovernanceRefused {code:String,record:String} + exhaustive ErrorKind::Refused mappings. E-RS-LEASE-STALE record is transaction-observed current lease ID or literal absent; route emits current_lease:string|null, supplied_lease, baton, executable fix command.",
+    "required_lease_token": "return/reclaim REQUIRE --lease-id, including old shim callers. Missing/mismatched token refuses E-RS-LEASE-STALE without writes. Return additionally requires current holder; reclaim may be any resolved actor with evidence. Return evidence remains optional like legacy.",
+    "worker": "Supervise Arc::clone(&services.governance).follow_deliveries().await. Attach occurs before startup reconciliation; actual delivery.outcome receipts drive queued->delivered, never queue acceptance. Lag rescans durable receipts. Row-committed/event-failed delivery transition is reconstructed exactly once even on unchanged row. User open-kind events that are not receipts do not terminate the observer.",
+    "shutdown": "Stop/join HTTP and other producers + governance follower, then await u1 EventBus::flush() to drain admitted cancellation-shielded publications before closing shared resources; no detached or swallowed worker failures.",
+    "spine_reads": "EventBus implements core Spine through u1; governance tail() calls intentionally depend on that already-frozen implementation, not a new tail facade.",
+    "canary": "Real nonce packet persisted under configured private packet directory, hash-bound dispatch + pushed ack instruction, recipient acknowledgement, incarnation unchanged, liveness start stamp, current pane/process-subtree membership, and fresh HarnessRegistry::observe_bind canonical model. PM owns shared OMP/Pi footer/catalog repair; no descriptor-only or model-specific pass.",
+    "dependencies": [
+      "daemon: sha2 = { workspace = true } (existing dependency approved)",
+      "daemon: globset = \"=0.4.20\" plus lock/architecture allowlist (PM approved)",
+      "store: serde = { workspace = true }",
+      "u1 moves existing async-trait dependency into daemon production; PM composes"
+    ],
+    "migration": "PM bumps crates/store/src/migrate.rs SCHEMA_VERSION 13->14; existing sqlx::migrate! embeds new 0014_governance.sql automatically.",
+    "existing_callers": [
+      "crates/daemon/tests/orchestration_repo.rs create_project now takes &Project",
+      "PM combines u1 constructor migrations with u3 extended literals/tests in crates/store/tests/orchestration.rs; do not discard either semantic change",
+      "governance handler marks StreamState::Created only after existing reserve_and_create_stream returns Created; no duplicate success write in repo.rs required"
+    ]
+  },
+  "tests_authored_not_run": {
+    "store_core": [
+      "canonical_governance_rows_round_trip_without_synthetic_fields",
+      "project_metadata_updates_preserve_unsaid_fields_and_first_writer",
+      "stream_reservation_is_not_creation_and_close_preserves_worktree_and_fence",
+      "dispatch_ack_sha_and_recipient_precede_idempotence_and_delayed_delivery",
+      "queued_ack_wins_before_delivery_and_canary_requires_ack_and_is_immutable",
+      "tasks_and_attestations_survive_reopen_and_close_is_first_writer",
+      "baton_request_evidence_survives_grant_and_stale_release_cannot_take_new_lease",
+      "prime_compare_preserves_first_designation_and_retirement_metadata",
+      "baton_return_spine_failure_rolls_back_lease_request_and_history",
+      "baton_reclaim_spine_failure_rolls_back_lease_request_and_history",
+      "baton_return_without_evidence_commits_null_history_while_reclaim_requires_evidence",
+      "prime_unset_spine_failure_preserves_designation_and_retry_commits_exact_event",
+      "governance_bulk_reads_preserve_rows_and_deterministic_order_after_reopen",
+      "concurrent_dispatch_ack_and_delivery_keep_one_ack_and_no_state_regression",
+      "concurrent_baton_grants_commit_exactly_one_lease_and_request_transition",
+      "governance_migration_preserves_legacy_dispatches_without_inventing_metadata",
+      "explicit_stream_ordinal_preserves_existing_names_and_does_not_mutate_inventory",
+      "explicit_stream_ordinal_refuses_collisions_in_each_git_namespace"
+    ],
+    "role_store": [
+      "list_roles_preserves_assignments_in_seat_order_not_insertion_order",
+      "clear_role_is_idempotent_and_preserves_other_seat_assignments",
+      "seat_role_returns_complete_assignment_and_latest_replacement"
+    ],
+    "http_baseline": [
+      "u3_baseline_project_create_is_readable_without_invented_metadata",
+      "u3_baseline_spine_append_is_visible_to_exclusive_history_and_render"
+    ],
+    "http_feature": [
+      "u3_governance_refuses_unknown_flags_and_forged_actor_without_mutation",
+      "u3_every_prime_unset_publishes_its_own_transition_not_an_old_null_record",
+      "u3_metadata_mutations_do_not_invent_a_parent_permission_policy",
+      "u3_dispatch_hash_and_recipient_ack_are_checked_before_idempotent_replay",
+      "u3_baton_return_publication_failure_rolls_back_row_and_request",
+      "u3_baton_reclaim_publication_failure_rolls_back_row_and_request",
+      "u3_prime_unset_publication_failure_preserves_designation",
+      "u3_old_http_return_cannot_release_a_reacquired_lease_even_for_same_holder"
+    ],
+    "daemon_unit": [
+      "every_canonical_governance_argv_has_one_parser_and_unknown_tokens_refuse",
+      "fences_match_owned_patterns_not_shared_metadata_and_refuse_unsupported_globs",
+      "delivery_reconciliation_repairs_committed_transition_after_publication_failure_once",
+      "literal_delivery_kind_without_receipt_schema_cannot_kill_reconciliation",
+      "repeated_ack_reuses_immutable_receipt_after_delivery_and_canary_enrichment"
+    ],
+    "cli": [
+      "governance_forwards_all_canonical_argv_and_preserves_full_envelope_bytes"
+    ]
+  },
+  "baseline_red_strategy": {
+    "copy_only": [
+      "crates/daemon/tests/governance_u3_baseline.rs",
+      "crates/daemon/tests/support/governance_http.rs",
+      "docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json"
+    ],
+    "base_sha": "d964233d4cbf45400a6b2fc5f873de48909e7e38",
+    "command": "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-daemon --test governance_u3_baseline",
+    "expected": "Authenticated HTTP project/spine assertions should fail on absent pre-port routes, not compile errors. This is an unrun expectation; PM must record actual RED/GREEN. Do not copy governance_u3.rs feature/fault tests to baseline."
+  },
+  "pm_validation_commands": [
+    "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-core --test orchestration",
+    "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-store --test orchestration",
+    "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-store --test governance",
+    "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-daemon --lib http::governance::tests",
+    "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-daemon --test governance_u3_baseline",
+    "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-daemon --test governance_u3",
+    "/Users/jordanknight/.cargo/bin/cargo test --locked -p pij-cli governance_forwards_all_canonical_argv_and_preserves_full_envelope_bytes",
+    "harness checks --json"
+  ],
+  "runtime_isolation": "PM must use exact governance-routes.json#isolation: private port/state-dir/HOME/CLAUDE_CONFIG_DIR/XDG_CONFIG_HOME/TMUX socket for daemon AND clients. No port7461 or live fleet probe. Unit slot17464; PM slot17461. No runtime was started by u3.",
+  "toolchain_observed": {
+    "rustup_cargo": "cargo 1.98.0 (797e8a9bc 2026-08-05)",
+    "rustup_rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+    "path_cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21) (Homebrew)",
+    "path_rustc": "rustc 1.95.0 (59807616e 2026-04-14) (Homebrew)",
+    "validation_rule": "Use /Users/jordanknight/.cargo/bin/cargo, not PATH Homebrew cargo",
+    "omp": "18.0.10",
+    "harness": "0.14.0"
+  },
+  "assumptions": [
+    "PM composes u1/u2 and common wiring BEFORE running these unit targets. Unwired local tree is not claimed compiling.",
+    "No publication occurs in role SQL helpers; u2 is sole role service/publisher.",
+    "All schema14 state uses one pool. Legacy unknown metadata stays null; existing source stream naming wins over incorrect original sample values.",
+    "Required lease token is an approved route change; final canonical contracts are restored and excluded from source patch.",
+    "Shared OMP observer/catalog normalization is PM-owned and required for honest real canary success.",
+    "Static reviewer withdrew EventBus.tail finding after frozen u1 Spine implementation was supplied; final bounded delta review reported no confirmed defect, not a runtime verdict."
+  ],
+  "harness_buffers": [
+    "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u3/.harness/temp/agent/session-buffer.md"
+  ],
+  "harness_improvement": "Encoded regressions for observer open-kind poisoning, fence ownership/path handling, immutable ack identity, per-designation prime event identity, atomic destructive rollback, and same-holder stale HTTP token protection. Added standalone baseline target; corrected test credential directory to fresh_dir rather than FreshStore parent. No buffer drain/clear.",
+  "pre_wiring_assumptions": {
+    "reported_to_pm": ["9785503c-17b9-4a2a-8521-a56757479b55", "b367441b-d5d0-46f6-9587-2e8ed975c234"],
+    "blocking_composition_decision": "SQL governance publish_committed callbacks append the governance pool's spine_events and return its seq. An independent FakeSpine behind EventBus does not contain those commits and owns a different sequence authority. All-fake bus+SQL-governance pairing therefore needs an explicit PM decision before wiring; same-memory-pool SQL Spine is compatible, separate FakeSpine is not. No silent promotion or fake success implemented.",
+    "startup": "subscribe_live attaches on first future poll, before cold reconciliation; creating/spawning the future alone is not an observer-ready receipt. Pre-attachment outcomes are recovered durably; concurrent outcomes are buffered. No startup handshake is exposed.",
+    "captured_arcs": "Governance captures store/bus/packet_dir/mutation mutex; RoleService captures registry/store/bus; DeliveryService captures registry/queue/transport/InteractionGate/bus/clock/native lock. Replacing Services fields requires rebuilding captured dependents. Handlers read remaining ports from AppState at call time.",
+    "fake_canary": "All-fake HarnessRegistry has no real bind observer and cannot positively verify a model. Missing ack remains pending; missing evidence refuses. Different fake pane/descriptor pids enter the existing OS-backed subtree helper, so fully fake tests must not mislabel that branch. Real observer/catalog evidence requires separately controlled host seams or isolated runtime proof.",
+    "other_coupling": "One GovernanceService instance; its mutation mutex serializes ordinary handlers/reconciliation and stream Git may delay projection. Bind dynamic IDs/clocks/sequences, preserve caller-owned lease token, keep packet_dir private, stop/join producers then flush the bus.",
+    "source_patch_unchanged": true
+  },
+  "not_done_claim": "READY_TO_VALIDATE is source checkpoint only. No RED/GREEN, build, smoke, lint, full harness, production deploy, or AC acceptance is claimed."
+}

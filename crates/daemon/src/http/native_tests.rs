@@ -1156,7 +1156,7 @@ async fn native_sqlite_http_missing_registration_is_retryable_but_noncopilot_ide
     assert_eq!(mismatch["command"], "pij inbox");
     assert_eq!(
         mismatch["meta"],
-        "daemon/native-inbox: native incarnation no longer belongs to a current Copilot seat"
+        "daemon/native-inbox: native incarnation does not match a current external pull seat"
     );
     assert_eq!(registry.get(&seat.id).await.unwrap(), Some(noncopilot));
     server.abort();

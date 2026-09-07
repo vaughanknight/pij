@@ -1,160 +1,36 @@
-/** Generation-aware routing for the `pij` CLI (plan 114, u-route).
- *
- *  ONE `pij` command serves two daemon generations. This module holds the
- *  ROUTE TABLE — data — and the PURE decision functions over it. All I/O lives
- *  in `adapters/generation-router.ts`; nothing here fetches, reads a file, or
- *  looks at `process`.
- *
- *  Two rules the rest of the file exists to enforce:
- *
- *  1. A verb reaches rs ONLY when the table lists it. Everything unlisted goes
- *     legacy. That default is what settles the `tail` false friend (ac-1145)
- *     for free: TS `tail` follows a peer TRANSCRIPT, rs `tail` follows daemon
- *     EVENT frames — same spelling, different objects — so `tail` simply never
- *     gets a row, and `generation-routing.test.ts` pins that absence so a
- *     future row-add must be a deliberate act that fails a test first.
- *
- *  2. rs NOT IMPLEMENTING a verb falls back to legacy; rs ERRORING never does.
- *     Masking a real rs failure would silently re-home a seat into the other
- *     store while every surface reported success — the split-brain this plan
- *     exists to prevent. The two cases must be distinguishable AT THE CALL
- *     SITE, which is why `RouteOutcome` spells each one out instead of
- *     collapsing them into "served by legacy" (F-1128: a notice that cannot
- *     tell its cases apart carries no information).
- *
- *  THIS MODULE MINTS NO SEAT IDS (ac-1147). The memorable-id allocator lives in
- *  rs (`crates/daemon/src/http/mod.rs`, `allocate_memorable_id`); two minters
- *  would be two namespaces, which is the headline split-brain by construction.
- *  `generation-routing.test.ts` pins the absence of a name-generation path here.
- */
-
+/** The shim has one authority: an explicit rs route or a named refusal.
+ * Business grammar and caller authorization remain in the daemon. */
 import { COPILOT_CONTROL_REFUSAL, validateCommand } from "./commands.js";
+import { PIJ_ENVELOPE_VERSION } from "./daemon-wire.js";
 
-/** One row of the route table. Adding an rs verb is adding one of these —
- *  never a branch in the dispatcher. */
-export interface RsRouteRow {
-	/** Top-level verb as typed: `pij <verb>`. */
+interface RouteIdentity {
 	readonly verb: string;
-	/** Sub-verb, when the family splits (`pij report now`). Absent = whole verb. */
 	readonly leaf?: string;
-	/** Path on the rs daemon this row dispatches to. */
-	readonly rsPath: string;
-	readonly method: "GET" | "POST";
-	/** WHICH seat the follow-the-seat check is about.
-	 *
-	 *  "ambient" (the default) is right for the identity verbs — adopt, whoami,
-	 *  phonehome, report — which are about ME. "argument" is right for a verb
-	 *  such as `pij state <id>` that asks about SOMEONE ELSE: keying that on the
-	 *  ambient seat routes an rs-resident caller reading a legacy-only peer to rs,
-	 *  gets a decoded "no such seat", and breaks a verb that works today.
-	 *
-	 *  "global" means the result spans stores rather than belonging to any seat.
-	 *  Such a route must not follow the caller into one store and erase the union.
-	 *
-	 *  It lives on the ROW because it is per-verb knowledge, and per-verb
-	 *  knowledge belongs in the table rather than in the dispatcher. */
-	readonly seatFrom?: "ambient" | "argument" | "global";
-	/** Why this row exists — read by humans, never by code. */
 	readonly why: string;
-	/** How a HUMAN caller sees this row's answer. REQUIRED on every routed row.
-	 *
-	 *  It is required because the alternative was shipped and it was wrong:
-	 *  every row went live with no renderer, and the first one anybody typed —
-	 *  `adopt` — REFUSED TO PRINT while the write had already persisted. The
-	 *  operator was told it failed; sqlite disagreed. `/pij ready` tells a seat
-	 *  to verify the write and never the print, so a seat obeying the guidance
-	 *  concluded adopt had failed and retried. A failure line that persisted
-	 *  everything — the exact inverse of the success-line-that-persists-nothing
-	 *  this plan exists to close.
-	 *
-	 *  Making it a required field closes the CLASS: a new row cannot be added
-	 *  without saying how a human reads it, so this cannot be latent again in a
-	 *  verb nobody has typed yet.
-	 *
-	 *    "render"  — this row carries a `render` below.
-	 *    "rs-line" — rs returns the finished sentence in `line` (u-report's
-	 *                shape). Better where available: ONE copy of the wording,
-	 *                on the side that knows the result. */
-	readonly humanOutput: "render" | "rs-line";
-	/** How a MACHINE caller sees this row's answer. REQUIRED, for the same
-	 *  reason `humanOutput` is.
-	 *
-	 *  `--json` used to bypass every renderer and emit rs's payload RAW, so a
-	 *  parser received rs's schema where the TS contract was promised. That is
-	 *  the fourth instance of this plan's recurring seam — a value crossing by
-	 *  literal schema with neither side testing the other's full shape — and it
-	 *  is the WORST of the four, because the human path at least has a reader
-	 *  who can see something is wrong. A parser cannot.
-	 *
-	 *  It is not a cosmetic gap. Legacy `whoami --json` always emits `verbs` and
-	 *  `capabilitySchema`; a capability consumer reads a MISSING gate as an
-	 *  ungated one, so raw rs output does not merely lose data, it reads as
-	 *  PERMISSION. Absence is the dangerous direction.
-	 *
-	 *    "project" — the row carries `projectJson` and returns the TS contract.
-	 *    "refuse"  — rs cannot honour the legacy contract for this verb, so
-	 *                `--json` is refused BY NAME rather than answered wrongly.
-	 *    "passthrough" — both CLIs promise the same complete rs v2 envelope. */
-	readonly jsonOutput: "project" | "refuse" | "passthrough";
-	/** Build the legacy `--json` contract from rs's payload. Required when
-	 *  `jsonOutput` is "project". */
-	readonly projectJson?: (payload: unknown) => unknown;
-	/** Why `--json` is refused, named for the caller. Required when
-	 *  `jsonOutput` is "refuse". */
-	readonly jsonRefusal?: string;
-	/** Route ONLY when the ambient seat is KNOWN PRESENT in the rs store.
-	 *
-	 *  Not "not known absent" — KNOWN PRESENT. Unknown, unreadable and absent all
-	 *  go legacy.
-	 *
-	 *  It exists because of a hazard the mailbox verbs have and the identity
-	 *  verbs do not. EVERY `pij inbox` leaf — bare, `check` and `register` alike
-	 *  — calls `ensureCurrentRegistration` (`cli.ts:939`), so "first use
-	 *  auto-registers this ambient session" is a property of the VERB, not of the
-	 *  `register` leaf. A seat in NEITHER store therefore has no ambient id, so
-	 *  follow-the-seat cannot fire (it requires `seatInRs === false` AND
-	 *  `seatInLegacy === true`), the call falls through to rs, rs refuses because
-	 *  no rs seat owns that pane, and an rs refusal NEVER FALLS BACK. That seat
-	 *  would then register nowhere, where today it registers in legacy and works
-	 *  — the deny list's original hazard arriving through the read leaves.
-	 *
-	 *  This is strictly MORE closed than follow-the-seat, which only diverts a
-	 *  seat known to live in legacy. Here an unknown seat is never given the
-	 *  benefit of the doubt toward rs. */
-	readonly requiresSeatInRs?: boolean;
-	/** Path of this row's ACKNOWLEDGEMENT, for a two-step read.
-	 *
-	 *  F4. `inbox` claims and then acknowledges: the claim records nothing and the
-	 *  client acks only once it HAS the message, so a client that dies mid-read
-	 *  gets a duplicate instead of a silent loss. A routed read that never acked
-	 *  left the job `running` with no `ReaderRead` and let the message be claimed
-	 *  again after the lease expired — while printing "claimed", honestly and
-	 *  incompletely. A row that claims must say how it finishes. */
-	readonly acknowledgePath?: string;
-	/** Resolve this grammar's --body-file locally; other rows forward literal values. */
-	readonly readsBodyFile?: boolean;
-	/** This route returns the global rs sessions projection and must be unioned
-	 *  with the legacy join rows before either renderer sees it. */
-	readonly unionWithLegacySessions?: boolean;
-	/** How to render an rs payload for a HUMAN caller.
-	 *
-	 *  ac-1143 says the CLI's external surface is unchanged, and output shape is
-	 *  half of that. A row that rs actually serves needs one of these, or a
-	 *  human typing `pij report now "a" "b"` gets a JSON blob where a sentence
-	 *  belongs. Wave 1 supplies none, because no rs handler exists to render;
-	 *  the row that goes live is the row that must bring its renderer. Absent +
-	 *  a human caller is a LOUD refusal, never a silent JSON blob — see
-	 *  `cli.ts`. */
-	readonly render?: (payload: unknown) => string;
 }
 
-/** Shared readers for the rs payloads these renderers print.
- *
- *  rs answers adopt/whoami with a SeatDescriptor and phonehome/state with their
- *  own shapes. Nothing here invents a field: where rs does not hold a fact the
- *  TS sentence carries, the renderer SAYS SO rather than omitting it silently or
- *  filling it in. A rendered line that quietly drops a fact is how a surface
- *  changes without anyone deciding to change it. */
+export interface RsHttpRoute extends RouteIdentity {
+	readonly rsPath: string;
+	readonly method: "GET" | "POST";
+	/** Existing daemon query names; null accepts a literal value, arrays constrain the declared grammar. */
+	readonly query?: Readonly<Record<string, readonly string[] | null>>;
+	readonly render?: (payload: unknown) => string;
+	readonly acknowledgePath?: string;
+	readonly readsBodyFile?: boolean;
+}
+
+export interface RsNativeRoute extends RouteIdentity {
+	/** Native stdout/stderr/exit are the contract, not a JSON envelope. */
+	readonly nativeCommand: "commit-trailers";
+}
+
+export interface RsUnportedRoute extends RouteIdentity {
+	readonly unported: string;
+}
+
+export type RsRouteRow = RsHttpRoute | RsNativeRoute | RsUnportedRoute;
+export const RS_UNSUPPORTED_STATUS = "docs/how/pij-rs-api.md#unsupported-status";
+
 function field(payload: unknown, name: string): unknown {
 	return (payload as Record<string, unknown> | null | undefined)?.[name];
 }
@@ -164,13 +40,6 @@ function text(payload: unknown, name: string): string | undefined {
 	return typeof value === "string" && value !== "" ? value : undefined;
 }
 
-/** rs adopt/whoami -> the TS `adopt` sentence, cli.ts:3276/3280.
- *
- *  TS's bound form names the HARNESS SESSION ID. rs has no column for it and
- *  binds by `(pid, proc_start)` which it observes itself — so this says what rs
- *  actually did instead of printing a field it does not have. Naming the
- *  difference is the point; fabricating it would be the split-brain in
- *  miniature. */
 function renderAdopt(payload: unknown): string {
 	const id = text(payload, "id") ?? "?";
 	const pane = text(payload, "pane");
@@ -183,448 +52,254 @@ function renderAdopt(payload: unknown): string {
 	return `adopted ${id} (${where}, ${bound}) — peers can now: pij send ${id} "<text>"`;
 }
 
-/** rs whoami -> the TS `whoami` block, core/cli.ts:2787-2791.
- *
- *  `data dir` is omitted with a reason rather than blanked: rs seats have no
- *  data dir, and an empty value would read as one that failed to resolve. */
+function renderRegister(payload: unknown): string {
+	const harness = text(payload, "harness");
+	if (harness === "pi" || harness === "omp")
+		return "pi/omp seats self-register at boot; you are already reachable — run `pij whoami` to confirm, never adopt";
+	return `registered ${text(payload, "id") ?? "?"} (${harness ?? "?"}, ${text(payload, "pane") === undefined ? "paneless pull" : "pane push"})`;
+}
+
 function renderWhoami(payload: unknown): string {
 	return [
 		`pij session: ${text(payload, "id") ?? "?"}`,
 		`folder:      ${text(payload, "folder") ?? "?"}`,
 		`state:       ${text(payload, "state") ?? "idle"}`,
 		`role:        ${text(payload, "role") ?? "—"}`,
-		"data dir:    — (rs seats have no data dir; the legacy store's concept)",
 	].join("\n");
-}
-
-function projectRsWhoami(payload: unknown): unknown {
-	return {
-		id: text(payload, "id") ?? null,
-		harness: text(payload, "harness") ?? null,
-		pane: text(payload, "pane") ?? null,
-		folder: text(payload, "folder") ?? null,
-		session: text(payload, "session") ?? null,
-		generation: "rs",
-		capabilityGate: "absent",
-	};
 }
 
 function renderSessions(payload: unknown): string {
-	if (!Array.isArray(payload) || payload.length === 0) return "no pij sessions";
+	const rows = field(payload, "rows");
+	if (!Array.isArray(rows) || rows.length === 0) return "no pij sessions";
 	const cell = (value: unknown): string =>
 		value === undefined || value === null || value === "" ? "—" : String(value);
-	const lines = payload.map(
-		(row) =>
-			`${cell(field(row, "pijId"))}  ${cell(field(row, "generation"))}  ${cell(field(row, "harness"))}  ${cell(field(row, "harnessSessionId"))}  ${cell(field(row, "lifecycle"))}  ${cell(field(row, "boundModel"))}  ${cell(field(row, "spawnedBy"))}  ${cell(field(row, "transcriptPath"))}`,
-	);
 	return [
 		"pij-id  generation  harness  harness-session  lifecycle  model  parent  transcript",
-		...lines,
-		`${payload.length} session(s)`,
+		...rows.map((row) =>
+			[
+				"pijId",
+				"generation",
+				"harness",
+				"harnessSessionId",
+				"lifecycle",
+				"boundModel",
+				"spawnedBy",
+				"transcriptPath",
+			]
+				.map((key) => cell(field(row, key)))
+				.join("  "),
+		),
+		`${rows.length} session(s)`,
 	].join("\n");
 }
 
-/** rs phonehome -> the TS `phoned home:` line, core/cli.ts:3757. */
 function renderPhonehome(payload: unknown): string {
 	const seat = text(payload, "seat") ?? "?";
 	const harness = text(payload, "harness") ?? "?";
-	if (field(payload, "bound") === true) {
+	if (field(payload, "bound") === true)
 		return `phoned home: ${seat} ↔ ${harness} (bound by process identity, observed by the daemon)`;
-	}
-	// NOT bound is the answer that matters most, so it says WHY rather than
-	// leaving a seat to guess whether it exists.
 	const why = text(payload, "resolved_by");
 	return `phoned home: ${seat} — NOT bound${why === undefined ? "" : ` (${why})`}; rs binds by (pid, proc_start) and could not observe that pair`;
 }
 
-/** rs state -> the TS `state` line. Carries rs's own `unsupported` notes, which
- *  name by field what rs cannot honour instead of silently differing. */
 function renderState(payload: unknown): string {
-	const id = text(payload, "id") ?? "?";
-	const head = `${id}: ${text(payload, "state") ?? "?"} · ${text(payload, "liveness") ?? "?"}`;
-	const detail = [
-		text(payload, "cwd") === undefined ? undefined : `cwd: ${text(payload, "cwd")}`,
-		text(payload, "harness") === undefined ? undefined : `harness: ${text(payload, "harness")}`,
-		text(payload, "parent") === undefined ? undefined : `parent: ${text(payload, "parent")}`,
-	].filter((part): part is string => part !== undefined);
-	const unsupported = field(payload, "unsupported");
-	const note =
-		Array.isArray(unsupported) && unsupported.length > 0
-			? `\n  (${unsupported.length} field(s) the rs store does not carry — re-run with --json to see which and why)`
-			: "";
-	return `${head}${detail.length === 0 ? "" : `\n  ${detail.join("  ·  ")}`}${note}`;
+	const head = `${text(payload, "id") ?? "?"}: ${text(payload, "state") ?? "?"} · ${text(payload, "liveness") ?? "?"}`;
+	const detail = ["cwd", "harness", "parent"].flatMap((key) => {
+		const value = text(payload, key);
+		return value === undefined ? [] : [`${key}: ${value}`];
+	});
+	return `${head}${detail.length === 0 ? "" : `\n  ${detail.join("  ·  ")}`}`;
 }
 
-/** rs shim send -> the TS `sent → …` line, core/cli.ts's send renderer.
- *
- *  It does NOT reproduce legacy's second line (`receipt → … (also in: pij tail
- *  …)`), because that line names a LEGACY affordance: `pij tail` follows a peer
- *  transcript in the TS store and is on the deny list precisely because rs's
- *  `tail` is a different object. Printing a pointer to a surface that cannot
- *  answer for this message would be a worse lie than omitting it. */
 function renderShimSend(payload: unknown): string {
 	const outcome = field(payload, "outcome");
 	const word =
 		typeof outcome === "object" && outcome !== null
-			? ((outcome as Record<string, unknown>).outcome ?? "?")
+			? (field(outcome, "outcome") ?? "?")
 			: (outcome ?? "?");
 	return `sent (rs) — msg ${text(payload, "msg_id") ?? "?"} — receipt ${String(word)}`;
 }
 
-/** rs shim inbox -> a count and the bodies. Claims, not deliveries: the rs
- *  inbox route claims without recording delivery, and saying "claimed" rather
- *  than "received" is the difference between what happened and what a reader
- *  would assume. */
 function renderShimInbox(payload: unknown): string {
 	if (!Array.isArray(payload) || payload.length === 0) return "inbox: empty";
-	const lines = payload.map((claim) => {
-		const message = field(claim, "message");
-		return `  from ${text(message, "from") ?? "?"}: ${text(message, "body") ?? ""}`;
-	});
-	return [`inbox: ${payload.length} claimed`, ...lines].join("\n");
+	return [
+		`inbox: ${payload.length} claimed`,
+		...payload.map((claim) => {
+			const message = field(claim, "message");
+			return `  from ${text(message, "from") ?? "?"}: ${text(message, "body") ?? ""}`;
+		}),
+	].join("\n");
 }
 
-/** THE ROUTE TABLE. Data, consumed by a dispatcher with no per-verb logic.
- *
- *  Wave 1 lists the five verbs the `/pij ready` gesture runs through. rs does
- *  not serve them YET (wave 2's u-identity / u-report / u-readback land the
- *  handlers), so today every one of these resolves to
- *  `legacy-rs-not-implemented` — VISIBLY, with the addr named. When wave 2
- *  lands a handler the row goes live with NO change here: the shim asks rs what
- *  it implements rather than carrying a second, drift-prone copy of that answer.
- *
- *  `tail` is deliberately absent — see the header. So are the orchestration
- *  verbs (plan non-goals). */
+/** The actual skill verb table is checked against this explicit inventory.
+ * An unknown verb is still refused, but it is NOT silently considered covered. */
 export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 	{
-		verb: "bg",
-		rsPath: "/v1/bg",
-		method: "POST",
-		humanOutput: "rs-line",
-		jsonOutput: "passthrough",
-		why: "Background jobs, logs and restart recovery belong to the daemon; native and shim share its argv grammar and complete v2 envelope",
-	},
-	{
 		verb: "adopt",
-		jsonOutput: "refuse",
-		jsonRefusal:
-			"rs answers adopt with a SeatDescriptor and has no `lifecycle` (pending/bound) column — it binds by (pid, proc_start) it observes itself, so the legacy pending/bound distinction cannot be reproduced",
 		rsPath: "/v1/adopt",
 		method: "POST",
-		humanOutput: "render",
 		render: renderAdopt,
-		why: "ready gesture step 1 — rs mints the seat id (ac-1147); the shim never invents a name",
+		why: "Daemon admission derives identity and role",
 	},
 	{
 		verb: "whoami",
-		jsonOutput: "project",
-		projectJson: projectRsWhoami,
-		humanOutput: "render",
-		render: renderWhoami,
 		rsPath: "/v1/whoami",
-		// POST, not GET: a GET carried no caller context, and rs cannot answer
-		// "who am I" for a caller it cannot see. Reading verbs that must
-		// TRANSMIT are POSTs here for that reason alone.
 		method: "POST",
-		why: "ready gesture step 2 — identity must answer from the store the seat registered into",
-	},
-	/** SNAP-IN RECIPE (plan 128 u2): keep this GET row at
-	 *  `/v1/shim/sessions` with `unionWithLegacySessions: true`; the adapter
-	 *  supplies `legacySessionRows(argv)` and calls `mergeSessionRows` before
-	 *  rendering. omp/pi registration sends `harness_session: input.piSessionId`.
-	 *  Composition verifies these three wires; it does not re-derive them. */
-	{
-		verb: "sessions",
-		jsonOutput: "project",
-		projectJson: (payload) => payload,
-		humanOutput: "render",
-		render: renderSessions,
-		rsPath: "/v1/shim/sessions",
-		method: "GET",
-		seatFrom: "global",
-		unionWithLegacySessions: true,
-		why: "plan 128 — union the live rs rows with the legacy telemetry join without renaming either contract",
+		render: renderWhoami,
+		why: "Resolve the caller in rs",
 	},
 	{
 		verb: "phonehome",
-		jsonOutput: "refuse",
-		jsonRefusal:
-			"legacy phonehome --json carries `harnessSessionId` and `lifecycle`; rs has no column for either and binds by process identity instead",
-		humanOutput: "render",
-		render: renderPhonehome,
 		rsPath: "/v1/phonehome",
 		method: "POST",
-		why: "ready gesture's own success criterion (PM ack O2) — legacy answering it for an rs seat is the identity violation this plan prevents",
-	},
-	// FIVE LEAF ROWS ON ONE PATH. Per-leaf so `verify` can be held back; all of
-	// them point at `/v1/report`, the single endpoint rs registers
-	// (crates/daemon/src/http/mod.rs, `Endpoint::Report => "/v1/report"`). The
-	// leaf travels in `argv`, which is how the handler already reads it.
-	//
-	// The first version of these rows invented `/v1/report/<leaf>` paths rs does
-	// not serve. Nothing caught it: every report 404'd, classified as
-	// not-implemented, fell back to legacy, and looked EXACTLY like a verb wave 2
-	// had not landed yet — every suite green. Only driving the real CLI against a
-	// real daemon showed it, which is why the path-agreement test exists.
-	{
-		verb: "report",
-		leaf: "now",
-		jsonOutput: "refuse",
-		jsonRefusal:
-			"legacy report --json emits the whole spine EVENT; rs returns its own receipt shape, and the two are not the same object",
-		// rs returns the finished sentence in `line` — one copy of the wording,
-		// on the side that knows the result.
-		humanOutput: "rs-line",
-		rsPath: "/v1/report",
-		method: "POST",
-		why: "ac-1142 — the card must be written where the seat lives",
+		render: renderPhonehome,
+		why: "Read the admitted binding",
 	},
 	{
-		verb: "report",
-		leaf: "state",
-		jsonOutput: "refuse",
-		jsonRefusal:
-			"legacy report --json emits the whole spine EVENT; rs returns its own receipt shape, and the two are not the same object",
-		// rs returns the finished sentence in `line` — one copy of the wording,
-		// on the side that knows the result.
-		humanOutput: "rs-line",
-		rsPath: "/v1/report",
+		verb: "state",
+		rsPath: "/v1/state",
 		method: "POST",
-		why: "ac-1144 — report family parity",
+		render: renderState,
+		why: "Read the rs state card",
 	},
 	{
-		verb: "report",
-		leaf: "blocked",
-		jsonOutput: "refuse",
-		jsonRefusal:
-			"legacy report --json emits the whole spine EVENT; rs returns its own receipt shape, and the two are not the same object",
-		// rs returns the finished sentence in `line` — one copy of the wording,
-		// on the side that knows the result.
-		humanOutput: "rs-line",
-		rsPath: "/v1/report",
-		method: "POST",
-		why: "ac-1144 — report family parity",
+		verb: "list",
+		rsPath: "/v1/seats",
+		method: "GET",
+		query: { harness: null, folder: null, parent: null, scope: ["local"] },
+		why: "Read rs seats using the existing server query filters",
 	},
 	{
-		verb: "report",
-		leaf: "clear",
-		jsonOutput: "refuse",
-		jsonRefusal:
-			"legacy report --json emits the whole spine EVENT; rs returns its own receipt shape, and the two are not the same object",
-		// rs returns the finished sentence in `line` — one copy of the wording,
-		// on the side that knows the result.
-		humanOutput: "rs-line",
-		rsPath: "/v1/report",
-		method: "POST",
-		why: "ac-1144 — report family parity",
+		verb: "sessions",
+		rsPath: "/v1/shim/sessions",
+		method: "GET",
+		render: renderSessions,
+		why: "Read rs session rows without a legacy union",
 	},
-	{
-		verb: "report",
-		leaf: "question",
-		jsonOutput: "refuse",
-		jsonRefusal:
-			"legacy report --json emits the whole spine EVENT; rs returns its own receipt shape, and the two are not the same object",
-		// rs returns the finished sentence in `line` — one copy of the wording,
-		// on the side that knows the result.
-		humanOutput: "rs-line",
-		rsPath: "/v1/report",
-		method: "POST",
-		why: "ac-1144 — report family parity",
-	},
-	// PLAN 119 — the mailbox verbs. Both point at the SHIM-ORIGINATED paths, not
-	// at `/v1/send` and `/v1/inbox`: those speak the `pij-rs` CLI's language (a
-	// caller-supplied `from` and `seat`) and TOLERATE UNKNOWN FIELDS, so the
-	// additive shape would have an older daemon accept an asserted `from` while
-	// silently discarding the caller evidence meant to constrain it. Measured,
-	// not assumed: a POST carrying `caller` failed on `from` and never on
-	// `caller`. Overloading fails quietly; a distinct path fails loudly.
 	{
 		verb: "send",
-		jsonOutput: "refuse",
-		jsonRefusal:
-			"legacy send --json emits the TS receipt envelope with its attachments and broadcast fan-out; rs returns its own Receipt {msg_id, outcome, at} and has no attachment or broadcast model, so the two are not the same object",
-		humanOutput: "render",
-		render: renderShimSend,
 		rsPath: "/v1/shim/send",
 		method: "POST",
-		requiresSeatInRs: true,
 		readsBodyFile: true,
-		why: "s119 — a seat that registers into rs must be able to speak; `send` running on legacy is what left pij-literary-bonobo registered and mute",
+		render: renderShimSend,
+		why: "Existing daemon message/control admission",
 	},
 	{
 		verb: "compact-self",
-		jsonOutput: "refuse",
-		jsonRefusal:
-			"compact-self has no legacy JSON contract; use pij-rs compact-self --json for the daemon receipt",
-		humanOutput: "render",
-		render: renderShimSend,
 		rsPath: "/v1/shim/compact-self",
 		method: "POST",
-		requiresSeatInRs: true,
-		why: "Remote controls are daemon-owned, including self compaction; never type a slash fallback",
+		render: renderShimSend,
+		why: "Existing daemon-owned self control",
+	},
+	{
+		verb: "inbox",
+		rsPath: "/v1/shim/inbox",
+		method: "POST",
+		acknowledgePath: "/v1/shim/inbox/ack",
+		render: renderShimInbox,
+		why: "Render claimed messages before acknowledging",
 	},
 	{
 		verb: "inbox",
 		leaf: "check",
-		jsonOutput: "refuse",
-		jsonRefusal:
-			"legacy inbox --json emits the TS inbox envelope (attachments, receipt settlement, registration fields); rs returns raw queue CLAIMS and records no delivery, so the two are not the same object",
-		humanOutput: "render",
-		render: renderShimInbox,
 		rsPath: "/v1/shim/inbox",
-		acknowledgePath: "/v1/shim/inbox/ack",
 		method: "POST",
-		requiresSeatInRs: true,
-		why: "s119 — the explicit mailbox read",
-	},
-	{
-		// BARE `pij inbox` — enumerated, REVERSING my first call (F3, gopher).
-		//
-		// I left it out on purpose and the reasoning was wrong on both halves.
-		// It is the PUBLIC form: `core/inbox.ts` defines bare inbox as the alias
-		// of `check`, so leaving it unrouted means an rs-only seat must type the
-		// noncanonical `pij inbox check` or fall to legacy and get E-NOID — the
-		// exact failure this unit exists to remove, preserved in the one spelling
-		// everybody actually uses. Routing is upstream of the alias parser, so
-		// the alias cannot rescue it.
-		//
-		// My two reasons, and why neither survives:
-		//
-		//  - the auto-registration every leaf performs (`cli.ts:939`) — handled
-		//    by `requiresSeatInRs`, not by leaving a hole. A seat not KNOWN
-		//    PRESENT in rs never routes, so it keeps its legacy auto-registration.
-		//    That is the guard's whole job, and declining to enumerate was me
-		//    distrusting a guard I had just written.
-		//
-		//  - `--wait` parsing to no leaf and landing here — true, and it is
-		//    refused BY NAME at the endpoint (`shim.rs`, `parse_inbox`). Worth
-		//    stating why that refusal is safe rather than merely loud: the
-		//    population that legitimately blocks on `--wait` is PANELESS pull
-		//    peers, and a paneless caller has no pane for `rsSeatByPane` to
-		//    match, so it never satisfies `requiresSeatInRs` and never routes.
-		//    A caller that DOES reach the refusal has a pane, which makes it a
-		//    pushed seat — and legacy refuses `--wait` for those already
-		//    (`cli.ts:965`). The two generations agree.
-		//
-		// This is an enumeration, not a fallback: `inbox frobnicate` still has no
-		// row and still does not route.
-		verb: "inbox",
-		jsonOutput: "refuse",
-		jsonRefusal:
-			"legacy inbox --json emits the TS inbox envelope (attachments, receipt settlement, registration fields); rs returns raw queue CLAIMS and records no delivery, so the two are not the same object",
-		humanOutput: "render",
+		acknowledgePath: "/v1/shim/inbox/ack",
 		render: renderShimInbox,
-		rsPath: "/v1/shim/inbox",
-		acknowledgePath: "/v1/shim/inbox/ack",
-		method: "POST",
-		requiresSeatInRs: true,
-		why: "s119 — bare `pij inbox` is the public alias of `check`, and routing runs before the alias parser",
+		why: "Explicit alias of the same claim path",
 	},
-	{
-		verb: "state",
-		jsonOutput: "refuse",
-		jsonRefusal:
-			"rs names its field `role` where the legacy contract says `orchestrationRole`, and its own answer lists 14 further fields it does not carry — a projection would be a rename over a hole",
-		humanOutput: "render",
-		render: renderState,
-		rsPath: "/v1/state",
-		method: "POST",
-		// `pij state <id>` asks about ANOTHER seat.
-		seatFrom: "argument",
-		why: "ac-1142 — the card must be read back from the store that holds it",
-	},
-];
-
-/** THE DENY LIST — consulted FIRST, and it outranks the route table.
- *
- *  Not decoration, and not a duplicate of "unlisted goes legacy". The default
- *  keeps a verb in legacy only while nobody adds a row; the deny list keeps it
- *  there EVEN IF SOMEONE DOES. That difference is the whole point.
- *
- *  ac-1145 was settled by the fact that routing `tail` required a deliberate
- *  human act. Anything that makes routing automatic — a capability ask, a
- *  generous default, a well-meaning row — gives that safety away, and the false
- *  friend then arrives BY ITSELF with nobody deciding anything: the day rs
- *  serves `tail` (daemon EVENT frames), every caller expecting the TS PEER
- *  TRANSCRIPT would silently receive the wrong object. The deny list is where
- *  "not this one, until someone decides otherwise" is written down.
- *
- *  `generation-routing.test.ts` pins this the only way that means anything: by
- *  putting `tail` IN the route table and asserting it is denied anyway. A test
- *  that merely asserted `tail` is absent from the table would pass just as
- *  happily with this list deleted. */
-/** One deny-list entry. Named, because `decidePreCall` takes the list as a
- *  parameter and an inline shape there would silently drop `leaf`. */
-export interface DenyEntry {
-	readonly verb: string;
-	/** Deny ONE leaf. Absent denies the whole verb.
-	 *
-	 *  `inbox` moved from verb granularity to leaf granularity in s119, and the
-	 *  move is not a weakening: the reason below was only ever about ONE leaf,
-	 *  and it stays attached to that leaf with its wording intact. Nothing is
-	 *  struck. What made the verb-wide form safe was that a leaf nobody had
-	 *  thought of was denied BY CONSTRUCTION — safety with no author — and that
-	 *  property is preserved by `LEAF_CLOSED_VERBS` below rather than by this
-	 *  entry. An enumeration is only as good as its default. */
-	readonly leaf?: string;
-	readonly why: string;
-}
-
-export const NEVER_ROUTED: readonly DenyEntry[] = [
 	{
 		verb: "inbox",
 		leaf: "register",
-		why: "PANELESS ADMISSION IS UNSOLVED, and routing this breaks registration fleet-wide. Every rs registration requires BIND EVIDENCE — a (pid, proc_start) pair the daemon corroborates (crates/core/src/admission.rs:143, NoBindEvidence). It is an anti-impersonation control: a subagent inherits its parent's environment and can CLAIM anything, but cannot manufacture evidence for a session that is not its own. The paneless ready form `pij inbox register --json` names no pane and no process, so there is nothing to derive evidence from and rs must refuse. Under the never-bare-404 rule that refusal arrives WITH an envelope, which classifies as rs-error and never falls back — so a routed `inbox` would stop paneless seats registering ANYWHERE, where today they register in legacy and work. Forwarding the pij CLI's own pid is NOT the fix: it corroborates for the instant the process lives and then exits, binding the seat to a dead process so every later phonehome reports unbound — a worse lie than the refusal, and persisted. Jordan's ruling of 2026-09-01 (we guide, we do not police) replaces this refusal with an admission GRADE — a seat that cannot prove itself is admitted as `unproven` and told the gesture that promotes it. That is s120. Until the graded path is LIVE the denial stands, because striking a deny reason in a unit that does not supply its replacement leaves the justification gone and the hazard in place.",
+		rsPath: "/v1/register",
+		method: "POST",
+		render: renderRegister,
+		why: "Resolve registered panes or admit verified external pull hosts through native rs registration",
+	},
+	{
+		verb: "bg",
+		rsPath: "/v1/bg",
+		method: "POST",
+		why: "Preserve shipped background jobs and their sole daemon parser",
+	},
+	...[
+		"project",
+		"stream",
+		"fence",
+		"dispatch",
+		"ack",
+		"canary",
+		"attest",
+		"task",
+		"node",
+		"orchestration",
+		"spine",
+		"role",
+		"report",
+		"close",
+		"reap",
+		"anomalies",
+		"decisions",
+		"answer",
+	].map(
+		(verb): RsHttpRoute => ({
+			verb,
+			rsPath: `/v1/${verb}`,
+			method: "POST",
+			why: "Forward argv and caller to the existing shared daemon operation",
+		}),
+	),
+	{
+		verb: "commit-trailers",
+		nativeCommand: "commit-trailers",
+		why: "Forward the native trailer-only stdout, stderr and exit contract",
+	},
+	{
+		verb: "spawn",
+		unported: "shim spawn grammar is not native spawn grammar; use pij-rs spawn --help",
+		why: "Do not silently discard layout/task/branch options",
+	},
+	{
+		verb: "revive",
+		unported: "shim revive grammar is not native revive grammar; use pij-rs revive --help",
+		why: "Do not rename attach/print semantics",
 	},
 	{
 		verb: "tail",
-		why: "FALSE FRIEND (ac-1145, ruled — NO RENAME): TS `tail` follows a peer TRANSCRIPT, rs `tail` follows daemon EVENT frames. Same spelling, different objects. A caller asking for the transcript must never silently receive the event stream.",
+		unported: "peer transcript tail is not the native daemon event tail",
+		why: "Different objects are not aliases",
 	},
+	...[
+		"daemon",
+		"path",
+		"telegram",
+		"agent",
+		"watch",
+		"unwatch",
+		"chore",
+		"watchdog",
+		"focus",
+		"tree",
+		"link",
+		"models",
+	].map(
+		(verb): RsUnportedRoute => ({
+			verb,
+			unported: "not ported through this shim",
+			why: "No second live store or implicit legacy execution",
+		}),
+	),
 ];
 
-/** Native Copilot accepts message bodies, never programmatic session controls. */
-export function copilotControlRefusal(
-	harness: string | undefined,
-	command: string,
-): string | undefined {
-	if (harness !== "copilot" || !validateCommand(command).ok) return undefined;
-	return COPILOT_CONTROL_REFUSAL;
-}
-
-/** Verbs whose leaves must be ENUMERATED: an unlisted leaf does not route.
- *
- *  THE DEFAULT IS THE WHOLE POINT. While `inbox` was denied at VERB
- *  granularity, a leaf nobody had imagined — a new registration variant, a new
- *  admission form — was denied by construction. Narrowing the denial to one
- *  leaf spends that, and spends it silently: without this set, a future
- *  `pij inbox <anything>` would fall back to the whole-verb row and AUTO-ROUTE,
- *  re-opening the admission hazard months from now, in a commit that never
- *  mentions registration, written by someone adding a mailbox leaf who has no
- *  reason to think about admission.
- *
- *  So the reasoning is pinned rather than the instance: `generation-routing.test.ts`
- *  asserts a MADE-UP leaf is not routed, in the same shape as the `tail` test —
- *  which puts `tail` IN the table and asserts it is denied anyway, because a
- *  test that merely checked for absence would pass just as happily with the
- *  guard deleted.
- *
- *  Safety must not depend on nobody adding something later. */
 export const LEAF_CLOSED_VERBS: readonly string[] = ["inbox"];
 
-/** Find the row for a typed invocation. Leaf rows win over whole-verb rows, so
- *  a family can be routed wholesale and one leaf held back (or vice versa).
- *
- *  For a verb in [`LEAF_CLOSED_VERBS`] there is no whole-verb fallback: only an
- *  exact `(verb, leaf)` row routes, and everything else stays on legacy. */
 export function findRoute(
 	verb: string,
 	leaf: string | undefined,
 	table: readonly RsRouteRow[] = RS_ROUTE_TABLE,
 	leafClosed: readonly string[] = LEAF_CLOSED_VERBS,
 ): RsRouteRow | undefined {
-	if (leafClosed.includes(verb)) {
-		return table.find((row) => row.verb === verb && row.leaf === leaf);
-	}
+	if (leafClosed.includes(verb)) return table.find((row) => row.verb === verb && row.leaf === leaf);
 	if (leaf !== undefined) {
 		const exact = table.find((row) => row.verb === verb && row.leaf === leaf);
 		if (exact !== undefined) return exact;
@@ -632,20 +307,15 @@ export function findRoute(
 	return table.find((row) => row.verb === verb && row.leaf === undefined);
 }
 
-/** What the shim tells rs about who is asking.
- *
- *  Every routed verb needs this and none of it reaches rs on its own. The
- *  bearer key is MACHINE-granularity, so it names no seat; and the TS verbs
- *  derive identity from the CLI PROCESS's ambient environment — a process that
- *  is the shim, not the daemon. Without transmitting it, rs is asked "who am
- *  I?" by a caller it cannot see.
- *
- *  A CLAIM, NOT AN IDENTITY. The daemon must validate every field of this
- *  against what it can observe; nothing here is evidence of anything, and the
- *  shim deliberately does no validation of its own (an unvalidated
- *  PIJ_SESSION_ID is how a phantom seat gets minted, and the fence for that
- *  lives on the rs side, not here). The shim's whole job is faithful
- *  transmission. */
+export function copilotControlRefusal(
+	harness: string | undefined,
+	command: string,
+): string | undefined {
+	const validation = validateCommand(command);
+	return validation.ok && harness === "copilot" ? COPILOT_CONTROL_REFUSAL : undefined;
+}
+
+/** Wire names are frozen; omitted evidence is not invented or defaulted. */
 export interface CallerContext {
 	readonly pijSessionId?: string;
 	readonly tmuxPane?: string;
@@ -658,13 +328,6 @@ export interface CallerContext {
 	readonly procStart?: number;
 }
 
-/** The ONE allowlist of environment a routed call may carry.
- *
- *  An allowlist and never a blanket env dump: `process.env` on this fleet holds
- *  tokens and keys, and a generic passthrough would ship them to a daemon that
- *  never asked. Adding a field here is a deliberate act, which is the point.
- *  Absent stays ABSENT — a missing key is omitted rather than sent as null, so
- *  rs can tell "the caller had none" from "the caller sent an empty one". */
 export const CALLER_ENV_ALLOWLIST = [
 	["PIJ_SESSION_ID", "pijSessionId"],
 	["TMUX_PANE", "tmuxPane"],
@@ -674,19 +337,8 @@ export const CALLER_ENV_ALLOWLIST = [
 	["CODEX_THREAD_ID", "codexThreadId"],
 ] as const satisfies readonly (readonly [string, keyof CallerContext])[];
 
-/** THE WIRE SPELLING — the single TS-side source of the key names that cross to
- *  Rust. Derived from the allowlist, never hand-written beside it: a second
- *  hand-maintained list is a third thing to keep in agreement, when the whole
- *  problem is that two things already drift.
- *
- *  CROSS-RUNTIME SEAM. The Rust reader matches these by literal. A rename on
- *  either side presents as a GREEN SUITE ON BOTH and a fleet that silently
- *  stops being attributable — both test suites pass, and every seat's report
- *  goes nowhere. This repo has been bitten by exactly this before, with
- *  PIJ_SPAWN_ID, where the Rust->TS match was human-verified only.
- *  `generation-seam.test.ts` holds the guard. */
 export const CALLER_WIRE_KEYS: readonly string[] = [
-	...CALLER_ENV_ALLOWLIST.map(([, field]) => field as string),
+	...CALLER_ENV_ALLOWLIST.map(([, key]) => key as string),
 	"cwd",
 	"pid",
 	"procStart",
@@ -697,46 +349,17 @@ export function buildCallerContext(
 	process: { readonly cwd?: string; readonly pid?: number; readonly procStart?: number },
 ): CallerContext {
 	const caller: Record<string, string | number> = {};
-	for (const [envName, field] of CALLER_ENV_ALLOWLIST) {
+	for (const [envName, key] of CALLER_ENV_ALLOWLIST) {
 		const value = env[envName];
-		if (value !== undefined && value !== "") caller[field] = value;
+		if (value !== undefined && value !== "") caller[key] = value;
 	}
 	if (process.cwd !== undefined) caller.cwd = process.cwd;
 	if (process.pid !== undefined) caller.pid = process.pid;
-	// pid alone is not identifying — it is recycled at boot. The start time is
-	// the tiebreaker, and rs's own register already requires the pair.
 	if (process.procStart !== undefined) caller.procStart = process.procStart;
 	return caller as CallerContext;
 }
 
-/** The seat id a routed call is ABOUT, given the row and the typed argv.
- *
- *  Pure and table-driven: the row says whether this verb speaks about the
- *  caller or about a named seat, and this reads the name out of argv when it
- *  does. Returns undefined when there is no positional to read — which stays
- *  "not known" rather than silently falling back to the ambient seat, because
- *  falling back is precisely the bug this exists to fix. */
-export function subjectSeatFromArgv(
-	row: RsRouteRow,
-	argv: readonly string[],
-	ambient: string | undefined,
-): string | undefined {
-	if (row.seatFrom === "global") return undefined;
-	if (row.seatFrom !== "argument") return ambient;
-	// argv[0] is the verb; a leaf row consumes one more token.
-	const positionals = argv.slice(row.leaf === undefined ? 1 : 2).filter((t) => !t.startsWith("-"));
-	return positionals[0];
-}
-
 export type GenerationForce = "rs" | "legacy" | undefined;
-
-/** Forceback, BOTH directions, through the variable that already forces legacy.
- *
- *  Deliberately NOT `daemonGenerationPreference` from the adapter: that one maps
- *  UNSET to "rs" (req-0019, for the pi/omp extension, which has already cut
- *  over). The CLI must tell "unset" from "explicitly rs" apart, because forced
- *  rs NEVER falls back while default rs does. Same variable, same accepted
- *  values, same error text — one more return case. */
 export function resolveGenerationForce(env: {
 	readonly PIJ_DAEMON_GENERATION?: string | undefined;
 }): GenerationForce {
@@ -748,360 +371,146 @@ export function resolveGenerationForce(env: {
 	);
 }
 
-/** Every way a verb can be served. NEVER collapse two of these into one: the
- *  whole point is that the operator can tell them apart (ac-1143). */
 export type RouteOutcome =
-	/** 1. Served by rs. */
 	| { readonly kind: "rs"; readonly verb: string; readonly addr: string; readonly forced: boolean }
-	/** Legacy, because the operator said so. */
-	| { readonly kind: "legacy-forced"; readonly verb: string }
-	/** Legacy, because the verb is on the DENY LIST — it stays in legacy even
-	 *  if rs serves it and even if someone adds a route row. */
 	| {
-			readonly kind: "legacy-denied";
-			readonly verb: string;
-			readonly why: string;
-	  }
-	/** Legacy, because the table has no row — the default for every verb we
-	 *  have not deliberately moved (this is `tail`'s answer). */
-	| { readonly kind: "legacy-unrouted"; readonly verb: string }
-	/** Legacy, because this verb routes only for a seat KNOWN PRESENT in rs, and
-	 *  this one is not known to be. Distinct from `legacy-seat-followed`, which
-	 *  is a seat we know lives in legacy; this is the weaker, safer statement
-	 *  "we do not know that it lives in rs", and it covers absent, unknown and
-	 *  never-registered alike. */
-	| {
-			readonly kind: "legacy-seat-not-in-rs";
+			readonly kind: "rs-native";
 			readonly verb: string;
 			readonly addr: string;
-			readonly seatId?: string | undefined;
+			readonly exitCode: number;
 	  }
-	/** Legacy, because no rs daemon answered at the resolved addr. */
-	| { readonly kind: "legacy-no-rs-daemon"; readonly verb: string; readonly addr: string }
-	/** Legacy, because this seat holds NO rs credential at all.
-	 *
-	 *  Deliberately NOT the same outcome as `rs-auth-rejected`, and the
-	 *  difference is not cosmetic. A key that EXISTS and is refused means the
-	 *  seat has an rs relationship and something is broken — fail loud. NO key
-	 *  file at all is the common case for a seat with no rs relationship at
-	 *  all: registering into rs requires the key, so a seat that never had one
-	 *  was never registered, and legacy is simply where it has always lived.
-	 *
-	 *  Collapsing the two costs the whole fleet: every seat that has never used
-	 *  rs — and every sandboxed test process, which is how this was caught —
-	 *  would hard-fail on adopt/whoami/report/state/phonehome instead of working
-	 *  exactly as it does today. Still reported, never silent.
-	 *
-	 *  KNOWN LIMITATION, and the message says so rather than picking the
-	 *  comfortable branch: key-absent has TWO causes and this side cannot tell
-	 *  them apart. Either the seat was never registered in rs (benign — the
-	 *  case above), or it WAS registered and the credential was later lost (a
-	 *  wiped state dir, a subprocess with a different HOME, permissions). In
-	 *  that second world an rs-resident seat is served by legacy, which is
-	 *  precisely the re-homing the loud arm exists to prevent — arriving here
-	 *  wearing the fallback's clothes. Distinguishing them requires asking rs,
-	 *  which requires the key we do not have. So the outcome NAMES the
-	 *  ambiguity instead of asserting the happy cause as fact. */
-	| {
-			readonly kind: "legacy-no-rs-credentials";
-			readonly verb: string;
-			readonly addr: string;
-			readonly stateDir: string;
-	  }
-	/** 2. Legacy, because rs is live but does not implement this verb yet. */
-	| {
-			readonly kind: "legacy-rs-not-implemented";
-			readonly verb: string;
-			readonly addr: string;
-			readonly rsPath: string;
-	  }
-	/** 3. Legacy, because the SEAT lives there — followed, never re-homed
-	 *  (oq-1141: follow the seat, but make the follow visible). */
-	| {
-			readonly kind: "legacy-seat-followed";
-			readonly verb: string;
-			readonly addr: string;
-			readonly seatId: string;
-	  }
-	/** NOT a fallback. rs is live but rejected our bearer key.
-	 *
-	 *  Its own named outcome, because it is the one failure an operator can
-	 *  actually FIX, and because letting it read as not-implemented would
-	 *  silently re-home EVERY routed verb to legacy on a missing key — the exact
-	 *  silent re-homing this plan exists to prevent. `require_bearer` is a layer
-	 *  over the whole rs router, so it runs BEFORE the route match: an
-	 *  unauthenticated call to an unknown route also answers 401, which means
-	 *  auth failure MASKS route-absence. Failing loud is the right trade, but
-	 *  only if the operator is TOLD which of the two they are looking at. */
 	| {
 			readonly kind: "rs-auth-rejected";
 			readonly verb: string;
 			readonly addr: string;
 			readonly stateDir: string;
 	  }
-	/** NOT a fallback. rs answered with something we cannot interpret — a
-	 *  non-pij body, a wire-version skew, a truncated response.
-	 *
-	 *  Its own outcome because it used to be no outcome at all: `probeRs`
-	 *  rethrew anything it could not classify, and the entrypoint launched the
-	 *  routing promise with `void`, so a malformed rs body terminated whoami,
-	 *  adopt, report and state as an UNHANDLED REJECTION. Nine carefully
-	 *  distinguished outcomes and a tenth path that escaped all of them.
-	 *
-	 *  It must never fall back: we do not know what rs did, and answering from
-	 *  legacy would be asserting an answer we never received. */
 	| {
 			readonly kind: "rs-unreadable";
 			readonly verb: string;
 			readonly addr: string;
 			readonly detail: string;
 	  }
-	/** NOT a fallback. rs is live, but we could not read its roster, so we do
-	 *  not know which store owns this seat.
-	 *
-	 *  A failed roster read used to collapse to `false` — "rs does not have this
-	 *  seat" — which is a VERIFIED NEGATIVE we never verified. It then followed
-	 *  the seat to legacy: silent re-homing, this plan's headline risk, arriving
-	 *  through the guard added to prevent it. Could-not-read is an error. */
-	| {
-			readonly kind: "rs-roster-unreadable";
-			readonly verb: string;
-			readonly addr: string;
-			readonly seatId: string;
-			readonly detail: string;
-	  }
-	/** NOT a fallback. rs answered with a real failure and it is surfaced. */
 	| {
 			readonly kind: "rs-error";
 			readonly verb: string;
 			readonly addr: string;
 			readonly detail: string;
+			readonly code?: string;
 	  };
 
-/** True when the outcome means "run the legacy CLI path". `rs-error` is
- *  deliberately NOT in here — an rs failure is surfaced, never fallen back. */
-export function servedByLegacy(outcome: RouteOutcome): boolean {
-	return outcome.kind.startsWith("legacy-");
+export function unported(verb: string, addr: string, reason: string): RouteOutcome {
+	return {
+		kind: "rs-error",
+		verb,
+		addr,
+		code: "E-RS-UNPORTED",
+		detail: `E-RS-UNPORTED ${verb}: ${reason}; see ${RS_UNSUPPORTED_STATUS}`,
+	};
 }
 
-/** The diagnostic line. Names the GENERATION and — because two rs daemons have
- *  coexisted on this machine, each with its own state dir — THE ADDR that
- *  served (PM ack O4). "an rs daemon is live" is not the same claim as "the rs
- *  daemon holding this seat is live". */
 export function describeOutcome(outcome: RouteOutcome): string {
 	switch (outcome.kind) {
 		case "rs":
 			return `${outcome.verb}: served by rs at ${outcome.addr}${outcome.forced ? " (forced: PIJ_DAEMON_GENERATION=rs)" : ""}`;
-		case "legacy-forced":
-			return `${outcome.verb}: served by legacy (forced: PIJ_DAEMON_GENERATION=legacy)`;
-		case "legacy-denied":
-			return `${outcome.verb}: served by legacy (DENIED from rs routing on purpose — ${outcome.why})`;
-		case "legacy-unrouted":
-			return `${outcome.verb}: served by legacy (no rs route — this verb is not in the rs route table)`;
-		case "legacy-no-rs-credentials":
-			return `${outcome.verb}: served by legacy (rs at ${outcome.addr} is live, but there is no rs credential at ${outcome.stateDir}/daemon.key — either this seat was never registered in rs, or its credential is gone; these are indistinguishable from here)`;
-		case "legacy-no-rs-daemon":
-			return `${outcome.verb}: served by legacy (no rs daemon answered at ${outcome.addr})`;
-		case "legacy-rs-not-implemented":
-			return `${outcome.verb}: served by legacy (rs at ${outcome.addr} does not implement ${outcome.rsPath} yet)`;
-		case "legacy-seat-not-in-rs":
-			return `${outcome.verb}: served by legacy (this verb routes only for a seat KNOWN PRESENT in the rs store; ${outcome.seatId === undefined ? "no ambient seat resolved" : `\`${outcome.seatId}\` is not known to be there`} — rs at ${outcome.addr} is live)`;
-		case "legacy-seat-followed":
-			return `${outcome.verb}: served by legacy (seat ${outcome.seatId} lives in legacy; followed, not re-homed — rs at ${outcome.addr} is live)`;
+		case "rs-native":
+			return `${outcome.verb}: native pij-rs exited ${outcome.exitCode}`;
 		case "rs-auth-rejected":
-			return `${outcome.verb}: rs at ${outcome.addr} REJECTED THE KEY — not falling back to legacy (read ${outcome.stateDir}/daemon.key; note rs checks auth BEFORE matching the route, so this can also mask a route rs does not implement)`;
+			return `${outcome.verb}: rs at ${outcome.addr} rejected the key at ${outcome.stateDir}/daemon.key; no legacy fallback`;
 		case "rs-unreadable":
-			return `${outcome.verb}: rs at ${outcome.addr} answered with something this CLI cannot read — not falling back to legacy, because we do not know what rs did (${outcome.detail})`;
-		case "rs-roster-unreadable":
-			return `${outcome.verb}: rs at ${outcome.addr} is live but its seat roster could not be read, so which store owns \`${outcome.seatId}\` is UNKNOWN — refusing rather than assuming legacy (${outcome.detail})`;
+			return `${outcome.verb}: unreadable rs response at ${outcome.addr}: ${outcome.detail}`;
 		case "rs-error":
-			return `${outcome.verb}: rs at ${outcome.addr} FAILED — not falling back to legacy (${outcome.detail})`;
+			return `${outcome.detail} (rs at ${outcome.addr})`;
 	}
 }
 
-/** What the caller knows BEFORE any rs call is attempted. */
+/** Locally detected refusals use the same v2 shape; a daemon envelope is NEVER rebuilt. */
+export function routingRefusalEnvelope(outcome: RouteOutcome): string {
+	const code =
+		outcome.kind === "rs-error"
+			? (outcome.code ?? "E-RS-REQUEST")
+			: outcome.kind === "rs-auth-rejected"
+				? "E-RS-AUTH"
+				: "E-RS-WIRE";
+	return JSON.stringify({
+		ok: false,
+		command: `pij ${outcome.verb}`,
+		v: PIJ_ENVELOPE_VERSION,
+		error: outcome.kind === "rs-auth-rejected" ? "auth" : "refused",
+		meta: describeOutcome(outcome),
+		details: { code, verb: outcome.verb, ledger_item: RS_UNSUPPORTED_STATUS },
+	});
+}
+
 export interface PreCallInput {
 	readonly verb: string;
 	readonly leaf?: string | undefined;
 	readonly force: GenerationForce;
-	/** Resolved rs addr — always named, never "wherever rs happens to be". */
 	readonly addr: string;
-	/** Did an rs daemon answer at `addr`? */
 	readonly rsLive: boolean;
-	/** The ambient seat, when one resolves. */
-	readonly seatId?: string | undefined;
-	/** Does that seat exist in the rs store?
-	 *    true / false  — a roster we ACTUALLY READ says so
-	 *    "unreadable"  — we asked and could not find out. NOT the same as false,
-	 *                    and the difference is a silent re-homing.
-	 *    undefined     — not asked (no seat to ask about, or rs is not live). */
-	readonly seatInRs?: boolean | "unreadable" | undefined;
-	/** Does that seat exist in the legacy store? */
-	readonly seatInLegacy?: boolean | undefined;
 }
 
-/** Stage one: decide without calling rs. Either "go ask rs" or a final outcome.
- *
- *  Ordering is load-bearing and is the identity-is-per-seat rule made
- *  mechanical: forced legacy wins over everything; then a missing row; then a
- *  dead daemon; then FORCED rs (which deliberately outranks the seat check, so
- *  an operator can always reach rs); then follow-the-seat. */
 export function decidePreCall(
 	input: PreCallInput,
 	table: readonly RsRouteRow[] = RS_ROUTE_TABLE,
-	deny: readonly DenyEntry[] = NEVER_ROUTED,
-): { readonly kind: "try-rs"; readonly row: RsRouteRow } | RouteOutcome {
+): { readonly kind: "try-rs"; readonly row: RsHttpRoute | RsNativeRoute } | RouteOutcome {
 	const { verb, addr, force } = input;
-	if (force === "legacy") return { kind: "legacy-forced", verb };
-	// BEFORE the table lookup, and before any capability question: a denied verb
-	// is denied no matter what the table or rs says. Forced rs does NOT override
-	// it — an operator forcing a generation is choosing a daemon, not overruling
-	// a false-friend ruling.
-	// A leafless deny entry denies the whole verb; one carrying a leaf denies
-	// only that leaf. Both are checked here, before the table, so a deny always
-	// outranks a row.
-	const denied = deny.find(
-		(entry) => entry.verb === verb && (entry.leaf === undefined || entry.leaf === input.leaf),
-	);
-	if (denied !== undefined) return { kind: "legacy-denied", verb, why: denied.why };
+	if (force === "legacy")
+		return unported(verb, addr, "PIJ_DAEMON_GENERATION=legacy is retired; unset it to use rs");
 	const row = findRoute(verb, input.leaf, table);
-	if (row === undefined) return { kind: "legacy-unrouted", verb };
-	if (!input.rsLive) {
-		if (force === "rs") {
-			return {
-				kind: "rs-error",
-				verb,
-				addr,
-				detail: "PIJ_DAEMON_GENERATION=rs was forced but no rs daemon answered",
-			};
-		}
-		return { kind: "legacy-no-rs-daemon", verb, addr };
-	}
-	if (force === "rs") return { kind: "try-rs", row };
-	// An unreadable roster is an ERROR, never a quiet legacy answer. We do not
-	// know where this seat lives, and guessing is exactly the re-homing the
-	// follow-the-seat rule exists to prevent.
-	if (input.seatId !== undefined && input.seatInRs === "unreadable") {
-		return {
-			kind: "rs-roster-unreadable",
+	if (row === undefined)
+		return unported(
 			verb,
 			addr,
-			seatId: input.seatId,
-			detail: "the rs seat roster could not be read",
-		};
-	}
-	// Follow the seat (oq-1141). Only when we actually know both answers: an
-	// unknown is not a licence to re-home a seat, and it is not a licence to
-	// claim we followed one either.
-	if (input.seatId !== undefined && input.seatInRs === false && input.seatInLegacy === true) {
-		return { kind: "legacy-seat-followed", verb, addr, seatId: input.seatId };
-	}
-	// KNOWN PRESENT, or legacy. See `requiresSeatInRs` for why the mailbox verbs
-	// need a stricter test than follow-the-seat: unknown, unreadable and absent
-	// all go legacy, so a seat in NEITHER store keeps the legacy auto-registration
-	// that every `pij inbox` leaf performs. Placed AFTER the forced-rs check, so
-	// an operator forcing a generation can still reach rs.
-	// UNREADABLE IS NOT A NO. The check above needs a `seatId` to fire, and a
-	// fresh rs-only seat has none — so without this arm an unreadable roster
-	// collapses into "not in rs" and the caller is served by LEGACY on a question
-	// we never answered. That is the verified negative we never verified, and it
-	// re-homes exactly the rs-resident seat this precondition exists to protect.
-	if (row.requiresSeatInRs === true && input.seatInRs === "unreadable") {
-		return {
-			kind: "rs-roster-unreadable",
-			verb,
-			addr,
-			seatId: input.seatId ?? "the seat owning this pane",
-			detail:
-				"this verb routes only for a seat known present in rs, and the rs seat roster could not be read",
-		};
-	}
-	if (row.requiresSeatInRs === true && input.seatInRs !== true) {
-		return {
-			kind: "legacy-seat-not-in-rs",
-			verb,
-			addr,
-			seatId: input.seatId,
-		};
-	}
+			input.leaf === undefined ? "unknown verb" : `unknown command ${verb} ${input.leaf}`,
+		);
+	if ("unported" in row) return unported(verb, addr, row.unported);
+	if ("rsPath" in row && !input.rsLive)
+		return unported(verb, addr, `no rs daemon answered at ${addr}`);
 	return { kind: "try-rs", row };
 }
 
-/** What rs's HTTP answer looked like. */
 export interface RsResponseFacts {
 	readonly status: number;
-	/** Did the body decode as a pij envelope? THIS is the discriminator.
-	 *
-	 *  Verified against the live daemon 2026-09-01: an ABSENT axum route
-	 *  answers 404 with an EMPTY body, while a handler's own not-found answers
-	 *  404 carrying an envelope (`crates/daemon/src/http/mod.rs:650`, send to
-	 *  an unknown seat). So "rs has no such route" and "rs says no" are
-	 *  separable — which they must be, because one falls back and the other
-	 *  must never. Status alone CANNOT tell them apart. */
 	readonly envelopeDecoded: boolean;
-	/** Refusal/parse detail, when there is one. */
+	readonly refused?: boolean;
 	readonly detail?: string | undefined;
 }
 
-/** Stage two: classify rs's answer. Not-implemented falls back; anything rs
- *  actually said does not. */
 export function classifyRsResponse(
 	verb: string,
 	addr: string,
-	row: RsRouteRow,
+	row: RsHttpRoute,
 	facts: RsResponseFacts,
 	forced: boolean,
 	stateDir: string,
 ): RouteOutcome {
-	// Auth runs as a layer ABOVE the route match, so this is checked FIRST: a
-	// 401 tells us nothing about whether the route exists, and must never be
-	// read as not-implemented.
-	if (facts.status === 401 || facts.status === 403) {
+	if (facts.status === 401 || (facts.status === 403 && !facts.envelopeDecoded)) {
 		return { kind: "rs-auth-rejected", verb, addr, stateDir };
 	}
-	// Route absent: 404/405 with nothing an rs handler would have written.
-	if ((facts.status === 404 || facts.status === 405) && !facts.envelopeDecoded) {
-		if (forced) {
-			return {
-				kind: "rs-error",
-				verb,
-				addr,
-				detail: `PIJ_DAEMON_GENERATION=rs was forced but rs does not implement ${row.rsPath}`,
-			};
-		}
-		return { kind: "legacy-rs-not-implemented", verb, addr, rsPath: row.rsPath };
+	if (!facts.envelopeDecoded) {
+		if (facts.status === 404 || facts.status === 405)
+			return unported(verb, addr, `rs does not serve ${row.rsPath}`);
+		return {
+			kind: "rs-unreadable",
+			verb,
+			addr,
+			detail: facts.detail ?? `HTTP ${facts.status} without a valid v2 envelope`,
+		};
 	}
-	if (facts.status >= 400) {
+	if (facts.refused || facts.status >= 400)
 		return {
 			kind: "rs-error",
 			verb,
 			addr,
 			detail: facts.detail ?? `HTTP ${facts.status} from ${row.rsPath}`,
 		};
-	}
 	return { kind: "rs", verb, addr, forced };
 }
 
-/** How an rs-served answer should be printed.
- *
- *  Pure, so it can be tested without a daemon. ac-1143's promise is that the
- *  CLI's external surface does not change, and output SHAPE is half of that
- *  promise — a human typing `pij report now "a" "b"` must not receive a JSON
- *  blob where a sentence belongs.
- *
- *  So a row rs actually serves must bring its own renderer. When it has none
- *  and the caller did not ask for JSON, this REFUSES rather than printing raw
- *  JSON: changing the output shape silently is the failure this plan exists to
- *  remove, and a loud refusal is the only answer that cannot be mistaken for
- *  normal output. Unreachable today — no rs handler exists — which is precisely
- *  why now is the cheap time for it to be strict. */
 export type RsRenderResult =
-	| { readonly kind: "json"; readonly text: string }
-	| { readonly kind: "rendered"; readonly text: string }
-	| { readonly kind: "no-renderer"; readonly message: string }
-	/** `--json` asked for, and this row cannot honour the legacy contract. Loud,
-	 *  because a parser cannot notice a quiet one. */
-	| { readonly kind: "json-refused"; readonly message: string };
+	| { readonly kind: "json" | "rendered"; readonly text: string }
+	| { readonly kind: "no-renderer" | "json-refused"; readonly message: string };
 
 export function renderRsAnswer(
 	row: RsRouteRow | undefined,
@@ -1110,67 +519,13 @@ export function renderRsAnswer(
 	rawEnvelope?: string,
 ): RsRenderResult {
 	if (argv.includes("--json")) {
-		if (row?.jsonOutput === "passthrough" && rawEnvelope !== undefined) {
-			return { kind: "json", text: rawEnvelope };
-		}
-		// NOT `JSON.stringify(payload)`. That handed rs's schema to a caller
-		// promised the TS one.
-		if (row?.jsonOutput === "project" && row.projectJson !== undefined) {
-			return { kind: "json", text: JSON.stringify(row.projectJson(payload)) };
-		}
-		const name =
-			row === undefined ? "?" : row.leaf === undefined ? row.verb : `${row.verb} ${row.leaf}`;
-		return {
-			kind: "json-refused",
-			message: `rs served \`${name}\`, but its answer cannot be projected onto the \`--json\` contract this CLI promises${row?.jsonRefusal === undefined ? "" : ` — ${row.jsonRefusal}`}. Refusing rather than emitting a different schema under the same flag.`,
-		};
+		return rawEnvelope === undefined
+			? { kind: "json-refused", message: "no validated original v2 envelope is available" }
+			: { kind: "json", text: rawEnvelope };
 	}
-	// The row DECLARES how a human sees it, and the declaration is honoured in
-	// the order it names. A row promising `render` that has none is a bug in the
-	// table, not a reason to print a blob.
-	if (row?.humanOutput === "render" && row.render !== undefined) {
-		return { kind: "rendered", text: row.render(payload) };
-	}
-	// An rs handler may carry the exact sentence the TS CLI prints, in `line`.
-	// Printing it beats re-deriving the wording here, which would put a second
-	// copy of that sentence on this side of the wire — the thing that drifts.
-	const line = (payload as { readonly line?: unknown } | null | undefined)?.line;
-	if (typeof line === "string") return { kind: "rendered", text: line };
-	const name =
-		row === undefined ? "?" : row.leaf === undefined ? row.verb : `${row.verb} ${row.leaf}`;
-	return {
-		kind: "no-renderer",
-		message: `rs served \`${name}\` but the route table has no human renderer for it — refusing to print raw JSON where the CLI's own output belongs (re-run with --json, or give the row a \`render\`)`,
-	};
+	if (row === undefined || !("rsPath" in row))
+		return { kind: "no-renderer", message: "no HTTP response renderer for this invocation" };
+	if (row.render !== undefined) return { kind: "rendered", text: row.render(payload) };
+	const line = text(payload, "line");
+	return { kind: "rendered", text: line ?? JSON.stringify(payload, null, 2) };
 }
-
-/** Is this a DIRECT paneless `adopt` — the form with no durable process to bind?
- *
- *  Pure, so it can be tested as behaviour rather than pinned by scanning source.
- *  (The first version of this guard WAS a source scan, and it broke on the very
- *  next edit to the code it was guarding — a pin that fails on refactor teaches
- *  the next person to loosen it.)
- *
- *  Legacy grammar requires a `%N` pane positional; routing now runs ahead of
- *  that parse, so without this the paneless form reaches rs, whose paneless
- *  branch accepts `caller.pid`/`caller.procStart` as bind evidence — and the
- *  only process the shim can offer is its own Node CLI, which exits when the
- *  command does. The seat is then bound to a dead pid, and the next phonehome
- *  is unbound or, worse, re-bound to whatever recycled that pid.
- *
- *  `--current` is the SANCTIONED paneless form: it aliases to `inbox register`,
- *  which is on the deny list and never routed. It must pass through. */
-export function isDirectPanelessAdopt(verb: string, args: readonly string[]): boolean {
-	if (verb !== "adopt") return false;
-	if (args.includes("--current")) return false;
-	return !args.some((token) => token.startsWith("%"));
-}
-
-/** What the caller is told when that form is refused. Its own constant so the
- *  REASON travels with the refusal — a bare grammar complaint would be "fixed"
- *  by someone relaxing the grammar. */
-export const PANELESS_ADOPT_REFUSAL =
-	'E-ARG: `pij adopt` needs the pane it is adopting — `pij adopt "$TMUX_PANE" --harness <h>`.\n' +
-	"A paneless adopt has no durable process to bind to: the only process identity this\n" +
-	"command could offer is the CLI's own, which exits when the command does, leaving the\n" +
-	"seat bound to a dead pid. Use `pij adopt --current` for the paneless form.\n";

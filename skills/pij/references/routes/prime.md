@@ -9,22 +9,16 @@ below it, platform-store facts, and single-writer government documents.
 ## Role triage
 
 Use the first matching deterministic probe. Do not choose by persona or intent.
-Resolve the current id with `pij whoami --json` and compare registry `id` fields mechanically.
-`pij list --prime --here --json` is current-prime-only; widen as described below before concluding absence.
-`oldPrime` is history, never an active-seat signal; audit retired seats with `pij tree --global --all --json`.
+Resolve the current id with `pij whoami --json`; read the complete v2 envelope and compare rs seat ids mechanically. `pij list --json` is the unfiltered active rs roster and `pij node show <id> --json` is its governed subtree. List `--prime`/`--here`/`--archived`, tree and link are unported, not alternative probes.
 
-**An empty `--here` result is NOT evidence that no prime exists.** Widen to
-unscoped `pij list --prime --json` before concluding absence — a repo's prime is
-routinely recorded against a different folder (worktree, symlinked path). A live
-o-prime was missed exactly this way on 2026-07-27, and the seat that missed it
-went on to designate itself prime over the top.
+RoleService's `role` is an assertion, **not prime designation**. Inspect current designation receipts and `pij spine events --json` (decode each event's JSON-string payload), project records and authoritative government/human rulings. There is no dedicated rs prime-list/getter projection in this cutover; if those sources cannot establish absence, refuse to bootstrap by inference and ask the owning prime/human. A missing local directory or empty active roster never proves no prime exists. See [Unsupported status](../../../../docs/how/pij-rs-api.md#unsupported-status).
 
 | Probe | Role | Load exactly this next |
 |---|---|---|
-| My current id appears in `pij list --prime --here --json` | o-prime | [`../prime/orient-oprime.md`](../prime/orient-oprime.md), then stop |
-| Fallback: `<government-root>/spine.md` names my pij id as o-prime in an unmigrated prose government, or the human explicitly seats me | o-prime | [`../prime/orient-oprime.md`](../prime/orient-oprime.md), then stop |
-| The spine roster names my pij id as a stream, or I hold an adoption brief | stream | [`../prime/orchestrator.md`](../prime/orchestrator.md), then stop |
-| **No prime for this repo after BOTH the scoped and the unscoped probe**, and `pij project list` names no project here | bootstrapper | [`../prime/rituals/bootstrap.md`](../prime/rituals/bootstrap.md), then stop |
+| Current rs designation evidence names my resolved id, consistent with authoritative government | o-prime | [`../prime/orient-oprime.md`](../prime/orient-oprime.md), then stop |
+| Human explicitly seats me, or an unmigrated prose government's authoritative spine names me; reconcile with rs evidence first | o-prime | [`../prime/orient-oprime.md`](../prime/orient-oprime.md), then stop |
+| The authoritative roster/brief names my resolved id as a stream | stream | [`../prime/orchestrator.md`](../prime/orchestrator.md), then stop |
+| Human/authoritative evidence establishes no current prime here, and project records name no project here | bootstrapper | [`../prime/rituals/bootstrap.md`](../prime/rituals/bootstrap.md), then stop |
 | I am a fleet worker with a bounded packet | worker | Stop here; use `/pij pair` for a fleet or `/pij peer` for one colleague. |
 
 Bootstrapper is LAST: require a silent store. A local `.harness/government/`
@@ -33,8 +27,7 @@ is the default; documents live separately. Resolve `<government-root>` through
 [Governance branch — the rules](../prime/rituals/bootstrap.md#governance-branch--the-rules),
 never from a main/stream directory listing.
 
-If probes conflict, registry designation is the seat signal; reconcile stale
-government rows with `pij whoami`, `pij state <id>`, and the human ruling.
+If sources conflict, stop designation and reconcile the rs receipt/event, current caller/state and human ruling; display role alone does not resolve the conflict.
 
 ## Ritual index
 
@@ -64,16 +57,14 @@ government rows with `pij whoami`, `pij state <id>`, and the human ruling.
 ## Preconditions
 
 - Use `00-routing.md` § C1 for harness mode/adoption and § C2 for canary proof.
-- A git repo, tmux, the ambient `harness` CLI, and pij daemon must be available.
-  `pij spawn` starts the daemon; an adopted seat confirms itself with
-  `pij phonehome`.
+- A git repo, tmux, ambient `harness` and the intended rs daemon must be available. `pij-rs ping --json` establishes reachability; native spawn does not imply an automatic legacy daemon start. An adopted seat confirms itself with `pij phonehome`.
 - The human names work. The o-prime never invents portfolio items.
 
 ## Failure modes
 
 | Signal | Move |
 |---|---|
-| `E-NOID` / `E-AMBIG` while seating | Run `pij whoami`, `pij list --here`, and `pij phonehome`; reconcile dead descriptors before briefing anyone |
+| Identity/ownership refusal while seating | Read `pij whoami --json`, `pij list --json` and `pij phonehome --json`; reconcile observed binding/tombstone evidence without legacy writes |
 | Sends queue without delivery | Check daemon health and stale registry rows; follow [`../prime/rituals/bootstrap.md#recovery`](../prime/rituals/bootstrap.md#recovery) |
 | Roster, baton book, or live peers disagree | Stop allocation; run the restart audit in [`../prime/rituals/bootstrap.md#recovery`](../prime/rituals/bootstrap.md#recovery) |
 | A step needs doctrine not present here | Load one ritual or [`../prime/protocol.md`](../prime/protocol.md), never the whole payload |

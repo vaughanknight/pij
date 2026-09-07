@@ -1,0 +1,21 @@
+{
+  "status": "RULED_AND_IMPLEMENTED_SOURCE_ONLY",
+  "owner": "pij-adjacent-falcon",
+  "question": "Required legacy idle-Pi notice=delivered conflicts with native send always returning Queued for Pi and the explicit prohibition on fabricating delivery from admission. May native notice report queued until real ReaderRead acknowledgement while retaining one persisted message and all eight distinct host cases, or is a newly specified acknowledgement-wait operation required?",
+  "recommendation": "Keep existing DeliveryService routing and report its actual outcome; do not equate admission with delivery, change Pi transport ownership, invent a wait/retry loop, or fake an acknowledgement.",
+  "ruling_owner": "pij-minor-unicorn",
+  "honest_receipt_ruling": "Use ACTUAL receipts: extension-stream Pi/Omp stays queued until ReaderRead, socket/native delivered only when transport confirmed; amend only idle-Pi expected notice from delivered to queued, retaining all counts.",
+  "stale_evidence_ruling": "Unverified iff existing core::liveness::alive says Dead or Recycled, proc_start-aware. Legacy stale-heartbeat row maps to stale incarnation; no heartbeat-age classifier is restored.",
+  "u6_coordination": "pij-general-miriam amended idle/stale row descriptions and receipt in u6-notice-honest-receipt-amendment.patch SHA25655a0c768a0764d93c3d497e8b056c2b54812474d6a1610a6542be28196ee4ca8; all eight rows and message/no-write counts retained.",
+  "ruling_source": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/u4-notice-gate-task.json",
+  "source_root": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4-gate",
+  "evidence": [
+    {"path":"crates/daemon/src/delivery/mod.rs:387-393", "fact":"Pi/Omp/Copilot select extension_stream and DeliveryRung::Observe; socket transport is not consulted."},
+    {"path":"crates/daemon/src/delivery/mod.rs:528-556", "fact":"Observe enqueues the durable delivery and returns queued_outcome; new Pi send has no synchronous Delivered path."},
+    {"path":"crates/daemon/src/delivery/mod.rs:2547-2577", "fact":"Existing omp_and_pi_use_the_extension_stream_without_composer_gates test requires Queued, one queue row and zero transport/tmux calls. Source evidence only; not rerun."},
+    {"path":"crates/daemon/src/lib.rs:359-365", "fact":"DeliveryService takes no LivenessPort; raw send cannot distinguish live/dead process or fresh/stale heartbeat. Eight-case classification must not invent a second liveness policy."}
+  ],
+  "dependent_work": [],
+  "reachable_work": ["Existing sender integration after request/event persistence", "Missing/dissolved no-send behavior", "Native shared-SQL request/message/event test fixture", "Send-error preservation and exact legacy notice text"],
+  "validation": "None; source-only repair barrier remains in force."
+}

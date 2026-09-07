@@ -1,0 +1,16 @@
+{
+  "current": {
+    "fixture": "crates/testkit/fixtures/harnesses/omp-18-0-10-footer.txt",
+    "source": "pij-written-lansra canary: own pane %3865 footer quoted via live pij_send",
+    "version": "omp/18.0.10",
+    "meaning": "Display label must resolve uniquely through the existing OMP catalog; trailing effort/status is not part of model."
+  },
+  "prior": {
+    "fixture": "crates/testkit/fixtures/harnesses/omp-18-1-11-no-model-footer.txt",
+    "source": "pij-rs spine_events seq14828, payload.last_output; corroborating seq14832 and14838",
+    "version_evidence": "assets/inputs/prime-ledger-2026-09.md:17",
+    "meaning": "Runtime literally reported no-model. Preserve model absence and bind refusal; never map it to the requested model."
+  },
+  "baseline_regression_patch": "omp-observer-red.patch",
+  "validation": "Tests authored; run after concurrent edit barrier. No green claim yet."
+}

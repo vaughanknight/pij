@@ -17,6 +17,7 @@ pub mod federation;
 pub mod lifecycle;
 pub mod pane_observer;
 pub mod pointer;
+pub mod reaper;
 mod registration;
 
 // u-orchestration's git-facts gatherer: IO belongs at the runtime root, and a
@@ -39,7 +40,7 @@ use pij_harnesses::proc::ProcLiveness;
 use pij_harnesses::{HarnessRegistry, InteractionGate};
 use pij_store::{SqliteQueue, SqliteRegistry, SqliteSpine};
 use pij_testkit::fakes::{
-    FakeHarness, FakeLiveness, FakeQueue, FakeRegistry, FakeSpine, FakeTmux, FakeTransport,
+    FakeHarness, FakeLiveness, FakeQueue, FakeRegistry, FakeTmux, FakeTransport,
 };
 use pij_tmux::TmuxAdapter;
 use pij_transport::UdsTransport;
@@ -123,6 +124,14 @@ pub struct Services {
     /// and daemon IO rather than implementing an eighth port, so there was no
     /// refusal to delete.
     pub orchestration: Arc<OrchestrationService>,
+    /// Shared asserted-role authority, joined onto local read projections.
+    pub roles: Arc<http::role::RoleService>,
+    /// Governance records and delivery-receipt projection on the event spine pool.
+    pub governance: Arc<http::governance::GovernanceService>,
+    /// Durable questions and answers on the shared publication and delivery paths.
+    pub decisions: Arc<http::decisions::DecisionService>,
+    /// Existing anomaly detector supplied by the shared governance records.
+    pub anomalies: Arc<http::anomalies::AnomalyService>,
     /// Persistent detached commands and completion delivery.
     pub background: Arc<background::BackgroundService>,
     /// Whether this daemon is running entirely on fakes.
@@ -154,6 +163,8 @@ pub struct Daemon {
     /// the daemon: a sidecar loop outliving its daemon would keep claiming queue
     /// rows a successor has already taken.
     sidecars: pij_sidecars::SidecarHandles,
+    governance_shutdown: tokio::sync::oneshot::Sender<()>,
+    governance_observer: tokio::task::JoinHandle<Result<()>>,
 }
 
 impl Daemon {
@@ -174,7 +185,8 @@ impl Daemon {
         // shutdown future sends its stop before awaiting its join, so no slow
         // HTTP drain can leave queue workers claiming new rows in the meantime.
         let _ = self.shutdown.send(());
-        let (served, drained, bound, observed, forwarded, background, ()) = tokio::join!(
+        let _ = self.governance_shutdown.send(());
+        let (served, drained, bound, observed, forwarded, background, (), governance) = tokio::join!(
             async {
                 self.joined.await.map_err(|error| PijError::Adapter {
                     adapter: "daemon".to_string(),
@@ -187,11 +199,22 @@ impl Daemon {
             self.federation_worker.shutdown(),
             self.background_loop.shutdown(),
             self.sidecars.shutdown(),
+            async {
+                self.governance_observer
+                    .await
+                    .map_err(|error| PijError::Adapter {
+                        adapter: "daemon/governance".to_string(),
+                        message: format!("delivery observer task failed: {error}"),
+                    })?
+            },
         );
+        // Even failed producer joins must drain admitted, cancellation-shielded writes.
+        self.event_bus.flush().await;
         served?;
         drained?;
         bound?;
         observed?;
+        governance?;
         background?;
         forwarded
     }
@@ -217,6 +240,12 @@ impl std::fmt::Debug for Daemon {
 /// # Errors
 /// [`PijError`] from whichever real adapter refuses to start.
 pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<Services> {
+    if config.adapters.registry.is_real() && !config.adapters.spine.is_real() {
+        return Err(PijError::Adapter {
+            adapter: "daemon/config".to_string(),
+            message: "E-RS-BACKEND-PAIR: Real Registry requires Real Spine for atomic one-writer ordering; select both real or use coherent in-memory persistence".to_string(),
+        });
+    }
     // ONE pool, shared by every real store adapter (lynx's cross-government
     // comparison, wave-3 compose fix). This opened the store three times: three
     // connection pools, three sets of connections, three boot self-migrations
@@ -225,30 +254,43 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
     // The trait split is unchanged and is the point: Registry, Spine and Queue
     // stay three ports with three implementations. What they share is the
     // CONNECTION, which is a resource, not a contract.
-    let pool = if needs_store(config) {
+    let persistent_pool = if needs_store(config) {
         Some(pij_store::open(&config.store_path).await?)
     } else {
         None
     };
-    let background_pool = match &pool {
+    let background_pool = match &persistent_pool {
         Some(pool) => pool.clone(),
         None => pij_store::open("").await?,
     };
     let pool = |name: &str| -> Result<pij_store::StorePool> {
-        pool.clone().ok_or_else(|| PijError::Adapter {
+        persistent_pool.clone().ok_or_else(|| PijError::Adapter {
             adapter: format!("daemon/{name}"),
             message: "a real adapter was selected but no store was opened".to_string(),
         })
     };
 
+    // Fake persistence is explicitly one in-memory SQL sequence domain, so
+    // atomic governance callbacks and ordinary events replay the same history.
+    // A real queue may retain its independently configured persistent pool.
+    let spine_pool = if config.adapters.spine.is_real() {
+        pool("spine")?
+    } else {
+        pij_store::open("").await?
+    };
+    let raw_spine: Arc<dyn Spine> = Arc::new(SqliteSpine::new(spine_pool.clone()));
+    let event_bus = Arc::new(events::EventBus::new(
+        raw_spine,
+        config.event_buffer_capacity,
+    )?);
     let registry: Arc<dyn Registry> = match config.adapters.registry {
-        AdapterChoice::Fake => Arc::new(FakeRegistry::new()),
-        AdapterChoice::Real => Arc::new(SqliteRegistry::new(pool("registry")?)),
+        AdapterChoice::Fake => Arc::new(events::PublishedFakeRegistry::new(
+            Arc::new(FakeRegistry::new()),
+            event_bus.clone(),
+        )),
+        AdapterChoice::Real => Arc::new(SqliteRegistry::new(pool("registry")?, event_bus.clone())),
     };
-    let spine: Arc<dyn Spine> = match config.adapters.spine {
-        AdapterChoice::Fake => Arc::new(FakeSpine::new()),
-        AdapterChoice::Real => Arc::new(SqliteSpine::new(pool("spine")?)),
-    };
+    let spine: Arc<dyn Spine> = event_bus.clone();
     let queue: Arc<dyn Queue> = match config.adapters.queue {
         AdapterChoice::Fake => Arc::new(FakeQueue::new(config.delivered_id_capacity)?),
         AdapterChoice::Real => Arc::new(SqliteQueue::new(
@@ -312,13 +354,6 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         AdapterChoice::Real => Arc::new(ProcLiveness::new()),
     };
 
-    // The bus is composed from the spine, so it is built after it and shares the
-    // same Arc — a publish is durable through exactly the store this daemon reads.
-    let event_bus = Arc::new(events::EventBus::new(
-        Arc::clone(&spine),
-        config.event_buffer_capacity,
-    )?);
-
     let orchestration = Arc::new(OrchestrationService::new());
 
     let delivery = Arc::new(delivery::DeliveryService::new(
@@ -328,6 +363,30 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         Arc::clone(&interaction),
         Arc::clone(&event_bus),
     )?);
+    let roles = Arc::new(http::role::RoleService::new(
+        Arc::clone(&registry),
+        pij_store::SqliteOrchestration::new(spine_pool.clone()),
+        Arc::clone(&event_bus),
+    ));
+    let decisions = Arc::new(http::decisions::DecisionService::new(
+        pij_store::SqliteOrchestration::new(spine_pool.clone()),
+        Arc::clone(&registry),
+        Arc::clone(&event_bus),
+        Arc::clone(&delivery),
+        config.adapters.queue,
+        config.adapters.spine,
+    ));
+    let anomalies = Arc::new(http::anomalies::AnomalyService::new(
+        pij_store::SqliteOrchestration::new(spine_pool.clone()),
+        Arc::clone(&registry),
+        Arc::clone(&event_bus),
+        Arc::clone(&liveness),
+    ));
+    let governance = Arc::new(http::governance::GovernanceService::new(
+        pij_store::SqliteOrchestration::new(spine_pool),
+        Arc::clone(&event_bus),
+        pane_signal_dir.join("governance-packets"),
+    ));
     let background = Arc::new(background::BackgroundService::new(
         pij_store::background::SqliteBackground::new(background_pool),
         Arc::clone(&registry),
@@ -353,6 +412,10 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         harnesses,
         liveness,
         delivery,
+        roles,
+        governance,
+        decisions,
+        anomalies,
         background,
         offline: config.is_fully_offline(),
     })
@@ -550,6 +613,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         Arc::clone(&services.registry),
         Arc::clone(&services.liveness),
         Arc::clone(&services.event_bus),
+        Arc::clone(&services.roles),
     ));
 
     let drain = Arc::new(pointer::DrainWorker::new(
@@ -644,6 +708,20 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         }
     };
 
+    let (governance_shutdown, governance_shutdown_rx) = tokio::sync::oneshot::channel();
+    let governance = Arc::clone(&services.governance);
+    let governance_observer = tokio::spawn(async move {
+        tokio::select! {
+            result = governance.follow_deliveries() => {
+                if let Err(error) = &result {
+                    eprintln!("pij-rs governance delivery observer stopped: {error}");
+                }
+                result
+            }
+            _ = governance_shutdown_rx => Ok(()),
+        }
+    });
+
     let pane_observer = pane_observer.start();
     let federation_worker = Arc::clone(&federation).start();
     let claude_bind_loop = start_resilient_claude_binder(claude_binder, delivery_interval);
@@ -692,5 +770,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         background_loop,
         pane_observer,
         sidecars,
+        governance_shutdown,
+        governance_observer,
     })
 }

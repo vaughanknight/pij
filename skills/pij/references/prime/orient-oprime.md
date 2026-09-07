@@ -178,18 +178,11 @@ tombstone, never erase).
 
 ## Your boot sequence
 
-1. Confirm your channel. **Pi/OMP: the extension registered you at boot; run
-   `pij whoami` to confirm, never adopt or inbox register. Claude/Copilot/Codex:
-   a fresh seat is unregistered, so lead with `pij adopt "$TMUX_PANE" --harness
-   <h>`.** For those control-plane seats, `E-AMBIG` from `phonehome`/`whoami`
-   means exactly this; the pane binding survives per-call shells where an exported
-   `PIJ_SESSION_ID` does not. Then `pij phonehome` to confirm; purge any dead
-   descriptor of your own prior seat — a stale descriptor can wedge delivery for
-   EVERYONE (INC-001 class).
+1. Confirm delivery ownership per C1. Native Pi/OMP/Copilot extensions own registration; never adopt or start a competing receiver. Other supported tmux seats adopt only the exact current pane, carrying the true parent claim. Read `pij whoami --json` and `pij phonehome --json`; inspect the original v2 binding evidence. Unknown/stale process evidence is not permission to purge a descriptor. Use authorized rs close or conservative reap for records; legacy files are not rs authority. In-place `revive --attach` is unported.
 2. Read inherited [store facts](./rituals/store-native.md) and documents at the
    resolved `<government-root>`: unmigrated spine → baton book → prime-flow → open
    briefs → latest reports. Audit dead holders, stale rows, orphaned peers in
-   `pij list`, and the named PRD reconciliation owner; reconcile before acting.
+   `pij list --json` and `pij node show <id> --json`, and the named PRD reconciliation owner; reconcile before acting. Role is not designation; use current designation receipts/spine and authoritative government, never unsupported list filters to infer absence.
 3. Read the per-repo config (in the protocol doc) and the local orient.
 4. Announce yourself on the human status channel, self-identified. On every
    human attach, resync them in one read: roster deltas since the last digest

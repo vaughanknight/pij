@@ -1,0 +1,14 @@
+{
+  "contract": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/gate-repair-contract.json",
+  "peer": "pij-written-lansra",
+  "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u2-gate",
+  "target": "Production .pi/extensions/pij adapters/generation-router.ts, core/generation-routing.ts, cli.ts and necessary existing ambient identity helpers; Rust daemon HTTP/shim/native registration/identity services if required; direct cli.inbox.integration.test.ts and affected routing boundary tests. No other six caller-test files or harness smoke. Coordinate any unexpectedly shared file before editing.",
+  "change": [
+    "Investigate existing verified ambient registration and RS native admission before editing; restore inbox register through RS only, not FsRegistry/FsChannel authority. Prefer existing native register/identity APIs and records over new ports or parallel naming/state.",
+    "Keep ambient registration idempotent and repair stale/missing ambient id only with real native identity evidence. Preserve conflicting/native-session/parent-process protections; never register process.pid of a CLI that exits.",
+    "Complete registration -> wait -> send/receive/ack under Rust with complete v2 envelopes. Preserve user text/reply correlation and existing self-send refusal. Paneless is pull semantics, not native-extension push attestation.",
+    "Preserve and migrate successful external lifecycle tests for Claude/Copilot/Codex from cli.inbox.integration.test.ts; do not turn those successes into refusals. Add missing runtime contract tests only where needed. Update current routing tests that incorrectly assert inbox register is unported.",
+    "Tell u1 the actual resolved ambient prerequisites and any existing helper suited to its smoke; smoke consumes only public CLI contract, no new cross-slice helper API."
+  ],
+  "acceptance": "READY_TO_VALIDATE source patch against78531, sha256 and complete path hashes, changes/findings map. PM runs validation once after all slices return. No code/test success inferred from source readiness."
+}

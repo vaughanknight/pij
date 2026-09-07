@@ -1,0 +1,189 @@
+- id: DL-001
+  kind: difficulty
+  description: "Plan 139 fresh linked worktree has no node_modules by design; harness boot fails TS2688 node types. Main binaries read-only alone do not resolve TypeScript module/type lookup. Need safe worktree dependency visibility before composed gate, without installing or changing main."
+  fp: 22b8dc8dfacf
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T00:09:24.074Z"
+- id: COORD-001
+  kind: coordination
+  description: "Plan 139 wave-zero toolchain: cargo/rustc 1.95.0, omp 18.0.10, harness 0.14.0. Units must preserve global binaries and record actual versions in receipts."
+  fp: 645a5fc16a2f
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T00:11:19.148Z"
+- id: DL-002
+  kind: difficulty
+  description: "Plan 139 isolated daemon --state-dir and private HOME still observes shared tmux server and may install taps; isolate TMUX socket before boot. Stopped baseline daemon when foreign-tap logs exposed boundary. Packet isolated-daemon recipe needs this third resource boundary."
+  fp: f6a8733f9819
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T00:12:51.531Z"
+- id: DL-003
+  kind: difficulty
+  description: "Prime sent 4 seam rulings while read-only scout subagents ran; none reached the PM live context until consolidated resend. Suspected known OMP parent-message-to-subagent routing issue. Require consolidated numbered ruling receipt before wave freeze."
+  fp: 333f531115e6
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T00:15:32.175Z"
+- id: DL-004
+  kind: difficulty
+  description: "Plan 139 private APFS-cloned dependencies restore typecheck. Baseline harness boot then fails smoke:file-watch-notify while other listed smoke cases pass. Preserve this baseline proof ceiling; inspect smoke artifact before composed final gate, never mark checks green by ignoring it."
+  fp: f7091e0afdeb
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T00:18:33.486Z"
+- id: WIN-001
+  kind: win
+  description: "Full baseline harness checks passed all nine sensors at 2026-09-07T00:26:57Z; earlier boot-only file-watch-notify smoke failure did not recur. Preserve both observations; do not infer a root cause from a clean rerun."
+  fp: 3bd8a778be15
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T00:27:44.613Z"
+- id: DL-005
+  kind: difficulty
+  description: "LSP references for absolute linked-worktree build_services returned empty; workspace/symbol returned main-checkout URI instead. Server availability does not prove linked-worktree indexing. Scope-check LSP before believing absent callers; compiler and exact worktree reads remain required."
+  fp: fd808952dfb5
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T00:30:48.874Z"
+- id: DL-006
+  kind: difficulty
+  description: "Wave-zero scout claimed SqliteOrchestration::seat_role existed; u3 full source read proved it absent. PM ruled explicit new seat_role->Option<RoleAssignment> instead. Inventory summaries are not symbol receipts: require exact declarations before freezing inter-unit Rust calls."
+  fp: 6e7b32cdb7fd
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T00:33:57.864Z"
+- id: SUGG-001
+  kind: improvement-suggestion
+  description: "u3 caught self-consistent but source-wrong u0 sample values: unsupplied project metadata, caller repo, baton actor, and stream naming. Prime ruled existing conventions win VALUE mismatches; route/field contract changes still need notice. Future contract generators should obtain sample values from real domain constructors rather than hand-authoring plausible defaults."
+  fp: 72ce261f43a9
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T00:54:27.586Z"
+- id: WIN-002
+  kind: win
+  description: "Plan139 now has executable pre-fix RED receipts for all wave1 units plus OMP observer. Prime approved coherent fake persistence: one in-memory SqliteSpine for events+atomic governance, host adapters still fake; real Registry/Fake Spine remains refused. This prevents fake/SQL sequence domains from silently diverging in composition."
+  fp: b6557d7e28c2
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T02:15:02.335Z"
+- id: DL-007
+  kind: difficulty
+  description: "Builder progress recipe requires local node_modules/.bin/ddocs (and dd alias); neither exists even in private cloned dependency tree. Repo-approved ambient ddocs already edits plan/tasks successfully. Checking bundled execution-log/backpressure schemas before using same observed writer; no registry fetch or global update performed."
+  fp: 975bbf21486a
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T03:12:11.840Z"
+- id: DL-008
+  kind: difficulty
+  description: "Plan139 wave-one gate exposed a private tmux fixture treating command success and100ms sleep as physical pipe proof. Repaired at5a8a250: ignore user tmux config, await actual pipe absence and marker bytes, preserve prior bytes; exact witness plus full Rust/engineering gates passed. No wave-two liveness code was present at failure."
+  fp: 2bd6c37280f1
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T04:45:17.027Z"
+- id: DL-009
+  kind: difficulty
+  description: "Plan139 phase2 canary proof must consume the actual queue pointer and nonce packet, SHA-ack as recipient, then observe and stream pass; descriptor presence is not a canary. Positive witness is real SQL/HTTP with scripted hosts, explicitly not a live OMP canary. Proof links remain grade-specific."
+  fp: da2f38e8b878
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T04:56:08.179Z"
+- id: DL-010
+  kind: difficulty
+  description: "Plan139 phases1/2 have zero-error scoped task gates and immutable full proof, but canonical builder advance refuses E470: assets/impl-guide.dd.json missing in existing plan layout. No raw-nav bypass; investigate existing guide location and preserve authored links before adapting layout."
+  fp: a6025fb190e2
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T05:22:00.453Z"
+- id: CONF-001
+  kind: confusion
+  description: "harness plan validate accepts the exact absolute plan target and scoped task address, reports zero errors/warnings with correct task closure, but data.path displays repo-root plan.dd.json instead of the supplied docs/plans/139 path. Preserve argv and address in receipts; do not infer a different validated source from that display."
+  fp: 02a4f5127142
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T05:24:20.781Z"
+- id: DL-011
+  kind: difficulty
+  description: "Plan139 recovery queried queue jobs in the governance spine database, but supported FakeQueue and RealQueue+FakeSpine have different authorities. Empty wrong-table evidence is not absence. Explicit supersede now requires root-verified shared real SQL queue/spine and otherwise names both backends in E-RS-ANSWER-AUTHORITY-SPLIT; ordinary answers remain supported."
+  fp: d75b2c5493ff
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T05:32:11.606Z"
+- id: CONF-002
+  kind: confusion
+  description: "u6 initially inferred kebab-case refusal codes from frozen prose; source inspection proved Rust ErrorKind emits snake_case and existing TS matched. Prime ruled runtime values win: preserve v2 wire, correct prose, and use one fixture consumed by Rust emitter and TS decoder. No decoder-only or Rust business spelling change was applied."
+  fp: b0e80d11c433
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T07:32:54.257Z"
+- id: DL-012
+  kind: difficulty
+  description: "Cross-session artifact IDs are not shared; exporting an artifact through a paged helper preserved only 300 lines plus a truncation footer. Persist complete validator output and its final diagnostic summary at an absolute shared path before a source-repair handoff. New native/shim byte corpus and shipped CLI test now defend original response buffers rather than reserialization."
+  fp: 5f65501de59e
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T09:58:19.332Z"
+- id: CONF-003
+  kind: confusion
+  description: "OMP todo schema exposes nullable optional fields but runtime tool.todo rejects explicit null, and suppressed return objects concealed failed state updates. Omitting unused optional fields succeeds; check the returned status before claiming tracking progress. Canonical DD receipts were unaffected."
+  fp: 67c0379bc8e0
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T15:14:55.655Z"
+- id: DL-013
+  kind: difficulty
+  description: "Final review produced a valid builder/review narrative DD document, but harness builder review consumes builder/team with a single review section. Schema-valid prose is not a machine ReviewReceipt. Source also hardcodes assets/impl-guide, incompatible with prime-required legacy root guide. Need receipt kind/schema validation in reviewer packets before release; preserve the legacy ruling and report importer incompatibility, never fabricate import success."
+  fp: cd183d3b3bba
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T15:27:17.428Z"
+- id: DL-014
+  kind: difficulty
+  description: "Independent reviewer machine receipt passed structural schema while confusing the review worktree with the registration root. Public pij-rs list and reviewer whoami/PWD established the actual root; receipt corrected without re-adopt or registry writes. Schema conformance proves shape, not field provenance. Reviewer receipt admission should verify each identity field against its actual instrument, not a plausible context value."
+  fp: 090c3e4e9eba
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T15:53:33.577Z"

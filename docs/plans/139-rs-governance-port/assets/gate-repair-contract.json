@@ -1,0 +1,23 @@
+{
+  "base": "78531a0ba2f22469ab72289ba9ff6c1635e863e7",
+  "goal": "Repair full-gate gaps without restoring legacy fallback or weakening paneless functionality",
+  "constraints": [
+    "Source only: NO builds/tests/typecheck/lint/formatters/commits; PM validates after shared edit barrier.",
+    "Use absolute assigned new worktree paths; prior worktrees and every observation buffer stay preserved.",
+    "Load pij and builder. Verify assigned HEAD and existing model/identity; use semantic waiting, never HOLD.",
+    "No production daemon restart/port7461 fixtures, global configuration/links/node_modules/toolchain changes, or pij inbox transport-log reads.",
+    "No skip/only/suppression, no expectation-only downgrade of a required success contract, no hidden legacy CLI entry. Preserve pure store tests and existing domain behavior.",
+    "Main owns Rust client.rs tail boxing and gate-timeout investigation. Do not touch that file or Envelope raw_json."
+  ],
+  "interfaces": {
+    "u2": "Owns production paneless/external registration+identity+inbox/send path and its direct integration/routing tests.",
+    "u6": "Owns six remaining listed old caller-test files, excluding cli.inbox.integration.test.ts and u2 routing tests.",
+    "u1": "Owns harness/scripts/smoke.ts and smoke.test.ts plus a necessary harness-only fixture helper if existing patterns cannot be reused; no .pi source/tests.",
+    "public_paneless": "pij inbox register --json MUST succeed via Rust authority for verified external/paneless Claude/Copilot/Codex ambient identity, with no TMUX/TMUX_PANE. Read accepted id at complete v2 envelope data.id. Subsequent pij inbox --wait [ms] and pij send <id> <body> --json must resolve the same ambient native identity and use Rust queue/delivery.",
+    "ambient_inputs": "Preserve established CLAUDE_CODE_SESSION_ID, COPILOT_AGENT_SESSION_ID plus its native session-state dir, and CODEX_THREAD_ID plus its rollout/session evidence. Do not invent a new environment protocol. No long-lived registration bound to the short-lived CLI wrapper PID.",
+    "still_refused": "chore/watchdog/admin unported verbs remain E-RS-UNPORTED, including explicit legacy-force. Ordinary native register remains native/HTTP-only; inbox register is its required external/pull bridge, not a generic new shim register verb.",
+    "proof_isolation": "Smoke owns private port/state-dir/HOME/CLAUDE_CONFIG_DIR/XDG_CONFIG_HOME and tmux socket for daemon+clients, active external host processes, and teardown. Never count command success/fixed sleeps as physical proof; inert hosts are not positive model canaries."
+  },
+  "evidence": "PM assets/engineering-gate-78531a0-red.json and u6-gate-failing-files.json; full gate saw57 test failures. Existing CLI inbox success remains required by prime ruling (plan114 F-U5), not obsolete.",
+  "handoff": "After own slice, deliver source patch against78531 plus changed path SHA256 map and explicit assumptions; no acceptance claim. Coordinate missing cross-slice details via native pij_send, but keep interfaces above fixed."
+}

@@ -1,0 +1,192 @@
+--- a/crates/daemon/src/http/decisions.rs
++++ b/crates/daemon/src/http/decisions.rs
+@@ -5,6 +5,7 @@
+ use axum::extract::{Json, Query, State};
+ use axum::http::StatusCode;
+ use axum::response::Response;
++use pij_core::config::AdapterChoice;
+ use pij_core::decisions::{Decision, DecisionState, may_answer};
+ use pij_core::error::{PijError, Result};
+ use pij_core::model::{DeliveryOutcome, Envelope, ErrorKind, Msg, SeatDescriptor, SeatId, SemanticState, Seq};
+@@ -26,13 +27,19 @@
+     registry: Arc<dyn Registry>,
+     bus: Arc<EventBus>,
+     delivery: Arc<DeliveryService>,
++    queue_backend: AdapterChoice,
++    spine_backend: AdapterChoice,
+     answer_lock: Mutex<()>,
+ }
+ 
+ impl DecisionService {
+-    /// All resources share the daemon's existing registry/spine sequence domain.
+-    pub fn new(store: SqliteOrchestration, registry: Arc<dyn Registry>, bus: Arc<EventBus>, delivery: Arc<DeliveryService>) -> Self {
+-        Self { store, registry, bus, delivery, answer_lock: Mutex::new(()) }
++    /// The composition root must pass the actual delivery queue and event-spine
++    /// choices. Real/Real asserts that queue, store, and bus share one SQLite
++    /// pool (persistent in production); backend labels alone are not proof.
++    /// Other combinations keep ordinary question/answer support but cannot
++    /// supersede, because this store cannot observe their delivery authority.
++    pub fn new(store: SqliteOrchestration, registry: Arc<dyn Registry>, bus: Arc<EventBus>, delivery: Arc<DeliveryService>, queue_backend: AdapterChoice, spine_backend: AdapterChoice) -> Self {
++        Self { store, registry, bus, delivery, queue_backend, spine_backend, answer_lock: Mutex::new(()) }
+     }
+ 
+     /// Persist first, then publish the existing question state OUTSIDE the bus
+@@ -87,11 +94,16 @@
+             let asker_id = asker.id.clone();
+             let id = id.to_string();
+             let answer = answer.to_string();
++            let queue_backend = self.queue_backend;
++            let spine_backend = self.spine_backend;
+             let at = system_time_ms()?;
+             let (_,prepared) = self.bus.publish_committed(async move {
+                 let current = live_seat(registry.as_ref(),&asker_id).await?;
+                 if current.parent.as_ref() != Some(&actor) || current.id == actor {
+                     return Err(PijError::GovernanceRefused {code:"E-RS-OWNERSHIP".into(),record:current.id.to_string()});
++                }
++                if !queue_backend.is_real() || !spine_backend.is_real() {
++                    return Err(PijError::GovernanceRefused {code:"E-RS-ANSWER-AUTHORITY-SPLIT".into(),record:json!({"decision":id,"queue_backend":queue_backend,"spine_backend":spine_backend}).to_string()});
+                 }
+                 store.supersede_decision_answer_committed(&id,&actor,&answer,at).await
+             }).await?;
+@@ -186,6 +198,10 @@
+ impl From<PijError> for DecisionError {
+     fn from(error: PijError) -> Self {
+         match error {
++            PijError::GovernanceRefused {code,record} if code == "E-RS-ANSWER-AUTHORITY-SPLIT" => Self {
++                status:StatusCode::CONFLICT,code,message:format!("answer supersession requires shared SQLite queue and spine authority: {record}"),
++                details:serde_json::from_str(&record).unwrap_or_else(|_|json!({"record":record})),
++            },
+             PijError::GovernanceRefused {code,record} if matches!(code.as_str(),"E-RS-ANSWER-IN-TRANSIT"|"E-RS-ANSWER-DELIVERED") => {
+                 let message = if code == "E-RS-ANSWER-IN-TRANSIT" { "an answer in transit cannot be withdrawn; wait for its terminal outcome" } else { "a delivered or acknowledged answer cannot be superseded" };
+                 Self {status:StatusCode::CONFLICT,code,message:message.into(),details:serde_json::from_str(&record).unwrap_or_else(|_|json!({"record":record}))}
+@@ -312,11 +328,13 @@
+ #[cfg(test)]
+ mod tests {
+     use super::*;
++    use pij_core::config::{Adapters, Config};
+     use pij_core::ports::{Queue, Spine};
+     use pij_core::model::{DeliveryOrigin, Harness, Outcome, ProcIdentity};
+     use pij_harnesses::InteractionGate;
+     use pij_store::{SqliteQueue, SqliteRegistry, SqliteSpine, StorePool};
+     use pij_testkit::fakes::{FakeTmux, FakeTransport};
++    use pij_testkit::FreshStore;
+ 
+     struct Fixture {
+         service: DecisionService,
+@@ -345,7 +363,7 @@
+             let interaction = Arc::new(InteractionGate::new(Arc::new(FakeTmux::new())));
+             let transport = Arc::new(transport);
+             let delivery = Arc::new(DeliveryService::new(registry.clone(),queue,transport.clone(),interaction,bus.clone()).expect("delivery"));
+-            let service = DecisionService::new(store.clone(),registry.clone(),bus.clone(),delivery);
++            let service = DecisionService::new(store.clone(),registry.clone(),bus.clone(),delivery,AdapterChoice::Real,AdapterChoice::Real);
+             Self {service,registry,bus,store,pool,transport,worker,parent}
+         }
+         async fn ask(&self)->String {
+@@ -631,4 +649,106 @@
+         assert_eq!(f.store.get_decision(&id).await.expect("read").expect("row").decision.answer.as_deref(),Some("old"));
+         assert!(f.transport.delivered().is_empty());
+     }
+-}
++
++    async fn authority_fixture(queue_backend: AdapterChoice, spine_backend: AdapterChoice) -> (FreshStore, Config, crate::Services, SeatId, SeatId) {
++        let file = FreshStore::new();
++        let config = Config {store_path:file.path(),adapters:Adapters {
++            registry:spine_backend,queue:queue_backend,spine:spine_backend,..Adapters::default()
++        },..Config::default()};
++        let services = crate::build_services(&config,std::path::Path::new("/unused-fake-tmux-u4-authority")).await.expect("composed backends");
++        let contract:Value = serde_json::from_str(include_str!("../../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json")).expect("contract");
++        let worker = SeatId::from(contract["fixture_context"]["worker"].as_str().expect("worker"));
++        let parent = SeatId::from(contract["fixture_context"]["parent"].as_str().expect("parent"));
++        let mut seat = SeatDescriptor::new(worker.clone(),Harness::Omp,"/work");
++        seat.parent = Some(parent.clone());
++        services.registry.put(seat).await.expect("worker");
++        services.registry.put(SeatDescriptor::new(parent.clone(),Harness::Omp,"/work")).await.expect("parent");
++        (file,config,services,worker,parent)
++    }
++
++    #[tokio::test]
++    async fn supersede_shared_real_persistence_allows_terminal_failure_after_reopen() {
++        let (_file,config,services,worker,parent) = authority_fixture(AdapterChoice::Real,AdapterChoice::Real).await;
++        let opened = services.decisions.question(&worker,"persist this recovery").await.expect("question");
++        let id = opened["decision"]["id"].as_str().expect("id");
++        let old = services.decisions.answer(&parent,id,"old",false).await.expect("queued answer");
++        assert_eq!(services.decisions.answer(&parent,id,"replacement",true).await.expect_err("same database sees pending work").code,"E-RS-ANSWER-IN-TRANSIT");
++        let kinds = [format!("delivery:{worker}")];
++        let (job,_) = services.queue.claim(&kinds,"authority-test").await.expect("claim").expect("old job");
++        services.queue.ack(job,Outcome::Failed {reason:"terminal delivery failure".into()}).await.expect("terminal failure");
++        drop(services);
++
++        let services = crate::build_services(&config,std::path::Path::new("/unused-fake-tmux-u4-authority")).await.expect("reopen real persistence");
++        let persisted = services.decisions.store.get_decision(id).await.expect("read").expect("durable decision");
++        assert_eq!(serde_json::to_value(persisted.decision).expect("decision"),old["decision"]);
++        let replacement = services.decisions.answer(&parent,id,"replacement",true).await.expect("terminal failure allows recovery");
++        assert_ne!(replacement["decision"]["answer_msg_id"],old["decision"]["answer_msg_id"]);
++        let (_,pending) = services.queue.peek(&kinds).await.expect("peek").expect("new queue job");
++        assert_eq!(pending.dedupe_key,replacement["decision"]["answer_msg_id"].as_str().expect("new id"));
++        drop(services);
++
++        let services = crate::build_services(&config,std::path::Path::new("/unused-fake-tmux-u4-authority")).await.expect("reopen replacement");
++        assert_eq!(services.decisions.answer(&parent,id,"replacement",false).await.expect("ordinary durable retry"),replacement);
++        let history = services.event_bus.tail(None,Seq(0)).await.expect("durable history");
++        let events:Vec<_> = history.iter().filter(|event|event.kind=="decision.answer-superseded").collect();
++        assert_eq!(events.len(),1);
++        let audit:Value = serde_json::from_str(&events[0].payload).expect("audit");
++        assert_eq!(audit["superseded"]["answer_msg_id"],old["decision"]["answer_msg_id"]);
++        assert_eq!(audit["record"]["answer_msg_id"],replacement["decision"]["answer_msg_id"]);
++        let inbox = services.delivery.claim_inbox(&worker,false).await.expect("replacement inbox");
++        assert_eq!(inbox.len(),1);
++        assert_eq!(inbox[0].message.body,"replacement");
++        assert_eq!(inbox[0].message.msg_id,replacement["decision"]["answer_msg_id"].as_str().expect("new id"));
++    }
++
++    async fn assert_authority_split(queue_backend: AdapterChoice, spine_backend: AdapterChoice, fixture_key: &str) {
++        let (_file,_config,services,worker,parent) = authority_fixture(queue_backend,spine_backend).await;
++        let contract:Value = serde_json::from_str(include_str!("../../../../docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json")).expect("contract");
++        let expected = &contract["refusals"][fixture_key];
++        assert!(expected.is_object(),"canonical authority refusal {fixture_key}");
++        let opened = services.decisions.question(&worker,"ordinary question still works").await.expect("question");
++        let id = opened["decision"]["id"].as_str().expect("id");
++        let answered = services.decisions.answer(&parent,id,"old",false).await.expect("ordinary answer still works");
++        assert_eq!(answered["decision"]["state"],"answered");
++        assert_eq!(services.decisions.answer(&parent,id,"old",false).await.expect("ordinary identical retry"),answered);
++        let before = services.decisions.store.spine_head().await.expect("head");
++        let error = services.decisions.answer(&parent,id,"replacement",true).await.expect_err("disconnected authority refuses");
++        let response = error.response("pij answer");
++        assert_eq!(u64::from(response.status().as_u16()),expected["http_status"].as_u64().expect("status"));
++        let bytes = axum::body::to_bytes(response.into_body(),64*1024).await.expect("bounded envelope");
++        let actual:Value = serde_json::from_slice(&bytes).expect("decodable refusal");
++        let mut envelope = expected["response"].clone();
++        let fixture_id = envelope["details"]["decision"].as_str().expect("fixture id").to_string();
++        envelope["meta"] = json!(envelope["meta"].as_str().expect("meta").replace(&fixture_id,id));
++        envelope["details"]["decision"] = json!(id);
++        assert_eq!(actual,envelope);
++        assert_eq!(actual["details"]["queue_backend"],json!(queue_backend));
++        assert_eq!(actual["details"]["spine_backend"],json!(spine_backend));
++        assert_eq!(services.decisions.store.spine_head().await.expect("no supersession event"),before);
++        let row = services.decisions.store.get_decision(id).await.expect("read").expect("original row");
++        assert_eq!(serde_json::to_value(row.decision).expect("decision"),answered["decision"]);
++        let inbox = services.delivery.claim_inbox(&worker,false).await.expect("old work remains deliverable");
++        assert_eq!(inbox.len(),1);
++        assert_eq!(inbox[0].message.msg_id,answered["decision"]["answer_msg_id"].as_str().expect("old id"));
++        assert_eq!(inbox[0].message.body,"old");
++        let self_question = services.decisions.question(&worker,"self ruling still works").await.expect("second question");
++        let self_answer = services.decisions.answer(&worker,self_question["decision"]["id"].as_str().expect("id"),"self ruling",false).await.expect("ordinary self answer");
++        assert_eq!(self_answer["decision"]["state"],"answered");
++        assert!(self_answer["decision"]["answer_msg_id"].is_null());
++    }
++
++    #[tokio::test]
++    async fn supersede_real_queue_fake_spine_refuses_without_changing_ordinary_answers() {
++        assert_authority_split(AdapterChoice::Real,AdapterChoice::Fake,"answer_authority_split_real_fake").await;
++    }
++
++    #[tokio::test]
++    async fn supersede_fake_queue_real_spine_refuses_without_changing_ordinary_answers() {
++        assert_authority_split(AdapterChoice::Fake,AdapterChoice::Real,"answer_authority_split_fake_real").await;
++    }
++
++    #[tokio::test]
++    async fn supersede_fake_queue_fake_spine_refuses_without_changing_ordinary_answers() {
++        assert_authority_split(AdapterChoice::Fake,AdapterChoice::Fake,"answer_authority_split_fake_fake").await;
++    }
++}

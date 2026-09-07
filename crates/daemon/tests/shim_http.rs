@@ -9,9 +9,11 @@
 //! So every test here drives the REAL routes with the shim's REAL body shape.
 
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use pij_core::config::{AdapterChoice, Adapters, Config};
-use pij_core::model::{Envelope, Harness, SeatDescriptor};
+use pij_core::model::{Envelope, Harness, ProcIdentity, SeatDescriptor};
+use pij_core::ports::LivenessPort;
 use pij_daemon::http::{HttpConfig, router_with_config};
 use pij_testkit::FreshStore;
 
@@ -47,12 +49,25 @@ async fn daemon_with_seats(
         store_path: store.path(),
         ..Config::default()
     };
-    let services = pij_daemon::build_services(
+    let mut services = pij_daemon::build_services(
         &config,
         std::path::Path::new("/tmp/pij-test-pane-signals-shim"),
     )
     .await
     .expect("services");
+    // No push receiver exists in this HTTP/pull fixture. The default reachable
+    // fake would consume the message through a fabricated socket delivery.
+    services.transport = std::sync::Arc::new(pij_testkit::fakes::FakeTransport::unreachable());
+    services.delivery = std::sync::Arc::new(
+        pij_daemon::delivery::DeliveryService::new(
+            services.registry.clone(),
+            services.queue.clone(),
+            services.transport.clone(),
+            services.interaction.clone(),
+            services.event_bus.clone(),
+        )
+        .expect("shared SQL pull sender"),
+    );
     for seat in seats {
         services.registry.put(seat).await.expect("seed seat");
     }
@@ -197,8 +212,7 @@ async fn an_asserted_sender_that_contradicts_the_pane_is_refused() {
     server.abort();
 }
 
-/// `inbox register` never reaches rs by the route table's policy; this is the
-/// second line of that defence, and it refuses BY NAME with the reason intact.
+/// Registration is native HTTP-only; argv inbox requests may not create seats.
 #[tokio::test]
 async fn inbox_register_is_refused_by_name_with_its_reason() {
     let (addr, server, _store) = daemon().await;
@@ -212,12 +226,8 @@ async fn inbox_register_is_refused_by_name_with_its_reason() {
     assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
     let payload: Envelope<serde_json::Value> = response.json().await.expect("envelope");
     let meta = payload.meta.unwrap_or_default();
-    assert!(meta.contains("PANELESS"), "{meta}");
-    assert!(meta.contains("never falls back"), "{meta}");
-    assert!(
-        meta.contains("s120"),
-        "the refusal must name its successor: {meta}"
-    );
+    assert!(meta.contains("/v1/register"), "{meta}");
+    assert!(meta.contains("not the shim inbox route"), "{meta}");
 
     server.abort();
 }
@@ -483,5 +493,408 @@ async fn an_unresolvable_caller_cannot_acknowledge() {
     .await;
     assert_eq!(unknown.status(), reqwest::StatusCode::BAD_REQUEST);
 
+    server.abort();
+}
+
+async fn pull_seat(harness: Harness) -> (SeatDescriptor, serde_json::Value) {
+    let pid = std::process::id();
+    let proc_start = pij_harnesses::proc::ProcLiveness::new()
+        .proc_start(pid)
+        .await
+        .unwrap()
+        .expect("test host is live");
+    let mut seat = SeatDescriptor::new(RECIPIENT, harness, "/abs/tree");
+    seat.proc = Some(ProcIdentity { pid, proc_start });
+    seat.harness_session = Some("native-pull-session".into());
+    let mut caller = serde_json::json!({
+        "PIJ_SESSION_ID": RECIPIENT,
+        "pid": pid,
+        "procStart": proc_start,
+    });
+    let key = match harness {
+        Harness::Claude => "CLAUDE_CODE_SESSION_ID",
+        Harness::Copilot => "COPILOT_AGENT_SESSION_ID",
+        Harness::Codex => "CODEX_THREAD_ID",
+        _ => unreachable!("external pull fixture"),
+    };
+    caller[key] = serde_json::json!("native-pull-session");
+    (seat, caller)
+}
+
+#[tokio::test]
+async fn external_shim_pull_round_trip_retains_body_reply_and_explicit_ack() {
+    for harness in [Harness::Claude, Harness::Copilot, Harness::Codex] {
+        let (reader, caller) = pull_seat(harness).await;
+        assert!(!reader.native_extension_delivery);
+        let mut sender = SeatDescriptor::new(SENDER, Harness::Claude, "/abs/tree");
+        sender.pane = Some(PANE.into());
+        let (addr, server, _store) = daemon_with_seats(vec![sender, reader]).await;
+        let text = "  exact body\nwith a trailing newline\n";
+        let sent: Envelope<serde_json::Value> = post(
+            addr,
+            "/v1/shim/send",
+            serde_json::json!({
+                "argv": ["send", RECIPIENT, text], "caller": {"tmuxPane": PANE}
+            }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+        let receipt = sent.data.expect("send receipt");
+        assert_eq!(
+            receipt["outcome"]["outcome"], "queued",
+            "pull has no push receiver"
+        );
+        let message_id = receipt["msg_id"].clone();
+        let claims: Envelope<Vec<serde_json::Value>> = post(
+            addr,
+            "/v1/shim/inbox",
+            serde_json::json!({
+                "argv": ["inbox", "--wait", "1000"], "caller": caller
+            }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+        let claims = claims.data.unwrap();
+        assert_eq!(claims.len(), 1);
+        assert_eq!(claims[0]["message"]["body"], text);
+        assert_eq!(claims[0]["message"]["msg_id"], message_id);
+        assert_eq!(claims[0]["native_consumer"]["pid"], caller["pid"]);
+        assert_eq!(
+            claims[0]["native_consumer"]["proc_start"],
+            caller["procStart"]
+        );
+        assert_eq!(
+            claims[0]["native_consumer"]["native_session"],
+            "native-pull-session"
+        );
+        let job_id = claims[0]["job_id"].clone();
+        for field in ["pid", "procStart"] {
+            let mut wrong = caller.clone();
+            wrong[field] = serde_json::json!(wrong[field].as_u64().unwrap() + 1);
+            let response = post(
+                addr,
+                "/v1/shim/inbox/ack",
+                serde_json::json!({"caller": wrong, "job_id": job_id}),
+            )
+            .await;
+            assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+        }
+        let mut wrong_session = caller.clone();
+        for key in [
+            "CLAUDE_CODE_SESSION_ID",
+            "COPILOT_AGENT_SESSION_ID",
+            "CODEX_THREAD_ID",
+        ] {
+            if wrong_session.get(key).is_some() {
+                wrong_session[key] = serde_json::json!("wrong-native-session");
+            }
+        }
+        assert_eq!(
+            post(
+                addr,
+                "/v1/shim/inbox/ack",
+                serde_json::json!({"caller": wrong_session, "job_id": job_id})
+            )
+            .await
+            .status(),
+            reqwest::StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            post(
+                addr,
+                "/v1/shim/inbox/ack",
+                serde_json::json!({"caller": caller, "job_id": job_id})
+            )
+            .await
+            .status(),
+            reqwest::StatusCode::OK
+        );
+        let reply = "  reply body\n";
+        assert_eq!(
+            post(
+                addr,
+                "/v1/shim/send",
+                serde_json::json!({
+                    "argv": ["send", SENDER, reply, "--in-reply-to", message_id], "caller": caller
+                })
+            )
+            .await
+            .status(),
+            reqwest::StatusCode::OK
+        );
+        let replies: Envelope<Vec<serde_json::Value>> = post(
+            addr,
+            "/v1/shim/inbox",
+            serde_json::json!({
+                "argv": ["inbox"], "caller": {"tmuxPane": PANE}
+            }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+        let replies = replies.data.unwrap();
+        assert_eq!(replies.len(), 1);
+        assert_eq!(replies[0]["message"]["body"], reply);
+        assert_eq!(replies[0]["message"]["in_reply_to"], message_id);
+        assert_eq!(
+            post(
+                addr,
+                "/v1/shim/inbox/ack",
+                serde_json::json!({"caller": {"tmuxPane": PANE}, "job_id": replies[0]["job_id"]})
+            )
+            .await
+            .status(),
+            reqwest::StatusCode::OK
+        );
+        assert_eq!(
+            post(
+                addr,
+                "/v1/shim/send",
+                serde_json::json!({"argv": ["send", RECIPIENT, "self"], "caller": caller})
+            )
+            .await
+            .status(),
+            reqwest::StatusCode::BAD_REQUEST
+        );
+        let empty: Envelope<Vec<serde_json::Value>> = post(
+            addr,
+            "/v1/shim/inbox",
+            serde_json::json!({"argv": ["inbox"], "caller": caller}),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+        assert!(empty.data.unwrap().is_empty());
+        server.abort();
+    }
+}
+
+#[tokio::test]
+async fn shim_wait_timeout_is_an_empty_claims_envelope_and_rejects_invalid_durations() {
+    let (reader, caller) = pull_seat(Harness::Copilot).await;
+    let (addr, server, _store) = daemon_with_seats(vec![reader]).await;
+    for argv in [
+        serde_json::json!(["inbox", "--wait", "10", "--json"]),
+        serde_json::json!(["inbox", "check", "--wait=10"]),
+    ] {
+        let response = post(
+            addr,
+            "/v1/shim/inbox",
+            serde_json::json!({"argv": argv, "caller": caller}),
+        )
+        .await;
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let page: Envelope<Vec<serde_json::Value>> = response.json().await.unwrap();
+        assert!(page.data.unwrap().is_empty());
+    }
+    for args in [
+        serde_json::json!(["--wait", "0"]),
+        serde_json::json!(["--wait", "-1"]),
+        serde_json::json!(["--wait", "1.5"]),
+        serde_json::json!(["--wait="]),
+        serde_json::json!(["--wait", "abc"]),
+        serde_json::json!(["--wait", "1", "--wait"]),
+    ] {
+        let mut argv = vec![serde_json::json!("inbox")];
+        argv.extend(args.as_array().unwrap().iter().cloned());
+        assert_eq!(
+            post(
+                addr,
+                "/v1/shim/inbox",
+                serde_json::json!({"argv": argv, "caller": caller})
+            )
+            .await
+            .status(),
+            reqwest::StatusCode::BAD_REQUEST
+        );
+    }
+    server.abort();
+}
+
+#[tokio::test]
+async fn shim_infinite_wait_receives_later_work_and_panels_cannot_wait() {
+    let (reader, caller) = pull_seat(Harness::Codex).await;
+    let mut sender = SeatDescriptor::new(SENDER, Harness::Claude, "/abs/tree");
+    sender.pane = Some(PANE.into());
+    let (addr, server, _store) = daemon_with_seats(vec![sender, reader]).await;
+    let waiting = post(
+        addr,
+        "/v1/shim/inbox",
+        serde_json::json!({"argv": ["inbox", "--wait", "--json"], "caller": caller}),
+    );
+    tokio::pin!(waiting);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), &mut waiting)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        post(
+            addr,
+            "/v1/shim/send",
+            serde_json::json!({"argv": ["send", RECIPIENT, "later"], "caller": {"tmuxPane": PANE}})
+        )
+        .await
+        .status(),
+        reqwest::StatusCode::OK
+    );
+    let response = tokio::time::timeout(Duration::from_secs(2), waiting)
+        .await
+        .expect("event wakes pending request");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let claims: Envelope<Vec<serde_json::Value>> = response.json().await.unwrap();
+    assert_eq!(claims.data.unwrap()[0]["message"]["body"], "later");
+    let refused = post(
+        addr,
+        "/v1/shim/inbox",
+        serde_json::json!({"argv": ["inbox", "--wait"], "caller": {"tmuxPane": PANE}}),
+    )
+    .await;
+    assert_eq!(refused.status(), reqwest::StatusCode::BAD_REQUEST);
+    let refusal: Envelope<serde_json::Value> = refused.json().await.unwrap();
+    assert!(refusal.meta.unwrap().contains("pushed seats cannot wait"));
+    server.abort();
+}
+
+#[tokio::test]
+async fn shim_pull_refuses_recycled_host_before_claim_or_ack() {
+    let (mut reader, mut caller) = pull_seat(Harness::Copilot).await;
+    reader.proc.as_mut().unwrap().proc_start += 1;
+    caller["procStart"] = serde_json::json!(reader.proc.unwrap().proc_start);
+    let (addr, server, _store) = daemon_with_seats(vec![reader]).await;
+    for (path, body) in [
+        (
+            "/v1/shim/inbox",
+            serde_json::json!({"argv": ["inbox"], "caller": caller}),
+        ),
+        (
+            "/v1/shim/inbox/ack",
+            serde_json::json!({"job_id": 1, "caller": caller}),
+        ),
+    ] {
+        let response = post(addr, path, body).await;
+        assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+        let refusal: Envelope<serde_json::Value> = response.json().await.unwrap();
+        assert!(refusal.meta.unwrap().contains("no longer live"));
+    }
+    server.abort();
+}
+
+#[tokio::test]
+async fn existing_paneless_non_copilot_callers_keep_bare_asserted_id_semantics() {
+    for harness in [Harness::Claude, Harness::Codex] {
+        let (reader, _) = pull_seat(harness).await;
+        let mut sender = SeatDescriptor::new(SENDER, Harness::Claude, "/abs/tree");
+        sender.pane = Some(PANE.into());
+        let (addr, server, _store) = daemon_with_seats(vec![sender, reader]).await;
+        // Old shims supplied their transient PID only, without native evidence.
+        let caller = serde_json::json!({"PIJ_SESSION_ID": RECIPIENT, "pid": 1});
+        assert_eq!(
+            post(
+                addr,
+                "/v1/shim/send",
+                serde_json::json!({"argv": ["send", SENDER, "old sender"], "caller": caller})
+            )
+            .await
+            .status(),
+            reqwest::StatusCode::OK
+        );
+        assert_eq!(post(addr, "/v1/shim/send", serde_json::json!({"argv": ["send", RECIPIENT, "old reader"], "caller": {"tmuxPane": PANE}})).await.status(), reqwest::StatusCode::OK);
+        let claims: Envelope<Vec<serde_json::Value>> = post(
+            addr,
+            "/v1/shim/inbox",
+            serde_json::json!({"argv": ["inbox"], "caller": caller}),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+        let claims = claims.data.unwrap();
+        assert_eq!(claims[0]["message"]["body"], "old reader");
+        assert!(claims[0].get("native_consumer").is_none());
+        assert_eq!(
+            post(
+                addr,
+                "/v1/shim/inbox/ack",
+                serde_json::json!({"caller": caller, "job_id": claims[0]["job_id"]})
+            )
+            .await
+            .status(),
+            reqwest::StatusCode::OK
+        );
+        let empty: Envelope<Vec<serde_json::Value>> = post(
+            addr,
+            "/v1/shim/inbox",
+            serde_json::json!({"argv": ["inbox"], "caller": caller}),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+        assert!(empty.data.unwrap().is_empty());
+        server.abort();
+    }
+}
+
+#[tokio::test]
+async fn reply_option_validates_once_and_does_not_lex_literal_body() {
+    let (addr, server, _store) = daemon().await;
+    for args in [
+        serde_json::json!(["send", RECIPIENT, "body", "--in-reply-to"]),
+        serde_json::json!(["send", RECIPIENT, "body", "--in-reply-to="]),
+        serde_json::json!([
+            "send",
+            RECIPIENT,
+            "body",
+            "--in-reply-to",
+            "a",
+            "--in-reply-to",
+            "b"
+        ]),
+    ] {
+        assert_eq!(
+            post(
+                addr,
+                "/v1/shim/send",
+                serde_json::json!({"argv": args, "caller": {"tmuxPane": PANE}})
+            )
+            .await
+            .status(),
+            reqwest::StatusCode::BAD_REQUEST
+        );
+    }
+    let body = "--in-reply-to is literal body text\n";
+    assert_eq!(
+        post(
+            addr,
+            "/v1/shim/send",
+            serde_json::json!({
+                "argv": ["send", RECIPIENT, "--body-file", "-", "--in-reply-to=original-id"],
+                "body_literal": body,
+                "caller": {"tmuxPane": PANE}
+            })
+        )
+        .await
+        .status(),
+        reqwest::StatusCode::OK
+    );
+    let claims: Envelope<Vec<serde_json::Value>> = post(
+        addr,
+        "/v1/shim/inbox",
+        serde_json::json!({"argv": ["inbox"], "caller": {"tmuxPane": RECIPIENT_PANE}}),
+    )
+    .await
+    .json()
+    .await
+    .unwrap();
+    let claims = claims.data.unwrap();
+    assert_eq!(claims[0]["message"]["body"], body);
+    assert_eq!(claims[0]["message"]["in_reply_to"], "original-id");
     server.abort();
 }

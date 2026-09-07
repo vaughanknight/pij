@@ -1,0 +1,27 @@
+{
+  "at": "2026-09-07T06:04:46Z",
+  "source_base": "5a8a25013e0bffdabfbcd05438ed19febc26b891",
+  "source_status": "uncommitted composed wave2 including authority matrix and compiler-supplied lint fixes",
+  "command": "/Users/jordanknight/.cargo/bin/cargo run --locked -p pij-testkit --bin pij-gate",
+  "cwd": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port",
+  "status": "all stages green",
+  "stages": [
+    "toolchain",
+    "lock",
+    "fmt",
+    "clippy",
+    "test",
+    "arch"
+  ],
+  "architecture": {
+    "crates": 9,
+    "violations": 0
+  },
+  "raw": "artifact://337",
+  "not_claimed": [
+    "forthcoming extended real CLI workflow witness",
+    "merged-main source",
+    "u6 native/shim parity",
+    "production deployment"
+  ]
+}

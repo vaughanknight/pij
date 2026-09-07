@@ -1,0 +1,30 @@
+{
+  "schema": "pij/parity-red/v1",
+  "source_head": "e22833b0d0caf00d95346008dab1587005d0173d",
+  "scope": "Actual shipped native CLI and actual TS shim, identical private scripted HTTP response; not a domain mutation proof",
+  "case": {
+    "id": "role-set",
+    "path": "/v1/role",
+    "status": 200,
+    "body": "{\"ok\":true,\"command\":\"pij role\",\"v\":2,\"data\":{\"seat\":\"pij-worker\",\"role\":\"reviewer\",\"assigned_by\":\"pij-parent\",\"assigned_at\":1788739200000,\"seq\":101}}"
+  },
+  "argv": [
+    "role",
+    "pij-worker",
+    "reviewer"
+  ],
+  "native_binary_sha256": "e1462a73c505e4645dc23e37e1da020ec8caf621f5fbd7d9e03a943f4a3d7c1f",
+  "native": {
+    "exit": 0,
+    "stdout": "{\"ok\":true,\"command\":\"pij role\",\"v\":2,\"data\":{\"assigned_at\":1788739200000,\"assigned_by\":\"pij-parent\",\"role\":\"reviewer\",\"seat\":\"pij-worker\",\"seq\":101}}\n",
+    "stderr": ""
+  },
+  "shim": {
+    "exit": 0,
+    "stdout": "{\"ok\":true,\"command\":\"pij role\",\"v\":2,\"data\":{\"seat\":\"pij-worker\",\"role\":\"reviewer\",\"assigned_by\":\"pij-parent\",\"assigned_at\":1788739200000,\"seq\":101}}\n",
+    "stderr": ""
+  },
+  "byte_equal": false,
+  "defect": "Native typed Envelope<Value> serialization sorts data keys; shim preserves the validated wire buffer",
+  "ruling": "Prime approved original validated native bytes plus newline contract; same buffer, no normalization or re-fetch"
+}

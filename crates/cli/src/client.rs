@@ -54,6 +54,9 @@ pub struct Registration {
     /// Governing seat.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent: Option<SeatId>,
+    /// Explicit role assertion; omission preserves the daemon's assignment.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
     /// Whether delivery uses a relay.
     pub relay: bool,
 }
@@ -62,6 +65,13 @@ impl Registration {
     /// Reject a half process identity before sending a claim the daemon cannot
     /// corroborate.
     pub fn validate(&self) -> std::result::Result<(), &'static str> {
+        if self
+            .role
+            .as_deref()
+            .is_some_and(|role| role.trim().is_empty())
+        {
+            return Err("--role must be a nonempty string");
+        }
         if self.pid.is_some() == self.proc_start.is_some() {
             Ok(())
         } else {
@@ -216,14 +226,18 @@ impl DaemonClient {
     /// and the two surfaces cannot drift into disagreeing about what
     /// `pij report now` means.
     ///
-    /// The seat is resolved HERE, client-side, because that is where the
-    /// environment is. The daemon sees a claim and checks it against the
-    /// registry; it never derives identity from what it was told.
-    pub async fn report(&self, seat: &SeatId, argv: &[String]) -> Envelope<Value> {
+    /// Forward caller evidence and any explicit agreement claim to the daemon.
+    /// Resolving first would discard structured refusal evidence at the CLI edge.
+    pub async fn report(
+        &self,
+        seat: Option<&SeatId>,
+        argv: &[String],
+        caller: &CallerContext,
+    ) -> Envelope<Value> {
         self.post(
             "pij report",
             "/v1/report",
-            &serde_json::json!({ "seat": seat.to_string(), "argv": argv }),
+            &serde_json::json!({ "seat": seat, "argv": argv, "caller": caller }),
         )
         .await
     }
@@ -314,17 +328,17 @@ impl DaemonClient {
     pub async fn tail(
         &self,
         since: &BTreeMap<String, u64>,
-    ) -> std::result::Result<TailStream, Envelope<Value>> {
+    ) -> std::result::Result<TailStream, Box<Envelope<Value>>> {
         let mut request = self.auth(self.http.get(format!("{}/v1/events", self.base_url)));
         if !since.is_empty() {
             let encoded = match serde_json::to_string(since) {
                 Ok(encoded) => encoded,
                 Err(error) => {
-                    return Err(refusal(
+                    return Err(Box::new(refusal(
                         "pij tail",
                         ErrorKind::Adapter,
                         format!("could not encode cursor map: {error}"),
-                    ));
+                    )));
                 }
             };
             request = request.query(&[("since", encoded)]);
@@ -332,25 +346,25 @@ impl DaemonClient {
         let response = match request.send().await {
             Ok(response) => response,
             Err(error) => {
-                return Err(refusal(
+                return Err(Box::new(refusal(
                     "pij tail",
                     ErrorKind::Adapter,
                     format!("could not reach the daemon: {error}"),
-                ));
+                )));
             }
         };
         if !response.status().is_success() {
             let body = match response.text().await {
                 Ok(body) => body,
                 Err(error) => {
-                    return Err(refusal(
+                    return Err(Box::new(refusal(
                         "pij tail",
                         ErrorKind::Adapter,
                         format!("could not read the daemon's refusal: {error}"),
-                    ));
+                    )));
                 }
             };
-            return Err(decode_response("pij tail", &body));
+            return Err(Box::new(decode_response("pij tail", body)));
         }
         Ok(TailStream {
             response,
@@ -373,7 +387,7 @@ impl DaemonClient {
             .await
     }
 
-    async fn post<T: DeserializeOwned, B: Serialize + ?Sized>(
+    pub(crate) async fn post<T: DeserializeOwned, B: Serialize + ?Sized>(
         &self,
         command: &str,
         path: &str,
@@ -413,7 +427,7 @@ impl DaemonClient {
                 );
             }
         };
-        decode_response(command, &body)
+        decode_response(command, body)
     }
 }
 
@@ -556,8 +570,8 @@ impl std::fmt::Display for TailError {
 
 impl std::error::Error for TailError {}
 
-fn decode_response<T: DeserializeOwned>(command: &str, body: &str) -> Envelope<T> {
-    let untyped = match pij_core::wire::decode_envelope::<Value>(body) {
+fn decode_response<T: DeserializeOwned>(command: &str, body: String) -> Envelope<T> {
+    let untyped = match pij_core::wire::decode_envelope::<Value>(&body) {
         Ok(envelope) => envelope,
         Err(error) => {
             let kind = match error {
@@ -578,8 +592,12 @@ fn decode_response<T: DeserializeOwned>(command: &str, body: &str) -> Envelope<T
         );
     }
 
-    match serde_json::from_str(body) {
-        Ok(envelope) => envelope,
+    match serde_json::from_str::<Envelope<T>>(&body) {
+        Ok(mut envelope) => {
+            // Move the exact buffer that passed both version and payload checks.
+            envelope.raw_json = Some(body);
+            envelope
+        }
         Err(error) => refusal(
             command,
             ErrorKind::Adapter,
@@ -597,6 +615,7 @@ fn retype_envelope<T, U>(envelope: Envelope<T>) -> Envelope<U> {
         meta: envelope.meta,
         error: envelope.error,
         details: envelope.details,
+        raw_json: envelope.raw_json,
     }
 }
 
@@ -637,6 +656,7 @@ mod tests {
             provider: None,
             effort: None,
             parent: None,
+            role: None,
             relay: false,
         };
 
@@ -679,7 +699,8 @@ mod tests {
     fn unsupported_envelope_version_is_refused_before_payload_typing() {
         let body = r#"{"ok":true,"command":"pij list","v":99,"data":"not a seat list"}"#;
 
-        let envelope = decode_response::<Vec<pij_core::model::SeatDescriptor>>("pij list", body);
+        let envelope =
+            decode_response::<Vec<pij_core::model::SeatDescriptor>>("pij list", body.to_owned());
 
         assert!(!envelope.ok);
         assert_eq!(envelope.error, Some(ErrorKind::Skew));
@@ -695,7 +716,7 @@ mod tests {
     fn every_unrecognised_version_is_skew_not_only_future_versions() {
         let body = r#"{"ok":true,"command":"pij ping","v":0,"data":"unknown old shape"}"#;
 
-        let envelope = decode_response::<serde_json::Value>("pij ping", body);
+        let envelope = decode_response::<serde_json::Value>("pij ping", body.to_owned());
 
         assert!(!envelope.ok);
         assert_eq!(envelope.error, Some(ErrorKind::Skew));

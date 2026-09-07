@@ -1,300 +1,114 @@
-# pij platform — the on-disk public contract
+# pij platform — Rust authority and consumer boundaries
 
-The pij platform's records are files, and the files are the API (WS-4): a UI,
-a dashboard, or another tool reads them directly — no daemon RPC, no private
-schema. This doc is the contract (AC-12): every public record, field by field,
-plus the derivation rules for everything a consumer must compute rather than
-read. A UI author should be able to build list / tree / node-card views from
-this doc alone. Verbs that write these records: `docs/how/pij.md` (CLI) and
-the pij skill's node route. Migration posture vs the prose governance spine:
-`docs/how/pij-governance-migration.md`.
+The platform authority is the Rust daemon and its durable SQLite store. Consumers
+use the served CLI/HTTP projections and the event stream, not files under
+`~/.pij`. Those TypeScript-era files are historical state, not a second current
+registry or a fallback source when Rust is unavailable.
 
-All paths are under `$PIJ_HOME` (default `~/.pij`).
+The field-by-field wire reference, examples and refusal ledger live in
+[pij-rs API](pij-rs-api.md). The exact designed cases and executed client captures
+live in [the permanent API corpus](../../crates/testkit/fixtures/golden/api/).
+This guide explains which authority a consumer should ask; it does not maintain
+a competing schema or tell a UI to reproduce daemon derivations.
 
-## File layout
+## Authoritative surfaces
 
-| Path | What | Public? |
+| Consumer question | Surface | Boundary |
 |---|---|---|
-| `<id>.json` | one session descriptor per node (registry) | **yes** — the node card's base record |
-| `<id>/` | per-session data dir; `events.ndjson` inside is the **delivery transport** | no — internal (excluded from this contract by ruling) |
-| `projects/<slug>/project.json` | one Project record | **yes** |
-| `assignments/<assignmentId>.json` | one Assignment record | **yes** |
-| `spine/events.ndjson` | THE machine-wide spine event log (one JSON object per line) | **yes** — append-only |
-| `spine/spine.md` | markdown render of the log — regenerate with `pij spine render` | yes (read-only view; never hand-edit) |
-| `spine/events.lock`, `spine/write.lock`, `spine/ops/`, `spine/event-once-*.json` | append lock, platform write lock, op journal, idempotence markers | no — internal, never parse |
+| Which seats are visible? | `GET /v1/seats`; `pij list --json` | Read the full envelope, including unavailable peers; active views exclude tombstones. |
+| What is this node's current state/tree? | `pij node show <seat> --json`; `pij-rs state <seat> --json` | Use the projection and its unsupported notes; never fill gaps from stale legacy descriptors. |
+| Which projects, streams and fences exist? | `pij project`, `stream`, `fence` | Rust records are authoritative; worktree files are not an alternate metadata store. |
+| Which tasks and decisions need attention? | `pij node show`, `pij decisions`, `pij anomalies` | Let Rust join current parent/assignment/verification state. |
+| What changed? | `GET /v1/events`; `pij spine events` | Machine-scoped cursors and immutable committed events. |
+| What is the human event view? | `pij spine render --json` | The returned text/cursor is a view, not a legacy `spine.md` write contract. |
+| Which native sessions are bound? | `pij sessions --json` | Rust GET `/v1/shim/sessions`, without a legacy union; no native `pij-rs sessions` subcommand. |
 
-Law: platform records live in **subdirectories**. Any new top-level
-`<name>.json` would be read as a session descriptor (phantom-peer hazard), so
-no consumer should ever write one.
+Every `/v1` request requires the daemon's bearer key. Machine access is not a
+cryptographically authenticated per-seat identity: callers still use the existing
+identity/admission service and cannot invent ownership from a role or a pid field.
+Do not bind a UI to the SQLite schema, registry files, transport logs, or an
+assumed daemon working directory. Direct store inspection can support an
+operator's proof; it is not the public consumer API.
 
-## Records
+## Wire and cursor rules
 
-Every record is schema-versioned (`schema_version: 1`). Additive evolution
-only: readers must tolerate unknown fields; absent optionals are ABSENT keys,
-never `null` (JSON `null` is never "absent" — one exception noted below).
+- Commands return the complete v2 envelope. Preserve `ok`, `command`, `v` and
+  every present `data`, `error`, `meta`, `details` or future field; do not unwrap
+  data or manufacture optional values. Null and omission are different facts.
+- ErrorKind uses the actual snake_case wire vocabulary. Branch on its structured
+  category and `details.code`, not prose. Native and shim refusal exit policies
+  differ; use the [exit table](pij-rs-api.md#exit-policy).
+- `/v1/events` is NDJSON, not SSE. Require its Hello before frames. Preserve
+  unknown event kinds and the JSON-string payload rather than replacing it with
+  an invented object schema.
+- Cursors are per machine and exclusive. Replay/live handoff must not skip or
+  duplicate the boundary. A refused/reset cursor is not permission to silently
+  read a different generation's log.
+- High-frequency change detection belongs on the event stream. Use current
+  projections for joins; spawning a CLI or reimplementing derivations for every
+  event is not a replacement stream protocol.
 
-### Project — `projects/<slug>/project.json`
+## State, roles and responsibility
 
-| Field | Type | Notes |
-|---|---|---|
-| `schema_version` | `1` | |
-| `slug` | string | kebab slug of the description; `-2`/`-3` collision suffix |
-| `description` | string | |
-| `repo?` | string | repo anchor |
-| `planPath?` | string | set via `pij project set --plan` |
-| `primeId?` | string | owning prime seat, via `pij project set --prime` |
-| `created` | `{actor, ts}` | attribution; `ts` ISO-8601 |
+Roles are explicit assertions in `seat_roles`, projected into identity, roster,
+StateCard and phonehome responses. A stale descriptor role does not override
+that authority. Omitted role during admission preserves an assertion; null in a
+projection means no asserted role. Display role, including `prime`, does not
+grant another seat's ownership or remote-control rights.
 
-A project's task list is a **join, not a field**: the assignments carrying its
-`projectSlug`. Nothing duplicates that list.
+Use the current recorded parent relationship. Do not recreate the old
+`parentId`/`spawnedBy` fallback or advertise `pij link` as a Rust reparenting API.
+Open decision responsibility and answer authorization follow the current parent;
+the opening event still records the historical parent-at-ask.
 
-### Assignment — `assignments/<assignmentId>.json`
+`done` is a claim. Verification references the observed done event; a newer done
+event becomes unverified again. Anomalies are computed from Rust data, with the
+existing relay text and timing rules. Query them unscoped before asserting that
+all nodes are fresh: project/folder filters may omit node-keyed status rows.
+Do not manufacture context gauges, badge axes, or lifecycle telemetry from
+fields that a current projection explicitly does not provide.
 
-| Field | Type | Notes |
-|---|---|---|
-| `schema_version` | `1` | |
-| `id` | string | `asg-<adjective-noun>`; the implicit general assignment is the fixed id `asg-general-<nodeId>`, materialized on first task/state write |
-| `nodeId` | string | the pij session id |
-| `projectSlug?` | string | joins the assignment to a project |
-| `task` | string | |
-| `states` | number[] | spine `seq` refs — the assignment's state history is IN the spine, this is the index |
-| `opened` | `{actor, ts}` | |
-| `closed?` | `{actor, ts, reason}` | `reason ∈ done\|cancelled\|failed\|superseded` (closed union) |
+## Writes and physical effects
 
-### SpineEvent — one line of `spine/events.ndjson`
+There is one spine insertion/publication authority. Descriptor and governance
+events receive real timestamps and payloads; destructive state changes and their
+events share an atomic boundary. A committed event cursor is not a claim that a
+later external delivery executed.
 
-| Field | Type | Notes |
-|---|---|---|
-| `schema_version` | `1` | |
-| `seq` | number | allocated by the log at append (cross-process atomic); strictly increasing |
-| `ts` | string | ISO-8601 |
-| `actor` | string | who wrote it — every write is attributed |
-| `actorProvenance?` | `"resolved"\|"asserted"` | resolved self vs `--actor` assertion |
-| `kind` | string | **open vocabulary** (WS-5): external writers may mint kinds; consumers must tolerate unknown kinds |
-| `refs` | string[] | structured `type:value` refs (`node:<id>`, `parent:<id>`, `assignment:<id>`, `state:<word>`, …); always present (may be empty) |
-| `peer?` | string | exact-match query key (`pij spine events --peer`) |
-| `project?` | string | exact-match query key |
-| `repo?` | string | |
-| `prev?` / `next?` | string | the transition the event records (payload depends on kind) |
-| `verifiedBy?` | string | on verification events |
+- Dispatch queued, delivered and packet-SHA acknowledged are separate states.
+  Canary success additionally needs nonce-correlated acknowledgement and fresh
+  runtime/model evidence; an inert pane or requested model string cannot prove it.
+- A baton request is durable before its keeper notice is sent. Inspect the
+  returned notice/delivery evidence; creating a request alone proves no recipient
+  observation. Lease return/reclaim requires the exact observed lease id.
+- Answer retries retain prepared intent. Only the current parent may supersede
+  an eligible terminal non-delivered answer, with shared real queue/spine
+  authority. An answer in transit cannot be withdrawn.
+- Close writes a tombstone; it does not kill a process or pane. Reap requires
+  confirmed stale process identity and, when recorded, confirmed pane absence.
+  Unknown observations are a brake. Dry-run does not mutate records or the spine.
+- Stream close changes its record; do not infer that the worktree was removed.
 
-The log is **append-only**: later writes never mutate or delete earlier lines;
-duplicate/replayed appends are idempotent (once-markers). Filters are exact
-string equality; `--since N` is exclusive (`seq > N`).
+Never write legacy descriptor/project/assignment files to influence these
+operations. An unavailable daemon or unsupported command must fail explicitly,
+not cause a new filesystem authority to appear. External/paneless pull seats use
+the verified `pij inbox register` admission path; they must not invent a pane or
+bind a long-lived seat to the short-lived CLI wrapper process.
 
-Kinds pij itself emits (external kinds may appear beside them):
+## Deployment and source provenance
 
-| kind | writer | prev/next carry |
-|---|---|---|
-| `project-created` / `project-set` | verbs | canonical project JSON |
-| `task-set` / `state-set` / `state-verified` | verbs | canonical assignment JSON (`states[]` excluded); semantic transition rides `state:<word>` refs |
-| `system-state` | **daemon only** (`actor: daemon`) | WS-6 SystemState words |
-| `node-linked` | `pij link` | prev = old **effective** parent, next = new parent; a `--root` link OMITS `next` (never null) and refs `[node:<child>]` only |
+The operating invariant is a reviewed, verified production build and its intended
+configuration, not a guessed source path or a stale diagram of this machine's
+symlinks. Record the source SHA and binary identity used for a proof; launch argv
+or a ready message alone is not observed runtime/model provenance.
 
-### Session descriptor — node-truth block (`<id>.json`)
+Treat the canonical checkout and managed skill/extension links as live
+infrastructure. Develop in owned worktrees; never replace the production checkout,
+global links, configuration or daemon from an unreviewed worktree. Skills and
+extensions may be read on later invocations even while an already-running daemon
+keeps its old code. Use the repository's read-only doctor commands to inspect
+managed installation state rather than trusting a historical path enumeration.
 
-Descriptors predate the platform; the plan-054 additions are one additive
-block (all optional ⇒ every legacy descriptor still loads — AC-11). Public
-fields a card/list needs, beyond the long-standing basics (`id`, `role`,
-`folder`, `paneId`, `harness`, `boundModel`, `effort`, `prime?`, `parentId?`,
-`spawnedBy?`):
-
-| Field | Type | Owner / meaning |
-|---|---|---|
-| `currentAssignment?` | string | UI denorm — the assignment id the node points at |
-| `currentTask?` | string | denormalized task text |
-| `semanticState?` | SemanticState | denorm of the current assignment's latest declared state — **externally owned** (the daemon never clobbers it) |
-| `systemState?` | SystemState | mechanical verdict — **daemon-computed only**; no other writer |
-| `windowId?` | string | tmux window (`@N`); `tmux select-window -t <windowId>` opens the node's terminal |
-| `contextMax?` | number | models-registry join via `boundModel` (see derivation rules) |
-| `contextCurrent?` | `{value: number\|"unknown", asOf, provenance}` | latest gauge reading — real or honest-unknown, never an estimate |
-
-## Ruled vocabularies (byte-exact — never extend, rename, or reorder)
-
-- **SemanticState** (agent-declared, per assignment): `blocked question hold
-  waiting ready failed cancelled done`
-- **SystemState** (pij-computed only; honest `unknown` over any guess):
-  `starting working idle stalled stopped dead unknown`
-
-## UI derivation rules (what you compute, not read)
-
-**Badge (worst-first, AC-05).** One badge per node: the worst of the node's
-`systemState` plus the latest declared semantic state of **every OPEN
-assignment**; no candidates at all → `unknown`. Severity order, worst first
-(covers both vocabularies exactly once):
-
-```
-dead failed stalled blocked question hold stopped unknown
-waiting starting working ready cancelled done idle
-```
-
-**Effective parent.** `parentId` when the key is present — including the
-explicit `parentId: null` root marker (the one sanctioned `null`, meaning "a
-ruled root", distinct from the key being absent) — else `spawnedBy`, else
-none. `spawnedBy` is immutable spawn provenance; `parentId` is the living
-tree edge (`pij link` re-parents it, audited as `node-linked`).
-
-**Unadopted (adoption axis).** `prime !== true && effectiveParent === null`.
-Tree nodes carry it present-when-true (`"unadopted": true`); list rows carry
-it as an always-present boolean. Prime seats are legal roots, never flagged.
-
-**Three independent axes.** Adoption (above) ≠ structural (`problem ∈
-orphan|filtered-parent|cycle` — an orphan HAS a parent pointer whose target
-vanished) ≠ runtime (`systemState`). Never merge them in a view.
-
-**Done is a claim (AC-06).** An assignment whose latest declared state is
-`done` with no later `state-verified` event in its chain renders
-**unverified**; verification adds `verifiedBy` and flips it.
-
-**Context gauges (AC-09).** `contextMax` comes from the models-registry join
-on `boundModel` — **the sole source, by ruling (P4 T006c)**: the codex
-rollout's self-reported `model_context_window` is deliberately unwired (a
-self-reported max needs its own trust story, and precedence over the registry
-would need a ruling that has not been made). `contextCurrent.value` is a real
-token count or the literal `"unknown"`; `provenance` names the source
-attempted (`pi-events`, `claude-transcript`, `codex-rollout`,
-`copilot-none`). Absent source ⇒ `unknown`, never a guess.
-
-**spine.md.** A render, not a log: byte-stable for an unchanged log,
-regenerated by `pij spine render`, unknown kinds and additive fields rendered
-honestly. Never hand-edit; never parse it back — parse `events.ndjson`.
-
-## Anomaly queries (derived safety — guidance, never jail)
-
-Anyone may write anything; safety is derived. `pij anomalies --json` returns:
-
-```
-{ kind, nodeId, assignmentId?, detail, evidence: number[] }   // evidence = spine seqs
-```
-
-| kind | fires when |
-|---|---|
-| `axis-disagreement` | semantic-active assignment + system `idle` beyond the threshold (default 4h) — the lost-dispatch shape |
-| `unverified-done` | latest declared `done` with no later verification |
-| `foreign-hold-clear` | a `hold` cleared by a different actor than its issuer |
-
-The daemon pushes a parent alert **once per transition** (latch) and never
-acts on an anomaly itself.
-
-## Consistency notes (what a reader may observe)
-
-- **Coupled writes** (project/task/state verbs): journal-FIRST under the
-  machine-wide platform write lock — the audit event is journaled as intent
-  before state commits, appended after, recovered on the next platform write
-  if a crash intervenes. Committed state without its audit event does not
-  survive.
-- **Uncoupled events** (`system-state`, `node-linked`): the DESCRIPTOR is the
-  truth, the event is telemetry/history. Descriptor truth is written first
-  and never waits on the spine; a failed append is surfaced to the writer
-  (`spineSeq: null` + warning), never forged.
-- Known benign window (P3, documented no-fix): `pij link` writes the
-  descriptor outside the platform write lock (registry writes have their own
-  atomic-replace), so a reader can observe a new parent moments before its
-  `node-linked` event lands. Uncoupled doctrine makes this honest: tree truth
-  is the descriptor.
-- All record writes are atomic replaces — readers never see half a JSON file.
-  NDJSON readers must skip torn/corrupt lines (every pij parser does).
-
-## Path stability — what an external reader may bind to (ruling, 2026-07-26)
-
-The contract above is a **schema** contract. It was silent on **paths**, and an
-external reader needs both. Ruled here after the chainglass UI workstream hit the
-gap.
-
-**Public and stable — bind to the file.**
-
-- `~/.pij/spine/` — the append-only spine. Append-only, schema-versioned per line,
-  open-vocabulary by design, and the highest-volume thing any consumer polls.
-  A cursor over this file is a supported access pattern. It will not move or change
-  format without notice to known consumers.
-
-**NOT stable — read through the CLI.**
-
-- Individual record paths, including `~/.pij/<id>.json`. The two-tier registry
-  (s071) *renames records between `~/.pij/` and `~/.pij/archive/`* — `renameSync`
-  in `adapters/fs-registry.ts` — on a 48h terminal TTL. 1,988 of ~2,184 seats
-  currently live in `archive/`. A watcher bound to a record path will see it
-  vanish and must not read that as deletion. Schema was preserved across that
-  change; **location was not**, and nothing in this document promised it would be.
-- Directory scans of `~/.pij/`. Atomic replace is implemented as write-temp +
-  rename, so `<id>.json.tmp-<pid>-<uuid>` files appear transiently and can be left
-  behind by a crash (there is one on this host today). Any consumer listing that
-  directory must filter them; the CLI already does.
-
-**What atomic replace does and does not buy a reader.** It does rule out torn
-reads — a reader never sees half a JSON file, exactly as stated above. It does
-**not** make a record self-consistent with the rest of the store at that instant:
-cross-file ordering skew is real (the `pij link` window above is one documented
-case) and is surface-independent. The per-field merge law is a **writer** hazard —
-read-modify-write from outside loses concurrent daemon updates — and a read-only
-consumer cannot enter that class.
-
-**Consequence for polling.** A CLI invocation costs ~0.42–0.48s wall clock
-(measured, two independent observers, 2026-07-26). At a 1–2s cursor cadence that
-is a 25–50% duty cycle of process spawning on a shared host. Reading the spine
-file directly is <0.01s. Cursor cadence therefore belongs on the file; derived
-views (`tree`, `node show`, `anomalies`) belong on the CLI at slow cadence,
-because re-implementing pij's derivation logic outside pij is the failure this
-document exists to prevent.
-
-## Daemon source provenance — the invariant, not the instance (2026-07-26)
-
-The machine-wide daemon runs `tsx` off **exactly**
-`/Users/jordanknight/pi-hacking/pij/.pi/extensions/pij/daemon.ts` — a fixed path in
-a repository that humans and agents both work in. Verify it in the live process
-argv, not from this document.
-
-The operating rule has been *"never restart the daemon from a worktree"*. That rule
-names an instance. **The invariant is: the daemon's source path must always be on
-canonical `main`.** A worktree is merely the common way to violate it.
-
-The uncommon way, hit on 2026-07-26: a foreign worker checked out its own branch
-**in the canonical checkout itself**. The rule as written read as satisfied
-throughout — nobody restarted from a worktree — while the fleet's supervisor sat one
-crash-restart away from booting on a worker's unreviewed branch. A running daemon
-keeps its already-loaded modules, which is the only reason nothing happened.
-
-**Practical consequences.**
-
-- Before any commit or merge in that checkout, run `git rev-parse --abbrev-ref HEAD`
-  and act on what it says. "It is my repo" does not entail "HEAD is on main".
-- `git branch --list` showing branches you did not create is the tell that another
-  worker is using the tree.
-- Foreign workers get `pij stream create` (an attributed worktree allocation) or
-  their own clone. Never the canonical checkout.
-- Known gap: nothing surfaces the daemon's own source branch/sha, so "what code is
-  the supervisor running" is an inference rather than a read. Recording it at boot
-  and reporting it in `pij daemon status` would close that.
-
-### The exposure, enumerated (2026-07-26)
-
-The invariant above understates it: **the canonical checkout is machine-wide live
-infrastructure, and its HEAD is a production configuration value.** It is not one
-process. Enumerated on this host — every one of these resolves into the working
-tree, not into a copy or a build artefact:
-
-| Entry point | Resolves to |
-|---|---|
-| `~/.npm-global/bin/pij` (on `PATH`) | `harness/scripts/pij-cli.cjs` |
-| `~/.npm-global/bin/flow-pair` (on `PATH`) | `skills/flow-pair/lib/cli.ts` |
-| `~/.claude/skills/pij` | `skills/pij` |
-| `~/.agents/skills/pij` | `skills/pij` (serves copilot **and** codex) |
-| `~/.copilot/skills/flow-pair` | `skills/flow-pair` |
-| the machine-wide daemon process | `.pi/extensions/pij/daemon.ts` |
-
-Re-run the enumeration rather than trusting this table; it was found by accident
-while checking something else, and nothing keeps it current:
-
-```sh
-for f in ~/.npm-global/bin/*; do t=$(readlink -f "$f"); case "$t" in <checkout>/*) echo "$f -> $t";; esac; done
-for d in ~/.pi/extensions ~/.omp/extensions ~/.claude/skills ~/.agents/skills ~/.copilot/skills; do
-  find "$d" -maxdepth 3 -type l 2>/dev/null | while read l; do t=$(readlink -f "$l"); case "$t" in <checkout>/*) echo "$l";; esac; done
-done
-```
-
-**Skills are more exposed than the daemon, not less.** A running daemon keeps its
-already-loaded modules, so a branch swap only bites on restart. A **skill file is
-read at invocation**, so a foreign branch checked out in this tree changes the
-contract every agent on the machine is following on their very next call — including
-the orchestrator doing the checking. There is no window of grace and no restart to
-notice.
+Production deployment, restart and chainglass confirmation are explicit owner
+actions. Isolated tests and byte captures are not evidence that production was
+updated or that a consumer has completed its migration.
