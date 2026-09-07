@@ -85,6 +85,17 @@ const boot: HarnessVerb = {
 				},
 			);
 
+		const deps = await runStage("worktree-deps", ["worktree-deps", "--check"], 10_000);
+		if (!deps.stage.ok) {
+			return ctx.ok(
+				{ ready: false, advisory: true, stages, output: deps.output, orientation: ORIENTATION },
+				{
+					next_action:
+						"worktree-deps: NOT-READY. Run `just worktree-deps` before TypeScript/vitest work, then re-run `harness boot`. Rust-only work can continue.",
+				},
+			);
+		}
+
 		// Stage 1 — typecheck (the whole TS surface compiles).
 		const tc = await runStage("typecheck", ["typecheck"], TYPECHECK_TIMEOUT_MS);
 		if (!tc.stage.ok) {
