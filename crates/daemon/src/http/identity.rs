@@ -705,6 +705,12 @@ pub(crate) async fn resolve_seat(
     asserted: Option<String>,
     pane: Option<String>,
 ) -> Resolved {
+    if asserted.as_deref() == Some(crate::background::BG_ACTOR) {
+        return Resolved::Refusal(refused(
+            command,
+            "pij-bg is a daemon-owned sender, not a caller seat",
+        ));
+    }
     let asserted = asserted.filter(|id| !id.trim().is_empty());
     let pane = pane.filter(|pane| !pane.trim().is_empty());
     if asserted.is_none() && pane.is_none() {
@@ -733,6 +739,12 @@ pub(crate) async fn resolve_seat(
                 ),
             ));
         };
+        if seat.id.0 == crate::background::BG_ACTOR {
+            return Resolved::Refusal(refused(
+                command,
+                "pij-bg is a daemon-owned sender, not a caller seat",
+            ));
+        }
         if let Some(asserted) = asserted.as_deref()
             && asserted != seat.id.0
         {

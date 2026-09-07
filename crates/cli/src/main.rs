@@ -268,6 +268,11 @@ enum Command {
         #[arg(long)]
         peek: bool,
     },
+    /// Run detached commands and recover their daemon-owned output.
+    Bg {
+        #[command(subcommand)]
+        action: BgAction,
+    },
     /// Enqueue one sidecar job: telegram send, background command, or chore.
     ///
     /// The consumers are queue-backed, so this is the shipped PRODUCER. Live-fire
@@ -309,6 +314,64 @@ enum Command {
         #[arg(long, value_parser = parse_machine_cursor)]
         since: Vec<MachineCursor>,
     },
+}
+
+#[derive(Clone, Debug, Subcommand)]
+enum BgAction {
+    /// Start a command; its completion arrives as a turn from pij-bg.
+    Create {
+        /// Human title included in the completion turn.
+        #[arg(long, allow_hyphen_values = true)]
+        title: String,
+        /// Literal command interpreted by /bin/sh in the caller's recorded folder.
+        #[arg(long, allow_hyphen_values = true)]
+        command: String,
+    },
+    /// List your jobs, including finished jobs.
+    List {
+        /// Also include jobs owned by your directly recorded children.
+        #[arg(long)]
+        all: bool,
+    },
+    /// Read a bounded snapshot from the daemon-owned log.
+    Tail {
+        job: String,
+        #[arg(long)]
+        lines: Option<usize>,
+    },
+    /// Stop a job owned by you or your directly recorded child.
+    Kill { job: String },
+}
+
+impl BgAction {
+    fn argv(self) -> Vec<String> {
+        let mut argv = vec!["bg".to_string()];
+        match self {
+            Self::Create { title, command } => {
+                argv.extend([
+                    "create".to_string(),
+                    "--title".to_string(),
+                    title,
+                    "--command".to_string(),
+                    command,
+                ]);
+            }
+            Self::List { all } => {
+                argv.push("list".to_string());
+                if all {
+                    argv.push("--all".to_string());
+                }
+            }
+            Self::Tail { job, lines } => {
+                argv.extend(["tail".to_string(), job]);
+                if let Some(lines) = lines {
+                    argv.extend(["--lines".to_string(), lines.to_string()]);
+                }
+            }
+            Self::Kill { job } => argv.extend(["kill".to_string(), job]),
+        }
+        argv
+    }
 }
 
 #[derive(Clone, Debug, Subcommand)]
@@ -764,6 +827,20 @@ async fn run(cli: Cli) -> ExitCode {
             emit(&client.inbox(&target, wait, peek).await, cli.json)
         }
 
+        Command::Bg { action } => {
+            let response = client.bg(&action.argv(), &caller_context()).await;
+            if !cli.json
+                && response.ok
+                && let Some(line) = response
+                    .data
+                    .as_ref()
+                    .and_then(|data| data["line"].as_str())
+            {
+                println!("{line}");
+                return ExitCode::from(exit_code(&response));
+            }
+            emit(&response, cli.json)
+        }
         Command::Report { seat, args } => {
             let acting = match resolve_command_seat(&client, "pij report", seat.as_deref()).await {
                 Ok(seat) => seat,
@@ -1679,6 +1756,7 @@ impl Command {
             Command::Spawn { .. } => "pij spawn",
             Command::Revive { .. } => "pij revive",
             Command::Inbox { .. } => "pij inbox",
+            Command::Bg { .. } => "pij bg",
             Command::Report { .. } => "pij report",
             Command::List => "pij list",
             Command::State { .. } => "pij state",
@@ -1778,6 +1856,7 @@ mod tests {
                 "send",
                 "compact-self",
                 "inbox",
+                "bg",
                 "sidecar",
                 "report",
                 "list",

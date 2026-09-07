@@ -460,11 +460,12 @@ describe("the production call site wires the seat lookups (finding 4)", () => {
 		).toEqual(["ambientSeatId", "seatInLegacy"]);
 	});
 
-	it("the routed call site passes those deps rather than defaulting", () => {
+	it("the routed argv still carries explicit deps rather than defaulting", () => {
 		const source = readFileSync(CLI, "utf8");
-		expect(source).toMatch(
-			/routeVerb\(\s*verb,\s*leaf,\s*process\.argv\.slice\(2\),\s*routingDeps\(\)/,
-		);
+		// Leading --json is normalized before routing; the subprocess bg suite
+		// proves argument preservation. This witness still requires routingDeps
+		// as the explicit fourth argument, independent of that preprocessing.
+		expect(source).toMatch(/routeVerb\(\s*verb,\s*leaf,\s*argv,\s*routingDeps\(\)/);
 		// …and so does the diagnostic, or it reports a different generation than
 		// the one the real call uses.
 		expect(source).toMatch(/probeDecisionOnly\([\s\S]{0,120}routingDeps\(\)/);
@@ -805,9 +806,11 @@ describe("every routed row can be read by a human (F-U8)", () => {
 
 	// The replacement for "--json still wins for every row", which asserted the
 	// defect as though it were a safety property.
-	it("EVERY row declares its machine output, and never emits rs's raw schema", () => {
+	it("EVERY row declares a projection, refusal or complete-envelope passthrough", () => {
 		for (const row of RS_ROUTE_TABLE) {
-			expect(["project", "refuse"], `${row.verb} ${row.leaf ?? ""}`).toContain(row.jsonOutput);
+			expect(["project", "refuse", "passthrough"], `${row.verb} ${row.leaf ?? ""}`).toContain(
+				row.jsonOutput,
+			);
 			if (row.jsonOutput === "project") expect(row.projectJson).toBeDefined();
 			if (row.jsonOutput === "refuse") expect(row.jsonRefusal).toBeTruthy();
 			const argv = row.leaf === undefined ? [row.verb, "--json"] : [row.verb, row.leaf, "--json"];

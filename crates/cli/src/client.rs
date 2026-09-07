@@ -198,6 +198,17 @@ impl DaemonClient {
         self.post("pij sidecar", "/v1/sidecar", request).await
     }
 
+    /// Forward the background-job grammar and caller evidence to the daemon.
+    /// The daemon derives ownership; this request never asserts an owner.
+    pub async fn bg(&self, argv: &[String], caller: &CallerContext) -> Envelope<Value> {
+        self.post(
+            "pij bg",
+            "/v1/bg",
+            &serde_json::json!({ "argv": argv, "caller": caller }),
+        )
+        .await
+    }
+
     /// Report this seat's card or declared state.
     ///
     /// The CLI FORWARDS `argv` rather than parsing it: the daemon owns the

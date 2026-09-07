@@ -303,6 +303,12 @@ impl DeliveryService {
     }
 
     async fn arrive(&self, msg: Msg, arrival: Arrival) -> Result<Receipt> {
+        if msg.to.0 == crate::background::BG_ACTOR {
+            return Err(PijError::Adapter {
+                adapter: "daemon/virtual-sender".into(),
+                message: "pij-bg is a daemon-owned sender, not a recipient".into(),
+            });
+        }
         let at = (self.clock)()?;
         let from = msg.from.clone();
         let to = msg.to.clone();
