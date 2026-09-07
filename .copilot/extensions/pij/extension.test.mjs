@@ -51,8 +51,14 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
       if (command === 'tmux') return {stdout: process.ppid + '\\n', stderr:''};
       if (command !== 'ps') throw new Error('Unexpected process probe: ' + command);
       const pid = args[args.indexOf('-p') + 1];
-      return {stdout: args.includes('lstart=') ? 'Sat Sep  5 12:00:00 2026\\n' : pid + ' 1 /fixture/copilot\\n', stderr:''};
+      return {stdout: args.includes('lstart=') ? 'Sat Sep  5 12:00:00 2026\\n' : pid + ' 1 ' + process.env.PIJ_NATIVE_TEST_COMM + '\\n', stderr:''};
     };
+  `;
+	const kernelApi = `
+    export async function readlink(path) {
+      if (!/^\\/proc\\/\\d+\\/exe$/.test(path)) throw new Error('Unexpected executable probe');
+      return process.env.PIJ_NATIVE_TEST_EXECUTABLE;
+    }
   `;
 	registerHooks({
 		resolve(specifier, context, next) {
@@ -61,7 +67,9 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 					? sdk
 					: specifier === "node:child_process"
 						? processApi
-						: undefined;
+						: specifier === "node:fs/promises" && context.parentURL?.endsWith("/extension.mjs")
+							? kernelApi
+							: undefined;
 			return source === undefined
 				? next(specifier, context)
 				: { url: `data:text/javascript,${encodeURIComponent(source)}`, shortCircuit: true };
@@ -74,6 +82,8 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			daemon = true,
 			key = true,
 			joinFails = false,
+			processCommand = "/fixture/copilot",
+			kernelExecutable = "/fixture/copilot",
 			messages = 1,
 			inboxPages = [],
 			typingSnapshots = [],
@@ -224,6 +234,8 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			SESSION_ID: "native-shell-137",
 			PIJ_NATIVE_EXTENSION_TEST: "1",
 			PIJ_NATIVE_TEST_JOIN_FAIL: joinFails ? "1" : "0",
+			PIJ_NATIVE_TEST_COMM: processCommand,
+			PIJ_NATIVE_TEST_EXECUTABLE: kernelExecutable,
 		};
 		for (const name of ["TMUX", "TMUX_PANE", "PIJ_SESSION_ID", "PIJ_SPAWN_ID", "PIJ_PARENT_ID"])
 			delete env[name];
@@ -316,6 +328,22 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		assert.match(f.events.find((e) => e.kind === "native-send").input.prompt, /SHELL_NONCE_137/);
 		assert.equal(f.events.filter((event) => event.kind === "native-log").length, 0);
 		assert.equal(f.stdout(), "");
+	});
+
+	test("Linux native host uses the kernel executable when comm is MainThread", {
+		skip: process.platform !== "linux",
+	}, async (t) => {
+		const f = await launch(t, { processCommand: "MainThread" });
+		await f.waitFor("inbox-acknowledged");
+		assert.equal(f.requests.find((r) => r.path === "/v1/register").body.pid, process.pid);
+	});
+
+	test("Linux native host rejects a copilot task name on another executable", {
+		skip: process.platform !== "linux",
+	}, async (t) => {
+		const f = await launch(t, { processCommand: "copilot", kernelExecutable: "/bin/sh" });
+		await f.waitFor("native-log", (event) => /extension-unavailable/.test(event.message));
+		assert.equal(f.requests.length, 0);
 	});
 
 	test("actual shell discovers local seats without remote pane collisions", async (t) => {

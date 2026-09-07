@@ -1971,6 +1971,13 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 			};
 			witnesses.push(rollover);
 			rollover.previous_turn_end = await waitTurnEnd(target, reconnectNonce);
+			// A staged /new draft no longer gates native delivery. Hold the owned
+			// fixture explicitly so the rollover still exercises outstanding work.
+			rollover.predecessor_hold = await api("/v1/report", {
+				seat: target.id,
+				argv: ["report", "state", "hold"],
+			});
+			assert.equal(object(rollover.predecessor_hold).state, "hold");
 			const oldContextSnapshot = (successor?: Seat) => ({
 				jobs: jobs(target, oldMsgId),
 				acknowledgements: rows(
@@ -2015,6 +2022,11 @@ export async function runSmoke(options: Options): Promise<{ code: number; output
 			);
 			rollover.after = successor;
 			verifyNativeLifecycleIdentity(target, successor, "new");
+			assert.notEqual(
+				object(successor).semantic_state,
+				"hold",
+				"predecessor Hold must not mask successor native-target isolation",
+			);
 			if (mode === "spawned") {
 				assert.equal(typeof target.spawn_id, "string", "spawned source correlation required");
 				assert.equal(

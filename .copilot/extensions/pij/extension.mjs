@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { readlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -31,7 +32,8 @@ async function inspectProcess(pid) {
 	return {
 		pid: Number(row[1]),
 		ppid: Number(row[2]),
-		command: row[3],
+		// Linux comm is a mutable task name (Copilot reports MainThread), not its executable.
+		command: process.platform === "linux" ? await readlink(`/proc/${pid}/exe`) : row[3],
 		proc_start: parseProcessStart(started.stdout),
 	};
 }

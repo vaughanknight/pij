@@ -457,6 +457,7 @@ class NativeCompletion {
 		this.live = recoveredNativeId === undefined;
 		this.pending = [];
 		this.descendants = new Set();
+		this.foregroundTurnEnds = new Set();
 		this.done = new Promise((resolve) => {
 			this.resolve = resolve;
 		});
@@ -484,6 +485,17 @@ class NativeCompletion {
 			if (!event.agentId && event.data?.messageId === this.nativeId) {
 				this.descendants.add(event.id);
 				if (nonempty(event.data.interactionId)) this.interactionId ??= event.data.interactionId;
+			} else if (
+				!event.agentId &&
+				this.foregroundTurnEnds.has(event.parentId) &&
+				nonempty(event.data?.messageId) &&
+				nonempty(event.data?.interactionId)
+			) {
+				// Enqueued foreground turns may run consecutively with no idle between.
+				// Follow only a user linked to an observed owned turn end, never a global idle.
+				this.descendants.add(event.id);
+				this.interactionId = event.data.interactionId;
+				this.foregroundTurnEnds.clear();
 			}
 			return;
 		}
@@ -497,9 +509,12 @@ class NativeCompletion {
 				event.type === "tool.execution_complete");
 		if (!sameInteraction && !this.descendants.has(event.parentId)) return;
 		this.descendants.add(event.id);
+		if (!event.agentId && event.type === "assistant.turn_end")
+			this.foregroundTurnEnds.add(event.id);
 		if (!event.agentId && ["session.idle", "session.error"].includes(event.type)) {
 			this.terminal = { type: event.type, eventId: event.id };
 			this.descendants.clear();
+			this.foregroundTurnEnds.clear();
 			this.resolve(this.terminal);
 		}
 	}
