@@ -42,6 +42,7 @@ Module missing at its path → say so and stop. Never improvise a route from mem
 | `agent` (`list/run/spawn/show/new/check/eject/report`) | agent route |
 | `daemon` `phonehome` `path` `telegram` | ops route |
 | `compact-self` `models` | § Shared conventions (00-routing.md) |
+| `commit-trailers` | § Shared conventions C11 — Commit attribution (00-routing.md) |
 | `bg` (`create/list/tail/kill`) | § Shared conventions C7 — run a slow command detached; its result arrives as an injected turn from `pij-bg` |
 | `watch` `unwatch` | peer file-watch (shipped plan 033 — `docs/how/pij-peer-watch.md`) |
 | `chore` (`add/run/list/ack/remove`) | durable change detection — a named probe roster whose delta the TOOL computes, so a cheap seat relays what it cannot have invented. `run` NEVER advances a baseline; only `ack` does, so an un-relayed delta re-surfaces instead of vanishing. Definitions scope `seat`/`repo`/`fleet` and **union** (never shadow); fingerprints are ALWAYS per-seat. A failing probe reports `NOT-PROBEABLE` and stays in the roster. Deep reference `docs/how/pij-chore.md` (shipped plan 076) |

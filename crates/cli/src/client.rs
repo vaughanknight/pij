@@ -196,6 +196,11 @@ impl DaemonClient {
         self.get("pij list", "/v1/seats").await
     }
 
+    /// List only this daemon's authoritative registry, excluding retained remote seats.
+    pub async fn local_seats(&self) -> Envelope<FederatedRoster> {
+        self.get("pij list", "/v1/seats?scope=local").await
+    }
+
     /// Read one seat's card back — `pij state <id>` (plan 114, u-readback).
     ///
     /// POSTs the NATIVE body shape, `{ "id": "<seat>" }`. The route is POST even

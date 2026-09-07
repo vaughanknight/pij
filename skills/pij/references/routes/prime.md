@@ -9,10 +9,9 @@ below it, and government as single-writer files.
 ## Role triage
 
 Use the first matching deterministic probe. Do not choose by persona or intent.
-Resolve the current id with `pij whoami --json`, then run
-`pij list --prime --here --json` and compare the `id` fields mechanically.
-`--here` is current-prime-only. `oldPrime` is history, never an active-seat
-signal; audit retired seats with `pij tree --global --all --json`.
+Resolve the current id with `pij whoami --json` and compare registry `id` fields mechanically.
+`pij list --prime --here --json` is current-prime-only; widen as described below before concluding absence.
+`oldPrime` is history, never an active-seat signal; audit retired seats with `pij tree --global --all --json`.
 
 **An empty `--here` result is NOT evidence that no prime exists.** Widen to
 unscoped `pij list --prime --json` before concluding absence — a repo's prime is
@@ -58,6 +57,7 @@ government rows with `pij whoami`, `pij state <id>`, and the human ruling.
 ## Prime invariants
 
 - Government files have one writer; see [`../prime/protocol.md#government-files`](../prime/protocol.md#government-files).
+- At each commit boundary, apply `00-routing.md` § C11 (Commit attribution).
 - Worktree-local activity is notification-only; synchronization begins at shared
   mutable resources or converging histories; see
   [`../prime/protocol.md#construction-fences-batons-and-landing`](../prime/protocol.md#construction-fences-batons-and-landing).

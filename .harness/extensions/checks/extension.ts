@@ -16,6 +16,8 @@ interface Sensor {
 	args: string[];
 	/** Skipped under --quick (slow and/or environment-bound, e.g. tmux smoke). */
 	heavy?: boolean;
+	/** Report-only sensor: preserve its output without failing the gate. */
+	advisory?: boolean;
 	/** Extra env for this sensor (merged into process.env for the child). */
 	env?: Record<string, string>;
 	/** One-line description of what it proves. */
@@ -70,13 +72,21 @@ const SENSORS: Sensor[] = [
 		args: ["snapshots-check"],
 		proves: "agent-pack snapshots have not drifted",
 	},
+	{
+		name: "pij-commit-trailers",
+		cmd: "just",
+		args: ["pij-commit-trailers", "--json"],
+		advisory: true,
+		proves: "branch-local harness commits carry derived pij attribution (advisory)",
+	},
 ];
 
 interface SensorResult {
 	name: string;
-	status: "pass" | "fail" | "skipped";
+	status: "pass" | "fail" | "warn" | "skipped";
 	code: number;
 	proves: string;
+	output?: string;
 }
 
 /** Last N non-empty lines of a failing sensor's output. */
@@ -91,7 +101,7 @@ const checks: HarnessVerb = {
 		"Run pij's full deterministic gate (the signal inventory) and report a ship/done verdict.",
 	description:
 		'The single "are we done?" gate. Runs every sensor in the engineering-harness signal inventory ' +
-		"(mirrors `just self-check`: local-paths, typecheck, lint, test, windows-compat, smoke, pkg-audit, snapshots) as individual " +
+		"(mirrors `just self-check`: local-paths, typecheck, lint, test, windows-compat, smoke, pkg-audit, snapshots, pij-commit-trailers) as individual " +
 		"stages, reports a per-sensor verdict, and — unlike self-check — runs ALL of them so you see every " +
 		"failure in one pass. Run it before ship and before declaring any non-trivial task done. " +
 		"`--quick` skips heavy sensors (smoke) for a fast static+unit gate.",
@@ -125,33 +135,48 @@ const checks: HarnessVerb = {
 					else process.env[k] = v;
 				}
 			}
+			let advisoryStatus: "pass" | "warn" = "warn";
+			if (s.advisory && res.ok) {
+				try {
+					const report = JSON.parse(res.stdout) as { status?: unknown };
+					if (report.status === "pass") advisoryStatus = "pass";
+				} catch {
+					// An unavailable advisory must remain visible, never block delivery.
+				}
+			}
 			results.push({
 				name: s.name,
-				status: res.ok ? "pass" : "fail",
+				status: s.advisory ? advisoryStatus : res.ok ? "pass" : "fail",
 				code: res.code,
 				proves: s.proves,
+				...(s.advisory ? { output: res.stdout || res.stderr } : {}),
 			});
-			if (!res.ok) failureLogs.push({ name: s.name, output: tail(res.stderr || res.stdout) });
+			if (!res.ok && !s.advisory) failureLogs.push({ name: s.name, output: tail(res.stderr || res.stdout) });
 		}
 
 		const failed = results.filter((r) => r.status === "fail");
 		const skipped = results.filter((r) => r.status === "skipped").map((r) => r.name);
+		const advisoryGuidance = results.some((r) => r.status === "warn")
+			? " Review advisory attribution findings with `just pij-commit-trailers`; JSON details are in results[].output."
+			: "";
 
 		if (failed.length > 0) {
 			const names = failed.map((r) => r.name).join(", ");
 			return ctx.error("checks-failed", `${failed.length} check(s) failed: ${names}.`, {
 				details: { results, failures: failureLogs, skipped },
-				next_action: `Fix the failing check(s) above (${names}), then re-run \`harness checks\`. Not ship/done-ready until this is green.`,
+				next_action: `Fix the failing check(s) above (${names}), then re-run \`harness checks\`. Not ship/done-ready until this is green.${advisoryGuidance}`,
 			});
 		}
 
-		const ran = results.filter((r) => r.status === "pass").map((r) => r.name);
+		const ran = results.filter((r) => r.status !== "skipped").map((r) => r.name);
 		return ctx.ok(
 			{ ok: true, ran, skipped, results },
 			{
-				next_action: quick
+				next_action: (quick
 					? "Quick checks green. Run the full `harness checks` (incl. smoke) before ship / declaring done."
-					: "All checks green — safe to ship / declare this task done.",
+					: advisoryGuidance
+						? "Required checks green."
+						: "All checks green — safe to ship / declare this task done.") + advisoryGuidance,
 			},
 		);
 	},
