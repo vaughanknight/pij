@@ -14,6 +14,10 @@ sessions without an extension may pull through `pij inbox`.
 | [pij prime](./pij-prime.md) | Govern multiple plan-owning streams through one o-prime seat and file-backed government |
 | [pij orchestration batons](./pij-orchestration-baton.md) | Serialize shared resources with atomic leases, pushed grants, explicit return/reclaim, and holder alerts |
 
+## Governance
+
+Governance documents live on the orphan `prime-governance` branch in a permanent worktree: the prime commits and pushes there without PRs or CI, and never merges it to main. Main retains a pointer stub; product code, code-carrying plan folders and gate inputs stay with the product. PRD rows close only against receipts, every plan names the rows it advances, and a named owner reconciles them. This document branch does not replace platform-store authority for live facts. Follow [Governance branch — the rules](../../skills/pij/references/prime/rituals/bootstrap.md#governance-branch--the-rules) for the generic recipe, ownership and lynx/Jordan provenance. In pij, resolve `<government-root>` with `harness/scripts/government-root.sh [REPO]` (REPO defaults to cwd); absent or unavailable worktrees require the linked bootstrap, never a local-tree fallback.
+
 ## The point: cheap generation, expensive review
 
 ```

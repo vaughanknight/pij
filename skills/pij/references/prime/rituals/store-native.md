@@ -5,6 +5,7 @@ the pij platform store natively from day zero; existing primes **self-migrate
 lazily** at seat-change or skill-refresh — each carries its own load-bearing
 facts into the store as it works. Prose government stands as historical record;
 a prose-governed repo keeps prose as the live surface until ITS prime migrates.
+Documents still follow [Governance branch — the rules](./bootstrap.md#governance-branch--the-rules); resolve `<government-root>` there. The orphan branch changes document storage, not platform-store authority.
 
 ## The mapping — prose artifact → store surface
 
@@ -59,11 +60,11 @@ mis-kinded event with a `--refs` correction, never a delete.
 
 ## Day-zero (fresh prime)
 
-Replace the prose scaffold (bootstrap §3) with: one `pij project create` per
-human-named portfolio item + `project set` for plan path and prime; thereafter
-append a spine event at every governance act (grant, transition, ruling
-pointer, teardown). Briefs/canaries stay as files. Everything else in bootstrap
-(seat proof, per-repo contract, orient stack, intake) is unchanged.
+Replace ONLY bootstrap §3's prose portfolio/roster scaffold: `pij project create`
+per human-named item, `project set` for plan path/prime, then spine events at each
+governance act (grant, transition, ruling pointer, teardown). Keep §3's orphan
+branch/permanent worktree for briefs, canaries and other documents. Seat proof,
+per-repo contract, orient stack, and intake remain unchanged.
 
 ## Self-migration at seat-change (the lazy rule)
 

@@ -2,7 +2,9 @@
 **Thesis**: <human-authored purpose for the current portfolio>
 **Updated**: <ISO from `date -u`> · **Seq**: <integer, +1 on EVERY write — answers "am I reading mid-write?" mechanically; a handover pack records the Seq it was written against>
 **Writer**: <o-prime pij id; single writer>
-**Prime-flow**: <absolute path to prime-flow.json under this repo's government root; in `AI-Substrate/pij`, `$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government/prime-flow.json` on the `prime-governance` branch>
+**Prime-flow**: `<government-root>/prime-flow.json` (unmigrated prose only; store facts retain authority)
+**Resolve** `<government-root>` via [Governance branch — the rules](../rituals/bootstrap.md#governance-branch--the-rules); instantiate absolute paths.
+**PRD reconciliation owner**: <named current o-prime or explicitly assigned successor>
 
 ## Roster
 

@@ -204,9 +204,9 @@ __pycache__/
 pocs/*/target/
 pocs/*/out/
 
-# Governance lives on the standing `prime-governance` branch (see GOVERNANCE.md),
-# never on main. Ignored so a hand-written file cannot silently resurrect the tree.
-.harness/government/
+# Governance lives on prime-governance; main keeps only the resolver pointer.
+.harness/government/*
+!.harness/government/README.md
 /government/
 
 # Per-worktree cargo target dirs (impl-guide mandates CARGO_TARGET_DIR per coder)

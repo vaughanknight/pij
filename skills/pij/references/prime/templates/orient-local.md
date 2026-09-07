@@ -1,5 +1,6 @@
 # Orient — local (lever 2)
 **Scope**: THIS REPO · generated fresh · o-prime single writer
+Resolve `<government-root>` via [Governance branch — the rules](../rituals/bootstrap.md#governance-branch--the-rules); substitute its absolute path in this generated orient.
 
 ## What this project is
 
@@ -22,6 +23,7 @@ orientation/preamble:
 - <configuration/tunability doctrine>
 - <how behavior proves itself; known green-but-wrong failure modes>
 - <where prior art and operator guides live>
+- PRD reconciliation owner: <named current o-prime or explicitly assigned successor; transfer at rotation>
 
 ## Harness surface
 
@@ -55,7 +57,7 @@ orientation/preamble:
 
 ## Current portfolio context
 
-- Prime-flow: `<government-root>/prime-flow.json` (in `AI-Substrate/pij`: `$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government/prime-flow.json`, on the `prime-governance` branch, not main)
+- Portfolio: <authoritative store project; for unmigrated prose, `<government-root>/prime-flow.json`>
 - <in-flight item, owner, important seam>
 - <known hazard or sequencing watch>
 
