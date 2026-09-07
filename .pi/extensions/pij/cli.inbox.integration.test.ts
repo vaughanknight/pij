@@ -121,7 +121,9 @@ function refusal(run: CliRun, reason: RegExp): void {
 // skips with the reason on the record instead of throwing.
 const RS_BINARY_PRESENT = existsSync(RS_BINARY);
 if (!RS_BINARY_PRESENT && process.env.PIJ_RS_BIN_REQUIRED === "1") {
-	throw new Error(`PIJ_RS_BIN_REQUIRED=1 but ${RS_BINARY} is missing; build with cargo build -p pij-cli --bin pij-rs`);
+	throw new Error(
+		`PIJ_RS_BIN_REQUIRED=1 but ${RS_BINARY} is missing; build with cargo build -p pij-cli --bin pij-rs`,
+	);
 }
 const describeWithDaemon = RS_BINARY_PRESENT ? describe : describe.skip;
 describeWithDaemon("public pij inbox lifecycle against a private Rust daemon", () => {
