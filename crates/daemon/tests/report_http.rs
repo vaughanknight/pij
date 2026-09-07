@@ -1177,3 +1177,48 @@ async fn report_refuses_when_the_asserted_seat_and_the_pane_disagree() {
 
     server.abort();
 }
+
+#[tokio::test]
+async fn explicit_report_claim_cannot_hide_a_conflicting_caller_session() {
+    let (addr, server, _store, config) = daemon().await;
+    let services = pij_daemon::build_services(
+        &config,
+        std::path::Path::new("/tmp/pij-test-pane-signals-report"),
+    )
+    .await
+    .expect("services");
+    let mut other = SeatDescriptor::new("pij-other-reporter", Harness::Claude, "/abs/tree");
+    other.pane = Some("%910".to_string());
+    services
+        .registry
+        .put(other)
+        .await
+        .expect("second live actor");
+    for caller in [
+        serde_json::json!({"PIJ_SESSION_ID": SEAT}),
+        serde_json::json!({"PIJ_SESSION_ID": SEAT, "TMUX_PANE": "%910"}),
+    ] {
+        let response = reqwest::Client::new()
+            .post(format!("http://{addr}/v1/report"))
+            .bearer_auth(KEY)
+            .json(&serde_json::json!({
+                "seat": "pij-other-reporter", "caller": caller,
+                "argv": ["report", "now", "must not land", "anywhere"],
+            }))
+            .send()
+            .await
+            .expect("report");
+        assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+        let refusal: serde_json::Value = response.json().await.expect("refusal envelope");
+        assert_eq!(refusal["ok"], false);
+        let reason = refusal["meta"].as_str().expect("reason");
+        assert!(reason.contains(SEAT) && reason.contains("pij-other-reporter"));
+    }
+    let events = services
+        .spine
+        .tail(None, pij_core::model::Seq(0))
+        .await
+        .expect("history");
+    assert!(events.iter().all(|event| event.kind != "report.now"));
+    server.abort();
+}

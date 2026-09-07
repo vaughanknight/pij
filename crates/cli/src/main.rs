@@ -944,15 +944,38 @@ async fn run(cli: Cli) -> ExitCode {
         }
         Command::Report { seat, args } => {
             let as_json = cli.json || args.iter().any(|arg| arg == "--json");
-            let acting = match resolve_command_seat(&client, "pij report", seat.as_deref()).await {
-                Ok(seat) => seat,
-                Err(error) => return emit(&setup_refusal::<Value>("pij report", error), as_json),
+            let identity = match identity::request_from_environment(
+                std::env::var_os("PIJ_SESSION_ID"),
+                std::env::var_os("TMUX_PANE"),
+            ) {
+                Ok(identity) => identity,
+                Err(error) => {
+                    return emit(
+                        &setup_refusal::<Value>(
+                            "pij report",
+                            PijError::Adapter {
+                                adapter: "pij report".to_string(),
+                                message: error.to_string(),
+                            },
+                        ),
+                        as_json,
+                    );
+                }
             };
+            let caller = CallerContext {
+                session_id: identity.seat,
+                pane: identity.pane,
+                ..CallerContext::default()
+            };
+            let asserted = seat.map(SeatId::from);
             // The verb the caller typed is re-attached, because the daemon's
             // grammar parses the same argv the TypeScript CLI receives.
             let mut argv = vec!["report".to_string()];
             argv.extend(args);
-            emit(&client.report(&acting, &argv).await, as_json)
+            emit(
+                &client.report(asserted.as_ref(), &argv, &caller).await,
+                as_json,
+            )
         }
         Command::Role { args } => {
             let as_json = cli.json || args.iter().any(|arg| arg == "--json");

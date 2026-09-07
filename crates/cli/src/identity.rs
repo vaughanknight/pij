@@ -24,6 +24,25 @@ impl fmt::Display for NamedRefusal {
     }
 }
 
+/// Validate and forward the environment's identity claims without resolving them.
+pub(crate) fn request_from_environment(
+    env: Option<OsString>,
+    pane: Option<OsString>,
+) -> Result<IdentityRequest, NamedRefusal> {
+    let seat = decode("PIJ_SESSION_ID", env)?;
+    let pane = decode("TMUX_PANE", pane)?;
+    if seat.is_none() && pane.is_none() {
+        return Err(NamedRefusal::new(
+            "no acting seat: set PIJ_SESSION_ID or run from a registered tmux pane (TMUX_PANE); --from/--seat may assert agreement but cannot create identity",
+        ));
+    }
+    Ok(IdentityRequest {
+        seat,
+        pane,
+        ..IdentityRequest::default()
+    })
+}
+
 /// Resolve the acting seat through the daemon's single identity authority.
 ///
 /// Send every available identity input together. The daemon treats an observable
@@ -34,18 +53,7 @@ pub(crate) async fn resolve_acting_seat(
     pane: Option<OsString>,
     client: &DaemonClient,
 ) -> Result<SeatId, NamedRefusal> {
-    let seat = decode("PIJ_SESSION_ID", env)?;
-    let pane = decode("TMUX_PANE", pane)?;
-    if seat.is_none() && pane.is_none() {
-        return Err(NamedRefusal::new(
-            "no acting seat: set PIJ_SESSION_ID or run from a registered tmux pane (TMUX_PANE); --from/--seat may assert agreement but cannot create identity",
-        ));
-    }
-    let request = IdentityRequest {
-        seat,
-        pane,
-        ..IdentityRequest::default()
-    };
+    let request = request_from_environment(env, pane)?;
 
     let response = client.whoami(&request).await;
     if !response.ok {

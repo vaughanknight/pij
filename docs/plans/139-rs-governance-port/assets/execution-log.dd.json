@@ -78,6 +78,25 @@
             "tasks/phase-3/tasks.dd.json#tasks/tk-31a3",
             "tasks/phase-3/tasks.dd.json#tasks/tk-32a3"
           ]
+        },
+        {
+          "id": "lg-0008",
+          "at": "2026-09-07T06:30:21Z",
+          "text": "Prime-confirmed origin/main63988ededb9a62a7e45cbd68b36e930b0631593b merged into139 after product checkpoint5eda7fc25ef2a04ce0a78ccb999a59395f5fe2cc. Merge SHA d0cd734c0c1575881e6a334fdf8cacf01930688b. Retains PR378/379/380/381, migration0017 alongside139 migrations0014/0015, control/compact-self/background endpoints, government removal/resolver, worktree-deps and native ETXTBSY handling. Six conflict files resolved by union:43 endpoints, schema17, shared RegistryPublisher, every producer joined before EventBus.flush. Two automatic misses repaired: background_pool from persistent_pool and awaited async native_service helper. cargo check --locked --workspace --all-targets passed; just lint passed. This is not full merged runtime acceptance; u6 goldens MUST be generated after this merge.",
+          "links": [
+            "tasks/phase-4/tasks.dd.json#tasks/tk-40a4"
+          ]
+        },
+        {
+          "id": "lg-0009",
+          "at": "2026-09-07T06:50:29Z",
+          "text": "Post-merge actual private CLI workflow GREEN: governance_boot+spawn4 tests (artifact358), report HTTP26 (artifact357). Two Hello-confirmed streams both observed fresh child adopt seq7 and report seq9; descriptor decoded, wall clock<=1s. Native project10/stream11/packet read+SHA ack19/attest/task/node/question28/answer33/done37/verify38/newdone40/close41 all exercised; pane survives close and retired caller retains original tombstone evidence. RED353 exposed report WHOAMI preflight flattening refusal details; fixed by pure local identity input validation plus one shared daemon report resolution, with conflicting claims still refused. See native-cli-workflow-proof.json. Positive model canary not claimed; inert no-model endpoint refusal was exercised.",
+          "links": [
+            "../plan.dd.json#acceptance_criteria/AC1",
+            "../plan.dd.json#acceptance_criteria/AC4",
+            "../plan.dd.json#acceptance_criteria/AC6",
+            "../plan.dd.json#acceptance_criteria/AC7"
+          ]
         }
       ]
     }

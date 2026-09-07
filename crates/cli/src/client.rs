@@ -226,14 +226,18 @@ impl DaemonClient {
     /// and the two surfaces cannot drift into disagreeing about what
     /// `pij report now` means.
     ///
-    /// The seat is resolved HERE, client-side, because that is where the
-    /// environment is. The daemon sees a claim and checks it against the
-    /// registry; it never derives identity from what it was told.
-    pub async fn report(&self, seat: &SeatId, argv: &[String]) -> Envelope<Value> {
+    /// Forward caller evidence and any explicit agreement claim to the daemon.
+    /// Resolving first would discard structured refusal evidence at the CLI edge.
+    pub async fn report(
+        &self,
+        seat: Option<&SeatId>,
+        argv: &[String],
+        caller: &CallerContext,
+    ) -> Envelope<Value> {
         self.post(
             "pij report",
             "/v1/report",
-            &serde_json::json!({ "seat": seat.to_string(), "argv": argv }),
+            &serde_json::json!({ "seat": seat, "argv": argv, "caller": caller }),
         )
         .await
     }

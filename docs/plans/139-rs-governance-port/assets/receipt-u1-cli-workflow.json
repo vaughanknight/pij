@@ -1,0 +1,150 @@
+{
+  "unit": "u1-cli-workflow",
+  "owner": "pij-electoral-orlandine",
+  "parent": "pij-lonely-ikrie",
+  "status": "SOURCE_READY_FOR_PM_VALIDATION",
+  "packet": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/docs/plans/139-rs-governance-port/assets/packet-u1-cli-workflow.json",
+  "precision_delta": "PM-confirmed AC1/2: two Hello-confirmed streams before fresh child adopt/report, compare seqs and descriptor payload, 1s measured wall-clock bound; same one-file fence.",
+  "changed_source": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/crates/cli/tests/governance_boot.rs",
+  "immutable_base": {
+    "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/crates/cli/tests/governance_boot.rs",
+    "sha256": "905572590be41097ae00ec55066eede8882a0151a477fa6637018642b442c427",
+    "lines": 474
+  },
+  "patch": {
+    "path": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/docs/plans/139-rs-governance-port/assets/u1-cli-workflow.patch",
+    "sha256": "e9a78f866c986f447bfb2931aa0834a03dde39da82eeec1a6b6c12b53de3cb57",
+    "format": "unified diff, one source file; apply to exact immutable PM base, NOT as a replacement for prior u1 patches"
+  },
+  "authored_source_sha256": "3b74199eb7b81e2a091f3a2715a33962e19d649ec1e5033b413501b6e5da5307",
+  "validation": {
+    "executed": false,
+    "commands_run": [],
+    "reason": "Explicit PM source/tests-only edit barrier: no build, test, formatter, linter, commit or production daemon action in worker.",
+    "pm_cwd": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port",
+    "pm_command": "cargo test --locked -p pij-cli --test governance_boot shipped_all_real_daemon_boots_and_streams_on_fully_private_resources -- --exact --nocapture",
+    "prerequisites": [
+      "Current composed PM product source, including u4 actual allocated decision question_seq publication and u5 guarded close/reap",
+      "Unix, installed tmux, git supporting init -b, /bin/sleep, /bin/sh, kill",
+      "PM owns formatter and validators after composition; this receipt is not a passing runtime receipt"
+    ]
+  },
+  "authored_scenario_contracts": [
+    {
+      "surface": "private boot",
+      "proof": "Retains original shipped binary all-real daemon boot, random bound port, ping healthy/offline=false, private store/key existence, original parent adoption/report/replay-tail and teardown witnesses."
+    },
+    {
+      "surface": "parent/worker identity",
+      "argv": [
+        "role <parent> prime",
+        "adopt <actual-worker-pane> --harness omp --parent <parent> --role worker",
+        "list"
+      ],
+      "proof": "Two real owned inert pane/process incarnations, recorded child parent, role attribution and joined current roster; no third/foreign seats."
+    },
+    {
+      "surface": "live fanout AC1/2",
+      "proof": "Existing CLI replay subscriber has already emitted original parent frames, proving its Hello. New reqwest no-proxy live-only /v1/events authenticates with private key and verifies actual Hello version/build before fresh child adoption. Both streams observe identical complete child seat.put frame at same actual cursor; payload deserializes to SeatDescriptor with child id/pane/parent and no API machine stamp. Child report.now then matches on both streams by actual response seq/full frame. Each event timestamp differs from wall-clock measured immediately after its CLI response by at most 1000ms. Live-only stream is dropped after this proof; original replay CLI remains for later events."
+    },
+    {
+      "surface": "project/stream/fence",
+      "argv": [
+        "project create <description> --repo <private-repo>",
+        "stream create --project <returned-slug> --slug workflow --base main --root <private-worktree-root>",
+        "fence set <returned-stream-id> --paths crates/cli/**",
+        "fence show --stream <returned-stream-id>"
+      ],
+      "proof": "Git init and allow-empty initial commit use private repo plus per-command identity. Returned worktree canonical path must remain under run root, linked .git must exist, real git branch must match receipt. Returned IDs/sequences flow to later calls; fence paths/stream asserted."
+    },
+    {
+      "surface": "dispatch/read/packet SHA ACK",
+      "argv": [
+        "dispatch <worker> --packet <actual-file>",
+        "inbox (worker)",
+        "inbox (worker, again)",
+        "ack <returned-dispatch-id> --packet-sha <actual-read-byte-hash>"
+      ],
+      "proof": "Real file bytes, message id/from/to/path, actual recipient CLI transport read and empty second read. Test reads the actual file bytes and independently hashes them via existing testkit sha256_hex; returned dispatch digest and pushed body must match. Explicit worker SHA ACK asserts acknowledged recipient/digest/state and later seq."
+    },
+    {
+      "surface": "attestation/task/node",
+      "argv": [
+        "attest <worker> --plan-id 139",
+        "task set <worker> <task> --project <returned-slug>",
+        "node show <worker>",
+        "node show <parent>"
+      ],
+      "proof": "No positive canary manufactured or required by these current commands. Native joined child node has recorded parent, role, plan, returned assignment and ACKed dispatch; parent node includes child."
+    },
+    {
+      "surface": "inert canary refusal",
+      "argv": [
+        "canary <worker> --wait=20",
+        "inbox (worker)",
+        "node show <worker>"
+      ],
+      "proof": "Real nonce-bearing endpoint refuses E-RS-CANARY-PENDING because no model ACKs. Actual transport inbox read later consumes the challenge; it deliberately does NOT issue packet SHA ACK. Stored dispatch remains not ACKed with no canary record."
+    },
+    {
+      "surface": "question/answer/read",
+      "argv": [
+        "report question <question> (worker)",
+        "decisions (parent)",
+        "answer <returned-decision-id> <answer> (parent)",
+        "inbox (worker)",
+        "inbox (worker, again)"
+      ],
+      "proof": "Question returned record binds actual question_seq; replay tail observes decision.opened at same cursor and payload.record.question_seq equals it. Parent sees open decision and answers; actual worker message id/from/to/body match answered receipt; subsequent read empty."
+    },
+    {
+      "surface": "done/verify/new done",
+      "argv": [
+        "report state done (worker)",
+        "anomalies (parent)",
+        "report verify <worker> (parent)",
+        "anomalies (parent)",
+        "report state done (worker, again)",
+        "anomalies (parent)"
+      ],
+      "proof": "First done creates unverified-done evidence for its seq; parent verify references exact done_seq and clears that anomaly; later done has newer seq and reopens evidence for that new seq."
+    },
+    {
+      "surface": "reap dry-run",
+      "argv": [
+        "spine events --since 0",
+        "reap --dry-run",
+        "spine events --since <before-cursor>",
+        "list"
+      ],
+      "proof": "Before destructive close, both private panes remain live: no candidates/reaped, before=after=2. Actual before/after spine cursors are identical and no intervening events; current list still has two seats. No sleep-based absence claim."
+    },
+    {
+      "surface": "parent close/retired self",
+      "argv": [
+        "close <worker> (parent)",
+        "list (parent)",
+        "report now <did> <next> (retired worker pane identity)"
+      ],
+      "proof": "Close returns actual tombstone seq and tail observes matching seat.tombstone. Current list excludes child and retains only parent. Retired self refuses E-RS-TOMBSTONED with worker id and original tombstone_seq in details and human line."
+    }
+  ],
+  "ownership_and_bounds": [
+    "Only own governance_boot.rs changed; no PM source writes, product edits, Cargo/dependency edits, canonical fixture edits, shared files or buffers touched.",
+    "PM pipe-separated tmux identity, foreground server ownership, and explicit socket unlink-after-reap fixes preserved from exact current PM file.",
+    "Process commands retain private HOME/Claude/XDG/state/random address/TMUX; GIT_CONFIG_NOSYSTEM=1 excludes ambient system Git configuration. Git identity is -c per fixture command, never global config.",
+    "New HTTP reader is explicit private loopback + private bearer + no_proxy; no global environment mutation or ambient production endpoint.",
+    "Every command client has COMMAND deadline; live connection/frame reads are bounded, matching-event search has STARTUP deadline. Effects are actual command responses/frames/receipts, not fixed sleeps. Canary wait20 is endpoint refusal window, not readiness proof.",
+    "Existing Process/PrivateTmux/Environment ownership handles normal/error teardown. The added live response is dropped before later workflow and final daemon shutdown; private linked worktree and repository are beneath Environment root."
+  ],
+  "proof_ceilings": [
+    "Source authored only. No runtime/test/format result is claimed; PM must execute recipe on composed tree.",
+    "This is all-real store/daemon/CLI/tmux/process transport proof with inert hosts, NOT a running OMP model. Positive canary remains unproven here; any existing positive scripted-host witness is unchanged and remains scripted-host.",
+    "Canary negative tests missing nonce-correlated acknowledgement, not the later runtime model-observation/mismatch branch.",
+    "Reap no-write proof uses two live seats and empty candidates. It does not claim positive dead-candidate enumeration, destructive reap, or PID-reuse race coverage; those remain separate lifecycle tests.",
+    "Decision stamping assertion intentionally requires PM-composed u4 allocated-seq helper; worker product tree is older and is not the validation target.",
+    "No production deployment, external model provider, credentials, shared daemon, port7461 or global harness configuration exercised."
+  ],
+  "friction": "PM AC1/2 precision arrived at child scout instead of worker; exact tagged instruction was relayed, then explicitly confirmed by PM before final handoff. No broadening from scout interpretation.",
+  "encoded_improvement": "The existing private shipped boot fixture now encodes the native CLI governance lifecycle and Hello-before-mutation dual-stream proof so later runs need no manual workflow inference."
+}

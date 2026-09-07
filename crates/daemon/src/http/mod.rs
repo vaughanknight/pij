@@ -2463,14 +2463,12 @@ fn system_time_ms() -> Result<u64> {
 /// trust.
 #[derive(Debug, Deserialize)]
 struct ReportRequest {
-    /// The reporting seat, sent explicitly. This is what `pij-rs report …` uses:
-    /// the CLI resolves the seat client-side, where the environment actually is.
+    /// Optional agreement claim. Caller evidence is resolved by the daemon;
+    /// contradictory explicit and environment claims are refused together.
     #[serde(default)]
     seat: Option<String>,
-    /// The forwarded caller context. The shim sends an allowlisted set of
-    /// environment facts rather than a blanket dump; only the session id
-    /// identifies the seat, so only it is read here — a field this handler does
-    /// not consult is a field it cannot be misled by.
+    /// Forwarded identity evidence, never a blanket environment dump.
+    /// The shared ladder checks both the session id and observable pane.
     #[serde(default)]
     caller: Option<CallerContext>,
     argv: Vec<String>,
@@ -2533,10 +2531,23 @@ async fn report(State(state): State<AppState>, Json(request): Json<ReportRequest
     // and when a pane and an asserted id disagree it refuses both rather than
     // preferring the claim — so this is strictly stronger than what it replaces,
     // which accepted a bare asserted id on an existence check alone.
-    let asserted = request
-        .seat
-        .or_else(|| request.caller.as_ref().and_then(|c| c.session_id.clone()))
+    let explicit = request.seat.filter(|id| !id.trim().is_empty());
+    let caller_seat = request
+        .caller
+        .as_ref()
+        .and_then(|caller| caller.session_id.clone())
         .filter(|id| !id.trim().is_empty());
+    if let (Some(explicit), Some(caller_seat)) = (&explicit, &caller_seat)
+        && explicit != caller_seat
+    {
+        return refused(
+            command,
+            format!(
+                "report asserts `{explicit}` but caller.PIJ_SESSION_ID names `{caller_seat}`; identity claims must agree"
+            ),
+        );
+    }
+    let asserted = explicit.or(caller_seat);
     let pane = request
         .caller
         .as_ref()

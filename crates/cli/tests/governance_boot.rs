@@ -35,6 +35,7 @@ impl Environment {
             .env("HOME", self.root.join("home"))
             .env("CLAUDE_CONFIG_DIR", self.root.join("home/.claude"))
             .env("XDG_CONFIG_HOME", self.root.join("home/.config"))
+            .env("GIT_CONFIG_NOSYSTEM", "1")
             .env("PIJ_RS_STATE_DIR", self.root.join("state"))
             .env("PIJ_RS_ADDR", self.address.to_string())
             .env("PIJ_RS_BIND", self.address.to_string())
@@ -231,6 +232,748 @@ async fn run_json(environment: &Environment, args: &[&str], label: &str) -> Valu
     assert_eq!(value["ok"], true, "CLI {label}: {value}");
     assert_eq!(value["v"], 2);
     value
+}
+
+async fn run_command(environment: &Environment, command: &mut Command, label: &str) -> String {
+    let mut process = Process::spawn(command, &environment.root, label);
+    assert!(
+        process.wait(COMMAND).await.success(),
+        "{label}: {}",
+        process.diagnostics()
+    );
+    process.output()
+}
+
+async fn run_refusal(
+    environment: &Environment,
+    args: &[&str],
+    label: &str,
+    code: Option<&str>,
+) -> Value {
+    let mut command = environment.cli();
+    command.args(args);
+    let mut process = Process::spawn(&mut command, &environment.root, label);
+    assert!(
+        !process.wait(COMMAND).await.success(),
+        "CLI {label} unexpectedly succeeded: {}",
+        process.diagnostics()
+    );
+    let value: Value = serde_json::from_str(process.output().trim()).expect("CLI refusal envelope");
+    assert_eq!(value["v"], 2);
+    assert_eq!(value["ok"], false, "CLI {label}: {value}");
+    if let Some(code) = code {
+        assert_eq!(value["details"]["code"], code, "CLI {label}: {value}");
+    }
+    value
+}
+
+// Same chunk-safe NDJSON primitive as daemon/tests/governance_composition.rs.
+struct LiveFrames {
+    response: reqwest::Response,
+    pending: Vec<u8>,
+}
+
+impl LiveFrames {
+    async fn open(environment: &Environment) -> Self {
+        let key = fs::read_to_string(environment.root.join("state/daemon.key"))
+            .expect("private bearer key");
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .connect_timeout(COMMAND)
+            .build()
+            .unwrap();
+        // No since query: this subscription cannot replay a missed mutation.
+        let response = tokio::time::timeout(
+            COMMAND,
+            client
+                .get(format!("http://{}/v1/events", environment.address))
+                .bearer_auth(key.trim())
+                .send(),
+        )
+        .await
+        .expect("bounded live connect")
+        .expect("live-only stream");
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let mut frames = Self {
+            response,
+            pending: Vec::new(),
+        };
+        let hello = frames.next().await;
+        assert_eq!(hello["hello"], true, "real live-only Hello: {hello}");
+        assert_eq!(hello["v"], pij_core::wire::EVENT_VERSION);
+        assert!(!hello["build"].as_str().unwrap().is_empty());
+        frames
+    }
+
+    async fn next(&mut self) -> Value {
+        tokio::time::timeout(COMMAND, async {
+            loop {
+                if let Some(end) = self.pending.iter().position(|byte| *byte == b'\n') {
+                    let frame = serde_json::from_slice(&self.pending[..end])
+                        .expect("complete live NDJSON frame");
+                    self.pending.drain(..=end);
+                    return frame;
+                }
+                let chunk = self
+                    .response
+                    .chunk()
+                    .await
+                    .expect("live stream chunk")
+                    .expect("live stream remains open");
+                self.pending.extend_from_slice(&chunk);
+            }
+        })
+        .await
+        .expect("live frame before deadline")
+    }
+
+    async fn event(&mut self, kind: &str, seat: &str) -> Value {
+        tokio::time::timeout(STARTUP, async {
+            loop {
+                let frame = self.next().await;
+                if frame["event"]["kind"] == kind && frame["event"]["seat"] == seat {
+                    return frame;
+                }
+            }
+        })
+        .await
+        .expect("matching live event before deadline")
+    }
+}
+
+fn epoch_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("wall clock")
+        .as_millis()
+        .try_into()
+        .expect("epoch milliseconds fit u64")
+}
+
+async fn exercise_governance_workflow(
+    environment: &mut Environment,
+    tail: &mut Process,
+    parent: &str,
+    parent_pane: &str,
+) {
+    let parent_role = run_json(environment, &["role", parent, "prime"], "parent-role").await;
+    assert_eq!(parent_role["data"]["role"], "prime");
+    assert_eq!(parent_role["data"]["assigned_by"], parent);
+    let mut create = environment.command("tmux");
+    create
+        .args([
+            "new-window",
+            "-d",
+            "-t",
+            "governance-boot",
+            "-n",
+            "owned-worker",
+            "-P",
+            "-F",
+            "#{pane_id}",
+            "-c",
+        ])
+        .arg(&environment.root)
+        .arg("exec /bin/sleep 300");
+    let worker_pane = run_command(environment, &mut create, "tmux-worker")
+        .await
+        .trim()
+        .to_string();
+    assert!(worker_pane.starts_with('%'));
+    assert_ne!(worker_pane, parent_pane);
+    // The existing CLI replay tail already emitted the parent's event, proving
+    // its Hello was consumed. Confirm the second live-only Hello BEFORE child
+    // adoption: both subsequent frames must be live fanout, never replay rescue.
+    tail.running();
+    let mut live = LiveFrames::open(environment).await;
+    environment.pane = Some(worker_pane.clone());
+    let adopted = run_json(
+        environment,
+        &[
+            "adopt",
+            &worker_pane,
+            "--harness",
+            "omp",
+            "--parent",
+            parent,
+            "--role",
+            "worker",
+        ],
+        "adopt-worker",
+    )
+    .await;
+    let adopt_observed_ms = epoch_ms();
+    let worker = adopted["data"]["id"].as_str().unwrap();
+    assert_ne!(worker, parent);
+    assert_eq!(adopted["data"]["parent"], parent);
+    assert_eq!(adopted["data"]["pane"], worker_pane);
+    assert!(adopted["data"]["proc"]["proc_start"].as_u64().unwrap() > 0);
+    assert!(
+        adopted["data"]["harness_session"].is_null(),
+        "sleep is not a native model session: {adopted}"
+    );
+    let live_adopt = live.event("seat.put", worker).await;
+    let adopt_seq = live_adopt["cursor"].as_u64().unwrap();
+    let descriptor: pij_core::model::SeatDescriptor =
+        serde_json::from_str(live_adopt["event"]["payload"].as_str().unwrap())
+            .expect("seat.put carries a complete raw SeatDescriptor");
+    assert_eq!(descriptor.id.as_str(), worker);
+    assert_eq!(descriptor.pane.as_deref(), Some(worker_pane.as_str()));
+    assert_eq!(descriptor.parent.as_ref().unwrap().as_str(), parent);
+    assert!(
+        descriptor.machine.is_none(),
+        "event descriptor is not an API machine-stamped join"
+    );
+    assert!(
+        live_adopt["event"]["at"]
+            .as_u64()
+            .unwrap()
+            .abs_diff(adopt_observed_ms)
+            <= 1_000
+    );
+    tail.wait_for(|text| {
+        frames(text)
+            .iter()
+            .any(|frame| frame["cursor"] == adopt_seq)
+    })
+    .await;
+    let replay_adopt = frames(&tail.output());
+    assert_eq!(
+        replay_adopt
+            .iter()
+            .find(|frame| frame["cursor"] == adopt_seq)
+            .unwrap(),
+        &live_adopt
+    );
+    let child_report = run_json(
+        environment,
+        &[
+            "report",
+            "now",
+            "Read private workflow",
+            "Exercise native CLI contracts",
+        ],
+        "worker-live-report",
+    )
+    .await;
+    let report_observed_ms = epoch_ms();
+    let child_report_seq = child_report["data"]["seq"].as_u64().unwrap();
+    assert!(child_report_seq > adopt_seq);
+    let live_report = live.event("report.now", worker).await;
+    assert_eq!(live_report["cursor"], child_report_seq);
+    assert!(
+        live_report["event"]["at"]
+            .as_u64()
+            .unwrap()
+            .abs_diff(report_observed_ms)
+            <= 1_000
+    );
+    tail.wait_for(|text| {
+        frames(text)
+            .iter()
+            .any(|frame| frame["cursor"] == child_report_seq)
+    })
+    .await;
+    let replay_report = frames(&tail.output());
+    assert_eq!(
+        replay_report
+            .iter()
+            .find(|frame| frame["cursor"] == child_report_seq)
+            .unwrap(),
+        &live_report
+    );
+    eprintln!(
+        "private dual-stream worker={worker} adopt_seq={adopt_seq} report_seq={child_report_seq} adopt_at={} report_at={}",
+        live_adopt["event"]["at"], live_report["event"]["at"]
+    );
+    drop(live);
+    environment.pane = Some(parent_pane.to_string());
+    let roster = run_json(environment, &["list"], "parent-worker-list").await;
+    let seats = roster["data"]["seats"].as_array().unwrap();
+    assert_eq!(seats.len(), 2, "only owned parent and worker: {roster}");
+    let parent_row = seats.iter().find(|seat| seat["id"] == parent).unwrap();
+    let worker_row = seats.iter().find(|seat| seat["id"] == worker).unwrap();
+    assert_eq!(parent_row["role"], "prime");
+    assert_eq!(worker_row["role"], "worker");
+    assert_eq!(worker_row["parent"], parent);
+
+    let repo = environment.root.join("repo");
+    let worktrees = environment.root.join("worktrees");
+    fs::create_dir_all(&worktrees).expect("private worktree root");
+    let mut init = environment.command("git");
+    init.args(["init", "-b", "main"]).arg(&repo);
+    run_command(environment, &mut init, "git-init").await;
+    let mut commit = environment.command("git");
+    commit.arg("-C").arg(&repo).args([
+        "-c",
+        "user.name=Private workflow fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "--allow-empty",
+        "-m",
+        "Private workflow root",
+    ]);
+    run_command(environment, &mut commit, "git-initial-commit").await;
+    let project_result = run_json(
+        environment,
+        &[
+            "project",
+            "create",
+            "Private governance workflow",
+            "--repo",
+            repo.to_str().unwrap(),
+        ],
+        "project-create",
+    )
+    .await;
+    let project = project_result["data"]["project"]["slug"].as_str().unwrap();
+    assert_eq!(project_result["data"]["project"]["created_by"], parent);
+    assert_eq!(
+        project_result["data"]["project"]["repo"],
+        repo.to_str().unwrap()
+    );
+    let project_seq = project_result["data"]["seq"].as_u64().unwrap();
+    let stream_result = run_json(
+        environment,
+        &[
+            "stream",
+            "create",
+            "--project",
+            project,
+            "--slug",
+            "workflow",
+            "--base",
+            "main",
+            "--root",
+            worktrees.to_str().unwrap(),
+        ],
+        "stream-create",
+    )
+    .await;
+    let stream = stream_result["data"]["stream"]["id"].as_str().unwrap();
+    let worktree = PathBuf::from(
+        stream_result["data"]["stream"]["worktree"]
+            .as_str()
+            .unwrap(),
+    );
+    assert_eq!(stream_result["data"]["stream"]["project"], project);
+    assert_eq!(stream_result["data"]["stream"]["state"], "created");
+    assert!(stream_result["data"]["stream"]["ordinal"].as_u64().unwrap() > 0);
+    assert!(
+        worktree
+            .canonicalize()
+            .expect("real allocated worktree")
+            .starts_with(&worktrees)
+    );
+    assert!(
+        worktree.join(".git").is_file(),
+        "actual linked worktree, not a fabricated registry row"
+    );
+    let stream_seq = stream_result["data"]["seq"].as_u64().unwrap();
+    assert!(stream_seq > project_seq);
+    let mut branch = environment.command("git");
+    branch
+        .arg("-C")
+        .arg(&worktree)
+        .args(["branch", "--show-current"]);
+    assert_eq!(
+        run_command(environment, &mut branch, "worktree-branch")
+            .await
+            .trim(),
+        stream_result["data"]["stream"]["branch"].as_str().unwrap()
+    );
+    let fence_result = run_json(
+        environment,
+        &["fence", "set", stream, "--paths", "crates/cli/**"],
+        "fence-set",
+    )
+    .await;
+    let fence = fence_result["data"]["fence"]["id"].as_str().unwrap();
+    let fences = run_json(
+        environment,
+        &["fence", "show", "--stream", stream],
+        "fence-show",
+    )
+    .await;
+    let declared = fences["data"]["fences"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == fence)
+        .unwrap();
+    assert_eq!(declared["stream"], stream);
+    assert_eq!(declared["paths"], serde_json::json!(["crates/cli/**"]));
+
+    let packet_path = environment.root.join("workflow-packet.txt");
+    let packet_bytes =
+        b"Read and acknowledge these exact private fixture bytes. No live model is running.\n";
+    fs::write(&packet_path, packet_bytes).expect("actual private packet file");
+    let dispatched = run_json(
+        environment,
+        &[
+            "dispatch",
+            worker,
+            "--packet",
+            packet_path.to_str().unwrap(),
+        ],
+        "dispatch-packet",
+    )
+    .await;
+    let dispatch = dispatched["data"]["dispatch"]["id"].as_str().unwrap();
+    let msg_id = dispatched["data"]["dispatch"]["msg_id"].as_str().unwrap();
+    assert_eq!(dispatched["data"]["dispatch"]["from"], parent);
+    assert_eq!(dispatched["data"]["dispatch"]["to"], worker);
+    assert_eq!(
+        dispatched["data"]["dispatch"]["packet_path"],
+        packet_path.to_str().unwrap()
+    );
+    environment.pane = Some(worker_pane.clone());
+    let inbox = run_json(environment, &["inbox"], "packet-inbox-read").await;
+    let message = inbox["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|msg| msg["msg_id"] == msg_id)
+        .unwrap_or_else(|| panic!("dispatched packet missing from recipient inbox: {inbox}"));
+    assert_eq!(message["from"], parent);
+    assert_eq!(message["to"], worker);
+    assert!(
+        message["body"]
+            .as_str()
+            .unwrap()
+            .contains(packet_path.to_str().unwrap())
+    );
+    let read_packet = fs::read(&packet_path).expect("recipient reads actual packet bytes");
+    assert_eq!(read_packet, packet_bytes);
+    let packet_sha = pij_testkit::fixtures::sha256_hex(&read_packet);
+    assert_eq!(dispatched["data"]["dispatch"]["packet_sha256"], packet_sha);
+    assert!(message["body"].as_str().unwrap().contains(&packet_sha));
+    let empty = run_json(environment, &["inbox"], "packet-inbox-after-read").await;
+    assert!(
+        empty["data"].as_array().unwrap().is_empty(),
+        "actual read is acknowledged: {empty}"
+    );
+    let acknowledged = run_json(
+        environment,
+        &["ack", dispatch, "--packet-sha", &packet_sha],
+        "packet-sha-ack",
+    )
+    .await;
+    assert_eq!(acknowledged["data"]["dispatch"]["id"], dispatch);
+    assert_eq!(acknowledged["data"]["dispatch"]["state"], "acked");
+    assert_eq!(acknowledged["data"]["dispatch"]["ack"]["seat"], worker);
+    assert_eq!(
+        acknowledged["data"]["dispatch"]["ack"]["packet_sha256"],
+        packet_sha
+    );
+    let ack_seq = acknowledged["data"]["seq"].as_u64().unwrap();
+    assert!(ack_seq > dispatched["data"]["seq"].as_u64().unwrap());
+
+    environment.pane = Some(parent_pane.to_string());
+    let attested = run_json(
+        environment,
+        &["attest", worker, "--plan-id", "139"],
+        "attest-plan",
+    )
+    .await;
+    assert_eq!(attested["data"]["attestation"]["seat"], worker);
+    assert_eq!(attested["data"]["attestation"]["plan_id"], "139");
+    assert_eq!(attested["data"]["attestation"]["attested_by"], parent);
+    let assignment_result = run_json(
+        environment,
+        &[
+            "task",
+            "set",
+            worker,
+            "Exercise the shipped private workflow",
+            "--project",
+            project,
+        ],
+        "task-set",
+    )
+    .await;
+    let assignment = assignment_result["data"]["task"]["id"].as_str().unwrap();
+    assert_eq!(assignment_result["data"]["task"]["node_id"], worker);
+    assert_eq!(assignment_result["data"]["task"]["opened_by"], parent);
+    let node = run_json(environment, &["node", "show", worker], "worker-node").await;
+    assert_eq!(node["data"]["node"]["id"], worker);
+    assert_eq!(node["data"]["node"]["parent"], parent);
+    assert_eq!(node["data"]["node"]["role"], "worker");
+    assert_eq!(node["data"]["node"]["plan_id"], "139");
+    assert!(
+        node["data"]["node"]["assignments"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["id"] == assignment && row["project"] == project)
+    );
+    assert!(
+        node["data"]["node"]["dispatches"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["id"] == dispatch && row["state"] == "acked")
+    );
+    let parent_node = run_json(environment, &["node", "show", parent], "parent-node").await;
+    assert!(
+        parent_node["data"]["node"]["children"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["id"] == worker)
+    );
+
+    // The real canary endpoint must refuse: no model reads this nonce packet.
+    // This proves pending/no-model safety, NOT a positive runtime-model canary.
+    let no_model = run_refusal(
+        environment,
+        &["canary", worker, "--wait=20"],
+        "inert-canary",
+        Some("E-RS-CANARY-PENDING"),
+    )
+    .await;
+    let canary_dispatch = no_model["details"]["dispatch"].as_str().unwrap();
+    assert!(!no_model["details"]["nonce"].as_str().unwrap().is_empty());
+    environment.pane = Some(worker_pane.clone());
+    let challenge = run_json(environment, &["inbox"], "unanswered-canary-inbox-read").await;
+    assert!(
+        challenge["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|msg| msg["msg_id"] == canary_dispatch)
+    );
+    // A scripted CLI transport read is deliberately not a packet SHA ACK.
+    let pending = run_json(
+        environment,
+        &["node", "show", worker],
+        "canary-remains-unverified",
+    )
+    .await;
+    let canary = pending["data"]["node"]["dispatches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == canary_dispatch)
+        .unwrap();
+    assert_ne!(canary["state"], "acked");
+    assert!(canary["canary"].is_null());
+    eprintln!(
+        "private workflow parent={parent} worker={worker} project={project} project_seq={project_seq} stream={stream} stream_seq={stream_seq} fence={fence} dispatch={dispatch} packet_sha={packet_sha} ack_seq={ack_seq} assignment={assignment} canary_refused={canary_dispatch}"
+    );
+    exercise_decisions_and_retirement(environment, tail, parent, parent_pane, worker, &worker_pane)
+        .await;
+}
+
+async fn exercise_decisions_and_retirement(
+    environment: &mut Environment,
+    tail: &mut Process,
+    parent: &str,
+    parent_pane: &str,
+    worker: &str,
+    worker_pane: &str,
+) {
+    environment.pane = Some(worker_pane.to_string());
+    let question_text = "Does this isolated CLI proof claim a live model?";
+    let question = run_json(
+        environment,
+        &["report", "question", question_text],
+        "question",
+    )
+    .await;
+    let question_seq = question["data"]["seq"].as_u64().unwrap();
+    let decision = question["data"]["decision"]["id"].as_str().unwrap();
+    assert_eq!(question["data"]["decision"]["asked_by"], worker);
+    assert_eq!(question["data"]["decision"]["parent"], parent);
+    assert_eq!(question["data"]["decision"]["question_seq"], question_seq);
+    tail.wait_for(|text| {
+        frames(text).iter().any(|frame| {
+            frame["cursor"] == question_seq && frame["event"]["kind"] == "decision.opened"
+        })
+    })
+    .await;
+    let question_frames = frames(&tail.output());
+    let question_event = question_frames
+        .iter()
+        .find(|frame| frame["cursor"] == question_seq)
+        .unwrap();
+    let question_payload: Value =
+        serde_json::from_str(question_event["event"]["payload"].as_str().unwrap()).unwrap();
+    assert_eq!(question_payload["record"]["question_seq"], question_seq);
+
+    environment.pane = Some(parent_pane.to_string());
+    let decisions = run_json(environment, &["decisions"], "decisions-open").await;
+    assert!(
+        decisions["data"]["decisions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| {
+                row["id"] == decision
+                    && row["state"] == "open"
+                    && row["question_seq"] == question_seq
+            })
+    );
+    let answer_text = "No. These are inert panes; real-model canary proof remains separate.";
+    let answer = run_json(environment, &["answer", decision, answer_text], "answer").await;
+    assert_eq!(answer["data"]["decision"]["state"], "answered");
+    assert_eq!(answer["data"]["decision"]["answered_by"], parent);
+    assert_eq!(answer["data"]["decision"]["answer"], answer_text);
+    let answer_msg = answer["data"]["decision"]["answer_msg_id"]
+        .as_str()
+        .unwrap();
+    let answer_seq = answer["data"]["seq"].as_u64().unwrap();
+    assert!(answer_seq > question_seq);
+
+    environment.pane = Some(worker_pane.to_string());
+    let inbox = run_json(environment, &["inbox"], "answer-inbox-read").await;
+    let message = inbox["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|msg| msg["msg_id"] == answer_msg)
+        .unwrap_or_else(|| panic!("answer message missing from actual recipient read: {inbox}"));
+    assert_eq!(message["from"], parent);
+    assert_eq!(message["to"], worker);
+    assert!(message["body"].as_str().unwrap().contains(answer_text));
+    let empty = run_json(environment, &["inbox"], "answer-inbox-after-read").await;
+    assert!(
+        empty["data"].as_array().unwrap().is_empty(),
+        "recipient read ACK: {empty}"
+    );
+    let done = run_json(environment, &["report", "state", "done"], "worker-done").await;
+    let done_seq = done["data"]["seq"].as_u64().unwrap();
+    environment.pane = Some(parent_pane.to_string());
+    let unverified = run_json(environment, &["anomalies"], "done-unverified").await;
+    assert!(
+        unverified["data"]["anomalies"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| {
+                row["kind"] == "unverified-done"
+                    && row["nodeId"] == worker
+                    && row["evidence"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&Value::from(done_seq))
+            }),
+        "fresh done must require verification: {unverified}"
+    );
+    let verified = run_json(environment, &["report", "verify", worker], "parent-verify").await;
+    assert_eq!(verified["data"]["done_seq"], done_seq);
+    assert_eq!(verified["data"]["verified_by"], parent);
+    let verify_seq = verified["data"]["seq"].as_u64().unwrap();
+    assert!(verify_seq > done_seq);
+    let clear = run_json(environment, &["anomalies"], "done-verified").await;
+    assert!(
+        !clear["data"]["anomalies"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| { row["kind"] == "unverified-done" && row["nodeId"] == worker }),
+        "verification clears only its current done claim: {clear}"
+    );
+    environment.pane = Some(worker_pane.to_string());
+    let done_again = run_json(
+        environment,
+        &["report", "state", "done"],
+        "worker-done-again",
+    )
+    .await;
+    let new_done_seq = done_again["data"]["seq"].as_u64().unwrap();
+    assert!(new_done_seq > verify_seq);
+    environment.pane = Some(parent_pane.to_string());
+    let reopened = run_json(environment, &["anomalies"], "done-reopened").await;
+    assert!(
+        reopened["data"]["anomalies"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| {
+                row["kind"] == "unverified-done"
+                    && row["nodeId"] == worker
+                    && row["evidence"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&Value::from(new_done_seq))
+            }),
+        "a new done cannot borrow the previous verification: {reopened}"
+    );
+
+    // Both panes are still live. Compare actual cursors, not a sleeping tail,
+    // to prove that dry-run neither appends an event nor removes either seat.
+    let before = run_json(
+        environment,
+        &["spine", "events", "--since", "0"],
+        "reap-before",
+    )
+    .await;
+    let cursor = before["data"]["cursor"].as_u64().unwrap();
+    let dry = run_json(environment, &["reap", "--dry-run"], "reap-dry-run").await;
+    assert_eq!(dry["data"]["dry_run"], true);
+    assert_eq!(dry["data"]["before"], 2);
+    assert_eq!(dry["data"]["after"], 2);
+    assert!(dry["data"]["reaped"].as_array().unwrap().is_empty());
+    assert!(dry["data"]["candidates"].as_array().unwrap().is_empty());
+    let after = run_json(
+        environment,
+        &["spine", "events", "--since", &cursor.to_string()],
+        "reap-after",
+    )
+    .await;
+    assert_eq!(after["data"]["cursor"], cursor);
+    assert!(after["data"]["events"].as_array().unwrap().is_empty());
+    let before_close = run_json(environment, &["list"], "list-before-close").await;
+    assert_eq!(before_close["data"]["seats"].as_array().unwrap().len(), 2);
+
+    let closed = run_json(environment, &["close", worker], "parent-close-worker").await;
+    let tombstone_seq = closed["data"]["seq"].as_u64().unwrap();
+    assert_eq!(closed["data"]["seat"], worker);
+    assert!(tombstone_seq > new_done_seq);
+    tail.wait_for(|text| {
+        frames(text).iter().any(|frame| {
+            frame["cursor"] == tombstone_seq
+                && frame["event"]["kind"] == "seat.tombstone"
+                && frame["event"]["seat"] == worker
+        })
+    })
+    .await;
+    let live = run_json(environment, &["list"], "list-after-close").await;
+    let live_seats = live["data"]["seats"].as_array().unwrap();
+    assert_eq!(live_seats.len(), 1, "closed seat excluded: {live}");
+    assert_eq!(live_seats[0]["id"], parent);
+    // Retirement must not kill the pane, and a retired caller must receive
+    // the original tombstone receipt rather than silently acquiring a new seat.
+    let mut pane_probe = environment.command("tmux");
+    pane_probe.args(["display-message", "-p", "-t", worker_pane, "#{pane_id}"]);
+    assert_eq!(
+        run_command(environment, &mut pane_probe, "pane-survives-close")
+            .await
+            .trim(),
+        worker_pane
+    );
+    environment.pane = Some(worker_pane.to_string());
+    let retired = run_refusal(
+        environment,
+        &["report", "now", "retired", "must refuse"],
+        "retired-self",
+        None,
+    )
+    .await;
+    assert_eq!(retired["details"]["seat"], worker);
+    assert_eq!(retired["details"]["tombstone_seq"], tombstone_seq);
+    assert!(
+        retired["meta"]
+            .as_str()
+            .unwrap()
+            .contains(&tombstone_seq.to_string())
+    );
+    environment.pane = Some(parent_pane.to_string());
+    eprintln!(
+        "private lifecycle parent={parent} worker={worker} decision={decision} question_seq={question_seq} answer_seq={answer_seq} done_seq={done_seq} verify_seq={verify_seq} reopened_done_seq={new_done_seq} tombstone_seq={tombstone_seq}"
+    );
 }
 
 fn frames(text: &str) -> Vec<Value> {
@@ -445,6 +1188,7 @@ async fn shipped_all_real_daemon_boots_and_streams_on_fully_private_resources() 
         "fresh private daemon must not acquire foreign seats: {roster}"
     );
     assert_eq!(seats[0]["pane"], pane);
+    exercise_governance_workflow(&mut environment, &mut tail, seat, &pane).await;
 
     // Close the event client first so graceful HTTP shutdown can finish, then
     // the daemon (which drains admitted publications), then our private server.
