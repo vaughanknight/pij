@@ -73,3 +73,37 @@ migration properly and sequence the fleet so nobody loses an inbox mid-flight.
 - PR #367 (sender notices for delayed messages) is now 257 behind main with
   conflicts and needs a coder to reconcile — noted only so nobody cites it as
   landed.
+
+---
+
+## Amendment 1 — 2026-09-07: blocker 2 closes for most harnesses, NOT for ours
+
+Upstream PR #380 (`c05d549`, merged `0628114`) fixes control commands on rs, on
+Jordan's word: *"sending remote control commands like /compact is not working;
+must fix."* `/v1/send` now accepts `command: compact|new|reload`, legacy
+`pij send --command` / `pij compact-self` route to rs with identical JSON, and
+they proved it live — real omp remote compact executed, `compact-self`
+soft-compacted 61K→20K, a Claude seat with a draft held on `draft_sha` then
+released after clearing.
+
+**But read the exclusion, because it is ours.** Copilot and paneless seats
+*refuse decodably* (`E-RS-CONTROL-UNSUPPORTED`). Two of this fleet's three live
+seats are Copilot: the PA `pij-ready-perosteck` and the failover standby
+`pij-compact-heron`. And parent-side compact against the Copilot PA is not a
+convenience here — it is the **documented recovery for E52** (nudges dropped as a
+Copilot session lengthens; `pij compact-self --pane %48` fired at 14:44Z on
+2026-08-29 and the PA turned at once, 3 of 3 subsequent ticks unchased). On rs
+that recovery would return a decodable refusal instead of running.
+
+So blocker 2 moves from **open** to **closed upstream / still open for this
+fleet**. The recommendation is unchanged — do not migrate yet — but the reason
+narrows: it is no longer "control commands don't work", it is "control commands
+don't work *for Copilot seats*, and our PA and our failover standby are both
+Copilot." A decodable refusal is the honest failure mode and much better than a
+silent one, but it still leaves E52 without its recovery.
+
+Blockers 1 (`pij-telegram` dead as a send target) and 3 (`report.*` never
+live-broadcast) are untouched and remain open.
+
+Also worth noting for the trailers convention: I have adopted C11
+(`Pij-Seat:` / `Pij-Prime:`) on government commits from this one onward.
