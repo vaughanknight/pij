@@ -22,7 +22,7 @@ pij node show <seat> --json
 
 Parent is the rs descriptor's recorded `parent`, not a spawnedBy fallback. Supply `--parent` when creating/adopting within its supported admission contract. `pij link`/`tree` refuse: no existing-seat reparent/root-placement port exists, and a role change cannot stand in for a structural link.
 
-Paneless `pij inbox register` / bare adopt do not create an address: they cannot derive bind evidence. Native `register` requires corroborated process identity, never the short-lived CLI's own pid. A verified pull-owned seat may use native `pij-rs inbox --wait`; the shim's inbox bare/check route is not the legacy registration/wait channel. Never guess/discover a pane to bypass a paneless refusal.
+Verified external/paneless seats use `pij inbox register --json`, then `pij inbox --wait` from the same native host/session (C1). Native admission derives the matching long-lived host incarnation, never the short-lived CLI's pid; missing/conflicting evidence refuses. Paneless adopt remains unported. Never guess/discover a pane or start a competing extension receiver.
 
 ## Spawn and revive: native grammar, not shim fallback
 

@@ -15,7 +15,7 @@ All probes are deterministic files/commands; remember nothing between calls.
 | C | Active the-flow mid-build | newest `docs/plans/*/the-flow.json` → `harness flow nav show --path <it>`; `data.nav.now`/`next` on a phase/review node | offer `pair` dispatch for that phase |
 | D | Daemon alive | `pij-rs ping --json` | unavailable + spawn intent → operator-owned `ops` readiness; no automatic legacy daemon start |
 | E | Delivery owner | Copilot's native `pij_send` callable → native Copilot; else in-process `pij_spawn` callable → pi/omp push; else exact non-empty `$TMUX_PANE` → tmux push; otherwise external pull where supported | detect before self-registration advice; native Copilot never falls back to CLI pull or sendkeys |
-| F | Self registration | after E: extensions own registration; non-extension tmux peers may probe `pij whoami`; paneless claims require verified native admission | no automatic shim inbox registration; never re-adopt an extension-owned seat |
+| F | Self registration | after E: extensions own registration; non-extension tmux peers may probe `pij whoami`; paneless claims require verified native admission | verify native evidence before external inbox registration; never re-adopt an extension-owned seat |
 
 **Precedence**: A > B > C > D/F (D/F are preconditions folded into whichever route wins, not destinations). Nothing matches → ask the job in one line, listing the registry.
 
@@ -77,7 +77,9 @@ A ready-ping is not proof of a working model. Run `pij canary <id> --expect-mode
 
 The instant a reusable/live coder reports completion or a reviewer returns a verdict, send compact as the **first tool action** — before reading, synthesising, or acting on the report. Trigger only on a terminal completion/verdict, never while the peer is still responding. The 30–90s compact latency overlaps report/review/fix work that must happen anyway; compacting late has caused post-dispatch stalls.
 
-Dispatch compact **fire-and-forget** with `pij_send({to, command:"compact"})` or `pij send <id> --command compact`, without waiting for execution. **Continue immediately** with independent report/review work; acceptance, receipt and executed/refused outcome remain distinct. Copilot/paneless controls refuse; never replace a refusal with literal slash text or sendkeys.
+Dispatch compact **fire-and-forget** with `pij_send({to, command:"compact"})` or `pij send <id> --command compact`, without `--wait`. **Continue immediately** with independent report/review work; never wait for compact receipts or execution. Acceptance, receipt and executed/refused outcome remain distinct. Copilot/paneless controls refuse; never replace a refusal with literal slash text or sendkeys.
+
+The former one-shot `--once` state flag is unported; use the already one-shot `pij state <seat> --json` snapshot ([Unsupported status](../../../docs/how/pij-rs-api.md#unsupported-status)). State snapshots and a host's `E-DEAD` refusal are observe-only diagnostics, never progress gates. Do not poll for recovery or gate report/review work on a compact acknowledgement.
 
 Between phases: compact, keep, reuse — never close-and-respawn a healthy peer. `pij compact-self` is the shipped daemon-resolved operation, with no legacy instruction argument or `--pane` override. Remote new/reload retain target arming and self/recorded-parent authorization; role/prime display grants none. See peer route for the unchanged complete control contract.
 
@@ -161,7 +163,7 @@ The rs daemon executes a built Rust binary, not tsx source. Changes need the app
 
 ### C7 — Push when owned; block on inbox when pull-owned
 
-In extension/tmux push modes, injected turns re-invoke you. After dispatch, do independent prep and let delivery wake you; never poll state. Only a verified pull-owned native seat uses `pij-rs inbox --wait`; shim inbox waiting/auto-registration is unsupported. A broken transport justifies a bounded host-transcript/pane inspection, not substituting native event tail for a transcript.
+In pi/tmux push modes (including OMP and native Copilot), injected turns re-invoke you. After dispatch, do independent prep and let delivery wake you; never poll `pij state`. In verified external pull mode, register through C1 and use `pij inbox --wait` (native `pij-rs inbox --wait` is also available). This blocking inbox read is the delivery primitive, not a competing extension receiver or a state poll. A broken transport justifies bounded host-transcript/pane inspection, not substituting native event tail for a transcript.
 
 **The same rule applies to SLOW LOCAL COMMANDS — use `pij bg`.** A command you sit and wait on holds your turn open for its whole duration; you are idle-but-not-done, which is the shape the watchdog derives as a stall, and the human cannot talk to you meanwhile. For rs-hosted seats, `pij bg` and `pij-rs bg` both ask the Rust daemon to run it detached and deliver the result as an injected turn from `pij-bg`, so your turn ends now and the completion is what wakes you. Both spellings return the same complete v2 envelope with `--json` before or after the leaf.
 

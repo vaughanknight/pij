@@ -1,0 +1,181 @@
+{
+  "at": "2026-09-07T16:22:01Z",
+  "reported_baseline": "skill-gate-merged-main-red.txt",
+  "baseline_failures": 32,
+  "baseline_rerun": false,
+  "required_gate": {
+    "command": "just pij-skill-check",
+    "exit": 0,
+    "output_artifact": "artifact://715",
+    "output": "skill-gate-repair-green.txt"
+  },
+  "mutation_smoke": {
+    "command": "just pij-skill-check with PIJ_SKILL_ROOT pointing at owned private copies",
+    "unchanged_fixture_exit": 0,
+    "broken_document_rejections": [
+      {
+        "case": "ready STOP cannot disappear",
+        "exit": 1,
+        "diagnostic": "ready terminal: **STOP.**",
+        "failures": [
+          "\u2717 ready terminal: **STOP.** \u2014 missing '**STOP.**' in /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p139-skill-guard-uxz4q_pd/skills/pij/references/routes/ready.md"
+        ]
+      },
+      {
+        "case": "external pull must remain documented",
+        "exit": 1,
+        "diagnostic": "completion root: external inbox waiting preserved",
+        "failures": [
+          "\u2717 completion root: external inbox waiting preserved \u2014 missing 'non-tmux external peers block on `pij inbox --wait`' in /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p139-skill-guard-uxz4q_pd/skills/pij/SKILL.md"
+        ]
+      },
+      {
+        "case": "state polling ban cannot disappear",
+        "exit": 1,
+        "diagnostic": "completion C7: missing",
+        "failures": [
+          "\u2717 completion C7: missing 'never poll `pij state`'"
+        ]
+      },
+      {
+        "case": "native close ownership cannot disappear",
+        "exit": 1,
+        "diagnostic": "rs peer: Close requires self or the current recorded parent.",
+        "failures": [
+          "\u2717 rs peer: Close requires self or the current recorded parent. \u2014 missing 'Close requires self or the current recorded parent.' in /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p139-skill-guard-uxz4q_pd/skills/pij/references/routes/peer.md"
+        ]
+      },
+      {
+        "case": "retired link cannot become advertised",
+        "exit": 1,
+        "diagnostic": "rs peer: `pij link`/`tree` refuse",
+        "failures": [
+          "\u2717 rs peer: `pij link`/`tree` refuse \u2014 missing '`pij link`/`tree` refuse' in /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p139-skill-guard-uxz4q_pd/skills/pij/references/routes/peer.md"
+        ]
+      },
+      {
+        "case": "writer transfer cannot precede designation",
+        "exit": 1,
+        "diagnostic": "rs handover: set before writers, retire after final relay",
+        "failures": [
+          "\u2717 rs handover: set before writers, retire after final relay \u2014 'before changing any writer line' is out of order"
+        ]
+      },
+      {
+        "case": "compact receipt cannot gate progress",
+        "exit": 1,
+        "diagnostic": "completion C3: no additive receipt/completion progress gate",
+        "failures": [
+          "\u2717 completion C3: no additive receipt/completion progress gate \u2014 compact receipt/completion cannot gate progress"
+        ]
+      },
+      {
+        "case": "native allocation cannot revert to handwritten construction",
+        "exit": 1,
+        "diagnostic": "worktree lifecycle: kickoff has exactly one stream allocation command",
+        "failures": [
+          "\u2717 worktree lifecycle: kickoff has exactly one stream allocation command \u2014 expected 1 occurrence(s) of 'pij stream create --project' in /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p139-skill-guard-uxz4q_pd/skills/pij/references/prime/rituals/kickoff.md, found 0",
+          "\u2717 worktree lifecycle: verified allocation precedes spawn \u2014 missing 'pij stream create --project'"
+        ]
+      }
+    ],
+    "root_removed": true
+  },
+  "baton_lines": 89,
+  "canonical_checks": {
+    "command": "harness checks --json",
+    "exit": 0,
+    "output": "skill-gate-canonical-green.json",
+    "timestamp": "2026-09-07T16:21:07.110Z",
+    "skipped": [],
+    "sensors": [
+      {
+        "name": "local-paths",
+        "status": "pass",
+        "code": 0,
+        "proves": "operational files contain no user-specific absolute home paths"
+      },
+      {
+        "name": "typecheck",
+        "status": "pass",
+        "code": 0,
+        "proves": "the TypeScript surface compiles"
+      },
+      {
+        "name": "lint",
+        "status": "pass",
+        "code": 0,
+        "proves": "Biome (errors + warnings) is clean"
+      },
+      {
+        "name": "test",
+        "status": "pass",
+        "code": 0,
+        "proves": "the vitest suite passes"
+      },
+      {
+        "name": "copilot-native",
+        "status": "pass",
+        "code": 0,
+        "proves": "native Copilot extension node:test contracts pass"
+      },
+      {
+        "name": "windows-compat",
+        "status": "pass",
+        "code": 0,
+        "proves": "portable typecheck, lint, registry replacement, inbox, fake, and no-tmux CLI checks pass"
+      },
+      {
+        "name": "smoke",
+        "status": "pass",
+        "code": 0,
+        "proves": "the tmux-driven end-to-end driver scenarios pass"
+      },
+      {
+        "name": "pkg-audit",
+        "status": "pass",
+        "code": 0,
+        "proves": "third-party package vetting surfaces no new findings"
+      },
+      {
+        "name": "snapshots",
+        "status": "pass",
+        "code": 0,
+        "proves": "agent-pack snapshots have not drifted"
+      },
+      {
+        "name": "pij-commit-trailers",
+        "status": "pass",
+        "code": 0,
+        "proves": "branch-local harness commits carry derived pij attribution (advisory)",
+        "output": "{\"status\":\"pass\",\"checked\":0,\"findings\":[],\"unverified\":[]}\n"
+      }
+    ]
+  },
+  "independent_review": {
+    "agent": "SkillRepairReview",
+    "verdict": "no_material_findings",
+    "scope": "Eight-file uncommitted repair against6e4787bf; static source/contract review only",
+    "validation_run_by_reviewer": false
+  },
+  "smoke_diagnostic": {
+    "command": "just smoke",
+    "exit": 0,
+    "output": "skill-gate-smoke-diagnostic-green.txt",
+    "assertions_changed": false,
+    "initial_failure": "todo /reload15s expectation after overlay close; actual/scrollback discarded by checks tail25",
+    "initial_cause": "Unknown; a passing unchanged diagnostic does not establish causality"
+  },
+  "source_base": "6e4787bfea83aded7b890686a087b5da5b259716",
+  "source_sha256": {
+    "harness/scripts/pij-skill-check.sh": "0decf6a33a429a9e92a97e47fab9a9a75effdbc36e14ffa281a11f1708580c61",
+    "skills/pij/SKILL.md": "6011c24011c17897771dc505e6e7f47b0af4fdedddd2edd07e64241e9520145f",
+    "skills/pij/references/00-routing.md": "8a891b7c9e7240b249977d999c1908249fad6508d4a012cdd38954660a9a7915",
+    "skills/pij/references/routes/ready.md": "187e0920ea94e96eadf105007039e37a149a169ba23e89da3172eddfe626374f",
+    "skills/pij/references/routes/peer.md": "72668044be2dcb38d868ddd668ef74eb4f6ab1d5b03e2b63b8090b87347c3257",
+    "skills/pij/references/prime/rituals/kickoff.md": "06ece832754d179f0455014d6cca337f8ff9f7fd78ae2937f21aa1e28a4d88b9",
+    "skills/pij/references/prime/rituals/batons.md": "a3ff9c0fce2e2c4944cfb9b8f380a0d095f2681cff57c2f9a630f84db1c7bfb6",
+    "skills/pij/references/prime/templates/seat-handover.md": "25402e5734259dfe08f6265dd347353d1925922ab5579593a110a1bc1dbefffd"
+  },
+  "initial_canonical_failure_output": "skill-gate-canonical-smoke-red.txt"
+}

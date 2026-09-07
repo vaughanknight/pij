@@ -16,8 +16,10 @@ Run steps in order. Artifacts make the process reconstructable; conversation doe
    it owns worktree creation/resume and branch/base verification, replacing `git worktree add -b`.
    Shared-tree construction requires an explicit fallback ruling.
 7. **Spawn into the worktree.** `pij-rs spawn --harness <h> --model <m> --effort <e> --cwd <absolute-worktree> --parent <o-prime-id> --name <stream-window> --json`. Native spawn has no legacy `--layout`/`--task`; use owned tmux placement after it reports the pane. Shim spawn refuses rather than falling back.
+   Check the peer's actual `process.cwd()` and native tool root against the chosen worktree; a cwd flag or spawn receipt is not that observation.
 8. **Observe the actual native binding result / pushed turn.** Native spawn waits by default; `--no-wait` is explicit admission, not readiness. Never poll a booting peer as a substitute for delivery.
-9. **Verify placement.** Read `pij list --json`, `pij node show <id> --json`, the actual branch and tmux panes; folder, recorded parent, model and window must match the brief. No list `--here` or tree/link port exists.
+9. **Verify placement.**
+   Read `pij list --json`, `pij node show <id> --json`, the actual branch and tmux panes; folder, recorded parent, model and window must match the brief. No list `--here` or tree/link port exists.
 10. **Canary legs (a) and (b).** Run `pij canary <id> --expect-model <m>`;
     Complete canary leg (a) round-trip and leg (b) identity proof;
     record nonce-dispatch + defensive runtime evidence at pass time; (c) remains pending.
@@ -30,7 +32,7 @@ Run steps in order. Artifacts make the process reconstructable; conversation doe
 13. **Report one hop up.** Use [`reports.md`](./reports.md); if this is a
     topless o-prime, the government record + human digest replaces numbering.
 14. **Orient and preamble.** Stream invokes `/pij prime`, follows module-first journey, lands preamble report before planning mutation.
-15. **Preserve before retirement.** Require merged/abandoned work evidence and preserve artifacts; then stand-down and authorized `pij close <id> --json`. Verify the tombstone receipt and active-roster exclusion; the process/pane remains untouched. Observe outstanding delivery to its real terminal outcome; no queue withdrawal/cancellation is introduced. Separately authorize terminal/worktree teardown, retire allocation/history without erasure, return/reclaim batons only with the observed `--lease-id`, and transplant findings.
+15. **Preserve before retirement.** Require PR merge or explicit abandonment evidence and preserve artifacts; then stand-down and authorized `pij close <id> --json`. Verify the tombstone receipt and active-roster exclusion; the process/pane remains untouched. Observe outstanding delivery to its real terminal outcome; no queue withdrawal/cancellation is introduced. Separately authorize terminal/worktree teardown, retire allocation/history without erasure, return/reclaim batons only with the observed `--lease-id`, and transplant findings.
 16. **Diff manifest against descriptive fences.** At plan validation compare both
     ways: task paths outside the declared touch set and declared paths no task
     uses. Worktree-local additions are tell-not-ask (global invariant 11).

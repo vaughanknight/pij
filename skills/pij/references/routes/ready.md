@@ -36,8 +36,8 @@ prime or operator will push the next turn.
 Ready.
 ```
 
-4. **Wait through the delivery owner.** In push/extension mode, ending the turn
-   is the wait; never start a competing inbox receiver. In verified external pull
+4. **Wait through the delivery owner.** In push/extension mode, **STOP.** — ending the turn is the wait;
+   never start a competing inbox receiver. In verified external pull
    mode, use `pij inbox --wait` (or `pij inbox --wait 30000 --json` for a finite
    wait). The same native session resolves the registered id without exporting
    `PIJ_SESSION_ID`; claims are acknowledged only after successful output.

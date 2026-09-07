@@ -257,29 +257,37 @@ for marker in \
   completion_marker "$ready_route" "$marker" "ready terminal: $marker"
 done
 
-# 8. real-tree skill contracts: peer operations, current-seat triage, and handover order.
+# 8. rs node contracts replace retired tree/link/list projections; docs/how/pij-rs-api.md#unsupported-status.
 peer_route="$SKILL/references/routes/peer.md"
 prime_route="$SKILL/references/routes/prime.md"
 kickoff="$SKILL/references/prime/rituals/kickoff.md"
 handover="$SKILL/references/prime/templates/seat-handover.md"
 
 for marker in \
-  'pij tree [<id> | --global] [--activity <v>] [--liveness <v>] [--lifecycle <v>] [--all] [--json]' \
-  'pij link <child> --parent <parent> [--json]' \
-  'pij link <child> --root [--json]' \
-  'pij adopt "$TMUX_PANE" --harness <h> [--parent <id>]' \
-  '`parentId` is structural' \
-  '`spawnedBy` remains close authorization' \
-  'current Git repository across linked worktrees'; do
-  completion_marker "$peer_route" "$marker" "real-tree peer: $marker"
+  'pij node show <seat> --json' \
+  '`pij link`/`tree` refuse' \
+  'no existing-seat reparent/root-placement port exists' \
+  'pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}' \
+  'recorded `parent`, not a spawnedBy fallback' \
+  'Close requires self or the current recorded parent.' \
+  '`--scope local`' \
+  'Legacy `--here`, `--role`, `--prime` and `--archived` remain refused.' \
+  'pij inbox register --json' \
+  'pij inbox --wait' \
+  'matching long-lived host incarnation'; do
+  completion_marker "$peer_route" "$marker" "rs peer: $marker"
 done
 
+# No oldPrime/list --prime projection is ported: require designation evidence, not role inference; docs/how/pij-rs-api.md#unsupported-status.
 for marker in \
-  '`pij list --prime --here --json` is current-prime-only' \
-  '`oldPrime` is history' \
-  'never an active-seat signal' \
-  '`pij tree --global --all --json`'; do
-  completion_marker "$prime_route" "$marker" "real-tree prime triage: $marker"
+  '`pij list --json` is the unfiltered active rs roster' \
+  '`pij node show <id> --json` is its governed subtree' \
+  'List `--prime`/`--here`/`--archived`, tree and link are unported, not alternative probes.' \
+  '**not prime designation**' \
+  'There is no dedicated rs prime-list/getter projection in this cutover' \
+  'A missing local directory or empty active roster never proves no prime exists.' \
+  '`pij spine events --json`'; do
+  completion_marker "$prime_route" "$marker" "rs prime triage: $marker"
 done
 
 # Commit attribution has one rule owner; commit boundaries cite it.
@@ -300,23 +308,27 @@ for file in \
   completion_marker "$file" '§ C11' "commit attribution: citation in $file"
 done
 
-require_order "$kickoff" "real-tree kickoff: spawned link verified before canary" \
+# Node evidence replaces tree; role assertion follows verified parent, never link repair; docs/how/pij-rs-api.md#unsupported-status.
+require_order "$kickoff" "rs kickoff: recorded parent verified before canary" \
   "**Verify placement.**" \
-  'verify the automatically persisted structural link with `pij tree <id> --json`' \
+  '`pij node show <id> --json`' \
   "**Canary legs (a) and (b).**"
-require_order "$kickoff" "real-tree kickoff: adopted identity before link before brief" \
+require_order "$kickoff" "rs kickoff: canary identity before role before brief" \
   "Complete canary leg (a) round-trip and leg (b) identity proof" \
-  '`pij link <id> --parent <o-prime-id> --role pm --json`' \
+  '`pij role <id> pm --json` after verifying the recorded parent' \
   "**Deliver the brief by pointer as canary leg (c).**"
 
-require_order "$handover" "real-tree handover: set before writers, retire after final relay" \
-  '`pij orchestration prime set --json`' \
+# Rs designation names the incoming seat; retirement history comes from spine, not oldPrime/tree; docs/how/pij-rs-api.md#unsupported-status.
+require_order "$handover" "rs handover: set before writers, retire after final relay" \
+  '`pij orchestration prime set <incoming-pij-id> --json`' \
   "before changing any writer line" \
   "outgoing seat's FINAL send" \
   '`pij orchestration prime retire <outgoing-pij-id> --json`' \
-  '`pij tree <outgoing-pij-id> --all --json`'
-completion_marker "$handover" '`oldPrime: true`' \
-  "real-tree handover: retired seat remains old-prime history"
+  '`pij spine events --peer <outgoing-pij-id> --json`'
+completion_marker "$handover" '`prime.state` is retired' \
+  "rs handover: retired designation remains spine history"
+completion_marker "$handover" 'No `oldPrime` tree/list field is implied.' \
+  "rs handover: no fabricated legacy projection"
 
 # 9. prime payload: exact tree + every relative markdown pointer resolves.
 prime_required=(
@@ -531,11 +543,13 @@ fi
 require_marker "$SKILL/references/prime/rituals/bootstrap.md" \
   "Kickoff is the sole construction owner" \
   "worktree lifecycle: kickoff is sole construction owner"
-kickoff_worktree_create_count=$(grep -Fc 'git worktree add -b' \
-  "$SKILL/references/prime/rituals/kickoff.md" || true)
-[ "$kickoff_worktree_create_count" -eq 1 ] \
-  && ok "worktree lifecycle: kickoff has exactly one create command" \
-  || err "worktree lifecycle: kickoff must contain git worktree add -b exactly once"
+# Rs stream allocation owns creation; handwritten git worktree add is retired here; docs/how/pij-rs-api.md#governance-route-inventory.
+require_count "$kickoff" 'pij stream create --project' 1 \
+  "worktree lifecycle: kickoff has exactly one stream allocation command"
+require_order "$kickoff" "worktree lifecycle: verified allocation precedes spawn" \
+  'pij stream create --project' \
+  'it owns worktree creation/resume and branch/base verification' \
+  '**Spawn into the worktree.**'
 require_marker "$SKILL/references/prime/rituals/kickoff.md" "process.cwd()" \
   "worktree lifecycle: kickoff explains peer cwd derivation"
 require_marker "$SKILL/references/prime/rituals/kickoff.md" "/pij prime" \
