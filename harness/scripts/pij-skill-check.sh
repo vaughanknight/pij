@@ -410,7 +410,7 @@ if [ -f "$orchestrator" ]; then
     fi
   done <<'EOF'
 global orient|orient-global.md
-local orient|.harness/government/orient-local.md
+local orient|<government-root>/orient-local.md
 brief|item brief
 thesis|/thesis
 real invocation|host skill mechanism
@@ -517,11 +517,17 @@ for f in \
     || err "peer spawn cwd: $(basename "$f") documents unsupported pij spawn --cwd"
 done
 
-bootstrap_worktree_add_count=$(grep -Fc 'git worktree add' \
+# Governance has a permanent worktree; only stream construction belongs to kickoff.
+bootstrap_worktree_commands=$(grep -Eo 'git( -C "[^"]+")? worktree add[^`]*' \
   "$SKILL/references/prime/rituals/bootstrap.md" || true)
-[ "$bootstrap_worktree_add_count" -eq 0 ] \
-  && ok "worktree lifecycle: bootstrap delegates construction" \
-  || err "worktree lifecycle: bootstrap must not run git worktree add"
+bootstrap_worktree_add_count=$(printf '%s\n' "$bootstrap_worktree_commands" | grep -c 'worktree add' || true)
+bootstrap_governance_count=$(printf '%s\n' "$bootstrap_worktree_commands" \
+  | grep -Ec '^git -C "<repo>" worktree add (--orphan -b prime-governance "<standing-worktree>"|"<standing-worktree>" prime-governance)$' || true)
+if [ "$bootstrap_worktree_add_count" -eq 2 ] && [ "$bootstrap_governance_count" -eq 2 ]; then
+  ok "worktree lifecycle: bootstrap creates/restores governance only"
+else
+  err "worktree lifecycle: bootstrap may create/restore only the standing prime-governance worktree"
+fi
 require_marker "$SKILL/references/prime/rituals/bootstrap.md" \
   "Kickoff is the sole construction owner" \
   "worktree lifecycle: kickoff is sole construction owner"

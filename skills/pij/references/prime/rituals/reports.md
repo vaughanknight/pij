@@ -17,6 +17,7 @@ sent. File at preamble, each phase checkpoint, and ship.
 Paths carry the detail; the report does not replace its artifacts. Send one
 short pointer message after the file exists — per § C10 (wire discipline):
 first line = the claim/verdict + the path, nothing restated from the report.
+At plan close-out, include the named PRD rows advanced and receipt per row for the reconciliation owner (governance rules below); a report never grants a stream write access to government.
 
 ## Receiver duty
 
@@ -45,11 +46,9 @@ falsified a correct "fixed" report in the first outside run).
 
 If no layer exists above the o-prime:
 
-- the spine, baton grant log, prime-flow history, rulings, and encode candidates
-  are the evidence record — under this repo's government root, which for
-  `AI-Substrate/pij` is
-  `$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government/`
-  on the standing `prime-governance` branch, not main;
+- authoritative store records plus single-writer documents at `<government-root>`
+  are the evidence; resolve document paths via
+  [Governance branch — the rules](./bootstrap.md#governance-branch--the-rules);
 - send the human only main-event digests: phase ships, stream unblocks or
   dissolutions, incidents/collisions, and rulings needed;
 - keep digests short, phone-readable, and self-identified.

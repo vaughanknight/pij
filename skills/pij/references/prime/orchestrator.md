@@ -31,9 +31,8 @@ Completion is `pij report state done`, never a watchdog self-pause.
 Run these steps in order. A later step never retroactively satisfies an earlier one.
 
 1. Read portable [`orient-global.md`](./orient-global.md).
-2. Read the consuming repo's `.harness/government/orient-local.md` — in
-   `AI-Substrate/pij` that tree is on the standing `prime-governance` branch, not main:
-   `$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government/orient-local.md`.
+2. Read `<government-root>/orient-local.md`; resolve the consuming repo's root via
+   [Governance branch — the rules](./rituals/bootstrap.md#governance-branch--the-rules).
 3. Read the assigned item brief and verify its role, fences, and structure tree.
 4. Invoke `/thesis` against the ask and nearest authoritative artifacts.
 5. Use the host skill mechanism. A plausible thesis written from memory does not satisfy this step.
@@ -87,6 +86,7 @@ Persist pointer reports using [`rituals/reports.md`](./rituals/reports.md) at pr
 report blockers, human rulings, and coordination changes immediately. Escalate governance/coordination exactly one hop,
 never as a question proxy: the active Builder or other specialist asks its own context-local questions directly
 and sends you the pending-decision pointer (global invariants 9–10).
+At close-out, name the PRD requirement rows advanced and their receipts for the named reconciliation owner (governance rules above); never write the prime's register yourself.
 
 Worktree-local scope changes are tell-not-ask: record the touch set and overlap risk, notify o-prime, and continue on the isolated branch.
 Synchronize only at convergence or shared mutable resources (global invariant 11; [`rituals/batons.md`](./rituals/batons.md)).

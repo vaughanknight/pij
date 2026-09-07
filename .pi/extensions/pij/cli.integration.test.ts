@@ -343,17 +343,20 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 		];
 		for (const clause of externalPullBan) {
 			expect(routing).toContain(clause);
-			expect(peer).toContain(clause);
 		}
 		const exactTmuxAdopt = `Tmux self-adopt may use only the exact non-empty \`$TMUX_PANE\` supplied by the current process: \`pij adopt "$TMUX_PANE" --harness <h> \${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}\`.`;
 		expect(routing).toContain(exactTmuxAdopt);
+		// C1 owns these rules; the peer route cites it instead of forking a second copy.
+		expect(peer).toContain("follow § C1 for delivery-owner detection");
 		expect(peer).toContain(
-			'Tmux control-plane mode needs one-time self-adopt using only the exact non-empty `$TMUX_PANE` supplied by the current process: `pij adopt "$TMUX_PANE" --harness <h>`.',
+			"exact-pane-only adoption and external register-first/no-pane-discovery rules",
 		);
 		expect(peer).toContain(
 			"`E-NOID` for self outside tmux | run `pij inbox --wait` or `pij inbox register`",
 		);
-		const externalIdentity = peer.indexOf("**External pull identity — first action**");
+		const externalIdentity = peer.indexOf(
+			"**Identity — choose only the § C1 delivery owner's path**",
+		);
 		const externalRegister = peer.indexOf("pij inbox register --json", externalIdentity);
 		const externalWhoami = peer.indexOf("pij whoami [--json]", externalIdentity);
 		expect(externalIdentity).toBeGreaterThanOrEqual(0);
