@@ -231,7 +231,7 @@ boundary). Call chain (CLI → lib → ledger): `<flow-pair skill root>/referenc
 3. **Render packet** — `<flow-pair skill root>/references/templates/worker-implement.md`
    (or `worker-fix.md` for a FIX). These templates are **runtime-read by the engine** —
    cited, never moved. The engine injects the absolute skill root as `{{SKILL_ROOT}}` so
-   packet citations resolve in any repo.
+   packet citations resolve in any repo. Include § C11 (Commit attribution) in implement/fix packets.
 4. **Deliver** — `flow-pair dispatch …` compiles the pack, writes the packet to
    `.flow-pair/runs/<run-id>/prompts/<delegationId>.md`, and prints exactly ONE line:
    `[flow-pair <delegationId>] Packet at: <rel-path>`. Send **that pointer** to the worker
@@ -252,6 +252,7 @@ boundary). Call chain (CLI → lib → ledger): `<flow-pair skill root>/referenc
    them; ask the user if unnamed). Run ALL of them, not first-fail, so one pass surfaces
    every failure. Never assume another repo's recipes (e.g. pij's `just`/`harness`
    commands) exist in the target repo.
+8. **Commit boundary** — apply § C11 (Commit attribution) to any resulting commit.
 
 ## References (cited in place — engine-owned, not moved; all under `<flow-pair skill root>`)
 

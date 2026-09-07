@@ -205,3 +205,15 @@ owner for either observation.
 7. **Never reconcile a contradiction.** A receipt or instrument output that contradicts itself is a FINDING, not a formatting problem — relay it verbatim, contradictions intact, with your summary ABOVE the raw output, never instead of it — and the summary line itself must NAME the contradiction (a clean-sounding line 1 over buried evidence re-creates the failure this rule exists to stop). Terseness compresses YOUR words; it never smooths EVIDENCE (a tidied "no notable changes" once nearly destroyed the only trace of a live fleet defect — plan 083).
 
 Pre-send check, two questions: could the receiver act on line 1 alone? Did I restate anything they already know?
+
+### C11 — Commit attribution
+
+Every commit created by a pij seat carries its attribution **at commit time**. Run `pij-rs commit-trailers` (no arguments) in the committing worktree immediately before committing; append its emitted `Key: value` lines after a blank line alongside, never replacing, the harness's own trailers. Values are derived, never hand-typed:
+
+| Key | Derived value / omission |
+|---|---|
+| `Pij-Seat` | Committing seat from `pij-rs whoami`; omitted when the derived `Pij-Prime` is that same seat. |
+| `Pij-Prime` | From `pij-rs list --json` rows, in order: nearest `role == prime` seat (self or ancestor), repository's designated prime, then root of the recorded-parent chain. A prime committer or fallback root (`parent: null`) uses its own id. This root fallback is the interim ruling until plan 139. |
+| `Pij-Plan` | Current plan ordinal, optionally `-slug`, from the worktree path/branch (`NNN-slug`), harness flow state, or current assignment; omitted when there is no plan. |
+
+The helper prints only applicable trailers to stdout and unresolved-value diagnostics to stderr. If an expected value cannot be derived, omit that trailer and explain the omission in the commit body; never guess or emit a placeholder. Current context is not evidence of a historical commit's identity.

@@ -26,7 +26,7 @@
 				},
 				{
 					"id": "i2",
-					"text": "Review with the /builder review discipline: verify claims against fresh evidence — run targeted tests yourself, read exit status, never trust a green claim you did not see."
+					"text": "Review with the /builder review discipline: verify claims against fresh evidence — run targeted tests yourself, read exit status, never trust a green claim you did not see. Check commit attribution per the `pij` skill's `references/00-routing.md` § C11 (Commit attribution)."
 				},
 				{
 					"id": "i2b",

@@ -59,28 +59,23 @@ Then read it back verbatim and confirm inline before fleet creation — never a
 modal question UI (global invariant 9); persist the pending choice and remain
 reachable.
 
-Workers are default-stack splits in the orchestrator's own window, never the o-prime's window,
-and inherit the verified worktree because peer spawn uses the
-caller's cwd. Canary model, effort, identity, cwd, branch, and placement before use.
-See the [pair route](../routes/pair.md) for lazy acquisition and fleet lifecycle.
-Never silently use pair's built-in defaults. In the current provided-peer path,
-explicitly spawn and canary the selected models and persist the plan roster with
-their ids/models before dispatch. The current flow-pair engine does not persist
-the override flags; the plan roster remains the durable configuration truth.
+Workers are default-stack splits in your window, never the o-prime's window; peer spawn inherits your verified worktree cwd.
+Canary model, effort, identity, cwd, branch, and placement before use.
+See the [pair route](../routes/pair.md) for lazy acquisition and fleet lifecycle; never silently use its built-in defaults.
+In the current provided-peer path, explicitly spawn and canary the selected models,
+then persist the plan roster with their ids/models before dispatch. The current flow-pair engine does not persist
+override flags; the plan roster remains durable configuration truth.
 
 ## Packaging and review law
 
-- source-verify every claimed seam before dispatch; a newly discovered
-  worktree-local path is a persisted fence update plus notification (global
-  invariant 11). Stop and escalate at a hard ownership boundary; broker a baton
-  only for a shared mutable resource or convergence point.
-- Freeze immutable coder and reviewer packets with worktree, branch, parent SHA,
-  composition, allowed and forbidden paths, proof commands, baton ownership, and
-  done schema — plus a one-line § C10 citation so coder and reviewer replies
-  follow wire discipline from their first turn.
-- Aim the cold reviewer at the semantic/runtime surface the deterministic gates
-  cannot prove. The reviewer forms findings; the orchestrator supplies constraints,
-  not conclusions.
+- source-verify every claimed seam before dispatch. Persist newly discovered worktree-local paths as fence updates and notify (global invariant 11).
+  Stop and escalate at hard ownership boundaries;
+  broker a baton only for shared mutable resources or convergence.
+- Freeze immutable coder and reviewer packets: worktree, branch, parent SHA, composition, allowed/forbidden paths,
+  proof commands, baton ownership, done schema, and `00-routing.md` citations:
+  § C10 (Wire discipline) and § C11 (Commit attribution).
+- Aim the cold reviewer at semantic/runtime surfaces the deterministic gates cannot prove.
+  The reviewer forms findings; the orchestrator supplies constraints, not conclusions.
 - After review dispatch, scope or environment changes require stop and re-brief.
   Render a fix packet only from persisted findings.
 - Run the pair route's sanity pass and real runtime/smoke proof before accepting a
@@ -88,54 +83,38 @@ the override flags; the plan roster remains the durable configuration truth.
 
 ## Coordination, reporting, and resume
 
-Persist pointer reports using [`rituals/reports.md`](./rituals/reports.md) at
-preamble, plan/validation, each phase, and ship; also report blockers, human
-rulings, and coordination changes immediately. Escalate governance and
-coordination exactly one hop — never as a question proxy: an active Builder or
-other specialist asks its own context-local questions directly and sends you
-the pending-decision pointer (global invariants 9–10).
+Persist pointer reports using [`rituals/reports.md`](./rituals/reports.md) at preamble, plan/validation, each phase, and ship;
+report blockers, human rulings, and coordination changes immediately. Escalate governance/coordination exactly one hop,
+never as a question proxy: the active Builder or other specialist asks its own context-local questions directly
+and sends you the pending-decision pointer (global invariants 9–10).
 
-Worktree-local scope changes are the same: tell, do not ask. Record the updated
-touch set and overlap risk, notify the o-prime, and continue on the isolated
-branch; synchronize only at convergence or shared mutable resources (global
-invariant 11; matrix: [`rituals/batons.md`](./rituals/batons.md)). Two isolated
-branches touching the same path is a reconciliation risk, not an edit-time lock.
+Worktree-local scope changes are tell-not-ask: record the touch set and overlap risk, notify o-prime, and continue on the isolated branch.
+Synchronize only at convergence or shared mutable resources (global invariant 11; [`rituals/batons.md`](./rituals/batons.md)).
+Isolated branches touching one path create reconciliation risk, not an edit-time lock.
 
-Push-not-poll remains normal. Treat unexplained worker silence outage-first, never
-misconduct-first. After a 15-minute cadence passes with no completion, blocked,
-stalled, or dead push, perform one liveness check. If the worker is idle without
-a report, send one status request requiring `COMPLETE`, `CONTINUING`, or `BLOCKED`;
-any new message is a recovery poke, so poke before redispatch. Redispatch only
-after liveness and recovery pokes fail; repeated short-interval polling stays
-forbidden. A continuing report names current work, files, gates, remaining work,
+Push-not-poll is normal; treat unexplained worker silence outage-first, never misconduct-first.
+After a 15-minute cadence without a completion, blocked, stalled, or dead push, perform one liveness check.
+If idle without a report, request `COMPLETE`, `CONTINUING`, or `BLOCKED` once; any new message is a recovery poke, so poke before redispatch.
+Redispatch only after liveness and recovery pokes fail; repeated short-interval polling stays forbidden.
+A continuing report names current work, files, gates, remaining work,
 and its next reporting point.
 
-Silence is not the only failure shape, and the liveness protocol above cannot see
-the other one: a worker that is **busy, talking, and still stale** — pushing
-messages while its `pij report` card names work it finished an hour ago. It answers
-every poke, so it never trips a liveness check, and the pokes it answers are not
-reports. Your fleet's card freshness is YOUR accountability, not theirs: workers
-forget, you are answerable that they do it. Run `pij anomalies` **unscoped** and close
-every `status-stale` row for your fleet — each already carries the literal remediation
-line to relay (`pij report now "<did>" "<next>"`, or a parked state
-`waiting|hold|blocked|question`). Do not narrow with `--here` or `--project`:
-`status-stale` is node-keyed with no assignment or allocation ref, so `--project`
-filters it out entirely and `--here` hides every worker whose worktree is a different
-folder from yours. Confirm the card actually moved; a relayed
-instruction is not a fixed card. Until it moves, every consumer — you, the o-prime,
-the human — renders that stale now/next as CURRENT.
+Talking does not prove a fresh card: a busy worker may answer every poke while `pij report` still names completed work.
+Fleet card freshness is YOUR accountability. Run `pij anomalies` **unscoped** and close every fleet `status-stale` row.
+Relay its literal remediation: `pij report now "<did>" "<next>"`, or parked state `waiting|hold|blocked|question`.
+Do not narrow with `--here` or `--project`: `status-stale` is node-keyed, without assignment/allocation refs,
+so `--project` filters it out and `--here` hides workers in other worktree folders.
+Confirm the card actually moved; relaying an instruction does not fix it.
+Until it moves, you, o-prime, and the human all see stale now/next as CURRENT.
 
-Any path outside a packet allowlist triggers an immediate stop and classification
-before review. The known benign class is timestamp-only `.pi/packages.yaml`
-`vetted.date` churn after pi, harness, or package-audit boot: prove the diff is
-date-only, restore the file byte-identical to branch HEAD, record the cause, then
-resume. Never hand-edit package state. Source, package, enablement, install command,
-score, override, or any other content change remains a scope breach.
+Any path outside a packet allowlist triggers immediate stop and classification before review.
+Known benign: timestamp-only `.pi/packages.yaml` `vetted.date` churn after pi, harness, or package-audit boot.
+Prove it is date-only, restore byte-identical to branch HEAD, record the cause, then resume. Never hand-edit package state.
+Source, package, enablement, install command, score, override, or any other content change remains a scope breach.
 
 Worktrees isolate trees and indexes, not false claims or runtime interference.
 Use [`rituals/batons.md`](./rituals/batons.md) for timing/external resources and
 [`protocol.md`](./protocol.md) for the ruled shared-tree fallback.
 
-After compaction, resume, or seat replacement, invoke `/pij prime` again and
-re-derive identity, government, Builder state, git state, and peer claims from
-substrate. Memory is never position truth.
+After compaction, resume, or seat replacement, invoke `/pij prime` again; re-derive identity, government,
+Builder state, git state, and peer claims from substrate. Memory is never position truth.

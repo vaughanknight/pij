@@ -19,6 +19,9 @@ failure), so one invocation surfaces every problem:
 6. `smoke` — `just smoke` (tmux-driven driver scenarios) — **heavy**
 7. `pkg-audit` — `PIJ_VET_SKIP_AGENT=1 just pkg audit` (no new package findings)
 8. `snapshots` — `just snapshots-check` (agent-pack snapshots not drifted)
+9. `pij-commit-trailers` — `just pij-commit-trailers --json` (advisory attribution
+   scan of harness-authored/co-authored commits after merge-base with `main`;
+   old history is excluded, missing identity is reported rather than guessed).
 
 `copilot-native` also runs `just copilot-native-test`: the native extension's
 node:test contracts are outside the Vitest include and must not be invisible.
@@ -27,7 +30,9 @@ with actual manual/spawned Copilot clients; local-provider and real-provider
 witnesses are separately graded.
 
 Envelope `data` carries `{ ok, ran[], skipped[], results[] }`; each `results[]`
-entry is `{ name, status: pass|fail|skipped, code, proves }`. On failure,
+entry is `{ name, status: pass|fail|warn|skipped, code, proves }`. Advisory
+results retain `output` with missing trailers and exact derivable lines to add;
+warnings and unavailable attribution never fail the gate. On failure,
 `data.failures[]` holds the last ~25 lines of each failing sensor's output.
 
 `--quick` skips heavy sensors (smoke) for a fast static+unit gate.

@@ -26,7 +26,8 @@ Run steps in order. Artifacts make the process reconstructable; conversation doe
    from `process.cwd()`; there is no peer `--cwd`. Keep it out of the o-prime window.
 8. **Wait for the daemon's ready push.** Never poll a booting peer.
 9. **Verify placement.** Inspect `pij list --here --json`, `git branch --show-current`,
-   and the tmux panes; cwd, branch, parent, and window must match the brief.
+   and the tmux panes; cwd, branch, parent, and window must match the brief. For a spawned seat,
+   verify the automatically persisted structural link with `pij tree <id> --json`.
 10. **Canary legs (a) and (b).** Run `pij canary <id> --expect-model <m>`;
     Complete canary leg (a) round-trip and leg (b) identity proof, and record the
     nonce-dispatch plus defensive runtime evidence at pass time. Leave leg (c) pending.
@@ -96,7 +97,7 @@ windows; two streams proved that in opposite directions within one hour.
 1. Author uncompilable work in scratch; move it in-tree only when it builds.
 2. Every pause, handoff, yield, and every **commit** includes the repo's
    compile/typecheck probe: a commit's transitive type closure must compile at
-   checkout (run-01 nearly shipped referencing a sibling's untracked sources).
+   checkout (run-01 nearly shipped referencing a sibling's untracked sources). Commits follow `00-routing.md` § C11 (Commit attribution).
 3. A non-owner never repairs a sibling's broken file: stop, send an **urgent
    owner-fix** with the failing command and exact path.
 4. The rule cuts upward and beyond compilers: the o-prime's own untracked
