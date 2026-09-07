@@ -127,8 +127,8 @@
           "slug": "governance-port",
           "description": "Governance port",
           "repo": "/work/project",
-          "plan_path": "docs/plans/139-rs-governance-port/plan.dd.json",
-          "prime_id": "pij-parent",
+          "plan_path": null,
+          "prime_id": null,
           "created_by": "pij-parent",
           "created_at": 1788739200000
         }
@@ -142,7 +142,7 @@
           "at": 1788739200000,
           "kind": "project-created",
           "seat": "pij-parent",
-          "payload": "{\"actor\":\"pij-parent\",\"action\":\"created\",\"record\":{\"slug\":\"governance-port\",\"description\":\"Governance port\",\"repo\":\"/work/project\",\"plan_path\":\"docs/plans/139-rs-governance-port/plan.dd.json\",\"prime_id\":\"pij-parent\",\"created_by\":\"pij-parent\",\"created_at\":1788739200000}}"
+          "payload": "{\"actor\":\"pij-parent\",\"action\":\"created\",\"record\":{\"slug\":\"governance-port\",\"description\":\"Governance port\",\"repo\":\"/work/project\",\"plan_path\":null,\"prime_id\":null,\"created_by\":\"pij-parent\",\"created_at\":1788739200000}}"
         }
       }
     },
@@ -449,7 +449,7 @@
         "action": "defined",
         "record": {
           "name": "merge",
-          "description": "Shared branch integration",
+          "description": "branch:main",
           "resource": "branch:main",
           "probe": null,
           "repo": "/work/project",
@@ -466,7 +466,7 @@
           "at": 1788739200000,
           "kind": "baton.defined",
           "seat": "pij-parent",
-          "payload": "{\"actor\":\"pij-parent\",\"action\":\"defined\",\"record\":{\"name\":\"merge\",\"description\":\"Shared branch integration\",\"resource\":\"branch:main\",\"probe\":null,\"repo\":\"/work/project\",\"created_by\":\"pij-parent\",\"created_at\":1788739200000}}"
+          "payload": "{\"actor\":\"pij-parent\",\"action\":\"defined\",\"record\":{\"name\":\"merge\",\"description\":\"branch:main\",\"resource\":\"branch:main\",\"probe\":null,\"repo\":\"/work/project\",\"created_by\":\"pij-parent\",\"created_at\":1788739200000}}"
         }
       }
     },
@@ -474,7 +474,7 @@
       "id": "baton-request",
       "owner": "u3",
       "decoded_payload": {
-        "actor": "pij-parent",
+        "actor": "pij-worker",
         "action": "requested",
         "record": {
           "id": "request-139-proof",
@@ -495,8 +495,8 @@
           "v": 1,
           "at": 1788739200000,
           "kind": "baton.requested",
-          "seat": "pij-parent",
-          "payload": "{\"actor\":\"pij-parent\",\"action\":\"requested\",\"record\":{\"id\":\"request-139-proof\",\"baton\":\"merge\",\"requester\":\"pij-worker\",\"purpose\":\"Integrate reviewed unit\",\"pin\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"evidence\":\"unit gate receipt\",\"requested_at\":1788739200000,\"state\":\"requested\"}}"
+          "seat": "pij-worker",
+          "payload": "{\"actor\":\"pij-worker\",\"action\":\"requested\",\"record\":{\"id\":\"request-139-proof\",\"baton\":\"merge\",\"requester\":\"pij-worker\",\"purpose\":\"Integrate reviewed unit\",\"pin\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"evidence\":\"unit gate receipt\",\"requested_at\":1788739200000,\"state\":\"requested\"}}"
         }
       }
     },
@@ -531,7 +531,7 @@
       "id": "baton-return",
       "owner": "u3",
       "decoded_payload": {
-        "actor": "pij-parent",
+        "actor": "pij-worker",
         "action": "returned",
         "record": {
           "baton": "merge",
@@ -549,8 +549,8 @@
           "v": 1,
           "at": 1788739200000,
           "kind": "baton.returned",
-          "seat": "pij-parent",
-          "payload": "{\"actor\":\"pij-parent\",\"action\":\"returned\",\"record\":{\"baton\":\"merge\",\"holder\":\"pij-worker\",\"lease_id\":\"lease-139-proof\",\"request_id\":\"request-139-proof\",\"acquired_at\":1788739200000}}"
+          "seat": "pij-worker",
+          "payload": "{\"actor\":\"pij-worker\",\"action\":\"returned\",\"record\":{\"baton\":\"merge\",\"holder\":\"pij-worker\",\"lease_id\":\"lease-139-proof\",\"request_id\":\"request-139-proof\",\"acquired_at\":1788739200000}}"
         }
       }
     },

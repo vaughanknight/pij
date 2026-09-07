@@ -12,7 +12,7 @@
 | title | Coder u3 — governance records: project/stream/fence/dispatch/ack/canary/attest/task/node/baton/prime |
 | role | coder |
 | plan | /Users/jordanknight/pi-hacking/fs3-rs-governance-port-u3/docs/plans/139-rs-governance-port/plan.dd.json |
-| seat | unbound; actual registry identity required at canary |
+| seat | pij-general-miriam |
 | updated | 2026-09-07 |
 
 <a id="mission"></a>

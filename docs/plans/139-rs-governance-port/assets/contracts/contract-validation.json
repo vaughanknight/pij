@@ -1,5 +1,5 @@
 {
-  "at": "2026-09-07T00:23:09Z",
+  "at": "2026-09-07T00:42:08Z",
   "verdict": "contract-consistency-pass",
   "routes": 22,
   "request_response_cases": 44,
@@ -13,8 +13,8 @@
     "all sample events timestamped; internal seq absent"
   ],
   "sha256": {
-    "governance-routes.json": "7a3cabfabfec3d6162c74c11a021f1a043a8b3c4b6cbf6621a79f5a0ccfe4fe9",
-    "governance-events.json": "489c115456828846f46c9243179c63dd4028eb5b4efd55739f08116aba46a03f"
+    "governance-routes.json": "0d032fd89464a2ad801735a4ee9a74d5ca73ee8f5d43388512eda4393cbf38d1",
+    "governance-events.json": "b4aa3e093087aea9f6cab0538d722e3c9105e253e2cde321efe1c8fdb3b08163"
   },
   "implementation_status": "Not implementation acceptance; all production code is unchanged. Unit tests must consume these fixtures."
 }

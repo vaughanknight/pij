@@ -12,7 +12,7 @@
 | title | Coder u2 — role: writer, verb, row join |
 | role | coder |
 | plan | /Users/jordanknight/pi-hacking/fs3-rs-governance-port-u2/docs/plans/139-rs-governance-port/plan.dd.json |
-| seat | unbound; actual registry identity required at canary |
+| seat | pij-written-lansra |
 | updated | 2026-09-07 |
 
 <a id="mission"></a>

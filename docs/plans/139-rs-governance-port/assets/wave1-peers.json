@@ -1,0 +1,40 @@
+{
+  "base_sha": "d964233d4cbf45400a6b2fc5f873de48909e7e38",
+  "phase": "wave1-canary",
+  "model": "github-copilot/gpt-6-astra-1m",
+  "effort": "high",
+  "peers": {
+    "u1": {
+      "id": "pij-electoral-orlandine",
+      "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1",
+      "status": "canary-awaiting-ack"
+    },
+    "u2": {
+      "id": "pij-written-lansra",
+      "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u2",
+      "status": "canary-awaiting-ack"
+    },
+    "u3": {
+      "id": "pij-general-miriam",
+      "worktree": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u3",
+      "status": "canary-awaiting-ack"
+    }
+  },
+  "baseline_checks": {
+    "command": "harness checks --json",
+    "status": "ok",
+    "at": "2026-09-07T00:26:57.613Z",
+    "ran": [
+      "local-paths",
+      "typecheck",
+      "lint",
+      "test",
+      "copilot-native",
+      "windows-compat",
+      "smoke",
+      "pkg-audit",
+      "snapshots"
+    ],
+    "skipped": []
+  }
+}

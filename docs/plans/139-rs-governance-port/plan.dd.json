@@ -70,7 +70,7 @@
         {
           "id": "AC5",
           "claim": "anomalies are a spine view; verify closes done",
-          "text": "`pij-rs anomalies` (unscoped) lists status-stale (card >10 min), unverified-done, open-question, unacked-dispatch, dead-seat rows computed from rs data only; a seat that reports done and a parent that runs `report verify` clears the unverified-done row; each row carries the exact relay line as today.",
+          "text": "`pij-rs anomalies` (unscoped) lists status-stale (legacy threshold 30 min; parked seats suppressed), unverified-done, open-question, unacked-dispatch, dead-seat rows computed from rs data only; a seat that reports done and a parent that runs `report verify` clears the unverified-done row; each row carries the exact relay line as today. One named crates/core constant owns the anomaly threshold; the separate 10 min per-command stderr nudge remains unchanged. Relay detail text matches legacy byte-for-byte under deterministic inputs.",
           "state": "unchecked"
         },
         {

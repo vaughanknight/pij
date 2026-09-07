@@ -91,7 +91,7 @@
       },
       "baton": {
         "name": "merge",
-        "description": "Shared branch integration",
+        "description": "branch:main",
         "resource": "branch:main",
         "probe": null,
         "repo": "/work/project",
@@ -194,8 +194,8 @@
                 "slug": "governance-port",
                 "description": "Governance port",
                 "repo": "/work/project",
-                "plan_path": "docs/plans/139-rs-governance-port/plan.dd.json",
-                "prime_id": "pij-parent",
+                "plan_path": null,
+                "prime_id": null,
                 "created_by": "pij-parent",
                 "created_at": 1788739200000
               },
@@ -920,7 +920,7 @@
             "data": {
               "baton": {
                 "name": "merge",
-                "description": "Shared branch integration",
+                "description": "branch:main",
                 "resource": "branch:main",
                 "probe": null,
                 "repo": "/work/project",
@@ -952,7 +952,7 @@
               "batons": [
                 {
                   "name": "merge",
-                  "description": "Shared branch integration",
+                  "description": "branch:main",
                   "resource": "branch:main",
                   "probe": null,
                   "repo": "/work/project",
@@ -984,7 +984,7 @@
             "data": {
               "baton": {
                 "name": "merge",
-                "description": "Shared branch integration",
+                "description": "branch:main",
                 "resource": "branch:main",
                 "probe": null,
                 "repo": "/work/project",
@@ -1430,12 +1430,12 @@
                 {
                   "kind": "status-stale",
                   "nodeId": "pij-worker",
-                  "detail": "status card is older than 10min; run: pij-rs report now \"<what I just did>\" \"<what is next>\"",
+                  "detail": "'pij-worker' has been working for 30min since its card was last updated (threshold 30min) \u2014 consumers render now/next as CURRENT, so a stale card actively misinforms. If 'pij-worker' is waiting on something with no known end, it should declare a parked state: pij report state waiting|hold|blocked|question (parked seats never flag). Otherwise it should update its card: pij report now \"<what I just did>\" \"<what's next>\" \u2014 note that refreshing a card resets this timer WITHOUT changing the wait, so a parked seat that reports instead of declaring will be asked again every threshold.",
                   "evidence": [
                     100
                   ],
-                  "ageMs": 600001,
-                  "relay": "\u26a0\ufe0f anomaly status-stale on pij-worker: status card is older than 10min; run: pij-rs report now \"<what I just did>\" \"<what is next>\" \u2014 evidence: spine 100"
+                  "ageMs": 1800001,
+                  "relay": "\u26a0\ufe0f anomaly status-stale on pij-worker: 'pij-worker' has been working for 30min since its card was last updated (threshold 30min) \u2014 consumers render now/next as CURRENT, so a stale card actively misinforms. If 'pij-worker' is waiting on something with no known end, it should declare a parked state: pij report state waiting|hold|blocked|question (parked seats never flag). Otherwise it should update its card: pij report now \"<what I just did>\" \"<what's next>\" \u2014 note that refreshing a card resets this timer WITHOUT changing the wait, so a parked seat that reports instead of declaring will be asked again every threshold. \u2014 evidence: spine 100"
                 },
                 {
                   "kind": "unverified-done",
@@ -1511,12 +1511,12 @@
                 {
                   "kind": "status-stale",
                   "nodeId": "pij-worker",
-                  "detail": "status card is older than 10min; run: pij-rs report now \"<what I just did>\" \"<what is next>\"",
+                  "detail": "'pij-worker' has been working for 30min since its card was last updated (threshold 30min) \u2014 consumers render now/next as CURRENT, so a stale card actively misinforms. If 'pij-worker' is waiting on something with no known end, it should declare a parked state: pij report state waiting|hold|blocked|question (parked seats never flag). Otherwise it should update its card: pij report now \"<what I just did>\" \"<what's next>\" \u2014 note that refreshing a card resets this timer WITHOUT changing the wait, so a parked seat that reports instead of declaring will be asked again every threshold.",
                   "evidence": [
                     100
                   ],
-                  "ageMs": 600001,
-                  "relay": "\u26a0\ufe0f anomaly status-stale on pij-worker: status card is older than 10min; run: pij-rs report now \"<what I just did>\" \"<what is next>\" \u2014 evidence: spine 100"
+                  "ageMs": 1800001,
+                  "relay": "\u26a0\ufe0f anomaly status-stale on pij-worker: 'pij-worker' has been working for 30min since its card was last updated (threshold 30min) \u2014 consumers render now/next as CURRENT, so a stale card actively misinforms. If 'pij-worker' is waiting on something with no known end, it should declare a parked state: pij report state waiting|hold|blocked|question (parked seats never flag). Otherwise it should update its card: pij report now \"<what I just did>\" \"<what's next>\" \u2014 note that refreshing a card resets this timer WITHOUT changing the wait, so a parked seat that reports instead of declaring will be asked again every threshold. \u2014 evidence: spine 100"
                 },
                 {
                   "kind": "unverified-done",
@@ -2029,12 +2029,12 @@
       {
         "kind": "status-stale",
         "nodeId": "pij-worker",
-        "detail": "status card is older than 10min; run: pij-rs report now \"<what I just did>\" \"<what is next>\"",
+        "detail": "'pij-worker' has been working for 30min since its card was last updated (threshold 30min) \u2014 consumers render now/next as CURRENT, so a stale card actively misinforms. If 'pij-worker' is waiting on something with no known end, it should declare a parked state: pij report state waiting|hold|blocked|question (parked seats never flag). Otherwise it should update its card: pij report now \"<what I just did>\" \"<what's next>\" \u2014 note that refreshing a card resets this timer WITHOUT changing the wait, so a parked seat that reports instead of declaring will be asked again every threshold.",
         "evidence": [
           100
         ],
-        "ageMs": 600001,
-        "relay": "\u26a0\ufe0f anomaly status-stale on pij-worker: status card is older than 10min; run: pij-rs report now \"<what I just did>\" \"<what is next>\" \u2014 evidence: spine 100"
+        "ageMs": 1800001,
+        "relay": "\u26a0\ufe0f anomaly status-stale on pij-worker: 'pij-worker' has been working for 30min since its card was last updated (threshold 30min) \u2014 consumers render now/next as CURRENT, so a stale card actively misinforms. If 'pij-worker' is waiting on something with no known end, it should declare a parked state: pij report state waiting|hold|blocked|question (parked seats never flag). Otherwise it should update its card: pij report now \"<what I just did>\" \"<what's next>\" \u2014 note that refreshing a card resets this timer WITHOUT changing the wait, so a parked seat that reports instead of declaring will be asked again every threshold. \u2014 evidence: spine 100"
       },
       {
         "kind": "unverified-done",
@@ -2131,7 +2131,11 @@
     }
   },
   "anomaly_rules": {
-    "status_stale_ms": 600000,
+    "status_stale_ms": 1800000,
+    "parked_suppression": true,
+    "stderr_nudge_ms": 600000,
+    "threshold_owner": "One named constant in crates/core; 30min anomaly threshold is distinct from 10min per-command stderr nudge",
+    "boundary": "Fire only when driftMs > status_stale_ms; equality does not flag",
     "unacked_dispatch_stale_ms": 900000,
     "relay_template": "\u26a0\ufe0f anomaly {kind} on {nodeId}{assignment_suffix}: {detail} \u2014 evidence: spine {evidence_csv_or_none}",
     "evidence": "real rs seqs only; never guessed counts or legacy timestamps",
