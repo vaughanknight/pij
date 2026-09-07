@@ -87,13 +87,6 @@ export default function (pi: ExtensionAPI): void {
 
 	const pijHome = resolvePijHome();
 	const repositories = new GitRepositoryAdapter();
-	const runtimeBin = detectPiRuntime({
-		ompCode: process.env.OMPCODE,
-		bun: "bun" in process.versions,
-		executableNames: [process.execPath, process.argv[0], process.argv[1]]
-			.filter((value): value is string => value !== undefined)
-			.map((value) => basename(value)),
-	});
 
 	// Native send tool (the model-facing comms seam). Agents call this instead of
 	// shelling out to the `pij` CLI — it reuses the proven core dispatch() send
