@@ -1187,7 +1187,16 @@ fn shell_literal(value: &str) -> String {
 
 fn pane_input_off(session: &TestSession, pane: &str) -> bool {
     let output = session.run(["display-message", "-p", "-t", pane, "#{pane_input_off}"]);
-    String::from_utf8_lossy(&output.stdout).trim() == "1"
+    assert!(
+        output.status.success(),
+        "input observation failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    match String::from_utf8_lossy(&output.stdout).trim() {
+        "1" => true,
+        "0" => false,
+        other => panic!("input observation was not a boolean: {other:?}"),
+    }
 }
 
 fn submit_marker(session: &TestSession, pane: &str) -> String {
@@ -1214,10 +1223,21 @@ fn wait_for_submit_marker_clear(session: &TestSession, pane: &str, timeout: Dura
 fn wait_for_pane_input(session: &TestSession, pane: &str, off: bool, timeout: Duration) {
     let deadline = Instant::now() + timeout;
     while pane_input_off(session, pane) != off {
-        assert!(
-            Instant::now() < deadline,
-            "pane input state did not converge"
-        );
+        if Instant::now() >= deadline {
+            let state = session.run([
+                "display-message",
+                "-p",
+                "-t",
+                pane,
+                "#{pane_id}|#{pane_pid}|#{pane_input_off}|#{pane_title}",
+            ]);
+            panic!(
+                "pane input state did not converge: expected off={off}; observed={:?}; owner={:?}; stderr={:?}",
+                String::from_utf8_lossy(&state.stdout),
+                submit_marker(session, pane),
+                String::from_utf8_lossy(&state.stderr)
+            );
+        }
         std::thread::sleep(Duration::from_millis(10));
     }
 }
@@ -1650,7 +1670,8 @@ impl TestSession {
 
     fn run<const N: usize>(&self, args: [&str; N]) -> Output {
         let output = Command::new("tmux")
-            .args(["-L", &self.server])
+            .args(["-L", &self.server, "-f", "/dev/null"])
+            .env("SHELL", "/bin/sh")
             .args(args)
             .output()
             .expect("tmux became unavailable after fixture creation");

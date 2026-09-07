@@ -256,7 +256,6 @@ describe("closed rs-only CLI", () => {
 		["spawn", "--harness", "claude"],
 		["revive", "pij-old"],
 		["tail", "pij-old"],
-		["inbox", "register"],
 		["inbox", "unknown"],
 		["daemon", "start"],
 		["watch", "src/**"],
@@ -274,6 +273,23 @@ describe("closed rs-only CLI", () => {
 			details: { code: "E-RS-UNPORTED" },
 		});
 		expect(requests).toEqual([]);
+		expect(legacySnapshot()).toBe(before);
+		expect(existsSync(join(root, "tmux-called"))).toBe(false);
+	});
+
+	it("refuses external registration without native evidence before touching legacy state", async () => {
+		const before = seedLegacy();
+		const result = await launch(["inbox", "register", "--json"]);
+		expect(result.code).toBe(4);
+		expect(JSON.parse(result.stdout)).toMatchObject({
+			ok: false,
+			v: 2,
+			error: "refused",
+			details: { code: "E-AMBIG" },
+		});
+		expect(requests).toEqual([
+			{ path: "/health", method: "GET", authorization: `Bearer ${KEY}`, body: "" },
+		]);
 		expect(legacySnapshot()).toBe(before);
 		expect(existsSync(join(root, "tmux-called"))).toBe(false);
 	});

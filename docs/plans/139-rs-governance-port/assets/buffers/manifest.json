@@ -1,0 +1,82 @@
+{
+  "at": "2026-09-07T14:50:13Z",
+  "entries": [
+    {
+      "owner": "pm",
+      "source": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port/.harness/temp/agent/session-buffer.md",
+      "preserved": "pm-session-buffer.txt",
+      "bytes": 8711,
+      "sha256": "01cb4b7ba11e65aba88f1e3b23a0aef546bc38bf201b183d787f2de8fd8dac8f",
+      "source_drained_or_deleted": false
+    },
+    {
+      "owner": "u1",
+      "source": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1/.harness/temp/agent/session-buffer.md",
+      "preserved": "u1-session-buffer.txt",
+      "bytes": 5501,
+      "sha256": "02f154a06e93f59a5b8b5a4813659c841a236d56121cc1107a0124a7530c2fcc",
+      "source_drained_or_deleted": false
+    },
+    {
+      "owner": "u2",
+      "source": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u2/.harness/temp/agent/session-buffer.md",
+      "preserved": "u2-session-buffer.txt",
+      "bytes": 3612,
+      "sha256": "15fbbfc8edd5ca409313244d13f8fd4e972a2f8c32ec026aecaa65456f24024a",
+      "source_drained_or_deleted": false
+    },
+    {
+      "owner": "u3",
+      "source": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u3/.harness/temp/agent/session-buffer.md",
+      "preserved": "u3-session-buffer.txt",
+      "bytes": 1174,
+      "sha256": "286fa69758f6a5400680b4f4ccdda0a7e9dabc1fda396238ab3289cd09a0c4b8",
+      "source_drained_or_deleted": false
+    },
+    {
+      "owner": "u4",
+      "source": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4/.harness/temp/agent/session-buffer.md",
+      "preserved": "u4-session-buffer.txt",
+      "bytes": 840,
+      "sha256": "e841eec898ef1a12660a7ce3924021c7db32cf8999011737f70166c660358df6",
+      "source_drained_or_deleted": false
+    },
+    {
+      "owner": "u5",
+      "source": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u5/.harness/temp/agent/session-buffer.md",
+      "preserved": "u5-session-buffer.txt",
+      "bytes": 1457,
+      "sha256": "53ac1dd7c061fa94471bf3c37f533979c1fb04b4ba35f9f9b93e10f7cc97f877",
+      "source_drained_or_deleted": false
+    },
+    {
+      "owner": "u6",
+      "source": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6/.harness/temp/agent/session-buffer.md",
+      "preserved": "u6-session-buffer.txt",
+      "bytes": 1538,
+      "sha256": "893457d92a3206bd3ad758387c6e1104c87270a17baeeccdcecb55558759c86b",
+      "source_drained_or_deleted": false
+    },
+    {
+      "owner": "u1-gate",
+      "source": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u1-gate/.harness/temp/agent/session-buffer.md",
+      "state": "absent-at-snapshot"
+    },
+    {
+      "owner": "u2-gate",
+      "source": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u2-gate/.harness/temp/agent/session-buffer.md",
+      "state": "absent-at-snapshot"
+    },
+    {
+      "owner": "u4-gate",
+      "source": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u4-gate/.harness/temp/agent/session-buffer.md",
+      "state": "absent-at-snapshot"
+    },
+    {
+      "owner": "u6-gate",
+      "source": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port-u6-gate/.harness/temp/agent/session-buffer.md",
+      "state": "absent-at-snapshot"
+    }
+  ],
+  "retirement": "No worker or PM worktree removed; this is preservation, not release/retirement evidence"
+}

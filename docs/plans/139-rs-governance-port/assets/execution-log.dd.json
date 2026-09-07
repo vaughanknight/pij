@@ -175,6 +175,14 @@
             "../plan.dd.json#acceptance_criteria/AC4",
             "../plan.dd.json#acceptance_criteria/AC8"
           ]
+        },
+        {
+          "id": "lg-0013",
+          "at": "2026-09-07T14:55:33Z",
+          "text": "Pinned e6a2 full gates completed, not timed out: Rust toolchain/lock/fmt/clippy/arch PASS, test failed only daemon_death_mid_stage_restores_input_within_bound; engineering all required sensors except test PASS, one old inbox-register unported expectation. Test now separately asserts health-only E-AMBIG for required registration with missing native evidence; full CLI68 passed (artifact632). Tmux recovery retained identical2s assertion, added exact input/owner/title diagnostics and strict boolean observations; isolated targeted repro passed before environmental repair, so no causal flake claim. Private test tmux now disables user config and selects /bin/sh; complete adapter suite32 plus3 helper tests passed (artifact633), no production timeout widened. Original failure remains in rust-gate-e6a2-red.txt. Reviewer genuine nonce/model/high/owned pane admission accepted after retracting untargeted prime-pane observation; no review release before new source pin.",
+          "links": [
+            "tasks/phase-4/tasks.dd.json#tasks/tk-40a4"
+          ]
         }
       ]
     }
