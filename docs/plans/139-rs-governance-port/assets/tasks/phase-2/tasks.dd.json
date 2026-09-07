@@ -1,0 +1,76 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Role + governance records",
+        "slug": "phase-2",
+        "status": "draft",
+        "summary": "Role + governance records"
+      }
+    },
+    {
+      "name": "summary",
+      "value": "Role + governance records"
+    },
+    {
+      "name": "tasks",
+      "value": [
+        {
+          "id": "tk-20a2",
+          "title": "u2 \u2014 --role on register/adopt; `pij-rs role`; seat_roles join; ownership self-or-parent",
+          "domain": "rust",
+          "phase": "p2",
+          "state": "unchecked"
+        },
+        {
+          "id": "tk-21a2",
+          "title": "u3 \u2014 project/stream/fence/baton/prime routes + verbs over existing tables",
+          "domain": "rust",
+          "phase": "p2",
+          "state": "unchecked"
+        },
+        {
+          "id": "tk-22a2",
+          "title": "u3 \u2014 dispatch (3-state receipt) / ack / canary / attest / task set / node show",
+          "domain": "rust",
+          "phase": "p2",
+          "state": "unchecked"
+        }
+      ]
+    },
+    {
+      "name": "done_when",
+      "value": {
+        "tk-20a2": [
+          {
+            "id": "dw-20a2",
+            "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-21a2": [
+          {
+            "id": "dw-21a2",
+            "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-22a2": [
+          {
+            "id": "dw-22a2",
+            "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ]
+      }
+    }
+  ],
+  "references": []
+}

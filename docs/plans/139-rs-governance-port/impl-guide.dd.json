@@ -1,0 +1,151 @@
+{
+  "dd": {
+    "schema": "pij-team/impl-guide"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Implementation guide \u2014 rs-governance-port",
+        "plan": "docs/plans/139-rs-governance-port/plan.dd.json",
+        "mode": "build",
+        "updated": "2026-09-07"
+      }
+    },
+    {
+      "name": "architecture",
+      "value": "Doctrine: .agents-skills-port/pij-team/TENETS.md. Stack: crates/core (vocabulary, ports), crates/store (sqlite; tables projects/streams/dispatches/batons/baton_leases/prime_designation/seat_roles already exist), crates/daemon (http composition root, EventBus, delivery), crates/cli (pij-rs verbs, v2 JSON envelopes {ok,command,v:2,data|error}), .pi/extensions/pij (legacy shim; generation-routing.ts RS_ROUTE_TABLE decides rs vs legacy), skills/pij (route modules). FROZEN SEAMS: (a) ONE spine writer \u2014 `EventBus::publish` is the only path that inserts spine_events; ReportService and Registry receive the bus (or a Spine impl that IS the bus); direct INSERTs outside crates/store/src/spine.rs are forbidden and tested. (b) Every new route is additive under /v1/, bearer-authed like /v1/register, request/response pinned in assets/contracts/governance-routes.json (u0, PM-owned) and consumed by tests, never restated. (c) Event kinds for governance reuse the legacy names (project.*, stream.*, fence.*, dispatch.*, ack, canary.*, attest.*, task.set, baton.*, prime.*, decision.*) with `payload` a JSON string, additive fields only; frame shape StreamFrame::Event unchanged. (d) Ownership: role/close/answer are permitted for the seat itself or its recorded `parent`; refusals decodable (E-RS-OWNERSHIP). (e) Anomalies are DERIVED at read time from rs rows + spine, never stored. (f) The legacy shim never writes legacy for a verb in the skill table: serve (route to rs) or refuse `E-RS-UNPORTED <verb>` \u2014 enforced by a test that reads skills/pij/README.md's verb table."
+    },
+    {
+      "name": "fan_out",
+      "value": {
+        "decision": "coders",
+        "rationale": "Six units in four waves with disjoint fences: u1 store/events, u2 identity, u3 governance tables/routes, u4 anomalies/decisions, u5 lifecycle, u6 TS shim + skills + docs. u2 and u3 share crates/cli main.rs verb registration \u2014 PM assigns u2 the `role` verb file and u3 the governance verb files; verb wiring lines merged by PM. Wave 0 contract is PM-owned."
+      }
+    },
+    {
+      "name": "units",
+      "value": [
+        {
+          "id": "u0",
+          "name": "contract: governance routes + events",
+          "paths": "docs/plans/139-rs-governance-port/assets/contracts/**",
+          "responsibility": "Canonical JSON for every new route's request/response, every event kind's payload, the decision row, the anomaly row, and the refusal envelopes (E-RS-UNPORTED, E-RS-OWNERSHIP).",
+          "interface": "governance-routes.json + governance-events.json, consumed by u1\u2013u6 tests.",
+          "test_strategy": "None of its own; every unit pins against it.",
+          "depends_on": "none",
+          "wave": 0,
+          "note": "PM writes before any spawn; changes after wave 1 need prime ack (seam-change window)."
+        },
+        {
+          "id": "u1",
+          "name": "one spine writer + stamped descriptor events",
+          "paths": "crates/store/src/{spine,registry}.rs; crates/core/src/report.rs; crates/daemon/src/events/**; crates/daemon/src/lib.rs (wiring only)",
+          "responsibility": "Route ReportService and Registry::put/tombstone through EventBus; stamp at; seat.put payload = descriptor; grep-test forbidding direct INSERT.",
+          "interface": "No wire change; events now arrive live.",
+          "test_strategy": "RED: reproduce chainglass's control as an integration test (two subscribers, adopt + report while open) failing on main; GREEN after. Unit: no-direct-INSERT source scan.",
+          "depends_on": "u0",
+          "wave": 1
+        },
+        {
+          "id": "u2",
+          "name": "role: writer, verb, row join",
+          "paths": "crates/daemon/src/http/{types,identity,report}.rs (role fields); crates/daemon/src/registration.rs (role on register/adopt); crates/store/src/orchestration.rs (assign_role callers) ; crates/cli/src/role.rs (new) + CLI wiring line",
+          "responsibility": "--role on register/adopt; POST /v1/role; seat_roles joined into /v1/seats.role and StateCard.role; ownership self-or-parent.",
+          "interface": "/v1/role {seat, role} \u2192 {seat, role, assigned_by}; seats row `role` populated.",
+          "test_strategy": "RED: /v1/seats role null after adopt --role; ownership refusal test; golden list-envelope updated.",
+          "depends_on": "u0",
+          "wave": 1
+        },
+        {
+          "id": "u3",
+          "name": "governance records: project/stream/fence/dispatch/ack/canary/attest/task/node/baton/prime",
+          "paths": "crates/store/src/{orchestration,dispatch,governance}.rs; crates/daemon/src/http/governance.rs (new) + Route enum lines; crates/cli/src/governance.rs (new) + CLI wiring lines",
+          "responsibility": "Additive routes and verbs over the existing tables; dispatch carries a packet pointer with a three-state receipt (queued/delivered/acked) riding /v1/send; node show renders the tree from rs rows.",
+          "interface": "Per assets/contracts/governance-routes.json.",
+          "test_strategy": "Store tests per table; http tests per route with the contract fixtures; CLI golden envelopes; one end-to-end sequence test.",
+          "depends_on": "u0",
+          "wave": 1
+        },
+        {
+          "id": "u4",
+          "name": "anomalies view, report verify, decisions",
+          "paths": "crates/daemon/src/http/{anomalies,decisions}.rs (new) + Route lines; crates/core/src/{anomalies,decisions}.rs (new); crates/daemon/src/http/report.rs (verify leaf); crates/cli/src/{anomalies,decisions}.rs (new) + wiring",
+          "responsibility": "Derive anomaly rows (status-stale, unverified-done, open-question, unacked-dispatch, dead-seat) from rs data; `report verify`; decision rows from `report question`, `pij-rs decisions`, `pij-rs answer` delivering to the asker via /v1/send.",
+          "interface": "GET /v1/anomalies; POST /v1/report verify; GET /v1/decisions; POST /v1/answer.",
+          "test_strategy": "Fixture spines \u2192 expected anomaly rows (goldens); decision lifecycle test; relay-line text parity test against legacy strings.",
+          "depends_on": "u1,u3",
+          "wave": 2
+        },
+        {
+          "id": "u5",
+          "name": "lifecycle: close + reap",
+          "paths": "crates/daemon/src/http/lifecycle.rs (new) + Route lines; crates/daemon/src/reaper.rs (new); crates/cli/src/lifecycle.rs (new) + wiring",
+          "responsibility": "`close <id>` owner-only tombstone; `reap [--dry-run]` over proc{pid,proc_start}+pane using existing liveness ports; refuses recycled pid; counts before/after.",
+          "interface": "POST /v1/close; POST /v1/reap.",
+          "test_strategy": "Fake liveness fixtures incl. plan 095 recycled-pid case; dry-run equals run minus writes; ownership refusal.",
+          "depends_on": "u1",
+          "wave": 2
+        },
+        {
+          "id": "u6",
+          "name": "re-point: shim serve-or-refuse, skills, API doc",
+          "paths": ".pi/extensions/pij/core/generation-routing.ts (+test); .pi/extensions/pij/cli.ts (refusal path only); skills/pij/**; docs/how/pij-rs-api.md; crates/testkit/fixtures/golden/api/** (samples)",
+          "responsibility": "RS_ROUTE_TABLE covers every verb in the skill table (serve or E-RS-UNPORTED); enforcement test; skills cite rs verbs; API doc with pinned samples; chainglass confirmation.",
+          "interface": "Refusal envelope per contract.",
+          "test_strategy": "Enforcement test reads skills/pij/README.md verb table; vitest for routing; skill structural gates (`just` skill checks).",
+          "depends_on": "u2,u3,u4,u5",
+          "wave": 3
+        }
+      ]
+    },
+    {
+      "name": "isolation",
+      "value": {
+        "mode": "worktree-per-coder",
+        "note": "Each coder branches off 139-rs-governance-port into ../fs3-rs-governance-port-<unit>. Coders never touch main, its node_modules, the live daemon (port 7461) or global links; pre-merge proofs run on an ISOLATED daemon built from the coder's worktree (--state-dir, PIJ_RS_ADDR). PM composes on the plan branch; PRIME merges to main, rebuilds, bounces."
+      }
+    },
+    {
+      "name": "composition",
+      "value": {
+        "composer": "pm",
+        "steps": "1) Merge u1; cargo gates; chainglass control RED\u2192GREEN on an isolated daemon. 2) Merge u2 and u3; resolve CLI wiring lines; cargo gates; golden envelopes. 3) Merge u4 and u5; cargo gates. 4) Merge u6; vitest routing + typecheck + skill gates via main's binaries read-only. 5) Full `harness checks` on the composed branch. 6) Isolated-daemon end-to-end: AC4 sequence + AC5/AC6/AC7 proofs, seqs into assets/live-proof.md. 7) Reviewer (opus 5, omp, high). 8) Hand prime the composed sha; prime merges, rebuilds, bounces, runs AC1/AC2 on production, asks antelope for AC3/AC9 confirmation.",
+        "integration_proof": "On one isolated daemon: adopt --role, project\u2192stream\u2192fence\u2192dispatch\u2192ack\u2192canary\u2192attest\u2192task\u2192node show; report question \u2192 parent sees decision \u2192 answer lands at the asker; report done \u2192 verify clears unverified-done; close a seat; reap --dry-run; two /v1/events subscribers saw every row live with at\u22600. Then the same commands typed as legacy `pij \u2026` serve from rs."
+      }
+    },
+    {
+      "name": "review",
+      "value": {
+        "when": "after composition, before handing prime the sha",
+        "inputs": "plan.dd.md + this guide + branch diff; priority: (1) exactly one spine writer and the grep test proves it; (2) ownership refusals are real (a third seat cannot set role/close/answer); (3) anomalies computed, not stored, and relay lines match legacy text; (4) the shim enforcement test actually reads the skill table (mutate-the-guard: add a fake verb to the table and watch it fail); (5) no delivery-semantics drift from #373/#374.",
+        "model_override": "github-copilot/claude-opus-5 on omp, effort high (Jordan 2026-09-05)"
+      }
+    },
+    {
+      "name": "risks",
+      "value": [
+        {
+          "id": "r1",
+          "text": "Making the bus the only writer changes registration latency/ordering (publish awaits store append). Retire: u1 keeps append-then-broadcast; registration tests assert seq monotonic per seat."
+        },
+        {
+          "id": "r2",
+          "text": "Anomaly relay-line text drifts from what supervisors/PA scripts grep. Retire: parity test against the legacy strings captured in assets/inputs."
+        },
+        {
+          "id": "r3",
+          "text": "Refusing unported verbs breaks a live ritual that was silently working on legacy (honesty-removes-a-load-bearing-fallback). Retire: u6 lists every verb that changes from silent-legacy to refusal in live-proof; prime broadcasts to primes before deploy."
+        },
+        {
+          "id": "r4",
+          "text": "u2/u3/u4/u5 all add CLI verbs in crates/cli/src/main.rs. Retire: one new file per unit; PM owns the wiring lines at compose."
+        },
+        {
+          "id": "r5",
+          "text": "Astra on omp depends on two local dist/cli.js patches; an omp self-update swaps in a Bun binary and breaks them (2026-09-06). Retire: coders never run `omp update`; a 400 unsupported_api_for_model or 'does not support thinking' is that \u2014 report to prime."
+        }
+      ]
+    }
+  ]
+}

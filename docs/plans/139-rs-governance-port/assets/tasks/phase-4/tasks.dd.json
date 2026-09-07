@@ -1,0 +1,76 @@
+{
+  "dd": {
+    "schema": "builder/plan"
+  },
+  "sections": [
+    {
+      "name": "meta",
+      "value": {
+        "title": "Re-point shim, skills, API doc",
+        "slug": "phase-4",
+        "status": "draft",
+        "summary": "Re-point shim, skills, API doc"
+      }
+    },
+    {
+      "name": "summary",
+      "value": "Re-point shim, skills, API doc"
+    },
+    {
+      "name": "tasks",
+      "value": [
+        {
+          "id": "tk-40a4",
+          "title": "u6 \u2014 RS_ROUTE_TABLE serve-or-refuse for every verb + enforcement test over the skill verb table",
+          "domain": "ts",
+          "phase": "p4",
+          "state": "unchecked"
+        },
+        {
+          "id": "tk-41a4",
+          "title": "u6 \u2014 skills/pij routes cite rs verbs; docs/how/pij-rs-api.md + pinned fixtures",
+          "domain": "docs",
+          "phase": "p4",
+          "state": "unchecked"
+        },
+        {
+          "id": "tk-42a4",
+          "title": "u6 \u2014 chainglass confirmation (roles, tree, no banner) recorded as evidence",
+          "domain": "proof",
+          "phase": "p4",
+          "state": "unchecked"
+        }
+      ]
+    },
+    {
+      "name": "done_when",
+      "value": {
+        "tk-40a4": [
+          {
+            "id": "dw-40a4",
+            "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-41a4": [
+          {
+            "id": "dw-41a4",
+            "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ],
+        "tk-42a4": [
+          {
+            "id": "dw-42a4",
+            "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
+            "state": "unchecked",
+            "pressure": "not-applicable"
+          }
+        ]
+      }
+    }
+  ],
+  "references": []
+}
