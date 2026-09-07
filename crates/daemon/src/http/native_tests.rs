@@ -48,15 +48,30 @@ impl HostFixture {
         // A short relative path would hide Darwin ps comm truncation.
         assert!(executable.is_absolute());
         assert!(executable.as_os_str().len() > 16);
-        host.process = Some(
-            std::process::Command::new(&executable)
+        host.process = Some({
+            // Exec of a fixture this test just wrote can fail with ETXTBSY on
+            // Linux while a sibling test's forked child still holds the write
+            // fd between fork and exec (CI, PR #381). Retry briefly.
+            let mut command = std::process::Command::new(&executable);
+            command
                 .arg("60")
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn()
-                .expect("start inert host fixture"),
-        );
+                .stderr(std::process::Stdio::null());
+            let mut spawned = None;
+            for _ in 0..100 {
+                match command.spawn() {
+                    Err(error) if error.raw_os_error() == Some(26) => {
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    }
+                    other => {
+                        spawned = Some(other.expect("start inert host fixture"));
+                        break;
+                    }
+                }
+            }
+            spawned.expect("start inert host fixture: ETXTBSY persisted")
+        });
         host
     }
 

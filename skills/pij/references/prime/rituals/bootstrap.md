@@ -1,205 +1,79 @@
 # Bootstrap — stand up an o-prime
 
-> **Store-native is the ruled default for new primes** — load
-> [`store-native.md`](./store-native.md) first; it replaces §3's prose scaffold
-> with platform-store verbs. The prose scaffold below remains authoritative for
-> repos already governed in prose (until their prime self-migrates).
-
-Use this only when the store is SILENT for this repo — no current prime in
-unscoped `pij list --prime --json`, no project in `pij project list`. Absence of
-a `.harness/government/` directory is **not a signal at all**: store-native
-governance is the ruled default ([`store-native.md`](./store-native.md)), and a
-prose tree may live off main on a governance branch (see § 3), so a
-fully-governed repo legitimately shows none on main. It is the day-zero
-ritual; role operation belongs in the orient files and protocol. Preconditions:
-a git repo, tmux, `pij`, the ambient `harness` CLI, one session for the
-`o-prime` window (pi/omp self-registers at boot; Claude/Copilot/Codex uses
-`pij phonehome` or `pij adopt`), and a human ready to name the work — the seat
-never invents portfolio items.
+**Store-native is the ruled default**: load [`store-native.md`](./store-native.md) first. It replaces prose portfolio/roster facts, NOT §3's document branch; existing prose stays live until its prime self-migrates.
+Use the seating ritual only when unscoped `pij list --prime --json` finds no current prime for this repo AND `pij project list` finds no project. A missing local `.harness/government/` proves nothing. Existing primes may use §3 to establish or restore document storage without reseating.
+Preconditions: git repo, tmux, `pij`, ambient `harness`, one o-prime session, and human-named work; never invent portfolio items.
 
 ## 1. Seat and prove the o-prime
 
-1. Load [`../orient-oprime.md`](../orient-oprime.md) into the seat by pointer.
-2. If another layer governs this seat, run the recursive three-leg canary in
-   [`kickoff.md`](./kickoff.md#canary).
-3. Run the orient's boot audit: channel, dead descriptors, inherited government
-   if any, and the human status channel.
-4. **Refuse to seat over a living prime.** Before writing, run unscoped
-   `pij list --prime --json` and `pij project list`. If any current prime
-   reconciles to this repo's project, STOP and escalate to the human — you are
-   not the bootstrapper. An unscoped hit for a *different* repo never blocks.
-   `prime set` is honor-system: it accepts anyone, so `prime:true` proves
-   assertion, not authority.
-5. Persist the proved seat: `pij orchestration prime set --json`, then
-   confirm the id in **unscoped** `pij list --prime --json`. An ambiguous self is
-   a seating failure, never permission to target `"operator"`.
-
-> Confirm UNSCOPED, deliberately. Verifying with `--here` re-reads the same
-> narrow view that let you conclude "no prime" — so a usurping write confirms
-> itself green while the real prime sits one folder away. A check that shares the
-> failure mode of the decision it audits is not a check.
+1. Load [`../orient-oprime.md`](../orient-oprime.md); if governed from above, run [`kickoff.md#canary`](./kickoff.md#canary)'s three-leg canary.
+2. Run the orient's boot audit: channel, dead descriptors, inherited government, human status channel. Pi/OMP registers at boot; external seats adopt as the orient directs.
+3. **Refuse to seat over a living prime**: inspect unscoped `pij list --prime --json` and `pij project list`; a current prime for THIS repo means STOP and escalate. Another repo's prime does not block. `prime:true` proves assertion, not authority.
+4. Persist with `pij orchestration prime set --json`; confirm your exact id in **unscoped** `pij list --prime --json`. Ambiguous self is failure, never permission to target `"operator"`. A `--here` confirmation repeats the scope error that once hid a living prime.
 
 ## 2. Derive the per-repo contract
 
-Inspect the repo; do not copy the worked example's answers.
+Inspect the repo; derive these answers, never copy a worked example:
 
-| Question | How to derive it | SecondCrack worked example |
-|---|---|---|
-| Cheap gate | Fast deterministic check entrypoint | `harness checks --quick` |
-| Full gate | Complete pre-ship suite | `harness checks` |
-| Notify-only vs batons | Which isolated operations are grant-free; what breaks under concurrency or convergence (add a "free" probe) | worktree-local ops free; shared daemon, moving handoff, merge-main |
-| Never-stage | Generated/local state missed by ignore rules | `.fs2/`, `.flow-pair/**`, scratch |
-| Flow-state rule | Which files have CLI-only, single-writer mutation? | `the-flow.json` via `harness flow` |
-| Worktree root/naming | Where isolated stream worktrees live; deterministic path pattern | sibling directory + `s<ord>-<slug>` |
-| Base + landing | Approved base/SHA; branch push/PR/CI/merge surface | `main`; `/builder 8 ship` |
-| Fleet defaults | Cheapest harness/model that clears the repo bar | copilot coder + cold reviewer |
-| Human digest | Where short main-event notices land | self-identified pij/Telegram message |
-| Ceremony tier | Cheapest safe add/commit/push worker | small ceremony peer |
+| Contract | Derive |
+|---|---|
+| Proof + hygiene | Cheap/full deterministic gates; generated/local never-stage paths; CLI-only flow writers |
+| Isolation + synchronization | Worktree root/naming; notify-only local actions; shared-resource/convergence batons with a "free" probe |
+| Landing | Approved base/SHA; branch push/PR/CI/merge surface (`/builder 8 ship`) |
+| Fleet + human | Cheapest proved harness/model; safe ceremony worker; self-identified digest destination |
 
 ## 3. Scaffold the government
 
-Create a `.harness/government/` tree in durable, committable repo space. **Keep
-it off main on a standing `prime-governance` branch with a permanent worktree**,
-so product history and governance history do not interleave; in
-`AI-Substrate/pij` that worktree is
-`$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government`
-(branch `prime-governance`). Every path below is relative to that root:
+### Governance branch — the rules
 
-- Instantiate [`../templates/spine.md`](../templates/spine.md): thesis, stamp,
-  writer id, roster, fence slots, allocation ledger, sequencing watch, rulings.
-- Instantiate [`../templates/baton-book.md`](../templates/baton-book.md): one
-  row per derived baton, all free, append-only grant log.
-- Always create `briefs/` and `canaries/`; create `reports/` only when an actual
-  layer above the o-prime expects numbered reports.
-- Create the outer portfolio:
-```bash
-harness flow create prime-flow --slug <project>-portfolio \
-  --schema <skill-root>/references/prime/prime-flow.schema.json \
-  --path <government-root>/prime-flow.json --agent o-prime --bare
-```
+1. **Orphan + permanent**: `prime-governance` is an ORPHAN branch in a standing, permanent worktree. The prime alone commits and pushes there all day; no PRs, no CI, NEVER merge it to main. Normal commit attribution still applies (`00-routing.md` § C11). Main keeps only a pointing `.harness/government/README.md` stub.
+2. **Documents move, product stays**: use the table below. This separates document history; it does NOT undo platform-store authority for projects, assignments, events, or seat truth ([store-native](./store-native.md)). Do not recreate migrated facts as competing prose truth.
+3. **Receipt-only PRD reconciliation**: check a requirement row ONLY with a receipt (sha / test / run id), never prose. Every plan closes against the named requirement rows it advances. Name the reconciliation owner in local governance: the current o-prime is responsible unless a named successor is recorded; transfer that responsibility at seat rotation. No merge means no automatic PRD review.
+4. **Provenance**: lynx (`pij-instant-lynx`), Flowspace3 ruling `2026-08-30-prime-governance-branch.md`; Jordan's 2026-08-30 GO ("commit and push there all day, every day") and 2026-09-07 decision: "encode it".
 
-Record pre-existing workshops as prime-flow inputs at creation. Add successors
-before predecessors (forward `next` references are rejected); node status is
-concurrent truth, `nav.now` only the seat's attention.
+| Moves to `prime-governance` | Stays on main |
+|---|---|
+| `.harness/government/**`; retros (including `.harness/records/retro/**`); `docs/plans/prd/**`; prime dossiers | `docs/plans/<ord>-<slug>/` (code PR + the-flow archival); anything CI/gates read; product code and docs |
+
+**Resolver**: in `git -C "<repo>" worktree list --porcelain`, find the record with `branch refs/heads/prime-governance`; `<government-root>` is its absolute `worktree` path + `/.harness/government`. Refuse absent/unavailable worktrees and follow this bootstrap; NEVER fall back to main or a stale local tree.
+
+1. **Discover before creating**: reuse the registered standing worktree. If the branch exists but no worktree is registered, restore with `git -C "<repo>" worktree add "<standing-worktree>" prime-governance`. An unavailable registered worktree needs explicit repair/restoration, not a second tree. A non-orphan existing branch needs a prime-owned, history-preserving re-root; never silently rewrite it.
+2. **Fresh branch only**: choose an unused permanent path outside product/stream worktrees, then `git -C "<repo>" worktree add --orphan -b prime-governance "<standing-worktree>"`. Seed the document tree below; commit named paths there with attribution and push `prime-governance` to the approved remote. The first commit establishes the branch ref.
+3. **Seed or move documents** using the table; preserve existing content/history before removing any source. Store-native primes create briefs/canaries/local orient and PRD/dossiers as needed, not duplicate portfolio facts. Prose-governed primes instantiate [`spine`](../templates/spine.md) and [`baton-book`](../templates/baton-book.md), plus `briefs/` and `canaries/`; `reports/` only for a real layer above. Every document path is relative to `<government-root>`.
+4. **Prose portfolio only**: `harness flow create prime-flow --slug <project>-portfolio --schema <skill-root>/references/prime/prime-flow.schema.json --path <government-root>/prime-flow.json --agent o-prime --bare`. Record existing workshops as inputs; add successors before predecessors. Node status is concurrent truth; `nav.now` is attention.
+5. **Main stub**: through the normal code-review path, keep `.harness/government/README.md` pointing at `prime-governance`, its standing-worktree resolver, and this rules block. Never copy live ledgers back; gate inputs stay on main.
+
+**pij worked example, not a universal dependency**: `AI-Substrate/pij` uses `$HOME/pi-hacking/pij-worktrees/pij-governance`; its executable resolver is `harness/scripts/government-root.sh [REPO]` (REPO defaults to cwd). Other repos use the generic resolver above or their own equivalent.
 
 ## 4. Install the orient stack
 
-- Levers 0/1 stay authoritative in this skill: point at
-  [`../orient-oprime.md`](../orient-oprime.md) and
-  [`../orient-global.md`](../orient-global.md); never fork them into the repo.
-- Generate `<government-root>/orient-local.md` from
-  [`../templates/orient-local.md`](../templates/orient-local.md): project
-  one-liner, doctrine, harness commands, repo mechanics, mandatory reads,
-  current portfolio. The run that omitted the real product pillar produced a
-  technically neat, strategically wrong orient.
-- Use [`../templates/stream-brief.md`](../templates/stream-brief.md) per item — specifics live there, not the levers.
+- Keep portable levers [`../orient-oprime.md`](../orient-oprime.md) and [`../orient-global.md`](../orient-global.md) in this skill; never fork them.
+- Generate `<government-root>/orient-local.md` from [`../templates/orient-local.md`](../templates/orient-local.md): real product pillars, doctrine, gates, repo mechanics, mandatory reads, portfolio, named PRD reconciliation owner. Omitting a product pillar once made a neat but strategically wrong orient.
+- Instantiate [`../templates/stream-brief.md`](../templates/stream-brief.md) per item; specifics belong there, not the portable levers.
 
 ## 5. Stand up your PA and close your supervision graph
 
-**Jordan's ruling, 2026-08-01: a new prime stands up a cheap PA as standard practice.**
-Added because `pij-single-vrell` bootstrapped without one — nothing in this ritual, in
-`routes/prime.md`, or in duty 7 said to, and duty 7's *"if you have a PA"* reads as optional
-context rather than a deliverable. Jordan had to prompt it, and it reverse-engineered the
-pattern from live registry rows.
+**A cheap PA is a bootstrap deliverable, not optional context** (Jordan, 2026-08-01; vrell's first bootstrap omitted it). Follow the maintained recipe: `<government-root>/briefs/pa-standup-recipe.md`, resolving the **pij repo's** government root per §3, not the consuming repo's. Do not substitute this summary for that recipe.
 
-**Do not follow a summary of the recipe — follow the recipe.** It is maintained against live
-defects and changes daily:
-**`$HOME/pi-hacking/pij-worktrees/pij-governance/.harness/government/briefs/pa-standup-recipe.md`**
-in the `pij` repo (`AI-Substrate/pij`), on its `prime-governance` branch — not main.
-Only the parts a bootstrapping prime cannot discover are restated here:
-
-1. **Cheap tier is the design intent** — the fleet runs `gemini-3.6-flash` copilot seats.
-   Whether a cheap model holds the rules while doing chores is the **open experiment**, not a
-   settled result.
-2. **⚠️ ORDERING TRAP — register the subscription, WITH ITS BOUNDS, BEFORE stamping the role.**
-   From the PA's own seat run **one** command:
-
-   ```
-   pij watchdog watch <your-prime-id> --capture always --max-lines 12
-   ```
-
-   **Do not pass `--max-bytes` at all unless you have measured your pane.** The 4096-byte
-   default is safe to roughly 445 columns; any byte value you invent is almost certainly worse.
-   See step 3.
-
-   *then* `pij link <pa-id> --parent <your-prime-id> --role pa`. The capability gate refuses the
-   whole `watchdog` family to role `pa`, and `watch` only ever registers the **calling** seat —
-   so a PA stamped first can never subscribe itself and **you cannot do it for it**. Recovering
-   costs three mutations and an un-gated window. (Found by meadowlark; re-reported by vrell.)
-
-   **The bounds MUST ride on this call.** They cannot be added afterwards: a second
-   `watchdog watch` is refused to the PA by the same gate, and a prime running it would
-   subscribe *itself* instead. This step used to register unbounded and defer bounding to a
-   later step — **which was unperformable by anyone**, and left a permanently unbounded
-   subscription behind. Measured 2026-08-04: five such subscriptions on one box, **three of
-   them created within 100 minutes** by seats still following the old sequence.
-3. **DO NOT SET A BYTE BOUND. There is no safe constant, and the 1024 this recipe carried
-   until 2026-08-05 was itself blind on most panes here.** Captures accumulate with no expiry
-   and a watcher subscription is a standing grant to read the watched seat's pane, so there is
-   real pressure to shrink. Shrinking the BYTE axis is the wrong response to it.
-
-   **Why no constant can work.** Capture is tail-anchored at **BOTH** stages — the last
-   `maxLines` lines, then the last `maxBytes` **of those** — and the bottom of a pane is fixed
-   chrome. So `maxLines` cannot rescue a small `maxBytes`: the byte cut also keeps the tail,
-   and the tail is furniture. **A low byte cap yields chrome no matter how many lines you
-   allow.**
-
-   And the chrome's byte cost is a function of terminal width, because a horizontal rule is
-   box-drawing: `U+2500` is **3 bytes**, so `rule_bytes = 3 × pane_width` **necessarily** — not
-   as a fitted constant, but as arithmetic that holds on every pane nobody has measured.
-   Measured across 25 real captures on one box, widths ran **49 → 202 columns**, a 4.1× spread.
-
-   The consequence, measured rather than derived: **at width 125 a 1023-byte capture contained
-   nothing but chrome — two rules, hint, status, prompt, and zero content lines.** That file
-   exists. Carrying even one prose line at that width needs roughly **1150 bytes**. Scaling
-   chrome at these widths (~8.2 B per column, plus one prose line):
-
-   | bound | goes blind at |
-   |---|---|
-   | `--max-bytes 1024` (the old floor) | width **≥ ~125** — 4 of 7 panes measured |
-   | default `4096` | width ~445 |
-
-   **The default is safe roughly 3.5× wider than the floor that was meant to protect people
-   from lowering it.** A floor that legitimises 1024 is worse than no floor at all, because
-   absent gets you 4096. The old text is the same mistake it was written to prevent, one
-   notch up: *the default was fine; every seat that touched the knob made it worse.*
-
-   **So: leave `maxBytes` unset. Bound the LINE axis only** (`--max-lines 12`), which does not
-   scale with width. If you believe you need a byte bound, measure your own pane first —
-   `rule_bytes / 3` recovers the width from any pure rule line — and expect the answer to be
-   larger than you assumed.
-
-   **A bound below the chrome does not capture less, it captures NOTHING — and a blind capture
-   reports the same silence as a dead seat.** Measured 2026-08-04: **19 of 26 subscriptions
-   were at 256 B and 92% of all capture files on the box contained no content at all**, arrived
-   at over four days by seats independently ratcheting downward. Every one of them was trying
-   to be careful.
-4. **Close the graph, and a PA is not required to do it.** The requirement is *somebody the
-   system can tell*: any watchdog-eligible non-`pa` child works, and today an ordinary peer is
-   **better at watching** than a PA is, because a PA cannot re-subscribe itself. **De-topple
-   with a peer; add the PA for the chores.** Verify with
-   `jq '.watchers' ~/.pij/<prime-id>/watchdog.json` — no `pij` verb projects the capture mode.
-5. **Prove delivery, not configuration.** A subscription is unproven until something has
-   travelled down it; verify at the **receiving** end.
+1. Cheap tier is the design intent (`gemini-3.6-flash` Copilot seats); whether cheap models hold the rules during chores is still an **open experiment**.
+2. **Register WITH BOUNDS before stamping `pa`**: from the PA's OWN seat run `pij watchdog watch <your-prime-id> --capture always --max-lines 12`; THEN `pij link <pa-id> --parent <your-prime-id> --role pa`. Role `pa` cannot invoke the watchdog family; `watch` subscribes only its caller, so neither the stamped PA nor the prime can add its bounds later. Five such stuck subscriptions were measured 2026-08-04, three created within 100 minutes.
+3. **Leave `--max-bytes` unset unless you measured the pane**; bound lines only. Both cuts are tail-anchored and the bottom is chrome. A box rule costs `3 × pane_width` bytes (U+2500), so no small constant is safe across widths. At width 125, 1023 bytes captured only chrome; one prose line needed roughly 1150. The 4096 default reaches roughly 445 columns versus the old 1024 floor's ~125; 25 measured panes ranged 49–202 columns. Recover width as `rule_bytes / 3` before overriding. A blind capture reads like a dead seat: at 256 B, 19/26 subscriptions yielded 92% content-free files (2026-08-04). Do not reintroduce that "careful" failure.
+4. **Close the graph; a PA is not required for watching**: any watchdog-eligible non-`pa` child works and can re-subscribe. De-topple with a peer; add the PA for chores. Verify `jq '.watchers' ~/.pij/<prime-id>/watchdog.json` (no pij verb projects capture mode).
+5. **Prove delivery at the receiving end**, not just configuration.
 
 ## 6. Open intake and govern
 
-1. Human-named items enter the prime-flow as `proposed` or `deciding`.
-2. At `preparing`, reserve ordinal/folder/window/worktree/branch/base, derive
-   the descriptive touch set and convergence risks, persist the row, then
-   delegate to [`kickoff.md`](./kickoff.md). Kickoff is the sole construction owner.
-3. Assignment stays provisional through `adopt → orient → preamble`; move the
-   node to `in_flight` only after the preamble report lands.
-4. In steady state: verify then relay, serialize batons, route cross-stream
-   asks, sync rows before prose, graduate repeated observations into encodings.
+1. Human-named work enters the authoritative portfolio as `proposed` or `deciding`.
+2. At `preparing`, reserve ordinal/folder/window/worktree and branch/base; persist touch set/convergence risks before delegating to [`kickoff.md`](./kickoff.md). **Kickoff is the sole construction owner** for streams, not the permanent governance worktree in §3.
+3. Assignment stays provisional through `adopt → orient → preamble`; mark `in_flight` only after its report.
+4. Verify then relay; serialize batons, route cross-stream asks, update rows before prose, graduate recurring friction into encodings. Reconcile close-out receipts under §3's rules.
 
 ## Recovery
 
 | Event | Recovery |
 |---|---|
-| Seat death or machine restart | Fresh seat loads lever 0 + government; audit dead holders, stale roster rows, orphan descriptors, then record the new identity |
-| Planned seat rotation (ruled) | Outgoing seat instantiates [`../templates/seat-handover.md`](../templates/seat-handover.md) BEFORE incoming contact; incoming runs its checklist — writer lines, spine-Seq check, descriptor purge-on-final-send |
-| Sends queue but never deliver | Check daemon ticks and every dead descriptor; one stale corpse once wedged the whole fabric |
-| Stream dies mid-work | Adopt a fresh orchestrator onto its plan folder; disk is the handover |
-| Stream is dissolved | Follow kickoff teardown: close, verify after queue drain, strike row, tombstone ordinal, transplant insights |
-| Descriptive fence gap appears in a verified worktree | Stream persists and tells the path; o-prime records touch-set/overlap metadata; work continues unless it crosses a hard ownership boundary or convergence point |
+| Seat death/restart | Fresh seat loads lever 0 + government; audit dead holders, stale roster, orphan descriptors; record new identity |
+| Ruled rotation | Outgoing writes [`../templates/seat-handover.md`](../templates/seat-handover.md) BEFORE contact; incoming transfers writers/reconciliation owner, checks spine Seq, retires outgoing after final send |
+| Queued sends never deliver | Check daemon ticks/dead descriptors; one corpse once wedged the fabric |
+| Stream dies / dissolves | Adopt fresh orchestrator onto plan; for dissolution follow kickoff close/drain/verify/strike/tombstone/transplant |
+| Fence gap in verified worktree | Stream persists and notifies; o-prime records overlap; continue unless hard ownership or convergence boundary |

@@ -1,0 +1,1 @@
+{"ok":true,"command":"pij send","v":2,"data":{"msg_id":"proof-omp-remote-compact","outcome":{"outcome":"queued","reason":"extension-stream","next_retry_at":0},"at":1788746267655},"meta":"from pij-cultural-angelfish; msg_id proof-omp-remote-compact"}

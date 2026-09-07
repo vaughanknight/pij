@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /Users/jordanknight/pi-hacking/pij/node_modules/.bin/tsx /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.pi/extensions/pij/cli.ts "$@"

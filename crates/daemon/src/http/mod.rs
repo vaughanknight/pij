@@ -4,6 +4,7 @@
 //! the completed router, so adding an endpoint cannot accidentally bypass it.
 
 mod auth;
+mod background;
 mod client;
 mod exposure;
 mod identity;
@@ -98,6 +99,9 @@ enum Endpoint {
     Spawn,
     Revive,
     Send,
+    Background,
+    BackgroundTail,
+    BackgroundKill,
     Inbox,
     InboxTyping,
     InboxAck,
@@ -148,12 +152,15 @@ enum Endpoint {
 }
 
 impl Endpoint {
-    const ALL: [Self; 23] = [
+    const ALL: [Self; 26] = [
         Self::Health,
         Self::Register,
         Self::Spawn,
         Self::Revive,
         Self::Send,
+        Self::Background,
+        Self::BackgroundTail,
+        Self::BackgroundKill,
         Self::Inbox,
         Self::InboxTyping,
         Self::InboxAck,
@@ -181,6 +188,9 @@ impl Endpoint {
             Self::Spawn => "/v1/spawn",
             Self::Revive => "/v1/revive",
             Self::Send => "/v1/send",
+            Self::Background => "/v1/bg",
+            Self::BackgroundTail => "/v1/bg/{job}/tail",
+            Self::BackgroundKill => "/v1/bg/{job}/kill",
             Self::Inbox => "/v1/inbox",
             Self::InboxTyping => "/v1/inbox/typing",
             Self::InboxAck => "/v1/inbox/ack",
@@ -213,6 +223,8 @@ impl Endpoint {
             | Self::Spawn
             | Self::Revive
             | Self::Send
+            | Self::Background
+            | Self::BackgroundKill
             | Self::InboxAck
             | Self::Hold
             | Self::Release
@@ -225,6 +237,7 @@ impl Endpoint {
             }
             Self::Health
             | Self::Inbox
+            | Self::BackgroundTail
             | Self::InboxTyping
             | Self::Seats
             | Self::Events
@@ -323,6 +336,8 @@ fn router_with_optional_federation(
                     | Endpoint::Spawn
                     | Endpoint::Revive
                     | Endpoint::Send
+                    | Endpoint::Background
+                    | Endpoint::BackgroundKill
                     | Endpoint::InboxAck
                     | Endpoint::Hold
                     | Endpoint::Release
@@ -348,6 +363,12 @@ fn router_with_optional_federation(
             Endpoint::Spawn => router.route(endpoint.path(), post(spawn_seat)),
             Endpoint::Revive => router.route(endpoint.path(), post(revive_seat)),
             Endpoint::Send => router.route(endpoint.path(), post(send)),
+            Endpoint::Background => router.route(
+                endpoint.path(),
+                post(background::post).get(background::list),
+            ),
+            Endpoint::BackgroundTail => router.route(endpoint.path(), get(background::tail)),
+            Endpoint::BackgroundKill => router.route(endpoint.path(), post(background::kill)),
             Endpoint::Inbox => router.route(endpoint.path(), get(inbox)),
             Endpoint::InboxTyping => router.route(endpoint.path(), get(inbox_typing)),
             Endpoint::InboxAck => router.route(endpoint.path(), post(ack_inbox)),
@@ -1262,6 +1283,12 @@ struct SendBodyRequest {
 }
 
 async fn send(State(state): State<AppState>, Json(request): Json<SendBodyRequest>) -> Response {
+    if request.message.from.0 == crate::background::BG_ACTOR {
+        return refused(
+            "pij send",
+            "pij-bg is a daemon-owned sender; callers cannot impersonate it",
+        );
+    }
     if let Some(command) = request.command {
         if request.message.to.machine.is_some() || request.message.from_machine.is_some() {
             return refused(
@@ -1344,6 +1371,13 @@ pub(crate) async fn send_control(
     request: ControlRequest,
 ) -> Response {
     use pij_core::control::{authorize_command, validate_command, validate_target};
+    if request
+        .to
+        .as_ref()
+        .is_some_and(|seat| seat.0 == crate::background::BG_ACTOR)
+    {
+        return refused(name, "pij-bg is a daemon-owned sender, not a recipient");
+    }
     if let Err(reason) = validate_command(&request.command, &request.body) {
         return refused(name, reason);
     }
@@ -1447,6 +1481,9 @@ pub(crate) async fn send_control(
 /// different status for an identical refusal.
 pub(crate) fn send_failure(command: &str, error: PijError) -> Response {
     match error {
+        PijError::Adapter { adapter, message } if adapter == "daemon/virtual-sender" => {
+            refused(command, message)
+        }
         error @ PijError::SeatIsGone { .. } => envelope(
             StatusCode::GONE,
             &Envelope::<()>::refused(command, ErrorKind::Refused, error.to_string()),

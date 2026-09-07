@@ -116,7 +116,7 @@ async fn native_delivery_migration_preserves_schema_12_rows_and_history_without_
     for _ in 0..2 {
         let pool = pij_store::open(&fresh.path())
             .await
-            .expect("upgrade or reopen schema 13");
+            .expect("upgrade or reopen current schema");
         // Exercise every pooled connection's first seat projection after boot.
         // A version read alone cannot detect sqlx column metadata cached from
         // the pre-migration schema on a sibling connection.
@@ -142,7 +142,10 @@ async fn native_delivery_migration_preserves_schema_12_rows_and_history_without_
             );
         }
         drop(connections);
-        assert_eq!(pij_store::schema_version(&pool).await.expect("version"), 13);
+        assert_eq!(
+            pij_store::schema_version(&pool).await.expect("version"),
+            pij_store::SCHEMA_VERSION
+        );
         let registry = SqliteRegistry::new(pool.clone());
         for seat in &expected {
             assert_eq!(

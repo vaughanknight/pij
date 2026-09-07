@@ -1,0 +1,50 @@
+  Fixture record 1184: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1184 for summarization only.
+  Fixture record 1185: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1185 for summarization only.
+  Fixture record 1186: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1186 for summarization only.
+  Fixture record 1187: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1187 for summarization only.
+  Fixture record 1188: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1188 for summarization only.
+  Fixture record 1189: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1189 for summarization only.
+  Fixture record 1190: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1190 for summarization only.
+  Fixture record 1191: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1191 for summarization only.
+  Fixture record 1192: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1192 for summarization only.
+  Fixture record 1193: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1193 for summarization only.
+  Fixture record 1194: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1194 for summarization only.
+  Fixture record 1195: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1195 for summarization only.
+  Fixture record 1196: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1196 for summarization only.
+  Fixture record 1197: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1197 for summarization only.
+  Fixture record 1198: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1198 for summarization only.
+  Fixture record 1199: The northern observatory measured amber, violet, indigo and silver samples; retain record number 1199 for summarization only.
+
+⏺ CONTROL_CONTEXT_READY
+
+✻ Churned for 2s · done 11:56 am
+
+❯ /compact
+  ⎿  Not enough messages to compact.
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── control-claude-proof ─
+❯ UNSENT_CONTROL_DRAFT
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

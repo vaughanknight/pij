@@ -1,0 +1,1513 @@
+[
+  {
+    "seq": 6,
+    "at": 1788746267655,
+    "kind": "message.pushed",
+    "seat": "pij-payable-dara",
+    "payload": {
+      "msg_id": "proof-omp-remote-compact",
+      "from": "pij-cultural-angelfish",
+      "body": "",
+      "command": "compact"
+    }
+  },
+  {
+    "seq": 7,
+    "at": 1788746267655,
+    "kind": "delivery.outcome",
+    "seat": "pij-payable-dara",
+    "payload": {
+      "msg_id": "proof-omp-remote-compact",
+      "outcome": {
+        "outcome": "queued",
+        "reason": "extension-stream",
+        "next_retry_at": 0
+      },
+      "transport": "claude-uds"
+    }
+  },
+  {
+    "seq": 8,
+    "at": 1788746273832,
+    "kind": "delivery.outcome",
+    "seat": "pij-payable-dara",
+    "payload": {
+      "msg_id": "proof-omp-remote-compact",
+      "outcome": {
+        "outcome": "delivered",
+        "origin": "reader-read"
+      },
+      "transport": "extension-stream",
+      "control_outcome": {
+        "outcome": "executed"
+      }
+    }
+  },
+  {
+    "seq": 9,
+    "at": 1788746273832,
+    "kind": "delivery.inbox-ack",
+    "seat": "pij-payable-dara",
+    "payload": {
+      "job_id": 1,
+      "authenticated_machine": "local",
+      "evidence_grade": "machine",
+      "outcome": "reader-read"
+    }
+  },
+  {
+    "seq": 10,
+    "at": 1788746276723,
+    "kind": "message.pushed",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-empty-compact",
+      "from": "pij-payable-dara",
+      "body": "",
+      "command": "compact"
+    }
+  },
+  {
+    "seq": 11,
+    "at": 1788746276723,
+    "kind": "delivery.outcome",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-empty-compact",
+      "outcome": {
+        "outcome": "queued",
+        "reason": "pty",
+        "next_retry_at": 0
+      },
+      "transport": "claude-uds"
+    }
+  },
+  {
+    "seq": 12,
+    "at": 1788746280575,
+    "kind": "delivery.outcome",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-empty-compact",
+      "outcome": {
+        "outcome": "delivered",
+        "origin": "injected-to-transport"
+      },
+      "transport": "pty"
+    }
+  },
+  {
+    "seq": 13,
+    "at": 1788746331239,
+    "kind": "message.pushed",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "from": "pij-payable-dara",
+      "body": "",
+      "command": "compact"
+    }
+  },
+  {
+    "seq": 14,
+    "at": 1788746331239,
+    "kind": "delivery.outcome",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "outcome": {
+        "outcome": "queued",
+        "reason": "pty",
+        "next_retry_at": 0
+      },
+      "transport": "claude-uds"
+    }
+  },
+  {
+    "seq": 15,
+    "at": 1788746332160,
+    "kind": "message.pushed",
+    "seat": "pij-payable-dara",
+    "payload": {
+      "msg_id": "f5d832ad229ba943-0000000000000000",
+      "from": "pij-payable-dara",
+      "body": "",
+      "command": "compact"
+    }
+  },
+  {
+    "seq": 16,
+    "at": 1788746332160,
+    "kind": "delivery.outcome",
+    "seat": "pij-payable-dara",
+    "payload": {
+      "msg_id": "f5d832ad229ba943-0000000000000000",
+      "outcome": {
+        "outcome": "queued",
+        "reason": "extension-stream",
+        "next_retry_at": 0
+      },
+      "transport": "claude-uds"
+    }
+  },
+  {
+    "seq": 17,
+    "at": 1788746332170,
+    "kind": "delivery.outcome",
+    "seat": "pij-payable-dara",
+    "payload": {
+      "msg_id": "f5d832ad229ba943-0000000000000000",
+      "outcome": {
+        "outcome": "refused",
+        "reason": "Already compacted"
+      },
+      "transport": "extension-stream",
+      "control_outcome": {
+        "outcome": "refused",
+        "reason": "Already compacted"
+      }
+    }
+  },
+  {
+    "seq": 18,
+    "at": 1788746332171,
+    "kind": "delivery.inbox-ack",
+    "seat": "pij-payable-dara",
+    "payload": {
+      "job_id": 4,
+      "authenticated_machine": "local",
+      "evidence_grade": "machine",
+      "outcome": "reader-read"
+    }
+  },
+  {
+    "seq": 19,
+    "at": 1788746335409,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "human-typing",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 20,
+    "at": 1788746340158,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "human-typing",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 21,
+    "at": 1788746345153,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "human-typing",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 22,
+    "at": 1788746350146,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "human-typing",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 23,
+    "at": 1788746355154,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "human-typing",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 24,
+    "at": 1788746360153,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "human-typing",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 25,
+    "at": 1788746365147,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "human-typing",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 26,
+    "at": 1788746370159,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "human-typing",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 27,
+    "at": 1788746375161,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "human-typing",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 28,
+    "at": 1788746380167,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 29,
+    "at": 1788746385148,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 30,
+    "at": 1788746390161,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 31,
+    "at": 1788746395152,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 32,
+    "at": 1788746400175,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 33,
+    "at": 1788746405160,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 34,
+    "at": 1788746410154,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 35,
+    "at": 1788746415140,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 36,
+    "at": 1788746420211,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 37,
+    "at": 1788746425160,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 38,
+    "at": 1788746430150,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 39,
+    "at": 1788746435154,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 40,
+    "at": 1788746440144,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 41,
+    "at": 1788746445154,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 42,
+    "at": 1788746450164,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 43,
+    "at": 1788746455159,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 44,
+    "at": 1788746460149,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 45,
+    "at": 1788746465151,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 46,
+    "at": 1788746470143,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 47,
+    "at": 1788746475144,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 48,
+    "at": 1788746480171,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 49,
+    "at": 1788746485145,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 50,
+    "at": 1788746490151,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 51,
+    "at": 1788746495144,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 52,
+    "at": 1788746500152,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 53,
+    "at": 1788746505153,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 54,
+    "at": 1788746510189,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "b14de95623d3"
+    }
+  },
+  {
+    "seq": 55,
+    "at": 1788746511890,
+    "kind": "message.pushed",
+    "seat": "pij-payable-dara",
+    "payload": {
+      "msg_id": "f5d832ad229ba943-0000000000000001",
+      "from": "pij-payable-dara",
+      "body": "",
+      "command": "compact"
+    }
+  },
+  {
+    "seq": 56,
+    "at": 1788746511890,
+    "kind": "delivery.outcome",
+    "seat": "pij-payable-dara",
+    "payload": {
+      "msg_id": "f5d832ad229ba943-0000000000000001",
+      "outcome": {
+        "outcome": "queued",
+        "reason": "extension-stream",
+        "next_retry_at": 0
+      },
+      "transport": "claude-uds"
+    }
+  },
+  {
+    "seq": 57,
+    "at": 1788746511901,
+    "kind": "delivery.outcome",
+    "seat": "pij-payable-dara",
+    "payload": {
+      "msg_id": "f5d832ad229ba943-0000000000000001",
+      "outcome": {
+        "outcome": "refused",
+        "reason": "Nothing to compact (session too small)"
+      },
+      "transport": "extension-stream",
+      "control_outcome": {
+        "outcome": "refused",
+        "reason": "Nothing to compact (session too small)"
+      }
+    }
+  },
+  {
+    "seq": 58,
+    "at": 1788746511902,
+    "kind": "delivery.inbox-ack",
+    "seat": "pij-payable-dara",
+    "payload": {
+      "job_id": 5,
+      "authenticated_machine": "local",
+      "evidence_grade": "machine",
+      "outcome": "reader-read"
+    }
+  },
+  {
+    "seq": 59,
+    "at": 1788746515219,
+    "kind": "delivery.released",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "at_ms": 1788746515219,
+      "msg_id": "proof-claude-draft-compact",
+      "seat": "pij-cultural-angelfish"
+    }
+  },
+  {
+    "seq": 60,
+    "at": 1788746515219,
+    "kind": "delivery.outcome",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-draft-compact",
+      "outcome": {
+        "outcome": "delivered",
+        "origin": "injected-to-transport"
+      },
+      "transport": "pty"
+    }
+  },
+  {
+    "seq": 63,
+    "at": 1788746619543,
+    "kind": "message.pushed",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "from": "pij-payable-dara",
+      "body": "",
+      "command": "compact"
+    }
+  },
+  {
+    "seq": 64,
+    "at": 1788746619543,
+    "kind": "delivery.outcome",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "outcome": {
+        "outcome": "queued",
+        "reason": "pty",
+        "next_retry_at": 0
+      },
+      "transport": "claude-uds"
+    }
+  },
+  {
+    "seq": 65,
+    "at": 1788746632859,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "human-typing",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 66,
+    "at": 1788746635926,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "human-typing",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 67,
+    "at": 1788746640868,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "human-typing",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 68,
+    "at": 1788746646083,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "human-typing",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 69,
+    "at": 1788746650968,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "human-typing",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 70,
+    "at": 1788746655775,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "human-typing",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 71,
+    "at": 1788746660652,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "human-typing",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 72,
+    "at": 1788746665893,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "human-typing",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 73,
+    "at": 1788746667508,
+    "kind": "message.pushed",
+    "seat": "pij-payable-dara",
+    "payload": {
+      "msg_id": "f5d832ad229ba943-0000000000000002",
+      "from": "pij-payable-dara",
+      "body": "",
+      "command": "compact"
+    }
+  },
+  {
+    "seq": 74,
+    "at": 1788746667508,
+    "kind": "delivery.outcome",
+    "seat": "pij-payable-dara",
+    "payload": {
+      "msg_id": "f5d832ad229ba943-0000000000000002",
+      "outcome": {
+        "outcome": "queued",
+        "reason": "extension-stream",
+        "next_retry_at": 0
+      },
+      "transport": "claude-uds"
+    }
+  },
+  {
+    "seq": 75,
+    "at": 1788746670747,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "human-typing",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 76,
+    "at": 1788746676250,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "human-typing",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 77,
+    "at": 1788746678260,
+    "kind": "delivery.outcome",
+    "seat": "pij-payable-dara",
+    "payload": {
+      "msg_id": "f5d832ad229ba943-0000000000000002",
+      "outcome": {
+        "outcome": "delivered",
+        "origin": "reader-read"
+      },
+      "transport": "extension-stream",
+      "control_outcome": {
+        "outcome": "executed"
+      }
+    }
+  },
+  {
+    "seq": 78,
+    "at": 1788746678263,
+    "kind": "delivery.inbox-ack",
+    "seat": "pij-payable-dara",
+    "payload": {
+      "job_id": 7,
+      "authenticated_machine": "local",
+      "evidence_grade": "machine",
+      "outcome": "reader-read"
+    }
+  },
+  {
+    "seq": 79,
+    "at": 1788746681144,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "human-typing",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 80,
+    "at": 1788746686331,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 81,
+    "at": 1788746691165,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 82,
+    "at": 1788746696244,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 83,
+    "at": 1788746701146,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 84,
+    "at": 1788746706393,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 85,
+    "at": 1788746711466,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 86,
+    "at": 1788746715984,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 87,
+    "at": 1788746721228,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 88,
+    "at": 1788746725816,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 89,
+    "at": 1788746731182,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 90,
+    "at": 1788746735684,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 91,
+    "at": 1788746740707,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 92,
+    "at": 1788746746086,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 93,
+    "at": 1788746750715,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 94,
+    "at": 1788746755754,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 95,
+    "at": 1788746760719,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 96,
+    "at": 1788746765877,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 97,
+    "at": 1788746770802,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 98,
+    "at": 1788746775843,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 99,
+    "at": 1788746780716,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 100,
+    "at": 1788746785682,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 101,
+    "at": 1788746790815,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 102,
+    "at": 1788746795775,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 103,
+    "at": 1788746800676,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 104,
+    "at": 1788746805704,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 105,
+    "at": 1788746810886,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 106,
+    "at": 1788746815713,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 107,
+    "at": 1788746821473,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 108,
+    "at": 1788746825678,
+    "kind": "delivery.held",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "reason": "composer-busy",
+      "seat": "pij-cultural-angelfish",
+      "since_ms": 0,
+      "last_edit_at": null,
+      "remaining_ms": null,
+      "draft_sha": "52e657bd1470"
+    }
+  },
+  {
+    "seq": 109,
+    "at": 1788746830853,
+    "kind": "delivery.released",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "at_ms": 1788746830853,
+      "msg_id": "proof-claude-sufficient-history",
+      "seat": "pij-cultural-angelfish"
+    }
+  },
+  {
+    "seq": 110,
+    "at": 1788746830853,
+    "kind": "delivery.outcome",
+    "seat": "pij-cultural-angelfish",
+    "payload": {
+      "msg_id": "proof-claude-sufficient-history",
+      "outcome": {
+        "outcome": "delivered",
+        "origin": "injected-to-transport"
+      },
+      "transport": "pty"
+    }
+  }
+]

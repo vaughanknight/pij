@@ -6,6 +6,7 @@
 
 #![deny(missing_docs)]
 
+pub mod background;
 pub mod migrate;
 pub mod orchestration;
 pub mod queue;

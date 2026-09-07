@@ -70,6 +70,11 @@ install:
     @echo
     @echo "✓ install complete. pi is set up on this machine."
 
+# Link this worktree's packages from the canonical checkout without npm resolution.
+# --check is read-only; missing JS tooling never prevents Rust-only work.
+worktree-deps *ARGS:
+    @node harness/scripts/worktree-deps.mjs "$@"
+
 # --- atomic checks (thin wrappers over npm scripts) ---
 
 typecheck:

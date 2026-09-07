@@ -1,0 +1,46 @@
+    Blocking waiting for file lock on build directory
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/pij-rs-control-commands/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.23s
+     Running tests/control_commands.rs (target/debug/deps/control_commands-6987b16f87735ac6)
+
+running 5 tests
+
+thread 'control_shim_send_and_compact_self_use_the_command_path' (1081891528) panicked at crates/daemon/tests/control_commands.rs:149:9:
+assertion `left == right` failed: Envelope { ok: false, command: "pij send", v: 2, data: None, meta: Some("rs cannot serve `pij send <id> --command <name>`: a control command is a different act from a message — it carries no body and is submitted to the pane as a slash command. It is deliberately left on legacy."), error: Some(Refused), details: None }
+  left: 400
+ right: 200
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'control_native_refuses_unsupported_targets_and_invalid_shapes_without_enqueueing' (1081891525) panicked at crates/daemon/tests/control_commands.rs:98:9:
+expected E-RS-CONTROL-UNSUPPORTED: use Copilot's native user controls
+test control_shim_send_and_compact_self_use_the_command_path ... FAILED
+test control_native_refuses_unsupported_targets_and_invalid_shapes_without_enqueueing ... FAILED
+
+thread 'control_destructive_ownership_requires_pane_proof_not_asserted_actor' (1081891524) panicked at crates/daemon/tests/control_commands.rs:109:9:
+assertion failed: !response.ok
+
+thread 'control_native_send_preserves_command_and_derived_sender' (1081891526) panicked at crates/daemon/tests/control_commands.rs:79:5:
+assertion `left == right` failed
+  left: None
+ right: Some("compact")
+test control_destructive_ownership_requires_pane_proof_not_asserted_actor ... FAILED
+test control_native_send_preserves_command_and_derived_sender ... FAILED
+
+thread 'control_recorded_parent_can_send_destructive_commands' (1081891527) panicked at crates/daemon/tests/control_commands.rs:134:9:
+assertion `left == right` failed
+  left: None
+ right: Some("new")
+test control_recorded_parent_can_send_destructive_commands ... FAILED
+
+failures:
+
+failures:
+    control_destructive_ownership_requires_pane_proof_not_asserted_actor
+    control_native_refuses_unsupported_targets_and_invalid_shapes_without_enqueueing
+    control_native_send_preserves_command_and_derived_sender
+    control_recorded_parent_can_send_destructive_commands
+    control_shim_send_and_compact_self_use_the_command_path
+
+test result: FAILED. 0 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+error: test failed, to rerun pass `-p pij-daemon --test control_commands`

@@ -1,0 +1,23 @@
+COMMAND: just test .pi/extensions/pij/cli.integration.test.ts -t top-level help and skill guidance distinguish pull from push delivery
+EXIT: 0
+STDOUT:
+
+> pij@0.1.0 test
+> vitest run .pi/extensions/pij/cli.integration.test.ts -t top-level help and skill guidance distinguish pull from push delivery
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/Users/jordanknight/pi-hacking/pij-encode-governance-branch[39m
+
+ [32m✓[39m .pi/extensions/pij/cli.integration.test.ts [2m([22m[2m110 tests[22m[2m | [22m[33m109 skipped[39m[2m)[22m[33m 543[2mms[22m[39m
+     [33m[2m✓[22m[39m top-level help and skill guidance distinguish pull from push delivery [33m 536[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m1 passed[39m[22m[2m | [22m[33m109 skipped[39m[90m (110)[39m
+[2m   Start at [22m 15:27:23
+[2m   Duration [22m 1.54s[2m (transform 564ms, setup 0ms, import 910ms, tests 543ms, environment 0ms)[22m
+
+
+STDERR:
+npm run test -- "$@"
+(node:13264) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)

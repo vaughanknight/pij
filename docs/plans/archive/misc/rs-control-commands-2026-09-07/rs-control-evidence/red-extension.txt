@@ -1,0 +1,292 @@
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/pij-rs-control-commands
+
+(node:54736) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ .pi/extensions/pij/adapters/generation-router.test.ts (27 tests | 3 failed | 24 skipped) 18ms
+     ↓ a listening daemon with a good key is live
+     ↓ nothing listening is ABSENT (fall back quietly)
+     ↓ a listening daemon that rejects the key is AUTH-REJECTED, not absent
+     ↓ NO key file at all is no-credentials — not auth-rejected, and not absent
+     ↓ a key that EXISTS and is refused is auth-rejected
+     × routes send controls to rs with caller proof and command argv intact 15ms
+     × routes compact-self controls to rs with caller proof and command argv intact 1ms
+     × preserves decodable rs control refusal without legacy fallback 2ms
+     ↓ no rs daemon at all → legacy, with the addr named
+     ↓ forced legacy makes NO network call at all
+     ↓ an unrouted verb never reaches rs
+     ↓ rs live but the route is absent (bodiless 404) → legacy, not-implemented
+     ↓ rs answering with a refusal envelope does NOT fall back
+     ↓ rs serving the verb → routed to rs, with the payload
+     ↓ unions a fake rs sessions answer and keeps the rs row while null-filling from legacy
+     ↓ fails loudly without fallback when the legacy half cannot be read
+     ↓ filters rs rows by caller git common dir only when --here is present
+     ↓ falls back to exact caller folder for non-git --here
+     ↓ rs answers the probe then fails the call → ERROR, never a fallback
+     ↓ rs live but rejecting the key → named auth outcome, no fallback
+     ↓ a seat that lives only in legacy is FOLLOWED, not re-homed
+     ↓ the resolved addr is the NAMED one, not a hardcoded default
+     ↓ no rs credential → legacy, named, and NOT an error
+     ↓ but it says so out loud — the fallback is never silent
+     ↓ names the ambiguity instead of asserting the comfortable cause
+     ↓ and a PRESENT-but-refused key still fails loud — the guard is intact
+     ↓ the two are different kinds AND different sentences
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts (47 tests | 8 failed | 39 skipped) 1341ms
+     × executes a claimed compact command and acknowledges its outcome 72ms
+     × executes a claimed new command and acknowledges its outcome 52ms
+     × executes a claimed reload command and acknowledges its outcome 54ms
+     × waits for a claimed command runtime outcome before acknowledging 53ms
+     × refuses an unarmed new command without later execution 53ms
+     × refuses an unarmed reload command without later execution 52ms
+     × acknowledges command runtime errors as refused instead of retrying execution 1003ms
+     × native control sends carry command and pane caller proof with no scaffold body 2ms
+     ↓ does not overwrite a claude seat when omp boots in the same pane
+       ↓ binding=created, pre-existing row=false injects announceText 1 times
+       ↓ binding=rebound, pre-existing row=true injects announceText 1 times
+       ↓ binding=same, pre-existing row=true injects announceText 0 times
+       ↓ binding=same, pre-existing row=false injects announceText 0 times
+       ↓ reports only pane provenance (pane) while announcing rebound once and same never
+       ↓ reports only pane provenance (harness) while announcing rebound once and same never
+       ↓ reports only pane provenance (undefined) while announcing rebound once and same never
+       ↓ reports unbound when pane provenance has no process identity
+       ↓ announces the new session id once on new, not again on reload
+       ↓ announces the new session id once on fork, not again on reload
+       ↓ preserves old-daemon inference with no binding (pre-existing row=false)
+       ↓ preserves old-daemon inference with no binding (pre-existing row=true)
+     ↓ registers structural identity, forwards unknown events, injects a push, and correlates reply
+     ↓ binds startup to the daemon row for the spawned pane
+     ↓ suppresses injection when another worker already owns the queued row
+     ↓ leaves an in-flight claim unacked when a new session replaces its seat
+     ↓ delivers the authority-owned claim when the pushed event names a different message
+     ↓ does not acknowledge when the runtime injection fails
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: false)
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: true)
+     ↓ extension stream delivers while a draft is actively typed (busy=false)
+     ↓ extension stream delivers while a draft is actively typed (busy=true)
+     ↓ delivers through the OMP adapter without clearing or submitting a human draft
+     ↓ delivers immediately after spawn input has left an empty editor
+     ↓ announces busy arrivals and clears the pending count when idle
+     ↓ truncates a long announcement to 80 characters
+     ↓ does not deliver or announce an acknowledged replay twice
+     ↓ preserves claim order during sustained typing regardless of daemon grace
+     ↓ keeps commands and urgent delivery without a typing bypass
+     ↓ recovers an older deferred row before newer eligible rows without another send
+     ↓ resumes startup semantic Hold after ready without a second send
+     ↓ resumes an initially held startup backlog in A B C order across deferred rows
+     ↓ resumes a pushed semantic Hold backlog after ready and then stops polling
+     ↓ does not poll an empty inbox
+     ↓ cancels pending semantic recovery on shutdown
+     ↓ queues at most one pending-inbox retry and ignores its stale result
+     ↓ does not carry an unseen count across a new lifecycle
+     ↓ acknowledges ordinary claims without calling the release endpoint
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 11 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/adapters/generation-router.test.ts > routeVerb end to end > routes send controls to rs with caller proof and command argv intact
+AssertionError: expected 'legacy-seat-not-in-rs' to be 'rs' // Object.is equality
+
+Expected: "rs"
+Received: "legacy-seat-not-in-rs"
+
+ ❯ .pi/extensions/pij/adapters/generation-router.test.ts:105:24
+    103|    return new Response(JSON.stringify({ ok: true, command: `pij ${verb…
+    104|   }, { env: { PIJ_RS_ADDR: "127.0.0.1:17610", PIJ_RS_STATE_DIR: "/tmp/…
+    105|   expect(outcome.kind).toBe("rs");
+       |                        ^
+    106|   expect(request).toMatchObject({ argv, caller: { tmuxPane: "%42", pij…
+    107|  });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/11]⎯
+
+ FAIL  .pi/extensions/pij/adapters/generation-router.test.ts > routeVerb end to end > routes compact-self controls to rs with caller proof and command argv intact
+AssertionError: expected 'legacy-unrouted' to be 'rs' // Object.is equality
+
+Expected: "rs"
+Received: "legacy-unrouted"
+
+ ❯ .pi/extensions/pij/adapters/generation-router.test.ts:105:24
+    103|    return new Response(JSON.stringify({ ok: true, command: `pij ${verb…
+    104|   }, { env: { PIJ_RS_ADDR: "127.0.0.1:17610", PIJ_RS_STATE_DIR: "/tmp/…
+    105|   expect(outcome.kind).toBe("rs");
+       |                        ^
+    106|   expect(request).toMatchObject({ argv, caller: { tmuxPane: "%42", pij…
+    107|  });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/11]⎯
+
+ FAIL  .pi/extensions/pij/adapters/generation-router.test.ts > routeVerb end to end > preserves decodable rs control refusal without legacy fallback
+AssertionError: expected { kind: 'legacy-unrouted', …(1) } to match object { kind: 'rs-error', …(1) }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "detail": "E-RS-CONTROL-UNSUPPORTED: use Copilot's native user controls",
+-   "kind": "rs-error",
++   "kind": "legacy-unrouted",
+  }
+
+ ❯ .pi/extensions/pij/adapters/generation-router.test.ts:114:19
+    112|    url.endsWith("/health") ? new Response(HEALTH) : new Response(JSON.…
+    113|   ));
+    114|   expect(outcome).toMatchObject({ kind: "rs-error", detail: refusal });
+       |                   ^
+    115|  });
+    116|  it("no rs daemon at all → legacy, with the addr named", async () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/11]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > RustRuntimeSession > executes a claimed compact command and acknowledges its outcome
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > RustRuntimeSession > executes a claimed new command and acknowledges its outcome
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > RustRuntimeSession > executes a claimed reload command and acknowledges its outcome
+AssertionError: expected { seat: 'pij-wealthy-alpaca', …(1) } to match object { Object (job_id, control_outcome) }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "control_outcome": {
+-     "outcome": "executed",
+-   },
+    "job_id": 1,
+  }
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:198:32
+    196|   try {
+    197|    await vi.waitFor(() => expect(acknowledgements).toHaveLength(1));
+    198|    expect(acknowledgements[0]).toMatchObject({
+       |                                ^
+    199|     job_id: claim[0].job_id,
+    200|     control_outcome: { outcome: "executed" },
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/11]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > RustRuntimeSession > waits for a claimed command runtime outcome before acknowledging
+AssertionError: expected [ Array(1) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "job_id": 1,
++     "seat": "pij-wealthy-alpaca",
++   },
++ ]
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:221:29
+    219|   try {
+    220|    await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce());
+    221|    expect(acknowledgements).toEqual([]);
+       |                             ^
+    222|    complete();
+    223|    await vi.waitFor(() => expect(acknowledgements[0]?.control_outcome)…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/11]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > RustRuntimeSession > refuses an unarmed new command without later execution
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > RustRuntimeSession > refuses an unarmed reload command without later execution
+AssertionError: expected undefined to match object { outcome: 'refused', …(1) }
+
+- Expected:
+{
+  "outcome": "refused",
+  "reason": StringContaining "/pij",
+}
+
++ Received:
+undefined
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:238:49
+    236|   try {
+    237|    await vi.waitFor(() => expect(acknowledgements).toHaveLength(1));
+    238|    expect(acknowledgements[0]?.control_outcome).toMatchObject({ outcom…
+       |                                                 ^
+    239|    pi.setArmed(true);
+    240|    expect(runtime.applyPendingControl()).toEqual([]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/11]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > RustRuntimeSession > acknowledges command runtime errors as refused instead of retrying execution
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:255:52
+    253|   const { runtime, acknowledgements } = await bootPushedEvent(PUSHED_E…
+    254|   try {
+    255|    await vi.waitFor(() => expect(acknowledgements).toHaveLength(1));
+       |                                                    ^
+    256|    expect(acknowledgements[0]?.control_outcome).toEqual({ outcome: "re…
+    257|    expect(compact).toHaveBeenCalledOnce();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/11]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > RustRuntimeSession > native control sends carry command and pane caller proof with no scaffold body
+AssertionError: expected { from: 'pij-wealthy-alpaca', …(3) } to match object { to: { seat: 'pij-target' }, …(3) }
+(2 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "body": "",
+-   "caller": {
+-     "pid": 54882,
+-     "procStart": 20260829103052,
+-     "tmuxPane": "%42",
+-   },
+-   "command": "compact",
++   "body": "[pij-rs from pij-from]
++
++ [/pij]",
+    "to": {
+      "seat": "pij-target",
+    },
+  }
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:268:25
+    266|   try {
+    267|    await runtime.send("pij-target", frame("pij-from", ""), "compact");
+    268|    expect(sends.at(-1)).toMatchObject({
+       |                         ^
+    269|     to: { seat: "pij-target" }, body: "", command: "compact",
+    270|     caller: { tmuxPane: "%42", pid: process.pid, procStart: 2026082910…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/11]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  11 failed | 63 skipped (74)
+   Start at  11:41:19
+   Duration  1.72s (transform 543ms, setup 0ms, import 659ms, tests 1.36s, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/pij-rs-control-commands/.pi/extensions/pij/adapters/generation-router.test.ts,title=.pi/extensions/pij/adapters/generation-router.test.ts > routeVerb end to end > routes send controls to rs with caller proof and command argv intact,line=105,column=24::AssertionError: expected 'legacy-seat-not-in-rs' to be 'rs' // Object.is equality%0A%0AExpected: "rs"%0AReceived: "legacy-seat-not-in-rs"%0A%0A ❯ .pi/extensions/pij/adapters/generation-router.test.ts:105:24%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-rs-control-commands/.pi/extensions/pij/adapters/generation-router.test.ts,title=.pi/extensions/pij/adapters/generation-router.test.ts > routeVerb end to end > routes compact-self controls to rs with caller proof and command argv intact,line=105,column=24::AssertionError: expected 'legacy-unrouted' to be 'rs' // Object.is equality%0A%0AExpected: "rs"%0AReceived: "legacy-unrouted"%0A%0A ❯ .pi/extensions/pij/adapters/generation-router.test.ts:105:24%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-rs-control-commands/.pi/extensions/pij/adapters/generation-router.test.ts,title=.pi/extensions/pij/adapters/generation-router.test.ts > routeVerb end to end > preserves decodable rs control refusal without legacy fallback,line=114,column=19::AssertionError: expected { kind: 'legacy-unrouted', …(1) } to match object { kind: 'rs-error', …(1) }%0A(1 matching property omitted from actual)%0A%0A- Expected%0A+ Received%0A%0A  {%0A-   "detail": "E-RS-CONTROL-UNSUPPORTED: use Copilot's native user controls",%0A-   "kind": "rs-error",%0A+   "kind": "legacy-unrouted",%0A  }%0A%0A ❯ .pi/extensions/pij/adapters/generation-router.test.ts:114:19%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-rs-control-commands/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > RustRuntimeSession > executes a claimed compact command and acknowledges its outcome,line=198,column=32::AssertionError: expected { seat: 'pij-wealthy-alpaca', …(1) } to match object { Object (job_id, control_outcome) }%0A(1 matching property omitted from actual)%0A%0A- Expected%0A+ Received%0A%0A  {%0A-   "control_outcome": {%0A-     "outcome": "executed",%0A-   },%0A    "job_id": 1,%0A  }%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:198:32%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-rs-control-commands/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > RustRuntimeSession > executes a claimed new command and acknowledges its outcome,line=198,column=32::AssertionError: expected { seat: 'pij-wealthy-alpaca', …(1) } to match object { Object (job_id, control_outcome) }%0A(1 matching property omitted from actual)%0A%0A- Expected%0A+ Received%0A%0A  {%0A-   "control_outcome": {%0A-     "outcome": "executed",%0A-   },%0A    "job_id": 1,%0A  }%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:198:32%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-rs-control-commands/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > RustRuntimeSession > executes a claimed reload command and acknowledges its outcome,line=198,column=32::AssertionError: expected { seat: 'pij-wealthy-alpaca', …(1) } to match object { Object (job_id, control_outcome) }%0A(1 matching property omitted from actual)%0A%0A- Expected%0A+ Received%0A%0A  {%0A-   "control_outcome": {%0A-     "outcome": "executed",%0A-   },%0A    "job_id": 1,%0A  }%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:198:32%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-rs-control-commands/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > RustRuntimeSession > waits for a claimed command runtime outcome before acknowledging,line=221,column=29::AssertionError: expected [ Array(1) ] to deeply equal []%0A%0A- Expected%0A+ Received%0A%0A- []%0A+ [%0A+   {%0A+     "job_id": 1,%0A+     "seat": "pij-wealthy-alpaca",%0A+   },%0A+ ]%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:221:29%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-rs-control-commands/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > RustRuntimeSession > refuses an unarmed new command without later execution,line=238,column=49::AssertionError: expected undefined to match object { outcome: 'refused', …(1) }%0A%0A- Expected:%0A{%0A  "outcome": "refused",%0A  "reason": StringContaining "/pij",%0A}%0A%0A+ Received:%0Aundefined%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:238:49%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-rs-control-commands/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > RustRuntimeSession > refuses an unarmed reload command without later execution,line=238,column=49::AssertionError: expected undefined to match object { outcome: 'refused', …(1) }%0A%0A- Expected:%0A{%0A  "outcome": "refused",%0A  "reason": StringContaining "/pij",%0A}%0A%0A+ Received:%0Aundefined%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:238:49%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-rs-control-commands/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > RustRuntimeSession > acknowledges command runtime errors as refused instead of retrying execution,line=255,column=52::AssertionError: expected [] to have a length of 1 but got +0%0A%0A- Expected%0A+ Received%0A%0A- 1%0A+ 0%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:255:52%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-rs-control-commands/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > RustRuntimeSession > native control sends carry command and pane caller proof with no scaffold body,line=268,column=25::AssertionError: expected { from: 'pij-wealthy-alpaca', …(3) } to match object { to: { seat: 'pij-target' }, …(3) }%0A(2 matching properties omitted from actual)%0A%0A- Expected%0A+ Received%0A%0A  {%0A-   "body": "",%0A-   "caller": {%0A-     "pid": 54882,%0A-     "procStart": 20260829103052,%0A-     "tmuxPane": "%2542",%0A-   },%0A-   "command": "compact",%0A+   "body": "[pij-rs from pij-from]%0A+%0A+ [/pij]",%0A    "to": {%0A      "seat": "pij-target",%0A    },%0A  }%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:268:25%0A%0A

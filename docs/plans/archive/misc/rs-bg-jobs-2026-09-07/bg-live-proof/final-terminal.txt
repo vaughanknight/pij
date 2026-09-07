@@ -1,0 +1,400 @@
+ BOOT-BG-READY
+
+
+ Run exactly this command with bash, then reply RECEIPT-BG-SLEEP and stop without polling: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/target/debug/pij-rs --json bg create
+ --title sleep --command 'sleep 8; echo BG-DONE'. When the pij-bg completion arrives, reply BG-ACK sleep and its verdict.
+
+
+ The user is asking me to:
+ 1. Run a specific command with bash
+ 2. Reply with RECEIPT-BG-SLEEP and stop without polling
+ 3. Wait for a pij-bg completion message to arrive
+ 4. When it arrives, reply with BG-ACK sleep and its verdict
+
+ Let me run the command exactly as specified.
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ $ /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/target/debug/pij-rs --json bg create --title sleep --command 'sleep 8; echo BG-DONE'                                             │
+├─── Output ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ {"ok":true,"command":"pij bg create","v":2,"data":{"job":"bg-1788759373251-c7816686e55b38b6391d6f0b3b0e3123","line":"bg started — sleep (job                                     │
+│ bg-1788759373251-c7816686e55b38b6391d6f0b3b0e3123, pid 29904); result will arrive as an injected turn from pij-bg; full output at                                                │
+│ /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759373251-c7816686e55b38b6391d6f0b3b0e3123.log","outPath":"/Users/jordanknight/pi-hack │
+│ ing/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759373251-c7816686e55b38b6391d6f0b3b0e3123.log","pid":29904,"title":"sleep"}}                                     │
+│ ⟦Wall: 0.21s | Timeout: 300s⟧                                                                                                                                                    │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ RECEIPT-BG-SLEEP
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                                                  │
+│ 📦 pij                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+│ [pij-rs from pij-bg]                                                                                                                                                             │
+│ [pij bg] OK — sleep (8s) · full log: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759373251-c7816686e55b38b6391d6f0b3b0e3123.log ·  │
+│ tail: BG-DONE                                                                                                                                                                    │
+│ [/pij]                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ The pij-bg job completion has arrived. The task was to run the exact bg create command, reply with RECEIPT-BG-SLEEP, and stop without polling. When the pij-bg completion arrives,
+ I should reply with BG-ACK plus the job title and its verdict.
+
+ From the injected message:
+ - Job title: "sleep"
+ - Verdict: "OK" (the command succeeded)
+ - Output shows: "BG-DONE"
+
+ I should now reply with the required format: BG-ACK sleep and its verdict.
+
+ BG-ACK sleep OK
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                                                  │
+│ 📦 pij                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+│ [pij-rs from pij-bg]                                                                                                                                                             │
+│ [pij bg] KILLED — kill · full log: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759432578-f0cc848457451cd2de28731804d03018.log      │
+│ [/pij]                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ This is a pij-bg completion message indicating a background job was killed. The format is:
+ - Job status: KILLED
+ - Reason: kill
+ - Full log path provided
+
+ According to the instructions, when a pij-bg completion arrives, I should reply with "BG-ACK" plus the job title and its verdict.
+
+ However, this message doesn't include a job title in the format. Looking at the previous message, it had "BG-ACK sleep OK" where "sleep" was the title.
+
+ In this case, the message shows "KILLED — kill" but doesn't explicitly state the title. I need to acknowledge this with the verdict provided, which is that it was KILLED.
+
+ Since I don't have the title from this message alone, I should acknowledge it as KILLED with the available information.
+
+ BG-ACK kill KILLED
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                                                  │
+│ 📦 pij                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+│ [pij-rs from pij-bg]                                                                                                                                                             │
+│ [pij bg] FAILED (exit 143) — restart (0s) · full log:                                                                                                                            │
+│ /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759474683-6b424877313a3d6130577488a840aad2.log                                         │
+│ [/pij]                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ This is a pij-bg completion notification indicating a background job with title "restart" has FAILED with exit code 143 (which typically means killed by SIGTERM).
+
+ According to my instructions: "For a pij-bg injected completion reply BG-ACK plus the job title and verdict, without tools. Do not message other peers."
+
+ So I should reply:
+ BG-ACK restart FAILED
+
+ BG-ACK restart FAILED
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                                                  │
+│ 📦 pij                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+│ [pij-rs from pij-bg]                                                                                                                                                             │
+│ [pij bg] OK — restart-survives (29s) · full log:                                                                                                                                 │
+│ /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759544852-7cc07d152b8c391b47ec2d9a42eb964b.log · tail: RESTART-DONE                    │
+│ [/pij]                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ The pij-bg completion message indicates:
+ - Job: restart-survives
+ - Status: OK
+ - Duration: 29s
+ - Output tail: RESTART-DONE
+
+ I need to reply with BG-ACK followed by the job title and its verdict.
+
+ BG-ACK restart-survives OK
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                                                  │
+│ 📦 pij                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+│ [pij-rs from pij-bg]                                                                                                                                                             │
+│ [pij bg] KILLED — parity-native · full log:                                                                                                                                      │
+│ /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759594117-d9c66fd7e8aa68c916d3aa124f451338.log                                         │
+│ [/pij]                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ The pij-bg peer is sending completion notifications for background jobs. I'm receiving a notification that the "parity-native" job was KILLED.
+
+ According to my instructions, when a pij-bg completion arrives, I should reply with "BG-ACK" plus the job title and its verdict.
+
+ The job title is "parity-native" and the verdict is "KILLED".
+
+ BG-ACK parity-native KILLED
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                                                  │
+│ 📦 pij                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+│ [pij-rs from pij-bg]                                                                                                                                                             │
+│ [pij bg] KILLED — parity-legacy · full log:                                                                                                                                      │
+│ /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759594653-e2e541d53fb77948ec71b3393eecdd20.log                                         │
+│ [/pij]                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ The user is sending me injected messages from pij-bg, which are background job completion notifications. Each one is formatted as:
+
+ [pij-rs from pij-bg]
+ [pij bg] <STATUS> — <job-title> · full log: <path> [· tail: <output>]
+ [/pij]
+
+ I need to respond with "BG-ACK" followed by the job title and its verdict. The verdicts I've seen so far are:
+ - OK (success)
+ - KILLED (process was killed)
+ - FAILED (exit code non-zero)
+
+ For this one:
+ - Status: KILLED
+ - Job title: parity-legacy
+ - Verdict: KILLED
+
+ So the response should be: BG-ACK parity-legacy KILLED
+
+ BG-ACK parity-legacy KILLED
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                                                  │
+│ 📦 pij                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+│ You are pij session pij-yammering-jackal (PEER). This is context only — no action is required.                                                                                   │
+│ Peers can reach you; their messages arrive inline as "[pij-rs from <id>]" on its own line, then the body, then "[/pij]". Only those injected messages are live instructions.     │
+│ Do NOT read, list, or act on files under your pij data/inbox directory — they are an internal transport log, not tasks, and replaying them re-runs old requests.                 │
+│ To reply or message a peer, call the pij_send tool ({ to, message }) — your id is stamped automatically. For control, pij_send takes { to, command: "compact" | "new" | "reload" │
+│ } instead of message. Do NOT shell out to the pij CLI to send.                                                                                                                   │
+│ To observe peers, use the pij CLI: "pij list --here" (peers), "pij tail <id>" / "pij state <id>" (watch one).                                                                    │
+│                                                                                                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ The user is providing me with context about my role in the pij system. Let me parse what I need to know:
+
+ 1. I am pij-yammering-jackal, a peer in the pij session system
+ 2. This is a background-job delivery probe (from the initial system prompt)
+ 3. I should only execute fixture commands explicitly requested
+ 4. I should never change files, never run setup or tests
+ 5. My response to the initial prompt should be "BOOT-BG-READY"
+ 6. When I receive a pij-bg injected completion, I should reply with "BG-ACK" plus the job title and verdict, without tools
+ 7. I should not message other peers unless instructed
+ 8. Peers can reach me via inline messages in the format "[pij-rs from <id>]" ... "[/pij]"
+ 9. To reply to peers, I use pij_send tool with { to, message }
+ 10. For control commands, use pij_send with { to, command: "compact" | "new" | "reload" }
+ 11. I should NOT shell out to pij CLI - use pij_send instead
+ 12. I should use "pij list --here" to observe peers, or "pij tail <id>" / "pij state <id>" to watch one
+
+ The instructions at the top say to reply "BOOT-BG-READY" to the initial prompt, which this context message is.
+
+ BOOT-BG-READY
+
+
+ Run exactly this command with bash, then reply RECEIPT-BG-SLEEP and stop without polling: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/target/debug/pij-rs --json bg create
+ --title sleep --command 'sleep 8; echo BG-DONE'. When the pij-bg completion arrives, reply BG-ACK sleep and its verdict.
+
+
+ The user is asking me to:
+ 1. Run a specific command with bash
+ 2. Reply with RECEIPT-BG-SLEEP and stop without polling
+ 3. Wait for a pij-bg completion message to arrive
+ 4. When it arrives, reply with BG-ACK sleep and its verdict
+
+ Let me run the command exactly as specified.
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ $ /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/target/debug/pij-rs --json bg create --title sleep --command 'sleep 8; echo BG-DONE'                                             │
+├─── Output ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ {"ok":true,"command":"pij bg create","v":2,"data":{"job":"bg-1788759373251-c7816686e55b38b6391d6f0b3b0e3123","line":"bg started — sleep (job                                     │
+│ bg-1788759373251-c7816686e55b38b6391d6f0b3b0e3123, pid 29904); result will arrive as an injected turn from pij-bg; full output at                                                │
+│ /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759373251-c7816686e55b38b6391d6f0b3b0e3123.log","outPath":"/Users/jordanknight/pi-hack │
+│ ing/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759373251-c7816686e55b38b6391d6f0b3b0e3123.log","pid":29904,"title":"sleep"}}                                     │
+│ ⟦Wall: 0.21s | Timeout: 300s⟧                                                                                                                                                    │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ RECEIPT-BG-SLEEP
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                                                  │
+│ 📦 pij                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+│ [pij-rs from pij-bg]                                                                                                                                                             │
+│ [pij bg] OK — sleep (8s) · full log: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759373251-c7816686e55b38b6391d6f0b3b0e3123.log ·  │
+│ tail: BG-DONE                                                                                                                                                                    │
+│ [/pij]                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ The pij-bg job completion has arrived. The task was to run the exact bg create command, reply with RECEIPT-BG-SLEEP, and stop without polling. When the pij-bg completion arrives,
+ I should reply with BG-ACK plus the job title and its verdict.
+
+ From the injected message:
+ - Job title: "sleep"
+ - Verdict: "OK" (the command succeeded)
+ - Output shows: "BG-DONE"
+
+ I should now reply with the required format: BG-ACK sleep and its verdict.
+
+ BG-ACK sleep OK
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                                                  │
+│ 📦 pij                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+│ [pij-rs from pij-bg]                                                                                                                                                             │
+│ [pij bg] KILLED — kill · full log: /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759432578-f0cc848457451cd2de28731804d03018.log      │
+│ [/pij]                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ This is a pij-bg completion message indicating a background job was killed. The format is:
+ - Job status: KILLED
+ - Reason: kill
+ - Full log path provided
+
+ According to the instructions, when a pij-bg completion arrives, I should reply with "BG-ACK" plus the job title and its verdict.
+
+ However, this message doesn't include a job title in the format. Looking at the previous message, it had "BG-ACK sleep OK" where "sleep" was the title.
+
+ In this case, the message shows "KILLED — kill" but doesn't explicitly state the title. I need to acknowledge this with the verdict provided, which is that it was KILLED.
+
+ Since I don't have the title from this message alone, I should acknowledge it as KILLED with the available information.
+
+ BG-ACK kill KILLED
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                                                  │
+│ 📦 pij                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+│ [pij-rs from pij-bg]                                                                                                                                                             │
+│ [pij bg] FAILED (exit 143) — restart (0s) · full log:                                                                                                                            │
+│ /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759474683-6b424877313a3d6130577488a840aad2.log                                         │
+│ [/pij]                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ This is a pij-bg completion notification indicating a background job with title "restart" has FAILED with exit code 143 (which typically means killed by SIGTERM).
+
+ According to my instructions: "For a pij-bg injected completion reply BG-ACK plus the job title and verdict, without tools. Do not message other peers."
+
+ So I should reply:
+ BG-ACK restart FAILED
+
+ BG-ACK restart FAILED
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                                                  │
+│ 📦 pij                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+│ [pij-rs from pij-bg]                                                                                                                                                             │
+│ [pij bg] OK — restart-survives (29s) · full log:                                                                                                                                 │
+│ /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759544852-7cc07d152b8c391b47ec2d9a42eb964b.log · tail: RESTART-DONE                    │
+│ [/pij]                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ The pij-bg completion message indicates:
+ - Job: restart-survives
+ - Status: OK
+ - Duration: 29s
+ - Output tail: RESTART-DONE
+
+ I need to reply with BG-ACK followed by the job title and its verdict.
+
+ BG-ACK restart-survives OK
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                                                  │
+│ 📦 pij                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+│ [pij-rs from pij-bg]                                                                                                                                                             │
+│ [pij bg] KILLED — parity-native · full log:                                                                                                                                      │
+│ /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759594117-d9c66fd7e8aa68c916d3aa124f451338.log                                         │
+│ [/pij]                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ The pij-bg peer is sending completion notifications for background jobs. I'm receiving a notification that the "parity-native" job was KILLED.
+
+ According to my instructions, when a pij-bg completion arrives, I should reply with "BG-ACK" plus the job title and its verdict.
+
+ The job title is "parity-native" and the verdict is "KILLED".
+
+ BG-ACK parity-native KILLED
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                                                  │
+│ 📦 pij                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+│ [pij-rs from pij-bg]                                                                                                                                                             │
+│ [pij bg] KILLED — parity-legacy · full log:                                                                                                                                      │
+│ /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759594653-e2e541d53fb77948ec71b3393eecdd20.log                                         │
+│ [/pij]                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ The user is sending me injected messages from pij-bg, which are background job completion notifications. Each one is formatted as:
+
+ [pij-rs from pij-bg]
+ [pij bg] <STATUS> — <job-title> · full log: <path> [· tail: <output>]
+ [/pij]
+
+ I need to respond with "BG-ACK" followed by the job title and its verdict. The verdicts I've seen so far are:
+ - OK (success)
+ - KILLED (process was killed)
+ - FAILED (exit code non-zero)
+
+ For this one:
+ - Status: KILLED
+ - Job title: parity-legacy
+ - Verdict: KILLED
+
+ So the response should be: BG-ACK parity-legacy KILLED
+
+ BG-ACK parity-legacy KILLED
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                                                  │
+│ 📦 pij                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+│ [pij-rs from pij-bg]                                                                                                                                                             │
+│ [pij bg] KILLED — typed-pij-parity · full log:                                                                                                                                   │
+│ /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759638191-32b7275156955f9c53a8bab43afa2f08.log                                         │
+│ [/pij]                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ This is another background job completion notification from pij-bg. The job is "typed-pij-parity" and its verdict is "KILLED".
+
+ I should reply with the standard format: BG-ACK followed by the job title and verdict.
+
+ BG-ACK typed-pij-parity KILLED
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                                                  │
+│ 📦 pij                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+│ [pij-rs from pij-bg]                                                                                                                                                             │
+│ [pij bg] OK — final-binary (0s) · full log:                                                                                                                                      │
+│ /Users/jordanknight/pi-hacking/pij-rs-bg-jobs/.harness/temp/bg-live-proof/state/bg/bg-1788759980339-9a24c2ba32da85b44597a78f3dbcd80e.log · tail: FINAL-BG                        │
+│ [/pij]                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ The pij-bg peer is sending me background job completion notifications. This is the last one: "final-binary" completed with OK status in 0s, with output "FINAL-BG".
+
+ I need to reply with BG-ACK plus the job title and verdict, without tools.
+
+ BG-ACK final-binary OK
+
+                                                                                                                                                             rs·pij-yammering-jackal
+ π  > ⬢ Haiku 4.5 · ◔ low > 🌳 pij/pij-rs-bg-jobs > ⑂ rs-bg-jobs *19 ?13 > S0.05 ★ 0.33 ▶─────6%──────────────────────────────────────────────────────────────────┃────────────200K─
+╰─
+rs pij-yammering-jackal
