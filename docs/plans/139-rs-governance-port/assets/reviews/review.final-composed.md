@@ -260,3 +260,97 @@ Every captured stdout byte, pair and count is unchanged. Provenance is strictly 
 **F007 — NEW, MINOR (process).** The correction was announced as bounded (F002 rebinding, F003 rename) but the delta also flips `unchecked → checked` on `tk-30a3`, `tk-31a3`, `tk-32a3`, `tk-40a4`, their `done_when` assertions, `bp-0005…bp-0008`, phase `ph-e6f8`, and five ACs. Those are acceptance decisions, not traceability corrections. **On the merits I support each**: the phase-3 tasks hold prior named RED/GREEN plus the composed dual-green; `tk-40a4`'s AC8 surface is entirely local with a real guard; the five ACs are exactly the ones I judged TRUE with no prime-owned arm; and everything with a production or chainglass arm — AC2, AC3, AC7, AC9, `tk-41a4`, `tk-42a4` (still `blocked`), phase `ph-a9c3` — was correctly left unchecked or blocked. So this is a scope-declaration defect, not a false claim; but an ACK given against the announcement alone would have covered more than the announcement described.
 
 **Addendum verdict**: the APPROVE WITH NOTES verdict on `335d20981c37c868f6039724f4a78b621c8bb7e2` is **unchanged**. F002 and F003 are closed. F006 and F007 are new, both PM-owned, neither involving runtime code and neither blocking. `tk-42a4` and the production/chainglass arms remain blocked and prime-owned.
+
+---
+
+## Final pin — judgement on the explicitly expanded metadata scope
+
+**Runtime identity confirmed.** `git diff --name-only 335d2098 -- . ':(exclude)docs/**'` returns exactly two files: `crates/testkit/fixtures/golden/api/governance-client-parity.json` and `crates/testkit/fixtures/MANIFEST.toml` — the accepted F003 metadata correction and its digest. **No runtime code differs from the reviewed subject.** Everything else in the pin is `docs/plans/**`.
+
+**F006 — fixed, closed.** Every rebind resolves to an entry that actually contains its witness:
+
+| AC | Now cites | Witness in that entry |
+|---|---|---|
+| AC1 | `lg-0009` | "Two Hello-confirmed streams both observed fresh child adopt seq7 and report seq9; descriptor decoded, wall clock<=1s" — the two-subscriber control itself |
+| AC4 | `lg-0012` | supervised parity runner exit 0, 66 original-byte comparisons, no normalization; 18 live native/shim + 4 live HTTP/shim + 29 mutation pairs, 9 named refusals, 6 error policies, 2 capability probes |
+| AC5 | `lg-0009` | `done37 / verify38 / newdone40` — the done → verify → re-done lifecycle |
+| AC6 | `lg-0009` | `question28 / answer33` |
+| AC8 | `lg-0014` | the full canonical gates, which run the enforcement test |
+
+My review is no longer cited as proof for any acceptance criterion. Two non-blocking refinements, offered not required: AC5's text also carries the relay-parity and single-constant clauses, which `lg-0009` does not witness (they live in the goldens and gates), so AC5 would read more completely citing `lg-0009` **plus** `lg-0012`/`lg-0014`; and `lg-0012` still calls `a9311375…` the "permanent corpus", which F003 superseded with `8ac16285…` — historically accurate and reconciled by `review-traceability-correction.json`, but the word will read oddly to anyone diffing the two.
+
+**F007 — acknowledged and now moot.** The pin declares its full scope up front (five ACs, phase-3 tasks/assertions, `ph-e6f8`, `tk-40a4`, `bp-0001/4/5/6/8`, chore receipts, preserved gate and buffer assets, F002/F003, and the `tk-41a4` change that landed after my earlier read). Declared scope and delivered delta now match, which is all the finding asked for.
+
+**F008 — NEW, MINOR.** `tk-41a4` and `dw-41a4` are `checked` citing `lg-0015` — this review — and three things do not line up in the artifacts:
+1. `dw-41a4`'s assertion reads verbatim *"RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm."* A review satisfies none of those clauses. The identical assertion on `tk-40a4` **is** satisfied, by `lg-0014`, a real gate run.
+2. `dw-41a4` names `pressure: bp-0009`, and `bp-0009` remains `unchecked` — the page asserts the assertion satisfied while the row it points at says the criterion is not, with nothing reconciling them.
+3. `tk-41a4.note` is `null`, and `lg-0015`'s text contains no wording marking it as corroborating judgement rather than execution (I grepped it). The distinction that makes this defensible currently exists only in an IRC message.
+
+**Smallest fix, either one**: add a note to `tk-41a4`/`dw-41a4` naming the real instrument — independent cross-model documentation inspection plus AC9's own legacy-verb grep returning zero across ported rows — and scoping the check explicitly to the documentation half; **or** leave `dw-41a4` unchecked until `bp-0009` closes with its prime-owned arm. Both are honest.
+
+**Self-disclosure, because `tk-41a4` now leans on my judgement.** The AC9 documentation verdict is the weakest-instrument verdict in this review. I personally re-derived the spine, reaper, decisions, anomalies, delivery and shim-guard claims at source; the documentation half I delegated to one read-only cross-model critic, which ran the AC's own grep and the required-element checklist and returned no material findings, and I accepted that without re-reading every route file line by line. I recorded it at 85%. For a documentation-inspection task that is arguably the strongest available instrument — but it is an inspection, not a gate, and it is partly delegated. Label it at that strength so nobody later reads `checked` as machine-verified.
+
+**Final-pin verdict**: the metadata scope is **accepted**, with F008 outstanding and PM-owned. The verdict on `335d20981c37c868f6039724f4a78b621c8bb7e2` remains **APPROVE WITH NOTES**, unchanged, and still local-only: `AC2`, `AC3`, `AC7`, `AC9`, `bp-0002/3/7/9`, `tk-42a4` and phase `ph-a9c3` correctly remain unchecked or blocked, and no archive or production claim is made anywhere in the pin.
+
+---
+
+## Exact pin — `4751923e6625e53ed3955b4587fdea58dd4eb0fe`
+
+Delta reviewed: `335d2098..4751923e` ("docs(governance): bind composed evidence and independent review"), under the explicitly expanded metadata scope. Read-only; no validators run.
+
+**Runtime unchanged — verified, not accepted.** `git diff --name-status 335d2098 4751923e -- . ':(exclude)docs/**'` returns exactly two files, both testkit metadata: the F003 fixture (one deleted line) and `MANIFEST.toml` (`a9311375…`/112 803 → `8ac16285…`/112 742). Identical to the delta I already accepted. Everything else in the commit is `docs/plans/**`.
+
+**F006 — confirmed fixed at the pin.** The committed `plan.dd.json` carries AC1→`lg-0009`, AC4→`lg-0012`, AC5→`lg-0009`, AC6→`lg-0009`, AC8→`lg-0014`. No acceptance criterion cites this review as proof.
+
+**Production arms — confirmed still open at the pin.** AC2, AC3, AC7, AC9 `unchecked`; `bp-0002`, `bp-0003`, `bp-0007`, `bp-0009` `unchecked`; `tk-42a4` `blocked` with its note intact; `ph-a9c3` `unchecked`. No archive or production claim anywhere in the commit.
+
+**Flight-plan state — no doctrine violation.** `the-flow.json` changed, so I checked authorship rather than assuming it: the new records carry `"origin": "engine"` and the `provenance` block is intact (`record_kind: flow`, `agent: the-flow`, `harness_version: 0.14.0`), with `the-flow.md` regenerated alongside. Consistent with CLI generation, not hand-authoring.
+
+**F008 — still open at the pin, unchanged in all three respects.** `tk-41a4.note` is `null`; `dw-41a4` is `checked` against `pressure: bp-0009` while `bp-0009` is `unchecked`; `lg-0015`'s committed text still contains no corroborating/judgement/inspection wording (grepped at the pin). The pin *did* resolve the one ambiguity I could not resolve alone, and in the plan's favour: `tk-42a4` points its assertion at `bp-0003`, so the chainglass arm is tracked there and `bp-0009` is being held open specifically for AC9's chainglass half while `dw-41a4` closes only the documentation half. That mapping is coherent and I accept it. The finding survives **only** because nothing on the page says so — a later reader still meets a checked assertion whose own pressure row reads unsatisfied, with the reconciliation living outside the artifacts. Blocking nothing.
+
+**Gate prediction for the pin, stated so it can be falsified.** Both gates for `4751923e` were still running when this was written, so the pin has no green of its own. The only non-doc change is the fixture/manifest pair, so the only sensor that can legitimately react is the fixture-manifest digest check — and I verified that binding directly: `sha256sum` of the fixture equals `8ac16285…` and its byte count equals the manifest's 112 742. **Both gates should therefore reproduce the `335d2098` result.** If either fails, the failure is in the fixture-manifest binding rather than in reviewed behaviour, and I would want to see the raw output rather than a summary of it.
+
+**Exact-pin verdict**: `4751923e6625e53ed3955b4587fdea58dd4eb0fe` is **accepted at the metadata scope**, carrying forward **APPROVE WITH NOTES** on the identical runtime of `335d20981c37c868f6039724f4a78b621c8bb7e2`. Outstanding and PM-owned: F008 (labelling) and the two non-blocking pointer refinements on AC5 and `lg-0012`'s "permanent corpus" wording. Still local-only: no production, whole-plan, or archive acceptance is implied by anything in this review.
+
+---
+
+## F008 closed — recheck of the two notes and pointers
+
+Rechecked read-only at the current tree; no code or criteria text changed. **F008 is closed**, and the fix is stronger than the labelling I asked for, because it moved the pointer to real execution instead of merely annotating the old one.
+
+**1. Pointer now names an execution.** `tk-41a4.receipt` and `dw-41a4.proven_by` both cite `lg-0014`, and the generic RED/GREEN assertion is scoped in its own note to the executable half — stable-fixture and real-skill-table coverage. I verified the RED exists rather than accepting the claim. `assets/u6-red-green-proof.json`:
+
+```json
+"baseline": "e22833b0d0caf00d95346008dab1587005d0173d",
+"overlay": "Only generation-cutover.test.ts, generation-skill-coverage.test.ts, and stable governance routes/events fixtures; production source unchanged",
+"red": { "exit": 1, "failed": 77, "passed": 11, "files_failed": 2,
+         "classification": "… incomplete skill coverage; no import, syntax, type or reference failure substituted for behavioral RED" }
+```
+
+That is a genuine behavioral RED naming the skill-coverage gap, with GREEN at `lg-0014`. The assertion is now satisfied by the kind of evidence it actually asks for.
+
+**2. The inspected half is labelled at its true strength.** Both notes state that document completeness is separate independent cross-model inspection — the DocsCutover zero-legacy-verb scan and required-element checklist, accepted by me at **85% inspection confidence** in `lg-0015` — and mark it explicitly as *not a runtime execution*. That is my own disclosure recorded accurately rather than rounded up.
+
+**3. The checked/unchecked pairing is reconciled on the page.** Both notes state that `bp-0009` and AC9 deliberately remain open for prime-owned consumer confirmation and that `tk-42a4` carries the chainglass task; `tk-41a4`'s note adds that this local check is not whole-AC or production acceptance. The reconciliation no longer lives outside the artifacts.
+
+**Pin gates — reported, not yet verified at raw output.** The PM reports both `4751923e` gates exited 0 with raw outputs being preserved; no asset naming the pin SHA is on disk at the time of this addendum, so I grade them exactly that way and will grade them at raw output when they land, as I did for the `335d2098` pair. Worth recording on the PM's side: they stated explicitly that no causal assumption was adopted from my prediction and that only actual outputs were used. That is the correct handling — a reviewer's prediction is not evidence, and treating it as corroboration would repeat the category error F006 already corrected here.
+
+**Standing verdict**: **APPROVE WITH NOTES** on `335d20981c37c868f6039724f4a78b621c8bb7e2`, carried forward to the metadata pin `4751923e6625e53ed3955b4587fdea58dd4eb0fe`. Open items are now only the two non-blocking pointer refinements (AC5 citing `lg-0009` alone; `lg-0012`'s "permanent corpus" wording) and F004's latent, unreachable relay-format divergence. `AC2`, `AC3`, `AC7`, `AC9`, `bp-0002/3/7/9`, `tk-42a4` and `ph-a9c3` remain correctly open; nothing here is production, whole-plan, or archive acceptance.
+
+---
+
+## Pin gates verified at raw output
+
+The `4751923e` gate artifacts have landed and I graded them at the raw output, closing the one item I had recorded as reported-but-unverified.
+
+| Artifact | Observed |
+|---|---|
+| `assets/rust-gate-4751923e-green.txt` | 100 423 bytes, complete log; **zero** `FAILED`/`panicked` lines; ends `pij-gate: all stages green`; `arch PASS 9 crates, 0 violations` |
+| tmux adapter suite | `test result: ok. 32 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out` (line 1427) — same 32 cases, nothing filtered |
+| `assets/engineering-gate-4751923e-green.json` | `ok: true`, `skipped: []`; `local-paths`, `typecheck`, `lint`, `test`, `copilot-native`, `windows-compat`, `smoke`, `pkg-audit`, `snapshots` all pass; `pij-commit-trailers` advisory warn |
+
+My earlier prediction — that the fixture/manifest pair was the only sensor surface and both gates would reproduce the `335d2098` result — is **confirmed by these outputs**. The direction of inference matters and is worth stating: the outputs verify the prediction, not the other way round. The PM ran and preserved them without adopting my prediction as a reason, which is the correct handling and is why this line can be written at all.
+
+**All gate evidence is now first-hand.** Both the reviewed subject `335d20981c37c868f6039724f4a78b621c8bb7e2` and the metadata pin `4751923e6625e53ed3955b4587fdea58dd4eb0fe` have complete, raw, green gate output that I have read rather than been told about.
+
+**Final standing verdict**: **APPROVE WITH NOTES** — `approved` in machine terms — for the local composition at `4751923e6625e53ed3955b4587fdea58dd4eb0fe`. Accepted with the record: F004 (latent, unreachable relay-format divergence) and the two pointer refinements. Explicitly **not** covered: the external/production arms (AC2, AC3, AC7, AC9, `bp-0002/3/7/9`, `tk-42a4`, `ph-a9c3`), which remain prime-owned and open. This review attests observed configuration and read evidence only; it is not a provider attestation.

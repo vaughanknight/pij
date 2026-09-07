@@ -36,7 +36,7 @@ Re-point shim, skills, API doc
 | id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | tk-40a4 | u6 — RS_ROUTE_TABLE serve-or-refuse for every verb + enforcement test over the skill verb table | ts | p4 | [x] checked | — | ../../execution-log.dd.json#entries/lg-0014 | [x] 1/1 [tk-40a4](#tk-40a4) | — | — | — |
-| tk-41a4 | u6 — skills/pij routes cite rs verbs; docs/how/pij-rs-api.md + pinned fixtures | docs | p4 | [x] checked | — | ../../execution-log.dd.json#entries/lg-0015 | [x] 1/1 [tk-41a4](#tk-41a4) | — | — | — |
+| tk-41a4 | u6 — skills/pij routes cite rs verbs; docs/how/pij-rs-api.md + pinned fixtures | docs | p4 | [x] checked | Documentation half only. Executed fixture/real-skill-table coverage has pre-fix behavioral RED at e22833b0 (u6-red-green-proof.json:77 failures, including incomplete skill coverage) and composed GREEN in lg-0014. Route-document completeness is separate independent cross-model inspection: DocsCutover critic zero legacy-verb scan and required-element checklist, accepted by reviewer at85% inspection confidence in lg-0015, not a runtime execution. bp-0009 and AC9 deliberately remain unchecked for prime-owned consumer confirmation; tk-42a4 carries the separate chainglass task. This local check is not whole-AC or production acceptance. | ../../execution-log.dd.json#entries/lg-0014 | [x] 1/1 [tk-41a4](#tk-41a4) | — | — | — |
 | tk-42a4 | u6 — chainglass confirmation (roles, tree, no banner) recorded as evidence | proof | p4 | [-] blocked | Prime-owned chainglass/production confirmation pending; no local test substitutes for this receipt. | ../../execution-log.dd.json#entries/lg-0010 | — | — | — | — |
 
 <a id="done-when"></a>
@@ -51,9 +51,9 @@ Re-point shim, skills, API doc
 
 ### tk-41a4
 
-| id | assertion | state | pressure | proven_by |
-| --- | --- | --- | --- | --- |
-| dw-41a4 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [x] checked | [bp-0009](../../backpressure.dd.md#rows) | [lg-0015](../../execution-log.dd.md#entries) |
+| id | assertion | state | pressure | proven_by | note |
+| --- | --- | --- | --- | --- | --- |
+| dw-41a4 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [x] checked | [bp-0009](../../backpressure.dd.md#rows) | [lg-0014](../../execution-log.dd.md#entries) | The generic RED/GREEN assertion applies to executable stable-fixture and real-skill-table coverage (u6-red-green-proof.json plus lg-0014). Document completeness is separately graded cross-model inspection in lg-0015, not execution. Checked scopes only this documentation task; aggregate bp-0009/AC9 remain open for prime-owned confirmation. |
 
 ### tk-42a4
 

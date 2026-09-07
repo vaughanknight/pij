@@ -219,6 +219,30 @@
             "../plan.dd.json#acceptance_criteria/AC6",
             "../plan.dd.json#acceptance_criteria/AC8"
           ]
+        },
+        {
+          "id": "lg-0017",
+          "at": "2026-09-07T15:32:10Z",
+          "text": "Exact4751923e6625e53ed3955b4587fdea58dd4eb0fe full gates completed exit0: Rust six stages and every required engineering sensor, no skips; historical attribution advisories remain explicit. Native raw log preserved completely:100423bytes/1544lines, two log slices rejoined by unique455-line exact overlap, totalbytes equal supervised cursor. Outputs: rust-gate-4751923e-green.txt, engineering-gate-4751923e-green.json; binding: final-gates-4751923e-proof.json. Opus exact-pin metadata addendum accepted unchanged runtime and F002/F003/F006 repairs; F008 doc-task notes now separate executable fixture/skill RED-GREEN (u6-red-green-proof/lg0014) from85%-confidence cross-model doc inspection, and preserve aggregate bp9/AC9/tk42 external limits. No production/whole-plan acceptance.",
+          "links": [
+            "../plan.dd.json#acceptance_criteria/AC1",
+            "../plan.dd.json#acceptance_criteria/AC4",
+            "../plan.dd.json#acceptance_criteria/AC5",
+            "../plan.dd.json#acceptance_criteria/AC6",
+            "../plan.dd.json#acceptance_criteria/AC8"
+          ]
+        },
+        {
+          "id": "lg-0018",
+          "at": "2026-09-07T15:53:33Z",
+          "text": "Independent machine ReviewReceipt finalized by pij-zany-reptile: builder/team single review section, composition4751923e6625e53ed3955b4587fdea58dd4eb0fe, approved LOCAL only, F004 accepted and EXT001 open. Final receipt SHA256 cdd28343c3f6b0e6648d63495869036e76da1d3ae740c5991695e40f7bca5c69; plan/ROOT-guide/report digests all independently verified. Runtime registration root corrected to pij main, distinct from reviewed worktree, using PM public descriptor and reviewer whoami/PWD; no registry mutation/re-adopt. Native ddocs validation after correction succeeded at2026-09-07T15:43:37.874Z, depth0, errors0/warnings0 from canonical-schema source cwd /Users/jordanknight/substrate/harness-engineering. Default plan cwd lookup E401 remains unsupported, and cross-root set/build refuse E433/E429: no copied/symlinked schema, global change, or fake rendered sibling/import. Generic A-H/DD report remains separate. Builder importer/advance retains known hardcoded assets-guide incompatibility under prime legacy-root ruling; no migration. Final amendment replies reached the internal scout rather than Main; explicitly relayed, matching published spine20142/20150 and final file hashes. Handoff assets/prime-handoff.json; all original worktrees/buffers retained; production/chainglass/whole-plan/archive remain prime-owned and blocked.",
+          "links": [
+            "../plan.dd.json#acceptance_criteria/AC1",
+            "../plan.dd.json#acceptance_criteria/AC4",
+            "../plan.dd.json#acceptance_criteria/AC5",
+            "../plan.dd.json#acceptance_criteria/AC6",
+            "../plan.dd.json#acceptance_criteria/AC8"
+          ]
         }
       ]
     }

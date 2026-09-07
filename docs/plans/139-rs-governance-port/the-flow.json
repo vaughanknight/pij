@@ -5,7 +5,7 @@
   "nav": {
     "now": "phase-3",
     "next": null,
-    "intent": "Legacy pij-team layout retained by prime ruling; compose phase3; all review nodes remain pending final pinned cross-model review"
+    "intent": "Local composition4751923e dual-green and independently approved; phase3 production bp0007 and phase4 tk42/AC2/3/7/9 remain prime-owned. Legacy root-guide ruling retained; no gate bypass, production action, or archive."
   },
   "created_at": "2026-09-07T00:09:42.744Z",
   "provenance": {
@@ -688,6 +688,98 @@
           "comments"
         ]
       }
+    },
+    {
+      "id": "UPD-020",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-09-07T15:45:54.595Z",
+      "details": {
+        "node": "review-1",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-017",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-09-07T15:45:54.725Z",
+      "details": {
+        "node": "review-1",
+        "from": "assumed",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-021",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-09-07T15:45:54.859Z",
+      "details": {
+        "node": "review-2",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-018",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-09-07T15:45:54.995Z",
+      "details": {
+        "node": "review-2",
+        "from": "known",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-022",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-09-07T15:45:55.130Z",
+      "details": {
+        "node": "review-3",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-019",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-09-07T15:45:55.263Z",
+      "details": {
+        "node": "review-3",
+        "from": "known",
+        "to": "done"
+      }
+    },
+    {
+      "id": "UPD-023",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-09-07T15:45:55.396Z",
+      "details": {
+        "node": "review-4",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-020",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-09-07T15:45:55.539Z",
+      "details": {
+        "node": "review-4",
+        "from": "known",
+        "to": "done"
+      }
     }
   ],
   "nodes": [
@@ -787,7 +879,7 @@
       "id": "review-1",
       "type": "review",
       "label": "Review: P1",
-      "status": "assumed",
+      "status": "done",
       "command": "/builder 7 review",
       "next": [
         "phase-2"
@@ -806,7 +898,16 @@
         "Close criteria through the CLI: node_modules/.bin/dd set \"<plan dir>/plan.dd.json#acceptance_criteria/ac-XXXX/state\" checked, and re-verify any moved basis with node_modules/.bin/dd link verify-basis <address> --sha <sha> --update <doc>.",
         "If the gate refuses and departing anyway is the HUMAN's decision, they pass --force — it records a defended override. An agent may not force a dd gate on its own judgment."
       ],
-      "modified_at": "2026-09-07T00:10:51.460Z"
+      "modified_at": "2026-09-07T15:45:54.725Z",
+      "comments": [
+        {
+          "at": "2026-09-07T15:45:54.595Z",
+          "text": "verdict:approved-local subject_sha:4751923e6625e53ed3955b4587fdea58dd4eb0fe reviewer:pij-zany-reptile observed:OMP/claude-opus-5/high; report:assets/reviews/review.final-composed.md; machine receipt:assets/reviews/team-review-receipt.dd.json. Exact-pin metadata delta and unchanged runtime reviewed; both full gates green. EXT-001 remains open: no production/chainglass/whole-plan/archive acceptance; this is completion of local review, not a phase-gate override.",
+          "source": "agent",
+          "kind": "validation"
+        }
+      ],
+      "ran_at": "2026-09-07T15:45:54.725Z"
     },
     {
       "id": "post-flight",
@@ -1024,12 +1125,12 @@
       "id": "review-2",
       "type": "review",
       "label": "Review: P2",
-      "status": "known",
+      "status": "done",
       "next": [
         "phase-3"
       ],
       "created_at": "2026-09-07T00:10:51.460Z",
-      "modified_at": "2026-09-07T00:10:51.460Z",
+      "modified_at": "2026-09-07T15:45:54.995Z",
       "instructions": [
         "Review exactly ONE phase's diff against its acceptance criteria — confirm the tests prove behaviour and nothing risky slipped in.",
         "Run /builder 7 review — it inspects the newest assets/reviews/*.md and surfaces a verdict; REQUEST_CHANGES loops back to fix, clean continues to the next phase or post-flight.",
@@ -1044,7 +1145,16 @@
         "address": "docs/plans/139-rs-governance-port/plan.dd.json",
         "check": "plan-validate",
         "gate": false
-      }
+      },
+      "comments": [
+        {
+          "at": "2026-09-07T15:45:54.859Z",
+          "text": "verdict:approved-local subject_sha:4751923e6625e53ed3955b4587fdea58dd4eb0fe reviewer:pij-zany-reptile observed:OMP/claude-opus-5/high; report:assets/reviews/review.final-composed.md; machine receipt:assets/reviews/team-review-receipt.dd.json. Exact-pin metadata delta and unchanged runtime reviewed; both full gates green. EXT-001 remains open: no production/chainglass/whole-plan/archive acceptance; this is completion of local review, not a phase-gate override.",
+          "source": "agent",
+          "kind": "validation"
+        }
+      ],
+      "ran_at": "2026-09-07T15:45:54.995Z"
     },
     {
       "id": "boot-2",
@@ -1187,12 +1297,12 @@
       "id": "review-3",
       "type": "review",
       "label": "Review: P3",
-      "status": "known",
+      "status": "done",
       "next": [
         "phase-4"
       ],
       "created_at": "2026-09-07T00:10:51.460Z",
-      "modified_at": "2026-09-07T00:10:51.460Z",
+      "modified_at": "2026-09-07T15:45:55.263Z",
       "instructions": [
         "Review exactly ONE phase's diff against its acceptance criteria — confirm the tests prove behaviour and nothing risky slipped in.",
         "Run /builder 7 review — it inspects the newest assets/reviews/*.md and surfaces a verdict; REQUEST_CHANGES loops back to fix, clean continues to the next phase or post-flight.",
@@ -1207,7 +1317,16 @@
         "address": "docs/plans/139-rs-governance-port/plan.dd.json",
         "check": "plan-validate",
         "gate": false
-      }
+      },
+      "comments": [
+        {
+          "at": "2026-09-07T15:45:55.130Z",
+          "text": "verdict:approved-local subject_sha:4751923e6625e53ed3955b4587fdea58dd4eb0fe reviewer:pij-zany-reptile observed:OMP/claude-opus-5/high; report:assets/reviews/review.final-composed.md; machine receipt:assets/reviews/team-review-receipt.dd.json. Exact-pin metadata delta and unchanged runtime reviewed; both full gates green. EXT-001 remains open: no production/chainglass/whole-plan/archive acceptance; this is completion of local review, not a phase-gate override.",
+          "source": "agent",
+          "kind": "validation"
+        }
+      ],
+      "ran_at": "2026-09-07T15:45:55.263Z"
     },
     {
       "id": "boot-3",
@@ -1336,12 +1455,12 @@
       "id": "review-4",
       "type": "review",
       "label": "Review: P4",
-      "status": "known",
+      "status": "done",
       "next": [
         "post-flight"
       ],
       "created_at": "2026-09-07T00:10:51.460Z",
-      "modified_at": "2026-09-07T00:10:51.460Z",
+      "modified_at": "2026-09-07T15:45:55.539Z",
       "instructions": [
         "Review exactly ONE phase's diff against its acceptance criteria — confirm the tests prove behaviour and nothing risky slipped in.",
         "Run /builder 7 review — it inspects the newest assets/reviews/*.md and surfaces a verdict; REQUEST_CHANGES loops back to fix, clean continues to the next phase or post-flight.",
@@ -1355,7 +1474,16 @@
       "dd_link": {
         "address": "docs/plans/139-rs-governance-port/plan.dd.json",
         "check": "plan-validate"
-      }
+      },
+      "comments": [
+        {
+          "at": "2026-09-07T15:45:55.396Z",
+          "text": "verdict:approved-local subject_sha:4751923e6625e53ed3955b4587fdea58dd4eb0fe reviewer:pij-zany-reptile observed:OMP/claude-opus-5/high; report:assets/reviews/review.final-composed.md; machine receipt:assets/reviews/team-review-receipt.dd.json. Exact-pin metadata delta and unchanged runtime reviewed; both full gates green. EXT-001 remains open: no production/chainglass/whole-plan/archive acceptance; this is completion of local review, not a phase-gate override.",
+          "source": "agent",
+          "kind": "validation"
+        }
+      ],
+      "ran_at": "2026-09-07T15:45:55.539Z"
     },
     {
       "id": "boot-4",

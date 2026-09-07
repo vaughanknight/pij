@@ -169,3 +169,21 @@
       status: open
       source: agent-self
       first_seen_at: "2026-09-07T15:14:55.655Z"
+- id: DL-013
+  kind: difficulty
+  description: "Final review produced a valid builder/review narrative DD document, but harness builder review consumes builder/team with a single review section. Schema-valid prose is not a machine ReviewReceipt. Source also hardcodes assets/impl-guide, incompatible with prime-required legacy root guide. Need receipt kind/schema validation in reviewer packets before release; preserve the legacy ruling and report importer incompatibility, never fabricate import success."
+  fp: cd183d3b3bba
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T15:27:17.428Z"
+- id: DL-014
+  kind: difficulty
+  description: "Independent reviewer machine receipt passed structural schema while confusing the review worktree with the registration root. Public pij-rs list and reviewer whoami/PWD established the actual root; receipt corrected without re-adopt or registry writes. Schema conformance proves shape, not field provenance. Reviewer receipt admission should verify each identity field against its actual instrument, not a plausible context value."
+  fp: 090c3e4e9eba
+  system:
+    compound:
+      status: open
+      source: agent-self
+      first_seen_at: "2026-09-07T15:53:33.577Z"

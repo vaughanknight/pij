@@ -1,0 +1,91 @@
+{
+  "at": "2026-09-07T15:31:31Z",
+  "source_sha": "4751923e6625e53ed3955b4587fdea58dd4eb0fe",
+  "cwd": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port",
+  "rust": {
+    "command": "/Users/jordanknight/.cargo/bin/cargo run --locked -p pij-testkit --bin pij-gate",
+    "exit": 0,
+    "stages": [
+      "toolchain",
+      "lock",
+      "fmt",
+      "clippy",
+      "test",
+      "arch"
+    ],
+    "output": "rust-gate-4751923e-green.txt",
+    "output_scope": "Complete stdout/stderr log, reconstructed from first1000 and last1000 lines with unique exact overlap; byte count equals supervised log cursor",
+    "log_bytes": 100423,
+    "sha256": "3f4238f4e33276c8f450871835b3decc68e5303b79265ee0c8d3a1e3b73437fc"
+  },
+  "engineering": {
+    "command": "harness checks --json",
+    "exit": 0,
+    "output": "engineering-gate-4751923e-green.json",
+    "skipped": [],
+    "results": [
+      {
+        "name": "local-paths",
+        "status": "pass",
+        "code": 0,
+        "proves": "operational files contain no user-specific absolute home paths"
+      },
+      {
+        "name": "typecheck",
+        "status": "pass",
+        "code": 0,
+        "proves": "the TypeScript surface compiles"
+      },
+      {
+        "name": "lint",
+        "status": "pass",
+        "code": 0,
+        "proves": "Biome (errors + warnings) is clean"
+      },
+      {
+        "name": "test",
+        "status": "pass",
+        "code": 0,
+        "proves": "the vitest suite passes"
+      },
+      {
+        "name": "copilot-native",
+        "status": "pass",
+        "code": 0,
+        "proves": "native Copilot extension node:test contracts pass"
+      },
+      {
+        "name": "windows-compat",
+        "status": "pass",
+        "code": 0,
+        "proves": "portable typecheck, lint, registry replacement, inbox, fake, and no-tmux CLI checks pass"
+      },
+      {
+        "name": "smoke",
+        "status": "pass",
+        "code": 0,
+        "proves": "the tmux-driven end-to-end driver scenarios pass"
+      },
+      {
+        "name": "pkg-audit",
+        "status": "pass",
+        "code": 0,
+        "proves": "third-party package vetting surfaces no new findings"
+      },
+      {
+        "name": "snapshots",
+        "status": "pass",
+        "code": 0,
+        "proves": "agent-pack snapshots have not drifted"
+      },
+      {
+        "name": "pij-commit-trailers",
+        "status": "warn",
+        "code": 0,
+        "proves": "branch-local harness commits carry derived pij attribution (advisory)",
+        "output": "{\"status\":\"warn\",\"checked\":3,\"findings\":[{\"sha\":\"4c191a88b7539a709bd563b854aef8dc18566af7\",\"missing\":[\"Pij-Prime\"],\"add\":[],\"unresolved\":[\"Pij-Prime: cannot derive commit-time identity; do not substitute the current seat\"]},{\"sha\":\"d1d8eee33b4922d591300bd2892187593b6bdd95\",\"missing\":[\"Pij-Prime\"],\"add\":[],\"unresolved\":[\"Pij-Prime: cannot derive commit-time identity; do not substitute the current seat\"]},{\"sha\":\"cf8b54979db24715965e5e2fd417899dd30c6393\",\"missing\":[\"Pij-Prime\"],\"add\":[],\"unresolved\":[\"Pij-Prime: cannot derive commit-time identity; do not substitute the current seat\"]}],\"unverified\":[\"4c191a88b7539a709bd563b854aef8dc18566af7: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime\",\"d1d8eee33b4922d591300bd2892187593b6bdd95: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime\",\"cf8b54979db24715965e5e2fd417899dd30c6393: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime\"]}\n"
+      }
+    ]
+  },
+  "proof_limit": "Local and isolated acceptance only. Production/chainglass arms remain prime-owned. Historical attribution warnings remain advisory, never repaired by guessing commit-time identity."
+}

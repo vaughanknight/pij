@@ -153,6 +153,51 @@
           "rationale": "Confirmed as a scope-declaration defect and explicitly NOT as a false or unproven claim. I checked each flip against its evidence before deciding: the four newly checked tasks and the five newly checked ACs are ones I had already judged TRUE on local/isolated grounds, the backpressure rows correctly cite the gate execution lg-0014, and every criterion with a prime-owned arm (AC2, AC3, AC7, AC9) plus tk-41a4, tk-42a4 and phase ph-a9c3 remains unchecked or blocked — tk-42a4 still reads `blocked`, exactly as ruled. The finding stands because the announced bound and the delivered delta differed, and a bounded ACK given on the announcement alone would have covered acceptance decisions it did not describe.",
           "note": "No re-work requested; state the full scope when announcing the next delta."
         }
+        ,
+        {
+          "id": "V006b",
+          "finding": "#findings/F006",
+          "resolution": "fixed",
+          "rationale": "Re-checked at the final pin and accepted; each rebind resolves to an entry that actually contains the witness. AC1 -> lg-0009, which records `Two Hello-confirmed streams both observed fresh child adopt seq7 and report seq9; descriptor decoded, wall clock<=1s` — that IS AC1's two-subscriber control, and it is an execution. AC5 -> lg-0009, which records `question28/answer33/done37/verify38/newdone40`, so the done/verify/re-done lifecycle is witnessed. AC6 -> lg-0009 for the same question/answer seqs. AC4 -> lg-0012, which records the supervised parity runner at exit 0 over 66 original-byte comparisons with no normalization, itemised as 18 live native/shim read pairs, 4 live HTTP/shim pairs, 29 controlled mutation pairs, 9 named refusals, 6 error policies and 2 declared capability probes. AC8 -> lg-0014, the full canonical gates that run the enforcement test. My review is no longer cited as proof for any acceptance criterion, which was the whole of the finding.",
+          "note": "Two non-blocking refinements, offered not required. AC5's text also carries the relay-parity and single-constant clauses, which lg-0009 does not witness — those live in the goldens and gates, so AC5 would read more completely citing lg-0009 plus lg-0012/lg-0014. And lg-0012 still calls a9311375… the `permanent corpus`, which the F003 correction superseded with 8ac16285…; that is historically accurate and reconciled by review-traceability-correction.json, but the word `permanent` will read oddly to anyone who diffs the two."
+        },
+        {
+          "id": "V008",
+          "finding": "#findings/F008",
+          "resolution": "confirmed",
+          "rationale": "Confirmed against the artifacts, and paired with a disclosure the PM should weigh before pinning. The disclosure: my AC9 documentation verdict is the weakest-instrument verdict in this review. I personally re-derived the spine, reaper, decisions, anomalies, delivery and shim-guard claims at source; the documentation half I delegated to one read-only cross-model critic (DocsCutover), which ran AC9's own legacy-verb grep and the required-element checklist and returned no material findings, and I accepted that without re-reading every route file line by line. I recorded it at 85%. That is a real instrument and, for a documentation-inspection task, arguably the strongest available one — an independent cross-model read is not nothing. But it is an inspection, not a gate, and it is partly delegated. If tk-41a4 is going to stand on lg-0015, the plan should say in the artifact exactly that, so nobody later reads `checked` as machine-verified. I am not asking for the check to be reversed; I am asking for it to be labelled at the strength it actually has.",
+          "note": "PM-owned. Either add the note or leave dw-41a4 unchecked; both are honest, and I would ACK either."
+        }
+        ,
+        {
+          "id": "V008b",
+          "finding": "#findings/F008",
+          "resolution": "deferred",
+          "rationale": "Re-checked at the exact source/provenance pin 4751923e6625e53ed3955b4587fdea58dd4eb0fe and still OPEN, unchanged in all three respects: `tk-41a4.note` is `null`; `dw-41a4` is `checked` against `pressure: bp-0009` while `bp-0009` remains `unchecked`; and `lg-0015`'s committed text contains no corroborating/judgement/inspection wording (grepped at the pin). The pin did resolve the ambiguity I could not resolve myself, in the plan's favour: `tk-42a4` points its assertion at `bp-0003`, so the chainglass arm is tracked there, and `bp-0009` is being held open specifically for AC9's chainglass half while `dw-41a4` closes only the documentation half. That mapping is coherent and I accept it — the finding survives solely because nothing on the page states it, so a later reader still meets a checked assertion whose own pressure row says unsatisfied, with the reconciliation living outside the artifacts. Deferred rather than confirmed-and-pressed: it is a labelling gap on an otherwise correct record, PM-owned, and it blocks nothing.",
+          "note": "Unchanged fix options: note the instrument and scope on tk-41a4/dw-41a4, or leave dw-41a4 unchecked until bp-0009 closes."
+        },
+        {
+          "id": "V009",
+          "finding": "#findings/F001",
+          "resolution": "fixed",
+          "rationale": "Pin-scope note on gate evidence, recorded against the gate finding it extends. The two gates for 4751923e (p139-rust-4751923e, p139-engineering-4751923e) were still running when this addendum was written, so the pin has no green of its own yet — but the pin is metadata-only over a byte-identical runtime: `git diff --name-only 335d2098 4751923e -- . ':(exclude)docs/**'` returns exactly `crates/testkit/fixtures/golden/api/governance-client-parity.json` and `crates/testkit/fixtures/MANIFEST.toml`. The only sensor that can legitimately react to that pair is the fixture/manifest digest check, and I verified that digest directly: `sha256sum` of the fixture equals the new `8ac16285…` and its 112 742 bytes equal the manifest's recorded size. So the prediction is explicit and falsifiable — both gates should reproduce the 335d2098 result. If either fails, the failure is in the fixture-manifest binding, not in reviewed behaviour, and I want to see it rather than have it explained.",
+          "note": "Stated as a prediction on purpose: it is checkable, and being wrong about it would be informative."
+        }
+        ,
+        {
+          "id": "V008c",
+          "finding": "#findings/F008",
+          "resolution": "fixed",
+          "rationale": "CLOSED. All three limbs of the finding are addressed on the page, and the fix is stronger than the labelling I asked for, because it moved the pointer to real execution instead of only annotating the old one. (1) `dw-41a4.proven_by` and `tk-41a4.receipt` now cite `lg-0014`, an executed gate, and the generic RED/GREEN assertion is scoped in its own note to the executable half — stable-fixture and real-skill-table coverage. I verified that RED exists rather than accepting the claim: assets/u6-red-green-proof.json records baseline e22833b0 with `exit: 1`, `failed: 77`, `passed: 11`, overlay limited to generation-cutover.test.ts, generation-skill-coverage.test.ts and the stable fixtures with production source unchanged, and a classification naming `incomplete skill coverage` among the assertion failures, with the explicit statement that no import, syntax, type or reference failure was substituted for behavioral RED. GREEN is lg-0014. So the assertion is now satisfied by the kind of evidence it actually asks for. (2) Both notes state that document completeness is separate independent cross-model inspection — the DocsCutover zero-legacy-verb scan and required-element checklist, accepted by me at 85% inspection confidence in lg-0015 — and label it explicitly as not a runtime execution. That is my own disclosure recorded accurately, at the strength I gave it, which is what I asked for. (3) Both notes state that bp-0009 and AC9 deliberately remain open for prime-owned consumer confirmation and that tk-42a4 carries the chainglass task, so the checked-assertion/unchecked-row pairing is now reconciled on the page instead of in a message. tk-41a4's note also states this local check is not whole-AC or production acceptance.",
+          "note": "No further action. The record now survives without me: a later reader can resolve every pointer and see exactly which half was executed and which was inspected."
+        },
+        {
+          "id": "V009b",
+          "finding": "#findings/F001",
+          "resolution": "deferred",
+          "rationale": "Status of the pin's own gates, recorded honestly rather than closed. The PM reports both 4751923e gates exited 0, with raw outputs being preserved; those artifacts are not yet on disk (no assets file names the pin SHA at the time of this addendum), so I grade them REPORTED, NOT YET VERIFIED AT RAW OUTPUT. That is the same standard I applied to the 335d pair, which I did verify line by line, and I will grade the pin pair the same way when they land. Recorded separately: the PM stated explicitly that no causal assumption was adopted from my prediction and that only actual outputs were used. That is the correct handling — a reviewer's prediction is not evidence, and treating it as corroboration would have been the same category error as citing a review as proof, which is the error F006 already corrected in this plan.",
+          "note": "Not blocking; the reviewed subject's own gates were verified at 335d2098 and the runtime is byte-identical at the pin."
+        }
       ]
     }
   ]
