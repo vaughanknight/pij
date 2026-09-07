@@ -336,18 +336,22 @@ neither current nor old prime. See [pij prime](./pij-prime.md#registry-designati
   `{"from":"…","results":[…]}` with independent message ids, receipt/liveness
   metadata, or per-target errors. A later target is still attempted after a
   delivery-port failure.
-- **Pi/OMP draft protection.** Extension-stream messages reach the model while a
-  human is typing, without clearing or submitting the draft. Arrival still produces
-  a toast and busy recipients retain `📨 N pending`; there is no typing-held status.
+- **Pi/OMP draft protection and pending count.** Extension-stream messages reach
+  the model without clearing or submitting a human draft. Arrival produces a toast.
+  `📨 N pending` counts only injected envelopes whose matching native `message_start`
+  has not occurred, not all arrivals during a busy stretch or the daemon backlog.
+  Consumption clears each entry even while the model continues working.
   Semantic `Hold` still applies, and send-keys-only delivery keeps its typing gate.
-  OMP uses the public `sendMessage` API (`customType: "pij"`, `display: true`,
-  `triggerTurn: true`, `deliverAs: "steer"`) instead of `sendUserMessage`, whose
-  incoming-user UI event clears the composer. The `[pij-rs from <id>] … [/pij]`
-  envelope is unchanged, but OMP supplies it to the model as **developer** context
-  rather than a user message. Pi retains its existing **user**-message API and role.
-  This is an explicit semantic choice, not an editor snapshot/restore workaround.
-  Custom messages keep default agent attribution: user attribution would make
-  Escape/dequeue prepend their envelope to the human's editor draft.
+  Both runtimes submit peer envelopes through public `sendMessage`
+  (`customType: "pij"`, `display: true`, `triggerTurn: true`, `deliverAs: "steer"`)
+  with a durable message ID in metadata. The `[pij-rs from <id>] … [/pij]` text is
+  unchanged; OMP supplies custom envelopes as developer context. Boot announcements
+  retain their prior submission behavior. Default agent attribution prevents
+  Escape/dequeue from prepending peer envelopes to the human's editor draft.
+  Daemon ACK follows matching native consumption, never merely queue acceptance.
+  If an interrupt discards an unconsumed envelope, the extension retains and
+  re-injects it after the run settles, displaying
+  `📨 re-queued N pij messages after interrupt`. Consumed envelopes are not re-injected.
 - **OMP in-process subagents are not Pij seats.** Native task/reviewer sessions
   share Main's process, environment and tmux pane. Pij excludes their print-mode
   `session_init` contexts before registration or inbox subscription, and refuses

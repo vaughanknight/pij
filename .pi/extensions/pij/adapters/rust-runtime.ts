@@ -4,7 +4,7 @@ import type { Registration, RustSeatDescriptor } from "../core/daemon-wire.js";
 import { memorableIdentitySeed } from "../core/discovery.js";
 import { buildCallerContext } from "../core/generation-routing.js";
 import { memorablePijIdCandidates } from "../core/memorable-id.js";
-import { parseFrame } from "../core/message.js";
+import { frame, parseFrame } from "../core/message.js";
 import type { ModelEntry } from "../core/models/registry.js";
 import type {
 	DeliveryPort,
@@ -49,6 +49,15 @@ interface InboxClaim {
 	readonly message: PijMessage & { readonly messageId: string; readonly urgent?: boolean };
 }
 
+interface PendingConsumption {
+	readonly claim: InboxClaim;
+	readonly seat: string;
+	readonly client: PijDaemonClient;
+	readonly lifecycle: number;
+	consumed: boolean;
+	acknowledging: boolean;
+}
+
 const MAIL_STATUS_TICK_MS = 1_000;
 
 /** How much of an arriving body the announcement shows. */
@@ -84,8 +93,9 @@ export class RustRuntimeSession {
 	private flushChain: Promise<void> = Promise.resolve();
 	private pushedChain: Promise<void> = Promise.resolve();
 	private readonly lastInbound = new Map<string, string>();
-	/** Delivered into a BUSY runtime and therefore not yet on screen. */
-	private readonly unseenIds = new Set<string>();
+	/** Retained until native consumption AND a successful daemon acknowledgement. */
+	private readonly pendingConsumption = new Map<string, PendingConsumption>();
+	private interruptedDelivery = false;
 	private mailTicker: ReturnType<typeof setInterval> | undefined;
 	private lifecycle = 0;
 	/** A pushed or startup-discovered backlog, never composer activity. */
@@ -157,8 +167,9 @@ export class RustRuntimeSession {
 			);
 		}
 		const acceptedId = accepted.id;
-		// A fresh lifecycle must not retain the previous runtime's pending count.
-		this.unseenIds.clear();
+		// A replacement runtime has no claim on its predecessor's volatile queue.
+		this.pendingConsumption.clear();
+		this.interruptedDelivery = false;
 		this.inboxPending = false;
 		this.inboxPollQueued = false;
 		this.startupRecovery = true;
@@ -214,7 +225,10 @@ export class RustRuntimeSession {
 			},
 		);
 		this.mailTicker = setInterval(() => {
-			this.clearSeenIfIdle();
+			this.recoverInterruptedDelivery();
+			for (const pending of this.pendingConsumption.values()) {
+				if (pending.consumed) void this.ackConsumed(pending);
+			}
 			if (!this.inboxPending || this.inboxPollQueued) return;
 			this.inboxPollQueued = true;
 			const seat = this.self;
@@ -290,6 +304,37 @@ export class RustRuntimeSession {
 		this.session.onTurnEnd();
 	}
 
+	/** message_start is correlated per envelope; neither turn_start nor idle proves consumption. */
+	async onMessageStart(message: {
+		role: string;
+		customType?: string;
+		details?: unknown;
+	}): Promise<void> {
+		if (message.role !== "custom" || message.customType !== "pij") return;
+		const details = message.details;
+		if (!details || typeof details !== "object" || !("pijMessageId" in details)) return;
+		if (typeof details.pijMessageId !== "string") return;
+		const pending = this.pendingConsumption.get(details.pijMessageId);
+		if (!pending || pending.lifecycle !== this.lifecycle || pending.seat !== this.self) return;
+		if (!pending.consumed) {
+			pending.consumed = true;
+			this.lastInbound.set(pending.claim.message.from, pending.claim.message.messageId);
+		}
+		this.showMailStatus();
+		await this.ackConsumed(pending);
+	}
+
+	/** A terminal run cannot leave a steered message behind; Escape discarded it. */
+	onAgentEnd(willContinue = false): void {
+		if (willContinue) return;
+		for (const pending of this.pendingConsumption.values()) {
+			if (!pending.consumed) {
+				this.interruptedDelivery = true;
+				return;
+			}
+		}
+	}
+
 	shutdown(reason: SessionShutdownReason): void {
 		++this.lifecycle;
 		clearInterval(this.mailTicker);
@@ -298,6 +343,8 @@ export class RustRuntimeSession {
 		this.inboxPollQueued = false;
 		this.startupRecovery = false;
 		this.releasedStartupHead = undefined;
+		this.interruptedDelivery = false;
+		this.pendingConsumption.clear();
 		this.pi.setStatus(undefined);
 		this.stopEvents?.();
 		this.stopEvents = undefined;
@@ -431,7 +478,7 @@ export class RustRuntimeSession {
 	): Promise<void> {
 		if (this.self !== seat || this.lifecycle !== lifecycle) return;
 		// Announce before a busy runtime queues the message at its next boundary.
-		this.announceArrival(claim);
+		if (!this.pendingConsumption.has(claim.message.messageId)) this.announceArrival(claim);
 		await this.injectAndAck(claim, seat, client, lifecycle);
 	}
 
@@ -454,23 +501,30 @@ export class RustRuntimeSession {
 			await this.ackClaim(claim, seat, client, outcome);
 			return;
 		}
-		this.lastInbound.set(claim.message.from, claim.message.messageId);
-		const busy = this.pi.isIdle?.() === false;
-		this.session.onInbound(claim.message, claim.message.messageId);
-		// A steered message was delivered and remains unseen; an immediate one is
-		// already on screen and is never counted.
-		if (busy) this.unseenIds.add(claim.message.messageId);
-		this.showMailStatus();
-		if (this.self !== seat || this.lifecycle !== lifecycle) {
-			this.session.capture("daemon_event_claim_stale", {
-				currentSeat: this.self,
-				messageId: claim.message.messageId,
-				seat,
-				stage: "before-ack",
-			});
+		const id = claim.message.messageId;
+		const existing = this.pendingConsumption.get(id);
+		if (existing) {
+			// A lease can expire while a tool runs. Reclaiming is not permission to inject twice.
+			if (existing.consumed) await this.ackConsumed(existing);
 			return;
 		}
-		await this.ackClaim(claim, seat, client);
+		const pending: PendingConsumption = {
+			claim,
+			seat,
+			client,
+			lifecycle,
+			consumed: false,
+			acknowledging: false,
+		};
+		this.pendingConsumption.set(id, pending);
+		this.showMailStatus();
+		try {
+			this.session.onInbound(claim.message, id, true);
+		} catch (error) {
+			this.pendingConsumption.delete(id);
+			this.showMailStatus();
+			throw error;
+		}
 		if (this.self === seat) await this.flush();
 	}
 
@@ -500,15 +554,17 @@ export class RustRuntimeSession {
 		seat: string,
 		client: PijDaemonClient,
 		outcome?: ControlOutcome,
-	): Promise<void> {
+	): Promise<boolean> {
 		try {
 			await client.ackInbox(seat, claim.jobId, outcome);
+			return true;
 		} catch (error) {
 			this.session.capture("daemon_event_ack_error", {
 				jobId: claim.jobId,
 				messageId: claim.message.messageId,
 				message: error instanceof Error ? error.message : String(error),
 			});
+			return false;
 		}
 	}
 
@@ -519,18 +575,48 @@ export class RustRuntimeSession {
 		this.pi.notify?.(`📨 pij from ${claim.message.from}: ${shown}`, "info");
 	}
 
-	/** Messages steered into a busy runtime remain counted until it becomes idle. */
 	private showMailStatus(): void {
-		this.pi.setStatus(this.unseenIds.size > 0 ? `📨 ${this.unseenIds.size} pending` : undefined);
+		let count = 0;
+		for (const pending of this.pendingConsumption.values()) if (!pending.consumed) count++;
+		this.pi.setStatus(count > 0 ? `📨 ${count} pending` : undefined);
 	}
 
-	/** Cleared the moment the runtime is idle again: idle means the step boundary
-	 * passed, which is exactly when a steered message becomes visible. */
-	private clearSeenIfIdle(): void {
-		if (this.unseenIds.size === 0) return;
-		if (this.pi.isIdle?.() === false) return;
-		this.unseenIds.clear();
-		this.showMailStatus();
+	private async ackConsumed(pending: PendingConsumption): Promise<void> {
+		if (pending.acknowledging || this.self !== pending.seat || this.lifecycle !== pending.lifecycle)
+			return;
+		pending.acknowledging = true;
+		let acked = await this.ackClaim(pending.claim, pending.seat, pending.client);
+		if (!acked && this.self === pending.seat && this.lifecycle === pending.lifecycle) {
+			try {
+				const response = await pending.client.peekInbox(pending.seat);
+				const oldest = pushedInboxClaim(response, pending.seat);
+				// Peek includes pending AND running rows in job order. A later head or
+				// empty inbox proves this consumed job is terminal, even if its ACK response was lost.
+				acked =
+					(Array.isArray(response) && response.length === 0) ||
+					(oldest !== undefined && oldest.jobId > pending.claim.jobId);
+			} catch {
+				// The ACK error is already recorded; retain consumption proof until reconciliation succeeds.
+			}
+		}
+		pending.acknowledging = false;
+		if (this.self !== pending.seat || this.lifecycle !== pending.lifecycle) return;
+		this.inboxPending = true; // An expired claim may need reclaiming before ACK can succeed.
+		if (!acked) return;
+		this.pendingConsumption.delete(pending.claim.message.messageId);
+	}
+
+	private recoverInterruptedDelivery(): void {
+		if (!this.interruptedDelivery || !this.pi.isIdle()) return;
+		this.interruptedDelivery = false;
+		let count = 0;
+		for (const pending of this.pendingConsumption.values()) {
+			if (pending.consumed) continue;
+			const message = pending.claim.message;
+			this.pi.inject(frame(message.from, message.body), "immediate", message.messageId);
+			count++;
+		}
+		if (count > 0) this.pi.notify(`📨 re-queued ${count} pij messages after interrupt`, "info");
 	}
 
 	private chooseIdentity(
@@ -719,8 +805,8 @@ class MutablePiRuntime implements PiRuntimePort {
 		return this.need().isIdle();
 	}
 
-	inject(text: string, mode: "immediate" | "steer"): void {
-		this.need().inject(text, mode);
+	inject(text: string, mode: "immediate" | "steer", messageId?: string): void {
+		this.need().inject(text, mode, messageId);
 	}
 
 	compact(): void | Promise<void> {

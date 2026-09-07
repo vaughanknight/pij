@@ -56,18 +56,31 @@ parent, operator state, and queued messages are retained.
 
 ## Receipt grades and failures
 
-A daemon `reader-read` receipt means the native harness accepted a message. It is
-**not** model completion. Public native events carry distinct event `id` and
-`data.messageId`; assistant/idle evidence is recorded separately. Normal accepted
-duplicates are suppressed. A crash across native acceptance and durable recording
-can remain ambiguous; do not describe this as universal exactly-once delivery.
+A daemon `reader-read` receipt means the native harness **consumed** the matching
+message, proven by `user.message.data.messageId`; enqueue acceptance alone is not
+acknowledged. This is **not** model completion. Public native events carry distinct
+event `id` and `data.messageId`. Accepted duplicates recover consumption evidence
+from native history without re-injection. A crash across native acceptance and
+durable recording can remain ambiguous; this is not universal exactly-once delivery.
 
-The native receiver waits for a correlated `session.idle` or `session.error`
-before claiming its next message. Consecutive foreground interactions can share
-one eventual idle callback: a new user event linked directly to an observed
-foreground `assistant.turn_end` continues that completion chain. The user event
-does not itself release the wait; unrelated interactions and subagent events
-cannot supply completion. An idle-looking pane alone is not completion evidence.
+The receiver serializes inbox messages until an owned native terminal event:
+correlated `session.idle` / `session.error`, or a final foreground
+`assistant.message` with no tool requests followed directly by `assistant.turn_end`.
+Unrelated interactions, subagent events, global abort, and an idle-looking pane
+cannot supply consumption or completion. Supported `session.getEvents()` history
+reads recover missing callbacks, backing off from 250ms to 5s only while proof is
+outstanding. Missing or unreadable history holds receiving without an unproven ACK.
+
+If an interrupt removes an accepted envelope before consumption, recovery waits
+for a fresh post-enqueue turn/idle boundary. It requires all three facts: fresh
+history lacks the message, the supported native queue/steering snapshot no longer
+contains it, and no potentially consuming turn is processing. A queued item awaiting
+a later run is a **no-duplicate brake**, never a reason to resend. Recovery retains
+the same unacknowledged daemon claim, durably reserves an exclusive retry intent
+keyed by the old native ID, then re-injects once and waits for new consumption.
+The timeline reports `📨 re-queued 1 pij messages after interrupt`. Unsupported
+or ambiguous recovery proof holds safely rather than guessing or fabricating a
+human-typing hold. A crash during native submission can still leave an ambiguous intent.
 
 The extension claims with native-session/host-incarnation evidence and checks the
 daemon's echoed proof before injecting. Missing support cannot silently downgrade

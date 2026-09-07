@@ -385,13 +385,49 @@ export class FileJournal {
 		await syncDirectory(this.directory);
 		return true;
 	}
+	async rearm(message, nativeId) {
+		const record = await this.load(message.msg_id);
+		if (
+			record?.state !== "accepted" ||
+			record.nativeId !== nativeId ||
+			!sameMessage(record.message, message)
+		)
+			return false;
+		// A lease can expire while the old consumer is still alive. Only one may retire this acceptance.
+		let handle;
+		try {
+			handle = await open(`${this.path(message.msg_id)}.${hash(nativeId)}.retry`, "wx", 0o600);
+		} catch (error) {
+			if (error.code === "EEXIST") return false;
+			throw error;
+		}
+		try {
+			await handle.writeFile(JSON.stringify({ message, nativeId }));
+			await handle.sync();
+		} finally {
+			await handle.close();
+		}
+		await syncDirectory(this.directory);
+		const current = await this.load(message.msg_id);
+		if (
+			current?.state !== "accepted" ||
+			current.nativeId !== nativeId ||
+			!sameMessage(current.message, message)
+		)
+			return false;
+		await this.#replace({ state: "pending", message });
+		return true;
+	}
 	async accept(message, nativeId) {
 		if (!nonempty(nativeId)) throw new NativeError("Native acceptance did not supply a message ID");
-		const target = this.path(message.msg_id);
+		await this.#replace({ state: "accepted", message, nativeId });
+	}
+	async #replace(record) {
+		const target = this.path(record.message.msg_id);
 		const temporary = `${target}.${randomUUID()}.tmp`;
 		const handle = await open(temporary, "wx", 0o600);
 		try {
-			await handle.writeFile(JSON.stringify({ state: "accepted", message, nativeId }));
+			await handle.writeFile(JSON.stringify(record));
 			await handle.sync();
 		} finally {
 			await handle.close();
@@ -449,7 +485,7 @@ function sameMessage(left, right) {
 	);
 }
 
-/** A live send's completion proof; persisted acceptance alone cannot recreate ephemeral idle. */
+/** Consumption and completion belong to one accepted native message, including after restart. */
 class NativeCompletion {
 	constructor(msgId, recoveredNativeId) {
 		this.msgId = msgId;
@@ -457,45 +493,72 @@ class NativeCompletion {
 		this.live = recoveredNativeId === undefined;
 		this.pending = [];
 		this.descendants = new Set();
-		this.foregroundTurnEnds = new Set();
+		this.finalMessages = new Set();
+		this.consumed = new Promise((resolve) => {
+			this.resolveConsumed = resolve;
+		});
 		this.done = new Promise((resolve) => {
 			this.resolve = resolve;
 		});
 	}
+	trackBoundaries(events) {
+		this.boundaries = new Set(
+			events
+				.filter(
+					(event) =>
+						!event.agentId &&
+						nonempty(event.id) &&
+						["assistant.turn_end", "session.idle"].includes(event.type),
+				)
+				.map((event) => event.id),
+		);
+	}
 	bind(nativeId) {
 		this.nativeId = nativeId;
-		for (const event of this.pending) this.observe(event);
+		for (const { event, finalMessage } of this.pending) this.observe(event, finalMessage);
 		this.pending = undefined;
 	}
-	observe(event) {
-		if (!this.live || this.terminal) return;
+	observe(
+		event,
+		finalMessage = event.type === "assistant.message" &&
+			(event.data?.toolRequests === undefined ||
+				(Array.isArray(event.data.toolRequests) && event.data.toolRequests.length === 0)),
+	) {
+		if (this.terminal) return;
+		if (
+			this.boundaries &&
+			!this.consumption &&
+			!event.agentId &&
+			nonempty(event.id) &&
+			["assistant.turn_end", "session.idle"].includes(event.type) &&
+			!this.boundaries.has(event.id)
+		) {
+			this.boundaries.add(event.id);
+			this.boundary = event.id;
+		}
 		if (!this.nativeId) {
-			// Keep correlation metadata only, never buffered prompts or streamed model text.
+			// Keep correlation metadata only, never buffered prompts, tool arguments or model text.
 			this.pending.push({
-				type: event.type,
-				id: event.id,
-				parentId: event.parentId,
-				agentId: event.agentId,
-				data: { messageId: event.data?.messageId, interactionId: event.data?.interactionId },
+				event: {
+					type: event.type,
+					id: event.id,
+					parentId: event.parentId,
+					agentId: event.agentId,
+					data: { messageId: event.data?.messageId, interactionId: event.data?.interactionId },
+				},
+				finalMessage,
 			});
 			return;
 		}
-		if (!nonempty(event.id)) return;
+		if (!nonempty(event.id) || this.descendants.has(event.id)) return;
 		if (event.type === "user.message") {
 			if (!event.agentId && event.data?.messageId === this.nativeId) {
 				this.descendants.add(event.id);
 				if (nonempty(event.data.interactionId)) this.interactionId ??= event.data.interactionId;
-			} else if (
-				!event.agentId &&
-				this.foregroundTurnEnds.has(event.parentId) &&
-				nonempty(event.data?.messageId) &&
-				nonempty(event.data?.interactionId)
-			) {
-				// Enqueued foreground turns may run consecutively with no idle between.
-				// Follow only a user linked to an observed owned turn end, never a global idle.
-				this.descendants.add(event.id);
-				this.interactionId = event.data.interactionId;
-				this.foregroundTurnEnds.clear();
+				if (!this.consumption) {
+					this.consumption = { eventId: event.id };
+					this.resolveConsumed(this.consumption);
+				}
 			}
 			return;
 		}
@@ -509,12 +572,15 @@ class NativeCompletion {
 				event.type === "tool.execution_complete");
 		if (!sameInteraction && !this.descendants.has(event.parentId)) return;
 		this.descendants.add(event.id);
-		if (!event.agentId && event.type === "assistant.turn_end")
-			this.foregroundTurnEnds.add(event.id);
-		if (!event.agentId && ["session.idle", "session.error"].includes(event.type)) {
+		if (!event.agentId && finalMessage) this.finalMessages.add(event.id);
+		if (
+			!event.agentId &&
+			(["session.idle", "session.error"].includes(event.type) ||
+				(event.type === "assistant.turn_end" && this.finalMessages.has(event.parentId)))
+		) {
 			this.terminal = { type: event.type, eventId: event.id };
 			this.descendants.clear();
-			this.foregroundTurnEnds.clear();
+			this.finalMessages.clear();
 			this.resolve(this.terminal);
 		}
 	}
@@ -590,6 +656,10 @@ export class NativeBridge {
 		let failureEpisode = false;
 		try {
 			throwIfStopped(signal);
+			if (typeof this.native.getEvents !== "function")
+				throw new NativeError(
+					"Native history API getEvents is unavailable; receiving held without acknowledgement",
+				);
 			this.unsubscribe = this.native.on((event) => {
 				if (signal.aborted) return;
 				const completion = this.completion;
@@ -682,13 +752,10 @@ export class NativeBridge {
 	}
 	async waitForCompletion() {
 		const completion = this.completion;
-		if (!completion.live)
-			throw new NativeError(
-				"Accepted duplicate lacks observed native completion; next claim held for recovery",
-			);
 		if (completion.reported) return;
 		this.emit("completion-wait", { msgId: completion.msgId, nativeMessageId: completion.nativeId });
-		const terminal = await abortable(completion.done, this.controller.signal);
+		await this.waitForObservation(completion, true);
+		const terminal = completion.terminal;
 		throwIfStopped(this.controller.signal);
 		completion.reported = true;
 		this.emit("native-completed", {
@@ -697,6 +764,139 @@ export class NativeBridge {
 			...terminal,
 			grade: "observed-native-terminal-not-model-success",
 		});
+	}
+	async waitForObservation(completion, terminal = false, message) {
+		const signal = this.controller.signal;
+		const observed = terminal ? completion.done : completion.consumed;
+		let retry = INITIAL_RETRY_MS;
+		while (!(terminal ? completion.terminal : completion.consumption)) {
+			throwIfStopped(signal);
+			let events;
+			try {
+				events = await abortable(
+					Promise.race([this.native.getEvents(), observed.then(() => undefined)]),
+					signal,
+				);
+			} catch (error) {
+				if (signal.aborted) throw error;
+				throw new NativeError(
+					"Native history could not be read; accepted delivery held without reinjection or unproven acknowledgement",
+				);
+			}
+			throwIfStopped(signal);
+			if (events === undefined && (terminal ? completion.terminal : completion.consumption)) return;
+			if (!Array.isArray(events))
+				throw new NativeError(
+					"Native history returned malformed events; receiving held for recovery",
+				);
+			for (const event of events) completion.observe(event);
+			if (terminal ? completion.terminal : completion.consumption) return;
+			if (message && completion.boundary && (await this.canRetryDiscarded(completion, message)))
+				return true;
+			await abortable(Promise.race([this.delay(retry, signal), observed]), signal);
+			retry = Math.min(retry * 2, MAX_RETRY_MS);
+		}
+	}
+	async canRetryDiscarded(completion, message) {
+		const signal = this.controller.signal;
+		const queue = this.native.rpc?.queue;
+		const metadata = this.native.rpc?.metadata;
+		if (typeof queue?.pendingItems !== "function" || typeof metadata?.isProcessing !== "function")
+			throw new NativeError(
+				"Native discard recovery requires supported queue and processing APIs; receiving held",
+			);
+		try {
+			const pending = await abortable(queue.pendingItems(), signal);
+			throwIfStopped(signal);
+			if (
+				!Array.isArray(pending?.items) ||
+				!pending.items.every(
+					(item) => nonempty(item?.id) && typeof item.displayText === "string",
+				) ||
+				!Array.isArray(pending.steeringMessages) ||
+				!pending.steeringMessages.every((item) => typeof item === "string") ||
+				(pending.inFlightSteeringCount !== undefined &&
+					(!Number.isSafeInteger(pending.inFlightSteeringCount) ||
+						pending.inFlightSteeringCount < 0))
+			)
+				throw new NativeError(
+					"Native discard recovery received malformed queue snapshot; receiving held",
+				);
+			const prefix = `[pij from ${JSON.stringify(message.from)}; msg_id=${JSON.stringify(message.msg_id)}]\n`;
+			if (
+				pending.items.some(
+					(item) => item.id === completion.nativeId || item.displayText.startsWith(prefix),
+				) ||
+				pending.steeringMessages.some((item) => item.startsWith(prefix)) ||
+				pending.inFlightSteeringCount > 0
+			)
+				return false;
+			const state = await abortable(metadata.isProcessing(), signal);
+			throwIfStopped(signal);
+			if (typeof state?.processing !== "boolean")
+				throw new NativeError(
+					"Native discard recovery received malformed processing snapshot; receiving held",
+				);
+			if (state.processing) return false;
+			// Queue and processing snapshots precede a fresh history read so a just-consumed item wins.
+			const events = await abortable(this.native.getEvents(), signal);
+			throwIfStopped(signal);
+			if (!Array.isArray(events))
+				throw new NativeError("Native discard recovery received malformed history; receiving held");
+			for (const event of events) completion.observe(event);
+			return !completion.consumption;
+		} catch (error) {
+			if (signal.aborted || error instanceof NativeError) throw error;
+			throw new NativeError(
+				"Native discard recovery queue, processing or history snapshot failed; receiving held without reinjection",
+			);
+		}
+	}
+	async newCompletion(msgId) {
+		const completion = new NativeCompletion(msgId);
+		let events;
+		try {
+			events = await abortable(this.native.getEvents(), this.controller.signal);
+		} catch (error) {
+			if (this.controller.signal.aborted) throw error;
+			throw new NativeError(
+				"Native history baseline is unavailable; receiving held without injection",
+			);
+		}
+		throwIfStopped(this.controller.signal);
+		if (!Array.isArray(events))
+			throw new NativeError(
+				"Native discard recovery history baseline is malformed; receiving held",
+			);
+		completion.trackBoundaries(events);
+		return completion;
+	}
+	async enqueue(message, completion) {
+		const signal = this.controller.signal;
+		throwIfStopped(signal);
+		const prompt = `[pij from ${JSON.stringify(message.from)}; msg_id=${JSON.stringify(message.msg_id)}]\n${message.body}`;
+		this.completion = completion;
+		let nativeId;
+		try {
+			nativeId = await abortable(this.native.send({ prompt, mode: "enqueue" }), signal);
+		} catch (error) {
+			if (signal.aborted) throw error;
+			throw new NativeError(
+				"Native send outcome is ambiguous; intent preserved without ack or reinjection",
+			);
+		}
+		throwIfStopped(signal);
+		if (!nonempty(nativeId))
+			throw new NativeError("Native send returned no message ID; acceptance ambiguous");
+		completion.bind(nativeId);
+		await this.journal.accept(message, nativeId);
+		throwIfStopped(signal);
+		this.emit("native-accepted", {
+			msgId: message.msg_id,
+			nativeMessageId: nativeId,
+			grade: "native-accepted-not-model-complete",
+		});
+		return { state: "accepted", message, nativeId };
 	}
 	async #prepareNewSend() {
 		const signal = this.controller.signal;
@@ -729,30 +929,10 @@ export class NativeBridge {
 		if (!record) {
 			if (!(await this.#prepareNewSend())) return;
 			throwIfStopped(signal);
+			const completion = await this.newCompletion(message.msg_id);
+			throwIfStopped(signal);
 			if (await this.journal.begin(message)) {
-				throwIfStopped(signal);
-				const prompt = `[pij from ${JSON.stringify(message.from)}; msg_id=${JSON.stringify(message.msg_id)}]\n${message.body}`;
-				let nativeId;
-				this.completion = new NativeCompletion(message.msg_id);
-				try {
-					nativeId = await abortable(this.native.send({ prompt, mode: "enqueue" }), signal);
-				} catch (error) {
-					if (signal.aborted) throw error;
-					throw new NativeError(
-						"Native send outcome is ambiguous; intent preserved without ack or reinjection",
-					);
-				}
-				throwIfStopped(signal);
-				if (!nonempty(nativeId))
-					throw new NativeError("Native send returned no message ID; acceptance ambiguous");
-				this.completion.bind(nativeId);
-				await this.journal.accept(message, nativeId);
-				record = { state: "accepted", message, nativeId };
-				this.emit("native-accepted", {
-					msgId: message.msg_id,
-					nativeMessageId: nativeId,
-					grade: "native-accepted-not-model-complete",
-				});
+				record = await this.enqueue(message, completion);
 			} else record = await this.journal.load(message.msg_id);
 		}
 		throwIfStopped(signal);
@@ -762,8 +942,40 @@ export class NativeBridge {
 			throw new NativeError(
 				"Previous native send is ambiguous; held without reinjection or acknowledgement",
 			);
-		if (this.completion?.msgId !== message.msg_id || this.completion.nativeId !== record.nativeId)
-			this.completion = new NativeCompletion(message.msg_id, record.nativeId);
+		if (this.completion?.msgId !== message.msg_id || this.completion.nativeId !== record.nativeId) {
+			this.completion = await this.newCompletion(message.msg_id);
+			this.completion.live = false;
+			this.completion.bind(record.nativeId);
+		}
+		while (await this.waitForObservation(this.completion, false, message)) {
+			throwIfStopped(signal);
+			if (!(await this.#prepareNewSend())) {
+				this.completion = undefined;
+				return;
+			}
+			if (this.completion.consumption) break;
+			const completion = await this.newCompletion(message.msg_id);
+			if (!(await this.canRetryDiscarded(this.completion, message))) continue;
+			if (this.completion.consumption) break;
+			if (!(await this.journal.rearm(message, record.nativeId)))
+				throw new NativeError(
+					"Native discard retry intent is already owned or ambiguous; receiving held without reinjection",
+				);
+			throwIfStopped(signal);
+			if (this.completion.consumption) {
+				await this.journal.accept(message, record.nativeId);
+				break;
+			}
+			const discarded = this.completion;
+			record = await this.enqueue(message, completion);
+			this.emit("native-requeued", {
+				msgId: message.msg_id,
+				nativeMessageId: record.nativeId,
+				discardedNativeId: discarded.nativeId,
+				boundaryId: discarded.boundary,
+			});
+		}
+		throwIfStopped(signal);
 		const acknowledged = await this.client.request(
 			"/v1/inbox/ack",
 			{ ...this.tuple(), job_id: claim.job_id },
@@ -776,7 +988,7 @@ export class NativeBridge {
 			jobId: claim.job_id,
 			msgId: message.msg_id,
 			nativeMessageId: record.nativeId,
-			grade: "native-accepted-not-model-complete",
+			grade: "native-consumed-not-model-complete",
 		});
 	}
 	async send(input) {
@@ -843,6 +1055,12 @@ export function createNativeReporter({ log, capture }) {
 	return (event) => {
 		if (event.kind === "registered" || event.kind === "connection-ready") unavailable = false;
 		if (event.kind === "connection-ready") return;
+		if (event.kind === "native-requeued") {
+			capture(event);
+			return Promise.resolve()
+				.then(() => log("📨 re-queued 1 pij messages after interrupt", { level: "info" }))
+				.catch(() => capture({ kind: "native-diagnostic-unavailable", failureKind: event.kind }));
+		}
 		if (
 			["registration-wait", "reconnecting", "receive-held", "extension-unavailable"].includes(
 				event.kind,

@@ -101,7 +101,34 @@ describe("draft-safe extension submission", () => {
 		]);
 	});
 
-	it.each(["immediate", "steer"] as const)("keeps Pi's %s user-message API", (mode) => {
+	it.each([
+		"pi",
+		"omp",
+	] as const)("carries %s peer consumption identity outside the human draft", (runtimeBin) => {
+		const sendMessage = vi.fn();
+		const sendUserMessage = vi.fn();
+		const adapter = new PiRuntimeAdapter(
+			{ sendMessage, sendUserMessage },
+			{ isIdle: () => false, compact: () => {}, ui: { setStatus: () => {}, notify: () => {} } },
+			runtimeBin,
+		);
+		adapter.inject(frame("pij-sender", "same body"), "steer", "durable-message-id");
+		expect(sendMessage).toHaveBeenCalledWith(
+			{
+				customType: "pij",
+				content: frame("pij-sender", "same body"),
+				display: true,
+				details: { pijMessageId: "durable-message-id" },
+			},
+			{ triggerTurn: true, deliverAs: "steer" },
+		);
+		expect(sendUserMessage).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		"immediate",
+		"steer",
+	] as const)("keeps Pi's %s user-message API for boot announcements", (mode) => {
 		const calls: Array<Parameters<ExtensionAPI["sendUserMessage"]>> = [];
 		const adapter = new PiRuntimeAdapter(
 			{
