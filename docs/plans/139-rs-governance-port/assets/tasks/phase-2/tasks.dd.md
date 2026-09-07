@@ -35,9 +35,9 @@ Role + governance records
 
 | id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| tk-20a2 | u2 — --role on register/adopt; `pij-rs role`; seat_roles join; ownership self-or-parent | rust | p2 | [x] checked | Verified native contract. Pressure remains authored not-applicable; actual alternate instrument is canonical Rust gate plus named RED/GREEN and engineering checks. | 0a7a26737d08701bddac6ccc0b6d7b040873e4f9; ../../execution-log.dd.json#entries/lg-0002 | — | — | — | — |
-| tk-21a2 | u3 — project/stream/fence/baton/prime routes + verbs over existing tables | rust | p2 | [x] checked | Verified native contract. Pressure remains authored not-applicable; actual alternate instrument is canonical Rust gate plus named RED/GREEN and engineering checks. | 0a7a26737d08701bddac6ccc0b6d7b040873e4f9; ../../execution-log.dd.json#entries/lg-0002 | — | — | — | — |
-| tk-22a2 | u3 — dispatch (3-state receipt) / ack / canary / attest / task set / node show | rust | p2 | [x] checked | Native u3 behavior verified by baseline absent-route RED and composed GREEN; positive canary protocol uses real SQL/HTTP/queue/publication with scripted host ports. No live-OMP canary is claimed. | 0a7a26737d08701bddac6ccc0b6d7b040873e4f9; ../../execution-log.dd.json#entries/lg-0003 | — | — | — | — |
+| tk-20a2 | u2 — --role on register/adopt; `pij-rs role`; seat_roles join; ownership self-or-parent | rust | p2 | [x] checked | Composed local contract revalidated on335d20981c37c868f6039724f4a78b621c8bb7e2 by both complete gates (lg-0014). Original RED/GREEN and isolated live witnesses remain historical evidence in lg-0002/lg-0003/lg-0009/lg-0010/lg-0012; production/chainglass acceptance is not claimed. | ../../execution-log.dd.json#entries/lg-0014 | — | — | — | — |
+| tk-21a2 | u3 — project/stream/fence/baton/prime routes + verbs over existing tables | rust | p2 | [x] checked | Composed local contract revalidated on335d20981c37c868f6039724f4a78b621c8bb7e2 by both complete gates (lg-0014). Original RED/GREEN and isolated live witnesses remain historical evidence in lg-0002/lg-0003/lg-0009/lg-0010/lg-0012; production/chainglass acceptance is not claimed. | ../../execution-log.dd.json#entries/lg-0014 | — | — | — | — |
+| tk-22a2 | u3 — dispatch (3-state receipt) / ack / canary / attest / task set / node show | rust | p2 | [x] checked | Composed local contract revalidated on335d20981c37c868f6039724f4a78b621c8bb7e2 by both complete gates (lg-0014). Original RED/GREEN and isolated live witnesses remain historical evidence in lg-0002/lg-0003/lg-0009/lg-0010/lg-0012; production/chainglass acceptance is not claimed. | ../../execution-log.dd.json#entries/lg-0014 | — | — | — | — |
 
 <a id="done-when"></a>
 
@@ -47,16 +47,16 @@ Role + governance records
 
 | id | assertion | state | pressure | proven_by |
 | --- | --- | --- | --- | --- |
-| dw-20a2 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [x] checked | not-applicable | [lg-0002](../../execution-log.dd.md#entries) |
+| dw-20a2 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [x] checked | [bp-0003](../../backpressure.dd.md#rows) | [lg-0014](../../execution-log.dd.md#entries) |
 
 ### tk-21a2
 
 | id | assertion | state | pressure | proven_by |
 | --- | --- | --- | --- | --- |
-| dw-21a2 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [x] checked | not-applicable | [lg-0002](../../execution-log.dd.md#entries) |
+| dw-21a2 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [x] checked | [bp-0004](../../backpressure.dd.md#rows) | [lg-0014](../../execution-log.dd.md#entries) |
 
 ### tk-22a2
 
 | id | assertion | state | pressure | proven_by |
 | --- | --- | --- | --- | --- |
-| dw-22a2 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [x] checked | not-applicable | [lg-0003](../../execution-log.dd.md#entries) |
+| dw-22a2 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [x] checked | [bp-0004](../../backpressure.dd.md#rows) | [lg-0014](../../execution-log.dd.md#entries) |

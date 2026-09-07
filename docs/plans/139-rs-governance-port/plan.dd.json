@@ -48,8 +48,10 @@
           "id": "AC1",
           "claim": "one spine writer, live fan-out",
           "text": "chainglass's 4-command control (two /v1/events subscribers, one live-only, one with a since map) both receive a `report now` frame AND an `adopt` seat.put frame written while open; `grep -rn 'INSERT INTO spine_events' crates/store/src` returns only the Spine impl. Cursor never advances past an unemitted row (assert on the control).",
-          "state": "unchecked",
-          "pressure": "assets/backpressure.dd.json#rows/bp-0001"
+          "state": "checked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0001",
+          "proven_by": "assets/execution-log.dd.json#entries/lg-0009",
+          "note": "Corroborating independent judgement: assets/execution-log.dd.json#entries/lg-0015; runtime proof comes from the executed proven_by entry, not the review. Final composed regression gate: lg-0014."
         },
         {
           "id": "AC2",
@@ -69,23 +71,28 @@
           "id": "AC4",
           "claim": "governance records round-trip on rs",
           "text": "On the isolated daemon: `pij-rs project create` → `stream create` → `fence show` → `dispatch <seat> --packet <file>` (three-state receipt: queued/delivered/acked) → recipient `ack` → `canary` → `attest` → `task set` → `node show` renders the tree with every row from the rs spine (seqs cited); the same sequence typed as legacy `pij <verb>` serves from rs (shim) with identical JSON. Also append one caller-attributed literal-kind event with spine append, observe it on both live subscribers, and show it in spine events/render without legacy writes. For every ported governance verb, native and legacy-shim --json output must be byte-identical on equivalent deterministic state, pinned as goldens.",
-          "state": "unchecked",
+          "state": "checked",
           "pressure": "assets/backpressure.dd.json#rows/bp-0004",
-          "note": "Prime receipt refinements: baton request must persist/publish before an automatic keeper notice through existing DeliveryService, with all eight host cases/message counts retained. Notice uses actual strength: Pi/OMP extension-stream queued until ReaderRead, socket/native delivered only on confirmation, unverified only existing Dead/Recycled incarnation evidence, null/no send for missing/dissolved; durable request evidence survives notice failure. AC4 JSON parity uses actual clients against identical deterministic responses for mutations and the same live private daemon for reads, without normalization. Sessions uses its actual HTTP surface; generic register stays native/HTTP-only. Refusal exit policies intentionally remain client-specific."
+          "note": "Prime receipt refinements: baton request must persist/publish before an automatic keeper notice through existing DeliveryService, with all eight host cases/message counts retained. Notice uses actual strength: Pi/OMP extension-stream queued until ReaderRead, socket/native delivered only on confirmation, unverified only existing Dead/Recycled incarnation evidence, null/no send for missing/dissolved; durable request evidence survives notice failure. AC4 JSON parity uses actual clients against identical deterministic responses for mutations and the same live private daemon for reads, without normalization. Sessions uses its actual HTTP surface; generic register stays native/HTTP-only. Refusal exit policies intentionally remain client-specific. Corroborating independent judgement: assets/execution-log.dd.json#entries/lg-0015; runtime proof comes from the executed proven_by entry, not the review. Final composed regression gate: lg-0014. Domain-effects witnesses: lg-0009 native CLI workflow and assets/actual-omp-canary-proof.json; lg-0012 records client-byte parity, not production acceptance.",
+          "proven_by": "assets/execution-log.dd.json#entries/lg-0012"
         },
         {
           "id": "AC5",
           "claim": "anomalies are a spine view; verify closes done",
           "text": "`pij-rs anomalies` (unscoped) lists status-stale (legacy threshold 30 min; parked seats suppressed), unverified-done, open-question, unacked-dispatch, dead-seat rows computed from rs data only; a seat that reports done and a parent that runs `report verify` clears the unverified-done row; each row carries the exact relay line as today. One named crates/core constant owns the anomaly threshold; the separate 10 min per-command stderr nudge remains unchanged. Relay detail text matches legacy byte-for-byte under deterministic inputs.",
-          "state": "unchecked",
-          "pressure": "assets/backpressure.dd.json#rows/bp-0005"
+          "state": "checked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0005",
+          "proven_by": "assets/execution-log.dd.json#entries/lg-0009",
+          "note": "Corroborating independent judgement: assets/execution-log.dd.json#entries/lg-0015; runtime proof comes from the executed proven_by entry, not the review. Final composed regression gate: lg-0014."
         },
         {
           "id": "AC6",
           "claim": "questions are durable pending decisions with answer routing",
           "text": "Seat A `report question \"…\"` ⇒ a decision row (open) visible to A's parent via anomalies and `pij-rs decisions`; the parent `pij-rs answer <decision> \"…\"` ⇒ the answer is delivered to A as a pushed turn AND the row closes; unanswered rows age into status-stale for the parent. Self-answer by the asker records the resolved answerer and closes via decision.answered without a redundant push (answer_msg_id null); answers by a different authorized seat still push from that answerer. Existing /v1/send from==to refusal is unchanged. Prepared answer intent is immutable under ordinary retries. Only the current parent may explicitly supersede a terminal non-delivered intent, minting a new answer id and retaining old id/answerer/text in decision.answer-superseded. In-transit and delivered evidence refuse by name; no withdrawal/cancellation is introduced. Supersede additionally requires queue and spine to share the verified real SQL authority; mixed/fake configurations refuse E-RS-ANSWER-AUTHORITY-SPLIT naming both backends while ordinary answers remain supported.",
-          "state": "unchecked",
-          "pressure": "assets/backpressure.dd.json#rows/bp-0006"
+          "state": "checked",
+          "pressure": "assets/backpressure.dd.json#rows/bp-0006",
+          "proven_by": "assets/execution-log.dd.json#entries/lg-0009",
+          "note": "Corroborating independent judgement: assets/execution-log.dd.json#entries/lg-0015; runtime proof comes from the executed proven_by entry, not the review. Final composed regression gate: lg-0014."
         },
         {
           "id": "AC7",
@@ -98,9 +105,10 @@
           "id": "AC8",
           "claim": "legacy shim: serve or refuse, never silent legacy",
           "text": "For every verb in skills/pij's CLI-verb table, `pij <verb> …` either serves from rs (routed) or exits non-zero with `E-RS-UNPORTED <verb>: …` naming the ledger item; an enforcement test enumerates the table against RS_ROUTE_TABLE so a new verb cannot fall through; `pij anomalies` no longer answers from the legacy spine.",
-          "state": "unchecked",
+          "state": "checked",
           "pressure": "assets/backpressure.dd.json#rows/bp-0008",
-          "note": "Required success exception to unported administration: verified external/paneless pij inbox register is served by Rust (no TMUX/PANE), using established Claude/Copilot/Codex native evidence and the real host incarnation, never the exited CLI wrapper pid. Registration, inbox --wait, send, receive/reply and output-before-ack must round-trip on Rust. chore/watchdog may refuse by name; paneless registration may not."
+          "note": "Required success exception to unported administration: verified external/paneless pij inbox register is served by Rust (no TMUX/PANE), using established Claude/Copilot/Codex native evidence and the real host incarnation, never the exited CLI wrapper pid. Registration, inbox --wait, send, receive/reply and output-before-ack must round-trip on Rust. chore/watchdog may refuse by name; paneless registration may not. Corroborating independent judgement: assets/execution-log.dd.json#entries/lg-0015; runtime proof comes from the executed proven_by entry, not the review. Final composed regression gate: lg-0014.",
+          "proven_by": "assets/execution-log.dd.json#entries/lg-0014"
         },
         {
           "id": "AC9",
@@ -135,7 +143,7 @@
           "id": "ph-e6f8",
           "title": "Anomalies, verify, decisions + lifecycle (u4 ∥ u5)",
           "brief": "u4: anomalies derived from rs spine + rows; `report verify`; decisions (question→answer routing to the asker). u5: `close` (owner-only tombstone) + `reap` over proc{pid,proc_start}+pane with dry-run.",
-          "state": "unchecked",
+          "state": "checked",
           "tasks": "assets/tasks/phase-3/tasks.dd.json#tasks",
           "depends_on": [
             "ph-b2d4"

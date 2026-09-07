@@ -622,6 +622,72 @@
         "from": "phase-1",
         "to": "phase-3"
       }
+    },
+    {
+      "id": "UPD-017",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-09-07T15:20:07.244Z",
+      "details": {
+        "node": "observe-3",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-015",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-09-07T15:20:07.379Z",
+      "details": {
+        "node": "observe-3",
+        "from": "known",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "UPD-018",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-09-07T15:20:07.507Z",
+      "details": {
+        "node": "retro-3",
+        "fields": [
+          "comments"
+        ]
+      }
+    },
+    {
+      "id": "STA-016",
+      "kind": "status-changed",
+      "origin": "engine",
+      "fired_at": "2026-09-07T15:20:07.639Z",
+      "details": {
+        "node": "retro-3",
+        "from": "known",
+        "to": "done",
+        "chore": {
+          "kind": "command",
+          "importance": "recommended"
+        }
+      }
+    },
+    {
+      "id": "UPD-019",
+      "kind": "node-updated",
+      "origin": "engine",
+      "fired_at": "2026-09-07T15:20:07.767Z",
+      "details": {
+        "node": "phase-3",
+        "fields": [
+          "comments"
+        ]
+      }
     }
   ],
   "nodes": [
@@ -1087,7 +1153,7 @@
         "review-3"
       ],
       "created_at": "2026-09-07T00:10:51.460Z",
-      "modified_at": "2026-09-07T05:06:21.932Z",
+      "modified_at": "2026-09-07T15:20:07.767Z",
       "instructions": [
         "Implement exactly ONE phase using the plan's testing approach and domain placement rules — keep the task table and execution.log.md live as you go.",
         "Run /builder 6 implement --plan \"<plan path>\"; log discoveries, tagging any Deferred/Noteworthy a human must see before ship.",
@@ -1106,6 +1172,12 @@
         {
           "at": "2026-09-07T05:06:21.784Z",
           "text": "Composing initial u4/u5 with u1 conditional mutation and u2 retired refusal amendments; explicit terminal-only supersede recovery in progress. Tests and source checkpoint pending. time:2026-09-07T05:06:19Z",
+          "source": "agent",
+          "kind": "validation"
+        },
+        {
+          "at": "2026-09-07T15:20:07.767Z",
+          "text": "Local composed source335d dual-green and independent Opus approval with traceability corrections recorded in lg0014/lg0015. Scoped phase3 schema has zero errors and one open-completable warning: bp0007 includes prime-owned production proof. Preserve this warning and tk42 blocked; no gate bypass or whole-plan completion.",
           "source": "agent",
           "kind": "validation"
         }
@@ -1174,12 +1246,12 @@
       "id": "observe-3",
       "type": "observe",
       "label": "Observe: P3",
-      "status": "known",
+      "status": "done",
       "next": [
         "phase-3"
       ],
       "created_at": "2026-09-07T00:10:51.460Z",
-      "modified_at": "2026-09-07T00:10:51.460Z",
+      "modified_at": "2026-09-07T15:20:07.379Z",
       "branch_of": "phase-3",
       "instructions": [
         "Mid-phase capture: record observations (decisions, gotchas, surprises) AS you code, so they don't evaporate as remembered prose.",
@@ -1193,18 +1265,27 @@
       "chore": {
         "kind": "command",
         "importance": "recommended"
-      }
+      },
+      "comments": [
+        {
+          "at": "2026-09-07T15:20:07.244Z",
+          "text": "captures:multiple pointer:.harness/temp/agent/session-buffer.md#CONF-003; prior DL-011/DL-012 retained; final buffers preserved, never drained time:2026-09-07T15:20:07Z",
+          "source": "agent",
+          "kind": "validation"
+        }
+      ],
+      "ran_at": "2026-09-07T15:20:07.379Z"
     },
     {
       "id": "retro-3",
       "type": "harness-retro",
       "label": "Retro: P3 (drain)",
-      "status": "known",
+      "status": "done",
       "next": [
         "phase-3"
       ],
       "created_at": "2026-09-07T00:10:51.460Z",
-      "modified_at": "2026-09-07T00:10:51.460Z",
+      "modified_at": "2026-09-07T15:20:07.639Z",
       "branch_of": "phase-3",
       "instructions": [
         "Post-coding seam: drain this phase's observe buffer into durable retro notes before moving on.",
@@ -1215,7 +1296,16 @@
       "chore": {
         "kind": "command",
         "importance": "recommended"
-      }
+      },
+      "comments": [
+        {
+          "at": "2026-09-07T15:20:07.507Z",
+          "text": "decision:unavailable reason:no host skill/slash dispatch; same-session executable router detection exited127. No retro envelope or drain fabricated; source buffers preserved under assets/buffers for prime harvest. time:2026-09-07T15:20:07Z",
+          "source": "agent",
+          "kind": "validation"
+        }
+      ],
+      "ran_at": "2026-09-07T15:20:07.639Z"
     },
     {
       "id": "phase-4",

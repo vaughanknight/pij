@@ -1,0 +1,33 @@
+{
+  "at": "2026-09-07T15:21:35Z",
+  "source_subject": "335d20981c37c868f6039724f4a78b621c8bb7e2",
+  "method": "Scoped static consumer-reference scan plus existing executed complete gates; no actual plan archival performed",
+  "scanned": [
+    ".pi/extensions/pij",
+    "harness",
+    "crates",
+    "skills/pij",
+    "docs/how"
+  ],
+  "result": "All plan139 matches are historical provenance or literal fixture plan_path data, not operational file imports/loads; permanent consumers point at crates/testkit/fixtures/golden/api.",
+  "permanent_fixtures": {
+    "governance-routes.json": {
+      "sha256": "80e53d87286c56637fd3ac0693e990c472cdabbe99d00d7fa1bcbd9e92e01269",
+      "bytes": 88761
+    },
+    "governance-events.json": {
+      "sha256": "15b95759b8297a84a9667bd8c3e4bb6e8a3ac163911139188376449319bacb8f",
+      "bytes": 34010
+    },
+    "error-envelopes.json": {
+      "sha256": "6a8de7d3aecc5a634c0786b5e79ba0bfae977fbcb992305fb5b5b2108d1a2102",
+      "bytes": 1056
+    },
+    "governance-client-parity.json": {
+      "sha256": "8ac162852e0da1858029190386f75984cbdfafc0147b113de217b215525af9c7",
+      "bytes": 112742
+    }
+  },
+  "byte_parity": "66 executed comparisons, preserved original stdout unchanged by F003 metadata correction; see parity-final-proof.json and review-traceability-correction.json",
+  "archive": "Not performed: prime production/chainglass receipt remains absent."
+}

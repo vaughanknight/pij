@@ -418,7 +418,7 @@ answer = "Every native ErrorKind emits exactly its complete shared refusal envel
 
 [[fixture]]
 path = "golden/api/governance-client-parity.json"
-sha256 = "a9311375da6623bbbd9aa4e4e1520353cd543b6b069ad857b365af2017a12f51"
-bytes = 112803
+sha256 = "8ac162852e0da1858029190386f75984cbdfafc0147b113de217b215525af9c7"
+bytes = 112742
 note = "EXECUTED actual native binary and TS CLI captures after main integration: 29 shared mutations and 9 refusals against identical scripted HTTP responses, 18 same-daemon CLI pairs, 4 live HTTP/shim pairs, and 6 shared error-policy pairs. Each record declares its method; mutation fixtures are client-boundary proof, not domain execution or production acceptance. Native binary and source snapshot hashes are retained."
 answer = "All 66 shared comparisons preserve original stdout bytes with only the declared final-newline contract and no normalization. Preserve distinct refusal exit policies. Sessions uses its real Rust HTTP baseline; native/HTTP-only register and missing native sessions remain explicit capability probes, never failed comparisons hidden by fallback. Real workflow/fanout/OMP canary receipts separately defend domain effects."

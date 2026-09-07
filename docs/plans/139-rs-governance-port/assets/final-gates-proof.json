@@ -1,0 +1,92 @@
+{
+  "at": "2026-09-07T15:08:51Z",
+  "source_sha": "335d20981c37c868f6039724f4a78b621c8bb7e2",
+  "cwd": "/Users/jordanknight/pi-hacking/fs3-rs-governance-port",
+  "rust": {
+    "command": "cargo run --locked -p pij-testkit --bin pij-gate",
+    "exit": 0,
+    "stages": [
+      "toolchain",
+      "lock",
+      "fmt",
+      "clippy",
+      "test",
+      "arch"
+    ],
+    "architecture": "9 crates,0 violations",
+    "output": "rust-gate-335d-green.txt"
+  },
+  "engineering": {
+    "command": "harness checks --json",
+    "exit": 0,
+    "timestamp": "2026-09-07T14:59:32.894Z",
+    "skipped": [],
+    "results": [
+      {
+        "name": "local-paths",
+        "status": "pass",
+        "code": 0,
+        "proves": "operational files contain no user-specific absolute home paths"
+      },
+      {
+        "name": "typecheck",
+        "status": "pass",
+        "code": 0,
+        "proves": "the TypeScript surface compiles"
+      },
+      {
+        "name": "lint",
+        "status": "pass",
+        "code": 0,
+        "proves": "Biome (errors + warnings) is clean"
+      },
+      {
+        "name": "test",
+        "status": "pass",
+        "code": 0,
+        "proves": "the vitest suite passes"
+      },
+      {
+        "name": "copilot-native",
+        "status": "pass",
+        "code": 0,
+        "proves": "native Copilot extension node:test contracts pass"
+      },
+      {
+        "name": "windows-compat",
+        "status": "pass",
+        "code": 0,
+        "proves": "portable typecheck, lint, registry replacement, inbox, fake, and no-tmux CLI checks pass"
+      },
+      {
+        "name": "smoke",
+        "status": "pass",
+        "code": 0,
+        "proves": "the tmux-driven end-to-end driver scenarios pass"
+      },
+      {
+        "name": "pkg-audit",
+        "status": "pass",
+        "code": 0,
+        "proves": "third-party package vetting surfaces no new findings"
+      },
+      {
+        "name": "snapshots",
+        "status": "pass",
+        "code": 0,
+        "proves": "agent-pack snapshots have not drifted"
+      },
+      {
+        "name": "pij-commit-trailers",
+        "status": "warn",
+        "code": 0,
+        "proves": "branch-local harness commits carry derived pij attribution (advisory)",
+        "output": "{\"status\":\"warn\",\"checked\":3,\"findings\":[{\"sha\":\"4c191a88b7539a709bd563b854aef8dc18566af7\",\"missing\":[\"Pij-Prime\"],\"add\":[],\"unresolved\":[\"Pij-Prime: cannot derive commit-time identity; do not substitute the current seat\"]},{\"sha\":\"d1d8eee33b4922d591300bd2892187593b6bdd95\",\"missing\":[\"Pij-Prime\"],\"add\":[],\"unresolved\":[\"Pij-Prime: cannot derive commit-time identity; do not substitute the current seat\"]},{\"sha\":\"cf8b54979db24715965e5e2fd417899dd30c6393\",\"missing\":[\"Pij-Prime\"],\"add\":[],\"unresolved\":[\"Pij-Prime: cannot derive commit-time identity; do not substitute the current seat\"]}],\"unverified\":[\"4c191a88b7539a709bd563b854aef8dc18566af7: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime\",\"d1d8eee33b4922d591300bd2892187593b6bdd95: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime\",\"cf8b54979db24715965e5e2fd417899dd30c6393: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime\"]}\n"
+      }
+    ],
+    "output": "engineering-gate-335d-green.json"
+  },
+  "advisory": "Historical attribution warnings retained; no commit-time identity fabricated or history rewritten.",
+  "independent_review": "In progress with admitted Opus5/high peer pij-zany-reptile against exact335d subject",
+  "production": "Unclaimed; prime-owned external/chainglass acceptance remains blocked"
+}

@@ -25,16 +25,18 @@
           "title": "u6 — RS_ROUTE_TABLE serve-or-refuse for every verb + enforcement test over the skill verb table",
           "domain": "ts",
           "phase": "p4",
-          "state": "unchecked",
-          "done": "#done_when/tk-40a4"
+          "state": "checked",
+          "done": "#done_when/tk-40a4",
+          "receipt": "../../execution-log.dd.json#entries/lg-0014"
         },
         {
           "id": "tk-41a4",
           "title": "u6 — skills/pij routes cite rs verbs; docs/how/pij-rs-api.md + pinned fixtures",
           "domain": "docs",
           "phase": "p4",
-          "state": "unchecked",
-          "done": "#done_when/tk-41a4"
+          "state": "checked",
+          "done": "#done_when/tk-41a4",
+          "receipt": "../../execution-log.dd.json#entries/lg-0015"
         },
         {
           "id": "tk-42a4",
@@ -54,16 +56,18 @@
           {
             "id": "dw-40a4",
             "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
-            "state": "unchecked",
-            "pressure": "../../backpressure.dd.json#rows/bp-0008"
+            "state": "checked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0008",
+            "proven_by": "../../execution-log.dd.json#entries/lg-0014"
           }
         ],
         "tk-41a4": [
           {
             "id": "dw-41a4",
             "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
-            "state": "unchecked",
-            "pressure": "../../backpressure.dd.json#rows/bp-0009"
+            "state": "checked",
+            "pressure": "../../backpressure.dd.json#rows/bp-0009",
+            "proven_by": "../../execution-log.dd.json#entries/lg-0015"
           }
         ],
         "tk-42a4": [

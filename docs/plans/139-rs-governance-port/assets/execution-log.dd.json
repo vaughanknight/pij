@@ -183,6 +183,42 @@
           "links": [
             "tasks/phase-4/tasks.dd.json#tasks/tk-40a4"
           ]
+        },
+        {
+          "id": "lg-0014",
+          "at": "2026-09-07T15:08:51Z",
+          "text": "Immutable335d20981c37c868f6039724f4a78b621c8bb7e2: canonical Rust gate exit0 all6 stages,9-crate architecture0 violations; complete engineering checks exit0 all required sensors pass, no skips, timestamp2026-09-07T14:59:32.894Z. Historical attribution advisories remain explicit, no identity invented. Exact outputs in final-gates-proof.json, engineering-gate-335d-green.json and rust-gate-335d-green.txt. Prior e6a2 failures retained; private tmux fixture isolation kept original2s bound. Final cross-model review still running; no production/whole-plan acceptance implied.",
+          "links": [
+            "../plan.dd.json#acceptance_criteria/AC1",
+            "../plan.dd.json#acceptance_criteria/AC4",
+            "../plan.dd.json#acceptance_criteria/AC5",
+            "../plan.dd.json#acceptance_criteria/AC6",
+            "../plan.dd.json#acceptance_criteria/AC8"
+          ]
+        },
+        {
+          "id": "lg-0015",
+          "at": "2026-09-07T15:19:38Z",
+          "text": "Independent Opus5/high review by pij-zany-reptile on335d20981c37c868f6039724f4a78b621c8bb7e2: APPROVE WITH NOTES, no HIGH/CRITICAL code defect; A-H and builder/review DD receipt in assets/reviews. Reviewer independently checked raw gate outputs and retained32/32 tmux cases; F001 evidence gap closed. F002 corrected: five early checked tasks/assertions now reference lg0014 and actual pressure rows; original logs retained. F003 corrected without changing any captured stdout/source_snapshot field: removed redundant misleading source_base, retained history.previous_capture_commit78531; original capture corpus a9311375..., corrected corpus8ac162852e0da1858029190386f75984cbdfafc0147b113de217b215525af9c7,112742bytes; full semantic equality except removed metadata key asserted. Manifest/provenance agree. F004 is unreachable multi/empty evidence formatting, no runtime change warranted; F005 refuted by reviewer. Final metadata-only pin/review addendum still pending. AC2/AC3/AC7/AC9 and tk42 production/chainglass remain prime-owned, unchecked/blocked; no archive claim.",
+          "links": [
+            "../plan.dd.json#acceptance_criteria/AC1",
+            "../plan.dd.json#acceptance_criteria/AC4",
+            "../plan.dd.json#acceptance_criteria/AC5",
+            "../plan.dd.json#acceptance_criteria/AC6",
+            "../plan.dd.json#acceptance_criteria/AC8"
+          ]
+        },
+        {
+          "id": "lg-0016",
+          "at": "2026-09-07T15:24:10Z",
+          "text": "Review followup F006: computational AC proven_by now cites executed witnesses, never the review: AC1/AC5/AC6→lg0009 actual private CLI streams/question-answer/done-verify sequence; AC4→lg0012 executed66-pair capture, with separate domain workflow/model-canary evidence in its note; AC8→lg0014 canonical complete gates. lg0015 retained as corroborating judgement only. F007 scope observation accepted: final followup explicitly includes factual progress/AC/task/backpressure updates, unavailable chore receipts and buffer/gate preservation, not merely F002/F003 labels. tk41 documentation half is now review-backed checked; AC2/3/7/9, bp2/3/7/9, ph4 and tk42 remain unaccepted/blocked for prime. Private source buffer copied again including CONF003 without replacing seven prior snapshots or draining originals. Scoped phase3 gate: zero schema errors, one open-completable warning for production bp0007, retained without bypass.",
+          "links": [
+            "../plan.dd.json#acceptance_criteria/AC1",
+            "../plan.dd.json#acceptance_criteria/AC4",
+            "../plan.dd.json#acceptance_criteria/AC5",
+            "../plan.dd.json#acceptance_criteria/AC6",
+            "../plan.dd.json#acceptance_criteria/AC8"
+          ]
         }
       ]
     }

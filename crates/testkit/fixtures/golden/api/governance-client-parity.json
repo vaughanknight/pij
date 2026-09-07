@@ -1,6 +1,5 @@
 {
   "schema": "pij/governance-client-parity/v2",
-  "source_base": "78531a0ba2f22469ab72289ba9ff6c1635e863e7",
   "comparison": "Original UTF-8 stdout, no normalization; final LF only when absent; exit policies remain distinct",
   "scripted_pairs": [
     {

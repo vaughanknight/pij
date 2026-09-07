@@ -33,8 +33,8 @@
           "domain": "rust",
           "phase": "p1",
           "state": "checked",
-          "note": "Verified native contract. Pressure remains authored not-applicable; actual alternate instrument is canonical Rust gate plus named RED/GREEN and engineering checks.",
-          "receipt": "0a7a26737d08701bddac6ccc0b6d7b040873e4f9; ../../execution-log.dd.json#entries/lg-0002"
+          "note": "Composed local contract revalidated on335d20981c37c868f6039724f4a78b621c8bb7e2 by both complete gates (lg-0014). Original RED/GREEN and isolated live witnesses remain historical evidence in lg-0002/lg-0003/lg-0009/lg-0010/lg-0012; production/chainglass acceptance is not claimed.",
+          "receipt": "../../execution-log.dd.json#entries/lg-0014"
         },
         {
           "id": "tk-12a1",
@@ -42,8 +42,8 @@
           "domain": "rust",
           "phase": "p1",
           "state": "checked",
-          "note": "Verified native contract. Pressure remains authored not-applicable; actual alternate instrument is canonical Rust gate plus named RED/GREEN and engineering checks.",
-          "receipt": "0a7a26737d08701bddac6ccc0b6d7b040873e4f9; ../../execution-log.dd.json#entries/lg-0002"
+          "note": "Composed local contract revalidated on335d20981c37c868f6039724f4a78b621c8bb7e2 by both complete gates (lg-0014). Original RED/GREEN and isolated live witnesses remain historical evidence in lg-0002/lg-0003/lg-0009/lg-0010/lg-0012; production/chainglass acceptance is not claimed.",
+          "receipt": "../../execution-log.dd.json#entries/lg-0014"
         }
       ]
     },
@@ -63,8 +63,8 @@
             "id": "dw-11a1",
             "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
             "state": "checked",
-            "pressure": "not-applicable",
-            "proven_by": "../../execution-log.dd.json#entries/lg-0002"
+            "pressure": "../../backpressure.dd.json#rows/bp-0001",
+            "proven_by": "../../execution-log.dd.json#entries/lg-0014"
           }
         ],
         "tk-12a1": [
@@ -72,8 +72,8 @@
             "id": "dw-12a1",
             "assertion": "RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm.",
             "state": "checked",
-            "pressure": "not-applicable",
-            "proven_by": "../../execution-log.dd.json#entries/lg-0002"
+            "pressure": "../../backpressure.dd.json#rows/bp-0001",
+            "proven_by": "../../execution-log.dd.json#entries/lg-0014"
           }
         ]
       }

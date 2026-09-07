@@ -36,8 +36,8 @@ Contract + one spine writer
 | id | title | domain | phase | state | note | receipt | done | success | notes | satisfies |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | tk-10a1 | u0 — freeze governance-routes.json + event payload samples (PM) | contract | p1 | [x] checked | — | assets/contracts/contract-validation.json; baseline-fanout-red.json seq7/8 missing while9/10 delivered | — | — | — | — |
-| tk-11a1 | u1 — EventBus is the only spine writer; ReportService/Registry publish with at + payload | rust | p1 | [x] checked | Verified native contract. Pressure remains authored not-applicable; actual alternate instrument is canonical Rust gate plus named RED/GREEN and engineering checks. | 0a7a26737d08701bddac6ccc0b6d7b040873e4f9; ../../execution-log.dd.json#entries/lg-0002 | — | — | — | — |
-| tk-12a1 | u1 — RED: chainglass positive control fails on main, GREEN after; no-direct-INSERT grep test | rust | p1 | [x] checked | Verified native contract. Pressure remains authored not-applicable; actual alternate instrument is canonical Rust gate plus named RED/GREEN and engineering checks. | 0a7a26737d08701bddac6ccc0b6d7b040873e4f9; ../../execution-log.dd.json#entries/lg-0002 | — | — | — | — |
+| tk-11a1 | u1 — EventBus is the only spine writer; ReportService/Registry publish with at + payload | rust | p1 | [x] checked | Composed local contract revalidated on335d20981c37c868f6039724f4a78b621c8bb7e2 by both complete gates (lg-0014). Original RED/GREEN and isolated live witnesses remain historical evidence in lg-0002/lg-0003/lg-0009/lg-0010/lg-0012; production/chainglass acceptance is not claimed. | ../../execution-log.dd.json#entries/lg-0014 | — | — | — | — |
+| tk-12a1 | u1 — RED: chainglass positive control fails on main, GREEN after; no-direct-INSERT grep test | rust | p1 | [x] checked | Composed local contract revalidated on335d20981c37c868f6039724f4a78b621c8bb7e2 by both complete gates (lg-0014). Original RED/GREEN and isolated live witnesses remain historical evidence in lg-0002/lg-0003/lg-0009/lg-0010/lg-0012; production/chainglass acceptance is not claimed. | ../../execution-log.dd.json#entries/lg-0014 | — | — | — | — |
 
 <a id="done-when"></a>
 
@@ -53,10 +53,10 @@ Contract + one spine writer
 
 | id | assertion | state | pressure | proven_by |
 | --- | --- | --- | --- | --- |
-| dw-11a1 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [x] checked | not-applicable | [lg-0002](../../execution-log.dd.md#entries) |
+| dw-11a1 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [x] checked | [bp-0001](../../backpressure.dd.md#rows) | [lg-0014](../../execution-log.dd.md#entries) |
 
 ### tk-12a1
 
 | id | assertion | state | pressure | proven_by |
 | --- | --- | --- | --- | --- |
-| dw-12a1 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [x] checked | not-applicable | [lg-0002](../../execution-log.dd.md#entries) |
+| dw-12a1 | RED named on the pre-fix tree, GREEN after; receipt = commit + test names + live seqs where the task has a live arm. | [x] checked | [bp-0001](../../backpressure.dd.md#rows) | [lg-0014](../../execution-log.dd.md#entries) |

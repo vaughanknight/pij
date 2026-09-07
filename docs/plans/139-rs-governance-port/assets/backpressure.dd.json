@@ -22,8 +22,9 @@
           "mode": "EXISTS",
           "tier": "computational",
           "proof": "RUN: /Users/jordanknight/.cargo/bin/cargo run --locked -p pij-testkit --bin pij-gate",
-          "state": "unchecked",
-          "probe": "events/governance_http_tests, governance_composition, governance_boot; two subscribers and one SQL insert authority"
+          "state": "checked",
+          "probe": "events/governance_http_tests, governance_composition, governance_boot; two subscribers and one SQL insert authority",
+          "receipt": "execution-log.dd.json#entries/lg-0014"
         },
         {
           "id": "bp-0002",
@@ -52,8 +53,9 @@
           "mode": "EXTEND",
           "tier": "computational",
           "proof": "EXTEND→RUN: merged-main native/shim byte-parity and isolated full CLI sequence; then final pij-gate and harness checks",
-          "state": "unchecked",
-          "probe": "Executed native CLI workflow/model canary/66 byte comparisons plus required native notice13 RED/GREEN and real paneless smoke; final refreshed source gates/review pending"
+          "state": "checked",
+          "probe": "Executed native CLI workflow/model canary/66 byte comparisons plus native notice13 RED/GREEN and real paneless smoke; both complete final gates pass on335d; independent review pending.",
+          "receipt": "execution-log.dd.json#entries/lg-0014"
         },
         {
           "id": "bp-0005",
@@ -62,8 +64,9 @@
           "mode": "EXISTS",
           "tier": "computational",
           "proof": "RUN: core anomalies, anomaly_dispositions and governance_u4_baseline through pij-gate",
-          "state": "unchecked",
-          "probe": "One existing detector, legacy names/relay text,30min boundary, exact done seq and reopened done claim"
+          "state": "checked",
+          "probe": "One existing detector, legacy names/relay text,30min boundary, exact done seq and reopened done claim",
+          "receipt": "execution-log.dd.json#entries/lg-0014"
         },
         {
           "id": "bp-0006",
@@ -72,8 +75,9 @@
           "mode": "EXISTS",
           "tier": "computational",
           "proof": "RUN: http::decisions::tests, store decisions and governance_composition through pij-gate",
-          "state": "unchecked",
-          "probe": "Durable question, current parent, no self push, terminal supersede, queued/delivered veto, backend authority matrix"
+          "state": "checked",
+          "probe": "Durable question, current parent, no self push, terminal supersede, queued/delivered veto, backend authority matrix",
+          "receipt": "execution-log.dd.json#entries/lg-0014"
         },
         {
           "id": "bp-0007",
@@ -92,8 +96,9 @@
           "mode": "EXTEND",
           "tier": "computational",
           "proof": "EXTEND→RUN: enumerate actual skill verb inventory versus served/refused routes after main merge; run harness checks",
-          "state": "unchecked",
-          "probe": "Actual skill inventory enforcement, no-mutation refusal controls, verified paneless registration/wait/send, fixture-specific Git Trace2 isolation; final full gate pending"
+          "state": "checked",
+          "probe": "Actual skill inventory enforcement, no-mutation refusal controls, verified paneless registration/wait/send, fixture-specific Git Trace2 isolation; complete engineering gate passed on335d with no required skips.",
+          "receipt": "execution-log.dd.json#entries/lg-0014"
         },
         {
           "id": "bp-0009",
