@@ -44,6 +44,21 @@ describe("Copilot native control boundary", () => {
 });
 
 describe("route table is data", () => {
+	it.each([
+		"create",
+		"list",
+		"tail",
+		"kill",
+	])("bg %s is daemon-owned and never legacy-unrouted", (leaf) => {
+		expect(findRoute("bg", leaf)).toMatchObject({
+			rsPath: "/v1/bg",
+			method: "POST",
+			humanOutput: "rs-line",
+			jsonOutput: "passthrough",
+		});
+		expect(pre({ verb: "bg", leaf })).toMatchObject({ kind: "try-rs" });
+	});
+
 	it("routes a verb only when the table lists it", () => {
 		expect(findRoute("adopt", undefined)).toBeDefined();
 		// A verb nobody has moved: no row, therefore legacy. This is the default

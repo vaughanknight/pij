@@ -12,6 +12,7 @@
 
 pub mod admission;
 pub mod anomalies;
+pub mod background;
 pub mod config;
 pub mod control;
 pub mod delivery;

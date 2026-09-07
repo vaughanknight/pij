@@ -104,6 +104,7 @@ For an explicit setup step before sending, run `pij inbox register`; subsequent
 | `list` | `pij list [--prime] [--here]` | List known sessions (id, prime marker, state, liveness, folder). `--prime` is current-only: it keeps explicit `prime:true` sessions and composes with `--here`. Self is `★`; current prime is `P`; retired old-prime is `O`. JSON includes `prime:boolean` and `oldPrime:boolean`. |
 | `send` | `pij send <id> "<text>"` · `pij send <id> --body-file <path\|->` · `pij send --to <id> --to <id> "<text>"` · `pij send <id> --command <name>` | Message one peer or fan the same text out to two or more peers in flag order (your id is stamped automatically). **For relayed or untrusted text use `--body-file <path\|->`** — a double-quoted body is expanded by your shell before pij runs. A send with nothing the target can render is refused (`E-EMPTY`), never given a receipt. Broadcast is text-only and reports one independent result per recipient. `--command <compact\|new\|reload>` runs an allow-listed session-control command on one peer (see [Remote session control](#remote-session-control)). `--wait [ms]` blocks until every successful send has a terminal receipt or the global timeout expires. |
 | `tail` | `pij tail <id> [--since N] [--type T] [--lines N] [--follow]` | Read a peer's event stream. `--since N` returns only `seq>N`; `--type` filters by event type; `--follow` streams new events. |
+| `bg` | `pij bg create --title "<what>" --command "<shell>"` · `pij bg list [--all]` · `pij bg tail <job> [--lines N]` · `pij bg kill <job>` | Run a daemon-owned detached command; its completion arrives from `pij-bg`. List includes your finished jobs; `--all` also includes your directly recorded children's jobs. See [Background commands](#background-commands). |
 | `state` | `pij state <id>` | Report the peer's state (`working`/`idle`) + liveness (`active`/`stale`/`dead`) + latest-event age — without parsing the stream. |
 | `report now` | `pij report now "<did>" "<next>" [--state <word>] [--note "<text>"] [--project <slug>]` | Record this registered seat's now/next as one `status` event; with `--state`, write `state-set` then `status` under one platform lock. `--note` is valid only for `question`/`blocked`. |
 | `report question` | `pij report question "<what I need from you>" [--assignment <id>]` | Declare a human-facing question and stamp its bounded text on the same assignment. |
@@ -131,6 +132,41 @@ For an explicit setup step before sending, run `pij inbox register`; subsequent
 | `64` | `E-ARG` (malformed invocation — unknown flag, bad arity, non-numeric `--since`, `text` + `--command` together, …) |
 
 ---
+
+## Background commands
+
+For rs-hosted seats, `pij bg` and `pij-rs bg` use the same daemon handlers and
+return the same complete v2 envelope with `--json` before or after a leaf. Without
+`--json`, both print the daemon's `data.line`; neither reconstructs the receipt.
+
+```bash
+pij bg create --title "harness checks" --command "harness checks"
+pij bg list                       # all your jobs, including finished jobs
+pij bg list --all                 # also your directly recorded children's jobs
+pij bg tail <job> --lines 20       # bounded snapshot, not a follow loop
+pij bg kill <job>                 # stop its process group; still receive a turn
+```
+
+The daemon derives the owner from caller evidence, runs the literal command with
+`/bin/sh` in that seat's recorded folder, and owns its process group and durable
+job state. Combined stdout/stderr goes to `<daemon-state-dir>/bg/<job>.log` with
+mode `0600`; `tail` reads a bounded 64 KiB suffix server-side (40 lines by default,
+`--lines` accepts 1–1000). The completion turn from `pij-bg` carries
+the title, exit verdict, duration, a short tail (last 20 lines, capped at 1200 characters) and a `full log: <path>` pointer,
+not the full output. `pij-bg` is a virtual sender, not a seat or a valid send target.
+
+`list` includes queued, running, done, killed and lost jobs owned by the caller.
+`--all` adds only directly recorded children's jobs, never the global job roster.
+Only the owner or its recorded parent may read a job's tail or kill it.
+
+Restarting the daemon does not transfer ownership or stop surviving jobs. It
+re-adopts each running job only when both pid and process-start identity match,
+then delivers the recorded completion. If neither a live matching process nor a
+durable completion can be recovered, it marks the job `lost` and sends a LOST turn
+with the log pointer; a recycled pid is never mistaken for the job.
+
+Use completion delivery as the primary signal. `list`, `tail` and `kill` are
+recovery tools, not a polling loop that holds your turn open.
 
 ## Semantic state declarations
 

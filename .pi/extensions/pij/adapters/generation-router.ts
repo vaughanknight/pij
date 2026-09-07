@@ -135,6 +135,8 @@ export interface RouteResult {
 	readonly outcome: RouteOutcome;
 	readonly payload?: unknown;
 	readonly row?: RsRouteRow;
+	/** Validated, complete response bytes for rows sharing the native v2 contract. */
+	readonly rawEnvelope?: string;
 	/** Finish a two-step read, AFTER the caller has decoded and shown it.
 	 *
 	 *  F4. `inbox` is a claim-then-acknowledge contract: the claim moves the job
@@ -391,7 +393,7 @@ async function callRs(
 	// and a valued flag swallowed a whole file (cli.ts, plan 093 D4). Same
 	// defect, avoided the same way: the parser never sees the body.
 	let bodyLiteral: string | undefined;
-	const bodyFileAt = argv.indexOf("--body-file");
+	const bodyFileAt = row.readsBodyFile ? argv.indexOf("--body-file") : -1;
 	if (bodyFileAt !== -1) {
 		const path = argv[bodyFileAt + 1];
 		if (path === undefined || path.startsWith("--")) {
@@ -472,7 +474,8 @@ async function callRs(
 		forced,
 		location.stateDir,
 	);
-	if (outcome.kind !== "rs") return { outcome, row };
+	const rawEnvelope = row.jsonOutput === "passthrough" && envelopeDecoded ? body : undefined;
+	if (outcome.kind !== "rs") return { outcome, row, rawEnvelope };
 	const acknowledge =
 		row.acknowledgePath === undefined
 			? undefined
@@ -497,7 +500,7 @@ async function callRs(
 			};
 		}
 	}
-	return { outcome, payload: routedPayload, row, acknowledge };
+	return { outcome, payload: routedPayload, row, acknowledge, rawEnvelope };
 }
 
 /** Build the deferred acknowledgement for a claim-then-ack row. See

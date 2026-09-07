@@ -93,8 +93,9 @@ export interface RsRouteRow {
 	 *
 	 *    "project" — the row carries `projectJson` and returns the TS contract.
 	 *    "refuse"  — rs cannot honour the legacy contract for this verb, so
-	 *                `--json` is refused BY NAME rather than answered wrongly. */
-	readonly jsonOutput: "project" | "refuse";
+	 *                `--json` is refused BY NAME rather than answered wrongly.
+	 *    "passthrough" — both CLIs promise the same complete rs v2 envelope. */
+	readonly jsonOutput: "project" | "refuse" | "passthrough";
 	/** Build the legacy `--json` contract from rs's payload. Required when
 	 *  `jsonOutput` is "project". */
 	readonly projectJson?: (payload: unknown) => unknown;
@@ -130,6 +131,8 @@ export interface RsRouteRow {
 	 *  again after the lease expired — while printing "claimed", honestly and
 	 *  incompletely. A row that claims must say how it finishes. */
 	readonly acknowledgePath?: string;
+	/** Resolve this grammar's --body-file locally; other rows forward literal values. */
+	readonly readsBodyFile?: boolean;
 	/** This route returns the global rs sessions projection and must be unioned
 	 *  with the legacy join rows before either renderer sees it. */
 	readonly unionWithLegacySessions?: boolean;
@@ -294,6 +297,14 @@ function renderShimInbox(payload: unknown): string {
  *  verbs (plan non-goals). */
 export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 	{
+		verb: "bg",
+		rsPath: "/v1/bg",
+		method: "POST",
+		humanOutput: "rs-line",
+		jsonOutput: "passthrough",
+		why: "Background jobs, logs and restart recovery belong to the daemon; native and shim share its argv grammar and complete v2 envelope",
+	},
+	{
 		verb: "adopt",
 		jsonOutput: "refuse",
 		jsonRefusal:
@@ -437,6 +448,7 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 		rsPath: "/v1/shim/send",
 		method: "POST",
 		requiresSeatInRs: true,
+		readsBodyFile: true,
 		why: "s119 — a seat that registers into rs must be able to speak; `send` running on legacy is what left pij-literary-bonobo registered and mute",
 	},
 	{
@@ -1095,8 +1107,12 @@ export function renderRsAnswer(
 	row: RsRouteRow | undefined,
 	payload: unknown,
 	argv: readonly string[],
+	rawEnvelope?: string,
 ): RsRenderResult {
 	if (argv.includes("--json")) {
+		if (row?.jsonOutput === "passthrough" && rawEnvelope !== undefined) {
+			return { kind: "json", text: rawEnvelope };
+		}
 		// NOT `JSON.stringify(payload)`. That handed rs's schema to a caller
 		// promised the TS one.
 		if (row?.jsonOutput === "project" && row.projectJson !== undefined) {
