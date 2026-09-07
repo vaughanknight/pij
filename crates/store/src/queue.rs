@@ -9,9 +9,9 @@
 //! * **Dedupe** — a partial unique index over LIVE rows. N rapid submits collapse
 //!   to one row, and the id every caller gets back is that row's.
 //! * **Serialization** — at most one RUNNING job per `serial_key`.
-//! * **Scoped claim expiry** — an expired `delivery:*` claim returns to pending
-//!   because an inbox client can die between read and acknowledgement. Other
-//!   kinds fail terminally so a stale worker cannot race a second execution.
+//! * **Scoped claim expiry** — expired body `delivery:*` claims return to pending
+//!   because an inbox client can die between read and acknowledgement. Controls
+//!   and other kinds fail terminally: a missing ACK cannot prove no execution.
 
 use async_trait::async_trait;
 use sqlx::{Pool, Row, Sqlite};
@@ -211,14 +211,11 @@ impl Queue for SqliteQueue {
         })?;
 
         let mut tx = self.begin_write().await?;
-        // Claim age is POLICY, scoped both to the kinds this caller judges and to
-        // the work's execution shape. A delivery claim can outlive the HTTP
-        // client between GET and POST acknowledgement; return only that kind to
-        // pending with the same transition as Queue::retry. The residual window
-        // is a duplicate read if the first client read and died before acking —
-        // deliberately safer than losing the message behind false ReaderRead
-        // evidence. Federation, pointer, and every other kind stay terminal: they
-        // have no two-step reader and a stale worker could still be executing.
+        // Body delivery may retry a lost read acknowledgement. A control may
+        // already have executed before its ACK was lost, so its expired claim
+        // must instead fail with an explicitly unknown outcome. After the body
+        // retry below, every remaining expired claim is terminal. Keep both
+        // transitions scoped to the requested kinds and inside this transaction.
         sqlx::query(
             "UPDATE jobs \
              SET state = 'pending', worker = NULL, claimed_at = NULL, \
@@ -227,6 +224,7 @@ impl Queue for SqliteQueue {
                AND claimed_at IS NOT NULL \
                AND claimed_at <= unixepoch() - ?1 \
                AND kind LIKE 'delivery:%' \
+               AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.command') END IS NULL \
                AND kind IN (SELECT value FROM json_each(?2))",
         )
         .bind(self.claim_lease_secs)
@@ -237,13 +235,14 @@ impl Queue for SqliteQueue {
         sqlx::query(
             "UPDATE jobs \
              SET state = 'failed', \
-                 outcome = printf('claim lease expired after %d seconds for worker %s', \
+                 outcome = printf(CASE WHEN kind LIKE 'delivery:%' \
+                                  THEN 'control claim lease expired after %d seconds for worker %s; outcome unknown: acknowledgement missing' \
+                                  ELSE 'claim lease expired after %d seconds for worker %s' END, \
                                   ?1, COALESCE(worker, '<unknown>')), \
                  acked_at = unixepoch() \
              WHERE state = 'running' \
                AND claimed_at IS NOT NULL \
                AND claimed_at <= unixepoch() - ?1 \
-               AND kind NOT LIKE 'delivery:%' \
                AND kind IN (SELECT value FROM json_each(?2))",
         )
         .bind(self.claim_lease_secs)

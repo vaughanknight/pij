@@ -450,6 +450,7 @@ async fn typing_not_live_names_absent_and_terminal_noops_on_both_routes() {
                 pid: None,
                 proc_start: None,
             },
+            None,
         )
         .await
         .expect("terminal");
@@ -614,7 +615,7 @@ async fn typing_pending_holds_allow_bypass_rehold_and_restart_in_order() {
         &client,
         addr,
         "/v1/inbox/ack",
-        &serde_json::json!({"seat": seat, "job_id": bypass.job_id}),
+        &serde_json::json!({"seat": seat, "job_id": bypass.job_id, "control_outcome": {"outcome":"executed"}}),
     )
     .await;
     queue.advance(grace - Duration::from_millis(1));
@@ -1103,6 +1104,7 @@ async fn typing_receipt_is_queued_until_ack_then_reader_read_for_omp_and_pi() {
                     pid: None,
                     proc_start: None,
                 },
+                control_outcome: None,
             })
             .send()
             .await
@@ -2770,6 +2772,7 @@ async fn inbox_claims_without_evidence_then_ack_records_machine_graded_reader_re
         seat: "pij-forged-reader".into(),
         job_id: claims[0].job_id,
         native: Default::default(),
+        control_outcome: None,
     };
     let ack = client
         .post(format!("http://{addr}/v1/inbox/ack"))
@@ -2811,6 +2814,7 @@ async fn inbox_claims_without_evidence_then_ack_records_machine_graded_reader_re
             seat: "pij-forged-reader".into(),
             job_id: pij_core::model::JobId(999_999),
             native: Default::default(),
+            control_outcome: None,
         })
         .send()
         .await

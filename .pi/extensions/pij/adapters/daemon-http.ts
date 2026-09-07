@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { ControlOutcome } from "../core/commands.js";
 import {
 	DaemonRefusalError,
 	decodeEnvelope,
@@ -163,8 +164,12 @@ export class PijDaemonClient {
 		return this.get<unknown>(`/v1/inbox?seat=${encodeURIComponent(seat)}&peek=true`);
 	}
 
-	ackInbox(seat: string, jobId: number): Promise<number> {
-		return this.post<number>("/v1/inbox/ack", { seat, job_id: jobId });
+	ackInbox(seat: string, jobId: number, controlOutcome?: ControlOutcome): Promise<number> {
+		return this.post<number>("/v1/inbox/ack", {
+			seat,
+			job_id: jobId,
+			...(controlOutcome === undefined ? {} : { control_outcome: controlOutcome }),
+		});
 	}
 
 	hold(request: HoldRequest): Promise<HoldResponse> {

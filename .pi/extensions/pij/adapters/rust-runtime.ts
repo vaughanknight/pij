@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { type ControlOutcome, isControlCommand, validateCommand } from "../core/commands.js";
 import type { Registration, RustSeatDescriptor } from "../core/daemon-wire.js";
 import { memorableIdentitySeed } from "../core/discovery.js";
+import { buildCallerContext } from "../core/generation-routing.js";
 import { memorablePijIdCandidates } from "../core/memorable-id.js";
+import { parseFrame } from "../core/message.js";
 import type { ModelEntry } from "../core/models/registry.js";
 import type {
 	DeliveryPort,
@@ -232,7 +235,15 @@ export class RustRuntimeSession {
 		return { id: boot.id, role: boot.role };
 	}
 
-	async send(to: string, body: string): Promise<string> {
+	async send(to: string, body: string, command?: string): Promise<string> {
+		if (command !== undefined) {
+			const validated = validateCommand(command);
+			if (!validated.ok) throw new Error(validated.message);
+			if ((parseFrame(body)?.body ?? body).trim() !== "") {
+				throw new Error("a control command cannot include a message body");
+			}
+			body = "";
+		}
 		const msgId = randomUUID();
 		const inReplyTo = this.lastInbound.get(to);
 		await this.client.send({
@@ -240,6 +251,16 @@ export class RustRuntimeSession {
 			to: { seat: to },
 			body,
 			msg_id: msgId,
+			...(command === undefined
+				? {}
+				: {
+						command,
+						caller: buildCallerContext(process.env, {
+							cwd: process.cwd(),
+							pid: process.pid,
+							procStart: this.client.processStart(process.pid),
+						}),
+					}),
 			...(inReplyTo === undefined ? {} : { in_reply_to: inReplyTo }),
 		});
 		if (inReplyTo !== undefined) this.lastInbound.delete(to);
@@ -328,7 +349,7 @@ export class RustRuntimeSession {
 					this.releasedStartupHead = undefined;
 					return;
 				}
-				if (this.releasedStartupHead !== oldest.jobId) {
+				if (oldest.message.command === undefined && this.releasedStartupHead !== oldest.jobId) {
 					await client.release({
 						seat,
 						job_id: oldest.jobId,
@@ -421,6 +442,18 @@ export class RustRuntimeSession {
 		lifecycle: number,
 	): Promise<void> {
 		if (this.self !== seat || this.lifecycle !== lifecycle) return;
+		if (claim.message.command !== undefined) {
+			const outcome = await this.executeControl(claim.message.command);
+			this.session.capture("receipt", {
+				messageId: claim.message.messageId,
+				command: claim.message.command,
+				control_outcome: outcome,
+			});
+			// new/reload may replace this lifecycle. Settle the original claim on
+			// its original client/seat, not the replacement's identity.
+			await this.ackClaim(claim, seat, client, outcome);
+			return;
+		}
 		this.lastInbound.set(claim.message.from, claim.message.messageId);
 		const busy = this.pi.isIdle?.() === false;
 		this.session.onInbound(claim.message, claim.message.messageId);
@@ -437,8 +470,39 @@ export class RustRuntimeSession {
 			});
 			return;
 		}
+		await this.ackClaim(claim, seat, client);
+		if (this.self === seat) await this.flush();
+	}
+
+	private async executeControl(command: string): Promise<ControlOutcome> {
+		const validated = validateCommand(command);
+		if (!validated.ok) return { outcome: "refused", reason: validated.message };
 		try {
-			await client.ackInbox(seat, claim.jobId);
+			if (isControlCommand(validated.value)) {
+				if (!(await this.pi.control(validated.value))) {
+					return {
+						outcome: "refused",
+						reason:
+							"Control context is unarmed; ask the human to run /pij, then resend the command",
+					};
+				}
+			} else {
+				await this.pi.compact();
+			}
+			return { outcome: "executed" };
+		} catch (error) {
+			return { outcome: "refused", reason: error instanceof Error ? error.message : String(error) };
+		}
+	}
+
+	private async ackClaim(
+		claim: InboxClaim,
+		seat: string,
+		client: PijDaemonClient,
+		outcome?: ControlOutcome,
+	): Promise<void> {
+		try {
+			await client.ackInbox(seat, claim.jobId, outcome);
 		} catch (error) {
 			this.session.capture("daemon_event_ack_error", {
 				jobId: claim.jobId,
@@ -446,7 +510,6 @@ export class RustRuntimeSession {
 				message: error instanceof Error ? error.message : String(error),
 			});
 		}
-		if (this.self === seat) await this.flush();
 	}
 
 	private announceArrival(claim: InboxClaim): void {
@@ -512,6 +575,16 @@ export class RustRuntimeSession {
 					to: { seat: item.message.to },
 					body: item.message.body,
 					msg_id: item.messageId,
+					...(item.message.command === undefined
+						? {}
+						: {
+								command: item.message.command,
+								caller: buildCallerContext(process.env, {
+									cwd: process.cwd(),
+									pid: process.pid,
+									procStart: this.client.processStart(process.pid),
+								}),
+							}),
 				});
 			}
 		});
@@ -650,11 +723,11 @@ class MutablePiRuntime implements PiRuntimePort {
 		this.need().inject(text, mode);
 	}
 
-	compact(): void {
-		this.need().compact();
+	compact(): void | Promise<void> {
+		return this.need().compact();
 	}
 
-	control(command: "new" | "reload"): boolean {
+	control(command: "new" | "reload"): boolean | Promise<boolean> {
 		return this.need().control(command);
 	}
 

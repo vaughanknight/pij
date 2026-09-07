@@ -1,3 +1,5 @@
+import type { CallerContext } from "./generation-routing.js";
+
 export const PIJ_ENVELOPE_VERSION = 2;
 export const PIJ_EVENT_VERSION = 1;
 
@@ -69,6 +71,8 @@ export interface SendRequest {
 	readonly body: string;
 	readonly msg_id: string;
 	readonly in_reply_to?: string;
+	readonly command?: string;
+	readonly caller?: CallerContext;
 }
 
 export interface QueueReceipt {

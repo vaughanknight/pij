@@ -242,6 +242,9 @@ enum Command {
         /// Read the literal body from a path, or from stdin with `-`.
         #[arg(long, conflicts_with = "body")]
         body_file: Option<String>,
+        /// Execute a remote control instead of sending a message body.
+        #[arg(long)]
+        command: Option<String>,
         /// Correlation id. Omit to mint a UUIDv7.
         #[arg(long)]
         msg_id: Option<String>,
@@ -249,6 +252,8 @@ enum Command {
         #[arg(long)]
         in_reply_to: Option<String>,
     },
+    /// Compact the current, daemon-derived seat.
+    CompactSelf,
     /// Destructively read and acknowledge this acting seat's inbox.
     ///
     /// `--peek` is the only cross-seat form and never claims or acknowledges.
@@ -452,6 +457,25 @@ async fn run(cli: Cli) -> ExitCode {
     {
         return run_spawn_child(status_file, log_file, command);
     }
+    if let Command::Send {
+        command: Some(command),
+        body,
+        body_file,
+        ..
+    } = &cli.command
+    {
+        let result = if body_file.is_some() {
+            Err("E-RS-CONTROL-BODY: --command and --body-file are mutually exclusive".to_string())
+        } else {
+            pij_core::control::validate_command(command, body.as_deref().unwrap_or_default())
+        };
+        if let Err(reason) = result {
+            return emit(
+                &Envelope::<Value>::refused("pij send", ErrorKind::Refused, reason),
+                cli.json,
+            );
+        }
+    }
     let hook_dir = default_state_dir();
     let state_dir =
         match resolve_state_dir(cli.state_dir.clone(), std::env::var_os("PIJ_RS_STATE_DIR")) {
@@ -646,6 +670,7 @@ async fn run(cli: Cli) -> ExitCode {
             to,
             body,
             body_file,
+            command,
             msg_id,
             in_reply_to,
         } => {
@@ -653,9 +678,15 @@ async fn run(cli: Cli) -> ExitCode {
                 Ok(seat) => seat,
                 Err(error) => return emit(&setup_refusal::<Value>("pij send", error), cli.json),
             };
-            let body = match resolve_send_body(body, body_file) {
-                Ok(body) => body,
-                Err(error) => return emit(&setup_refusal::<Value>("pij send", error), cli.json),
+            let body = if command.is_some() {
+                String::new()
+            } else {
+                match resolve_send_body(body, body_file) {
+                    Ok(body) => body,
+                    Err(error) => {
+                        return emit(&setup_refusal::<Value>("pij send", error), cli.json);
+                    }
+                }
             };
             let request = SendRequest {
                 from: acting,
@@ -663,11 +694,35 @@ async fn run(cli: Cli) -> ExitCode {
                 body,
                 msg_id: msg_id.unwrap_or_else(|| uuid::Uuid::now_v7().to_string()),
                 in_reply_to,
+                command,
             };
-            let mut response = client.send(&request).await;
+            let mut response = if request.command.is_some() {
+                client.send_control(&request, &caller_context()).await
+            } else {
+                client.send(&request).await
+            };
             if response.ok {
                 response.meta = Some(format!("from {}; msg_id {}", request.from, request.msg_id));
             }
+            emit(&response, cli.json)
+        }
+        Command::CompactSelf => {
+            let acting = match resolve_command_seat(&client, "pij compact-self", None).await {
+                Ok(seat) => seat,
+                Err(error) => {
+                    return emit(&setup_refusal::<Value>("pij compact-self", error), cli.json);
+                }
+            };
+            let request = SendRequest {
+                from: acting.clone(),
+                to: pij_core::model::Destination::local(acting),
+                body: String::new(),
+                command: Some("compact".to_string()),
+                msg_id: uuid::Uuid::now_v7().to_string(),
+                in_reply_to: None,
+            };
+            let mut response = client.send_control(&request, &caller_context()).await;
+            response.command = "pij compact-self".to_string();
             emit(&response, cli.json)
         }
         Command::Inbox { seat, wait, peek } => {
@@ -1620,6 +1675,7 @@ impl Command {
             Command::CommitTrailers => "pij commit-trailers",
             Command::Phonehome { .. } => "pij phonehome",
             Command::Send { .. } => "pij send",
+            Command::CompactSelf => "pij compact-self",
             Command::Spawn { .. } => "pij spawn",
             Command::Revive { .. } => "pij revive",
             Command::Inbox { .. } => "pij inbox",
@@ -1720,6 +1776,7 @@ mod tests {
                 "spawn",
                 "revive",
                 "send",
+                "compact-self",
                 "inbox",
                 "sidecar",
                 "report",

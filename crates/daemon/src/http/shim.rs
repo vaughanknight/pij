@@ -203,9 +203,10 @@ pub(crate) struct ShimRequest {
 pub(crate) struct SendCall {
     pub to: SeatId,
     pub body: String,
+    pub command: Option<String>,
 }
 
-/// Parse `pij send <id> "<text>"` and `pij send <id> --body-file <path|->`.
+/// Parse a body send or one allowlisted, bodyless control command.
 ///
 /// Derived from the TypeScript surface callers actually hit
 /// (`.pi/extensions/pij/cli.ts:354`), not from a description of it:
@@ -215,11 +216,7 @@ pub(crate) struct SendCall {
 ///          | <id> --command <name> [--wait]
 /// ```
 ///
-/// Everything beyond the first two shapes REFUSES BY NAME rather than being
-/// half-served. That is the same rule the report family follows and the reason
-/// is the same: rs has no model for these, every one of them had an available
-/// near-fit that would have compiled, and a near-fit that type-checks is the
-/// worst outcome available because the caller cannot see it.
+/// Unsupported broadcast, attachment and wait shapes refuse by name.
 pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<SendCall, String> {
     let mut tokens = argv.iter().map(String::as_str);
     match tokens.next() {
@@ -230,6 +227,7 @@ pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<
 
     let mut positionals: Vec<&str> = Vec::new();
     let mut saw_body_file = false;
+    let mut command = None;
     let mut rest = tokens.collect::<Vec<_>>().into_iter().peekable();
     while let Some(token) = rest.next() {
         let flag = token
@@ -263,10 +261,18 @@ pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<
                 );
             }
             "command" => {
-                return Err(
-                    "rs cannot serve `pij send <id> --command <name>`: a control command is a \
-                     different act from a message — it carries no body and is submitted to the \
-                     pane as a slash command. It is deliberately left on legacy."
+                if command.is_some() {
+                    return Err(
+                        "E-RS-CONTROL-INVALID: --command may be supplied only once".to_string()
+                    );
+                }
+                let value = token
+                    .split_once('=')
+                    .map(|(_, value)| value)
+                    .or_else(|| rest.next());
+                command = Some(
+                    value
+                        .ok_or_else(|| "E-RS-CONTROL-INVALID: --command needs a name".to_string())?
                         .to_string(),
                 );
             }
@@ -293,6 +299,30 @@ pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<
         return Err("usage: pij send <id> \"<text>\" (no recipient was given)".to_string());
     };
 
+    if let Some(command) = command {
+        if saw_body_file {
+            return Err(
+                "E-RS-CONTROL-BODY: --command and --body-file are mutually exclusive".to_string(),
+            );
+        }
+        if positionals.len() > 2 {
+            return Err(
+                "E-RS-CONTROL-BODY: --command cannot carry extra positional text".to_string(),
+            );
+        }
+        pij_core::control::validate_command(
+            &command,
+            positionals.get(1).copied().unwrap_or_default(),
+        )?;
+        if let Some(body) = body_literal {
+            pij_core::control::validate_command(&command, body)?;
+        }
+        return Ok(SendCall {
+            to: SeatId::from(*to),
+            body: String::new(),
+            command: Some(command),
+        });
+    }
     // The two body channels are exclusive, and BOTH must be refused rather than
     // silently preferring one — a caller who typed both has a mistaken model of
     // which one is being sent, and picking for them hides it.
@@ -330,6 +360,7 @@ pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<
     Ok(SendCall {
         to: SeatId::from(*to),
         body,
+        command: None,
     })
 }
 
@@ -344,10 +375,53 @@ pub(crate) async fn shim_send(State(state): State<AppState>, body: axum::body::B
         Decoded::Request(request) => request,
         Decoded::Refusal(response) => return response,
     };
+    if request
+        .argv
+        .first()
+        .is_some_and(|verb| verb == "compact-self")
+    {
+        if request.argv.iter().skip(1).any(|arg| arg != "--json") || request.body_literal.is_some()
+        {
+            return refused(
+                "pij compact-self",
+                "E-RS-CONTROL-BODY: compact-self takes no body or additional arguments",
+            );
+        }
+        return super::send_control(
+            &state,
+            "pij compact-self",
+            super::ControlRequest {
+                to: None,
+                asserted_from: None,
+                body: String::new(),
+                command: "compact".to_string(),
+                msg_id: state.services.delivery.next_message_id(),
+                in_reply_to: None,
+                caller: request.caller,
+            },
+        )
+        .await;
+    }
     let call = match parse_send(&request.argv, request.body_literal.as_deref()) {
         Ok(call) => call,
         Err(why) => return refused(SEND, why),
     };
+    if let Some(command) = call.command {
+        return super::send_control(
+            &state,
+            SEND,
+            super::ControlRequest {
+                to: Some(call.to),
+                asserted_from: None,
+                body: call.body,
+                command,
+                msg_id: state.services.delivery.next_message_id(),
+                in_reply_to: None,
+                caller: request.caller,
+            },
+        )
+        .await;
+    }
     let from = match subject(&state, SEND, request.caller.as_ref()).await {
         Subject::Seat(seat) => seat,
         Subject::Refusal(response) => return response,
@@ -433,6 +507,7 @@ pub(crate) async fn shim_inbox_ack(
             &reader,
             request.job_id,
             &crate::delivery::NativeInboxIdentity::default(),
+            None,
         )
         .await
     {

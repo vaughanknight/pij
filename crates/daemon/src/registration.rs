@@ -2239,7 +2239,7 @@ mod tests {
                     .expect("claim");
                 assert_eq!(claims.len(), 1);
                 delivery
-                    .acknowledge_inbox(&reader.id, claims[0].job_id, &Default::default())
+                    .acknowledge_inbox(&reader.id, claims[0].job_id, &Default::default(), None)
                     .await
                     .expect("ack");
                 assert!(

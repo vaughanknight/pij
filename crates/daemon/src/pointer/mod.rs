@@ -5,10 +5,8 @@
 
 use std::time::Duration;
 
-use pij_core::error::Result;
 use pij_core::framing::frame_message;
 use pij_core::model::SeatId;
-use pij_core::ports::TmuxPort;
 
 mod worker;
 
@@ -103,14 +101,6 @@ pub fn render_command(command: &str) -> String {
     format!("/{command}")
 }
 
-/// Submit an explicitly tagged command as a PTY turn.
-///
-/// This calls [`TmuxPort::submit`], never [`TmuxPort::send_keys`]: typing text
-/// and sending a turn are distinct observable actions.
-pub async fn submit_command(tmux: &dyn TmuxPort, pane: &str, command: &str) -> Result<()> {
-    tmux.submit(pane, &render_command(command)).await
-}
-
 /// Exponential retry delay for the durable attempt returned by the queue.
 ///
 /// Attempt zero waits one second. Each retry doubles the delay until the
@@ -131,12 +121,10 @@ mod tests {
     use std::time::Duration;
 
     use pij_core::model::SeatId;
-    use pij_testkit::block_on;
-    use pij_testkit::fakes::FakeTmux;
 
     use super::{
         POINTER_ANNOUNCED_EVENT_KIND, POINTER_PARKED_EVENT_KIND, POINTER_UNPARKED_EVENT_KIND,
-        render_command, render_final_pointer, render_pointer, retry_delay, submit_command,
+        render_command, render_final_pointer, render_pointer, retry_delay,
     };
 
     #[test]
@@ -188,13 +176,6 @@ mod tests {
     fn command_rendering_adds_the_pty_slash_to_the_bare_tag() {
         assert_eq!(render_command("compact"), "/compact");
         assert_eq!(render_command("new"), "/new");
-    }
-
-    #[test]
-    fn command_submission_is_distinct_from_typing_without_sending() {
-        let tmux = FakeTmux::new();
-        block_on(submit_command(&tmux, "%7", "compact")).expect("submit command");
-        assert_eq!(tmux.calls(), ["submit:%7:/compact"]);
     }
 
     #[test]

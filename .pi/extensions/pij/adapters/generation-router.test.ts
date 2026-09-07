@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { COPILOT_CONTROL_REFUSAL } from "../core/commands.js";
 import { describeOutcome, servedByLegacy } from "../core/generation-routing.js";
 import { type GenerationRouterDeps, probeRs, routeVerb } from "./generation-router.js";
 
@@ -91,6 +92,71 @@ describe("probing rs through the shipped detector", () => {
 });
 
 describe("routeVerb end to end", () => {
+	it.each([
+		["send", ["send", "pij-target", "--command", "compact"], "/v1/shim/send"],
+		["compact-self", ["compact-self"], "/v1/shim/compact-self"],
+	] as const)("routes %s controls to rs with caller proof and command argv intact", async (verb, argv, path) => {
+		let request: Record<string, unknown> | undefined;
+		const { outcome } = await routeVerb(
+			verb,
+			undefined,
+			argv,
+			deps(
+				(url, init) => {
+					if (url.endsWith("/health")) return new Response(HEALTH);
+					expect(new URL(url).pathname).toBe(path);
+					request = JSON.parse(String(init?.body));
+					return new Response(
+						JSON.stringify({
+							ok: true,
+							command: `pij ${verb}`,
+							v: 2,
+							data: { msg_id: "control-1", outcome: "accepted", at: 1 },
+						}),
+					);
+				},
+				{
+					env: {
+						PIJ_RS_ADDR: "127.0.0.1:17610",
+						PIJ_RS_STATE_DIR: "/tmp/state",
+						TMUX_PANE: "%42",
+						PIJ_SESSION_ID: "pij-self",
+					},
+					ambientSeatId: () => "pij-self",
+					seatInRs: () => true,
+					rsSeatByPane: async () => "pij-self",
+				},
+			),
+		);
+		expect(outcome.kind).toBe("rs");
+		expect(request).toMatchObject({ argv, caller: { tmuxPane: "%42", pijSessionId: "pij-self" } });
+	});
+
+	it("preserves decodable rs control refusal without legacy fallback", async () => {
+		const refusal = COPILOT_CONTROL_REFUSAL;
+		const { outcome } = await routeVerb(
+			"compact-self",
+			undefined,
+			["compact-self"],
+			deps(
+				(url) =>
+					url.endsWith("/health")
+						? new Response(HEALTH)
+						: new Response(
+								JSON.stringify({
+									ok: false,
+									command: "pij compact-self",
+									v: 2,
+									error: "refused",
+									meta: refusal,
+								}),
+								{ status: 400 },
+							),
+				{ ambientSeatId: () => "pij-self", seatInRs: () => true },
+			),
+		);
+		expect(outcome).toMatchObject({ kind: "rs-error", detail: refusal });
+	});
 	it("no rs daemon at all → legacy, with the addr named", async () => {
 		const { outcome } = await routeVerb(
 			"adopt",

@@ -30,6 +30,14 @@ pub fn frame_message(from: &SeatId, from_machine: Option<&str>, payload: &str) -
     framed
 }
 
+/// Extract the payload of a standard Rust or legacy pij message envelope.
+#[must_use]
+pub fn message_payload(frame: &str) -> Option<&str> {
+    rust_parts(frame)
+        .or_else(|| legacy_parts(frame))
+        .map(|(_, payload)| payload)
+}
+
 /// Compare a recorded injection with observed composer text.
 ///
 /// Exact whitespace-collapsed echoes remain exempt. During the generation

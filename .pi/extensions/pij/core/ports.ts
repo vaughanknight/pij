@@ -159,11 +159,10 @@ export interface PiRuntimePort {
 	inject(text: string, mode: "immediate" | "steer"): void;
 	/** Trigger a context compaction (remote command: compact). Always available
 	 *  — compact() lives on the long-lived ExtensionContext. */
-	compact(): void;
-	/** Run a command-context-only control op (new|reload). Returns true if a
-	 *  captured ExtensionCommandContext was armed and the op fired; false if not
-	 *  armed (caller should queue it for the next `/pij` invocation). */
-	control(command: "new" | "reload"): boolean;
+	compact(): void | Promise<void>;
+	/** Returns false synchronously without an armed context; otherwise completes
+	 *  after the runtime operation (rejections are execution refusals). */
+	control(command: "new" | "reload"): boolean | Promise<boolean>;
 }
 
 // ─── Tmux seam ──────────────────────────────────────────────────────────────

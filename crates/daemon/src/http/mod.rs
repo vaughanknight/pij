@@ -122,6 +122,8 @@ enum Endpoint {
     /// `seat`), these speak the shim's (`{argv, caller}`) and DERIVE the acting
     /// seat. `shim.rs` carries the reason the two are not one route.
     ShimSend,
+    /// Self-compaction through the same control admission as shim send.
+    ShimCompactSelf,
     /// See [`Self::ShimSend`].
     ShimInbox,
     /// The acknowledgement half of a routed inbox read. See
@@ -146,7 +148,7 @@ enum Endpoint {
 }
 
 impl Endpoint {
-    const ALL: [Self; 22] = [
+    const ALL: [Self; 23] = [
         Self::Health,
         Self::Register,
         Self::Spawn,
@@ -166,6 +168,7 @@ impl Endpoint {
         Self::Phonehome,
         Self::State,
         Self::ShimSend,
+        Self::ShimCompactSelf,
         Self::ShimInbox,
         Self::ShimInboxAck,
         Self::ShimSessions,
@@ -197,6 +200,7 @@ impl Endpoint {
             // accept an asserted `from` and silently discard the caller evidence
             // meant to constrain it. See `shim.rs`.
             Self::ShimSend => "/v1/shim/send",
+            Self::ShimCompactSelf => "/v1/shim/compact-self",
             Self::ShimInbox => "/v1/shim/inbox",
             Self::ShimInboxAck => "/v1/shim/inbox/ack",
             Self::ShimSessions => "/v1/shim/sessions",
@@ -216,7 +220,9 @@ impl Endpoint {
             | Self::Report => Method::POST,
             Self::Adopt | Self::Whoami | Self::Phonehome => Method::POST,
             Self::State => Method::POST,
-            Self::ShimSend | Self::ShimInbox | Self::ShimInboxAck => Method::POST,
+            Self::ShimSend | Self::ShimCompactSelf | Self::ShimInbox | Self::ShimInboxAck => {
+                Method::POST
+            }
             Self::Health
             | Self::Inbox
             | Self::InboxTyping
@@ -327,6 +333,7 @@ fn router_with_optional_federation(
                     | Endpoint::Phonehome
                     | Endpoint::State
                     | Endpoint::ShimSend
+                    | Endpoint::ShimCompactSelf
                     | Endpoint::ShimInbox
                     | Endpoint::ShimInboxAck
             ) {
@@ -363,6 +370,7 @@ fn router_with_optional_federation(
             Endpoint::Phonehome => router.route(endpoint.path(), post(identity::phonehome)),
             Endpoint::State => router.route(endpoint.path(), post(seat_state)),
             Endpoint::ShimSend => router.route(endpoint.path(), post(shim::shim_send)),
+            Endpoint::ShimCompactSelf => router.route(endpoint.path(), post(shim::shim_send)),
             Endpoint::ShimInbox => router.route(endpoint.path(), post(shim::shim_inbox)),
             Endpoint::ShimInboxAck => router.route(endpoint.path(), post(shim::shim_inbox_ack)),
             Endpoint::ShimSessions => router.route(endpoint.path(), get(shim::shim_sessions)),
@@ -1249,22 +1257,32 @@ struct SendBodyRequest {
     message: SendRequest,
     #[serde(default)]
     command: Option<String>,
+    #[serde(default)]
+    caller: Option<CallerContext>,
 }
 
 async fn send(State(state): State<AppState>, Json(request): Json<SendBodyRequest>) -> Response {
-    // This is a body-messaging endpoint, not a control protocol. Do not silently
-    // drop a Copilot control field and enqueue its empty body as if it succeeded.
-    if request.command.is_some() && request.message.to.machine.is_none() {
-        match state.services.registry.get(&request.message.to.seat).await {
-            Ok(Some(seat)) if seat.harness == Harness::Copilot => {
-                return refused(
-                    "pij send",
-                    "Copilot programmatic controls are unsupported; use native user controls; no legacy or tmux fallback",
-                );
-            }
-            Err(error) => return internal("pij send", error),
-            _ => {}
+    if let Some(command) = request.command {
+        if request.message.to.machine.is_some() || request.message.from_machine.is_some() {
+            return refused(
+                "pij send",
+                "E-RS-CONTROL-IDENTITY: remote controls require a caller proven on the target daemon",
+            );
         }
+        return send_control(
+            &state,
+            "pij send",
+            ControlRequest {
+                to: Some(request.message.to.seat),
+                asserted_from: Some(request.message.from),
+                body: request.message.body,
+                command,
+                msg_id: request.message.msg_id,
+                in_reply_to: request.message.in_reply_to,
+                caller: request.caller,
+            },
+        )
+        .await;
     }
     let request = request.message;
     if request.to.machine.is_some() {
@@ -1306,6 +1324,118 @@ async fn send(State(state): State<AppState>, Json(request): Json<SendBodyRequest
         Ok(receipt) => envelope(StatusCode::OK, &Envelope::ok("pij send", receipt)),
 
         Err(error) => send_failure("pij send", error),
+    }
+}
+
+/// Both native and shim controls converge here before touching delivery.
+pub(crate) struct ControlRequest {
+    pub(crate) to: Option<SeatId>,
+    pub(crate) asserted_from: Option<SeatId>,
+    pub(crate) body: String,
+    pub(crate) command: String,
+    pub(crate) msg_id: String,
+    pub(crate) in_reply_to: Option<String>,
+    pub(crate) caller: Option<CallerContext>,
+}
+
+pub(crate) async fn send_control(
+    state: &AppState,
+    name: &str,
+    request: ControlRequest,
+) -> Response {
+    use pij_core::control::{authorize_command, validate_command, validate_target};
+    if let Err(reason) = validate_command(&request.command, &request.body) {
+        return refused(name, reason);
+    }
+    let target = if let Some(to) = request.to.as_ref() {
+        match state.services.registry.get(to).await {
+            Ok(Some(target)) => {
+                if let Err(reason) = validate_target(&target) {
+                    return refused(name, reason);
+                }
+                Some(target)
+            }
+            Ok(None) => {
+                return send_failure(
+                    name,
+                    PijError::NoRegistryEntry {
+                        seat: to.clone(),
+                        store: "the daemon registry".to_string(),
+                    },
+                );
+            }
+            Err(error) => return internal(name, error),
+        }
+    } else {
+        None
+    };
+    let Some(caller) = request.caller else {
+        return refused(
+            name,
+            "E-RS-CONTROL-IDENTITY: a control requires an observable caller pane",
+        );
+    };
+    let Some(pane) = caller.pane.filter(|pane| !pane.trim().is_empty()) else {
+        return refused(
+            name,
+            "E-RS-CONTROL-IDENTITY: an asserted seat or process alone cannot authorize a control; supply the caller pane",
+        );
+    };
+    let actor =
+        match identity::resolve_seat(state, name, caller.session_id, Some(pane.clone())).await {
+            identity::Resolved::Seat(seat, identity::ResolvedBy::Pane) => seat,
+            identity::Resolved::Seat(_, _) => {
+                return refused(name, "E-RS-CONTROL-IDENTITY: caller was not pane-derived");
+            }
+            identity::Resolved::Refusal(response) => return response,
+        };
+    if request
+        .asserted_from
+        .as_ref()
+        .is_some_and(|from| from != &actor.id)
+    {
+        return refused(
+            name,
+            "E-RS-CONTROL-IDENTITY: body sender disagrees with the pane-derived caller",
+        );
+    }
+    let pane_process = match state.services.tmux.pane_process(&pane).await {
+        Ok(Some(process)) => process,
+        Ok(None) => return refused(name, "E-RS-CONTROL-IDENTITY: caller pane no longer exists"),
+        Err(error) => return internal(name, error),
+    };
+    let observed = match pane_harness_identity(state, pane_process.pid, actor.harness).await {
+        Ok(observed) => observed,
+        Err(error) => return internal(name, error),
+    };
+    if !actor.proc.is_some_and(|identity| {
+        observed
+            .as_ref()
+            .is_some_and(|observed| observed.subtree.contains(&identity))
+    }) {
+        return refused(
+            name,
+            "E-RS-CONTROL-IDENTITY: caller's recorded process is not live in its pane",
+        );
+    }
+    let target = target.as_ref().unwrap_or(&actor);
+    if let Err(reason) = validate_target(target)
+        .and_then(|()| authorize_command(&request.command, &actor.id, target))
+    {
+        return refused(name, reason);
+    }
+    let msg = Msg {
+        from: actor.id.clone(),
+        from_machine: None,
+        to: target.id.clone(),
+        body: String::new(),
+        command: Some(request.command),
+        msg_id: request.msg_id,
+        in_reply_to: request.in_reply_to,
+    };
+    match state.services.delivery.accept_control(msg).await {
+        Ok(receipt) => envelope(StatusCode::OK, &Envelope::ok(name, receipt)),
+        Err(error) => send_failure(name, error),
     }
 }
 
@@ -1666,7 +1796,12 @@ async fn ack_inbox(
     let acknowledged = match state
         .services
         .delivery
-        .acknowledge_inbox(&request.seat, request.job_id, &request.native)
+        .acknowledge_inbox(
+            &request.seat,
+            request.job_id,
+            &request.native,
+            request.control_outcome.as_ref(),
+        )
         .await
     {
         Ok(acknowledged) => acknowledged,

@@ -1,0 +1,15 @@
+fix(omp): keep parent steering out of in-process subagents
+
+Reconcile PR #376 by jakkaj (3248f4874c4f4d6304ba85dfa2645a5249721eee)
+with the measured steering matrix. Use print-mode session_init metadata to
+exclude embedded children while preserving independently hosted headless
+roots. Refuse inherited child peer controls before they use parent identity.
+
+Keep custom steer with default attribution: user attribution restores queued
+peer text into the human draft on Escape. Extend the opt-in step-on probe
+with real busy work, parent-only reply and identity evidence, correlated inbox
+ACKs, external fixture scripts, and explicit OMP thinking control.
+
+Co-Authored-By: jakkaj <5225782+jakkaj@users.noreply.github.com>
+Co-Authored-By: Copilot <223556219+Copilot@users.noreply.github.com>
+Co-Authored-By: OMP (GPT-6 Astra) <noreply@openai.com>

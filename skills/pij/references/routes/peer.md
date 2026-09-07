@@ -91,9 +91,31 @@ single-quote it, or use the literal channel — `pij send <id> --body-file
 pij send <id> "message text"                         # lands as an injected turn in one peer
 pij send --to <id> --to <id> "message text"          # same text once to each peer, in flag order
 pij send --to <id> --to <id> "message text" --wait   # wait for every successful recipient
-pij send <id> --command compact                      # control command (compact/reload/…) [--wait]
+pij send <id> --command compact                      # rs daemon control: compact | new | reload
+pij compact-self                                   # daemon-resolved self; no literal slash fallback
+pij-rs send --to <id> --command compact              # native rs spelling (same admission)
 pij tail <id> [--since N] [--follow]                 # peek its transcript without disturbing it
 ```
+
+**Remote controls on rs:** commands carry no message body. OMP/Pi executes the
+claim in-process and acknowledges its runtime outcome (`executed` or `refused`
+with a reason); acceptance alone is not completion. Native extension delivery
+bypasses the typing gate. Claude uses PTY submission and **keeps** the typing
+gate: a human draft holds the command until cleared. Copilot refuses with
+`E-RS-CONTROL-UNSUPPORTED: use Copilot's native user controls`; paneless seats are
+also refused. Never replace a refusal with literal `/compact` text or send-keys.
+
+Any registered peer may request `compact`. Destructive `new`/`reload` require
+self or the target's recorded parent, resolved by the daemon from caller
+evidence. A prime role/global prime flag grants no authority; rs currently has
+no target-recorded prime relation. On OMP/Pi, a human must first run `/pij` in the
+target to arm `new`/`reload`; unarmed rs requests are refused, not deferred. Arm
+and resend. Pi resource reload requires re-arming afterward; installed OMP's
+reload control reopens the native session file, not extension/skill resources.
+`compact` needs no arming.
+Expired control claims are terminal with an unknown-outcome/missing-ack reason,
+never automatic re-execution. A refused request id stays refused; use a new
+message id for an intentional retry after arming.
 
 Pi/tmux replies arrive as `[pij-rs from <id>] … [/pij]` injected turns. For a non-tmux external peer, establish the durable address with `pij inbox register` (or let the first wait auto-register), send normally, then receive with:
 

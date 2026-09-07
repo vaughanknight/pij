@@ -146,6 +146,7 @@ export interface BootResult {
 export type InboundResult =
 	| { readonly kind: "delivered"; readonly state: ReceiptState }
 	| { readonly kind: "command-executed"; readonly command: string }
+	| { readonly kind: "command-started"; readonly command: string }
 	| { readonly kind: "command-deferred"; readonly command: string }
 	| { readonly kind: "command-rejected"; readonly code: PijErrorCode }
 	| { readonly kind: "receipt-recorded" };
@@ -567,13 +568,20 @@ export class PijSession {
 				const sidecar = this.ports.watchdog?.read(this.self);
 				const paused = applyCompactPause(sidecar, this.ports.process.now());
 				if (paused !== sidecar) this.ports.watchdog?.write(this.self, paused);
-				this.ports.pi.compact();
-				this.capture("receipt", { messageId, command: v.value, executed: true });
-				return { kind: "command-executed", command: v.value };
+				const result = this.ports.pi.compact();
+				this.captureControlCompletion(result, { messageId, command: v.value });
+				return {
+					kind: result instanceof Promise ? "command-started" : "command-executed",
+					command: v.value,
+				};
 			}
-			if (this.ports.pi.control(v.value)) {
-				this.capture("receipt", { messageId, command: v.value, executed: true });
-				return { kind: "command-executed", command: v.value };
+			const result = this.ports.pi.control(v.value);
+			if (result !== false) {
+				this.captureControlCompletion(result, { messageId, command: v.value });
+				return {
+					kind: result instanceof Promise ? "command-started" : "command-executed",
+					command: v.value,
+				};
 			}
 			// Not armed: queue it, and wake the peer. NB the wake lands in the peer's
 			// LLM, and an agent cannot run a slash command itself, so
@@ -644,15 +652,35 @@ export class PijSession {
 		const applied: ControlCommand[] = [];
 		const still: ControlCommand[] = [];
 		for (const c of this.pendingControl) {
-			if (this.ports.pi.control(c)) {
+			const result = this.ports.pi.control(c);
+			if (result !== false) {
 				applied.push(c);
-				this.capture("receipt", { command: c, executed: true, viaDrain: true });
+				this.captureControlCompletion(result, { command: c, viaDrain: true });
 			} else {
 				still.push(c);
 			}
 		}
 		this.pendingControl = still;
 		return applied;
+	}
+
+	private captureControlCompletion(
+		result: void | boolean | Promise<void> | Promise<boolean>,
+		data: Record<string, unknown>,
+	): void {
+		if (result instanceof Promise) {
+			void result.then(
+				(executed) => this.capture("receipt", { ...data, executed: executed !== false }),
+				(error: unknown) =>
+					this.capture("receipt", {
+						...data,
+						rejected: true,
+						reason: error instanceof Error ? error.message : String(error),
+					}),
+			);
+		} else {
+			this.capture("receipt", { ...data, executed: result !== false });
+		}
 	}
 
 	/** Poll-primary delivery liveness (plan 057 thread-1). Called on every inbox

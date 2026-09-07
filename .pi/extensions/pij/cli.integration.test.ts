@@ -34,6 +34,7 @@ import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { FsSpineLog } from "./adapters/spine-store.js";
 import { copilotControlRefusalForInvocation, verifyPersistedAdoptDescriptor } from "./cli.js";
 import { reattachIdentity } from "./core/binding.js";
+import { COPILOT_CONTROL_REFUSAL } from "./core/commands.js";
 import { transcriptDir } from "./core/harness/claude.js";
 import { PA_VERB_CLASSIFICATION } from "./core/orchestration/pa-capability.js";
 import { renderSpineMd } from "./core/platform/render-spine-md.js";
@@ -2774,8 +2775,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 						PIJ_DAEMON_GENERATION: generation,
 					});
 					expect(result.code).toBe(2);
-					expect(result.out).toContain(`Copilot programmatic ${command} is unsupported`);
-					expect(result.out).toContain("No legacy or tmux fallback");
+					expect(result.out).toContain(COPILOT_CONTROL_REFUSAL);
 				}
 			}
 			expect(existsSync(join(HOME, id, "inbox"))).toBe(false);
@@ -2818,7 +2818,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			COPILOT_AGENT_SESSION_ID: "native-control-session",
 		});
 		expect(copilot.code).toBe(2);
-		expect(copilot.out).toContain("Copilot programmatic compact is unsupported");
+		expect(copilot.out).toContain(COPILOT_CONTROL_REFUSAL);
 		const unknown = pij(["compact-self", "--pane", "%9138"], {
 			PIJ_RS_STATE_DIR: join(HOME, "absent-native-control-state"),
 		});
@@ -2843,7 +2843,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 						nativeSeats: async () => [{ id: "pij-native-only", harness: "copilot", pane: "%137" }],
 					},
 				);
-				expect(refusal).toContain(`Copilot programmatic ${command} is unsupported`);
+				expect(refusal).toBe(COPILOT_CONTROL_REFUSAL);
 			}
 		}
 	});
@@ -2854,7 +2854,7 @@ describe("pij two-peer integration (real coordinators + real CLI over sandbox PI
 			legacySeats: () => [{ id: "pij-other", harness: "claude", paneId: "%138" }],
 			nativeSeats: async () => [{ id: "pij-native-only", harness: "copilot", pane: "%137" }],
 		});
-		expect(refusal).toContain("Copilot programmatic compact is unsupported");
+		expect(refusal).toBe(COPILOT_CONTROL_REFUSAL);
 	});
 
 	it("refuses an unreadable native roster rather than falling through to tmux", async () => {
