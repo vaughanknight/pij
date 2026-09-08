@@ -182,7 +182,7 @@ fn ownership_failure(
     envelope(StatusCode::FORBIDDEN, &answer)
 }
 
-fn runtime_failure(command: &str, error: PijError) -> Response {
+pub(super) fn runtime_failure(command: &str, error: PijError) -> Response {
     match &error {
         PijError::GovernanceRefused { code, record } => {
             let mut answer: Envelope<Value> =
@@ -199,14 +199,14 @@ fn runtime_failure(command: &str, error: PijError) -> Response {
 }
 
 #[derive(Serialize)]
-struct CloseReceipt {
+pub(super) struct CloseReceipt {
     seat: SeatId,
     tombstoned_at: u64,
     reason: String,
-    seq: Seq,
+    pub(super) seq: Seq,
 }
 
-async fn tombstone_receipt(
+pub(super) async fn tombstone_receipt(
     spine: &dyn Spine,
     seat: &SeatId,
     expected_seq: Option<Seq>,

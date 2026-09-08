@@ -13,6 +13,7 @@ pub mod governance;
 mod identity;
 mod lifecycle;
 mod report;
+mod revive;
 pub mod role;
 mod shim;
 mod types;
@@ -452,7 +453,7 @@ fn router_with_optional_federation(
             Endpoint::Health => router.route(endpoint.path(), get(health)),
             Endpoint::Register => router.route(endpoint.path(), post(register)),
             Endpoint::Spawn => router.route(endpoint.path(), post(spawn_seat)),
-            Endpoint::Revive => router.route(endpoint.path(), post(revive_seat)),
+            Endpoint::Revive => router.route(endpoint.path(), post(revive::revive_seat)),
             Endpoint::Send => router.route(endpoint.path(), post(send)),
             Endpoint::Background => router.route(
                 endpoint.path(),
@@ -857,70 +858,6 @@ async fn spawn_seat(State(state): State<AppState>, Json(request): Json<SpawnRequ
     .await
 }
 
-/// Relaunch one tombstoned id through the spawn transition.
-///
-/// Harness, folder, model, effort, parent, and inbound configuration are durable
-/// seat identity or launch intent, so they cross the incarnation boundary. The
-/// old process identity and RPC-port intent describe resources held by one
-/// incarnation; neither is copied. Allocation and stamping stay exclusively in
-/// [`launch_seat`].
-async fn revive_seat(
-    State(state): State<AppState>,
-    Json(request): Json<ReviveRequest>,
-) -> Response {
-    let prior = match state.services.registry.get(&request.id).await {
-        Ok(Some(prior)) if prior.tombstoned_at.is_some() => prior,
-        Ok(Some(_)) => {
-            return refused(
-                "pij revive",
-                format!(
-                    "seat `{}` is live — revive only accepts tombstoned ids",
-                    request.id
-                ),
-            );
-        }
-        Ok(None) => {
-            return envelope(
-                StatusCode::NOT_FOUND,
-                &Envelope::<SeatDescriptor>::refused(
-                    "pij revive",
-                    ErrorKind::NotFound,
-                    format!(
-                        "seat `{}` does not exist — revive requires an existing tombstoned id",
-                        request.id
-                    ),
-                ),
-            );
-        }
-        Err(error) => return internal("pij revive", error),
-    };
-
-    let spawn_request = SpawnRequest {
-        id: Some(prior.id),
-        harness: prior.harness,
-        executable: None,
-        model: prior.model,
-        effort: prior.effort,
-        cwd: prior.folder,
-        session: request.session,
-        caller_pane: request.caller_pane,
-        name: request.name,
-        parent: prior.parent,
-        accept_inbound: prior.cross_session_inbound_accept == Some(true),
-        wait_seconds: None,
-        no_wait: true,
-    };
-    launch_seat(
-        &state,
-        spawn_request,
-        ExistingSeatPolicy {
-            allow_absent: false,
-        },
-        "pij revive",
-    )
-    .await
-}
-
 /// Launch one seat under the spawn lock. Spawn and revive routes share this
 /// transition so allocation, argv-derived stamps, rollback, and persistence
 /// have exactly one owner.
@@ -929,6 +866,27 @@ pub(crate) async fn launch_seat(
     request: SpawnRequest,
     existing_policy: ExistingSeatPolicy,
     command_name: &'static str,
+) -> Response {
+    let spawn_guard = state.spawn_lock.lock().await;
+    launch_seat_locked(
+        state,
+        request,
+        existing_policy,
+        command_name,
+        spawn_guard,
+        None,
+    )
+    .await
+}
+
+/// The caller retains the same guard from revive observation through launch.
+async fn launch_seat_locked(
+    state: &AppState,
+    request: SpawnRequest,
+    existing_policy: ExistingSeatPolicy,
+    command_name: &'static str,
+    spawn_guard: tokio::sync::MutexGuard<'_, ()>,
+    revive_receipt: Option<revive::Receipt>,
 ) -> Response {
     if let Some(id) = request.id.as_ref()
         && id.as_str().trim().is_empty()
@@ -970,14 +928,12 @@ pub(crate) async fn launch_seat(
         }
     };
 
-    // Keep classification, observed launch, and descriptor write in one
-    // daemon-local critical section. Registry::put is an upsert; without this
-    // lock two requests could both launch before either row existed.
+    // The caller's spawn guard keeps classification, observed launch, and the
+    // descriptor write in one daemon-local critical section.
     let spawn_id = match mint_spawn_id() {
         Ok(spawn_id) => spawn_id,
         Err(error) => return internal(command_name, error),
     };
-    let _spawn_guard = state.spawn_lock.lock().await;
     let (seat_id, displaced) = match request.id.clone() {
         Some(id) => match state.services.registry.get(&id).await {
             Ok(Some(existing)) if existing.tombstoned_at.is_none() => {
@@ -1105,10 +1061,10 @@ pub(crate) async fn launch_seat(
             },
         );
     }
-    drop(_spawn_guard);
+    drop(spawn_guard);
 
     if no_wait {
-        return spawn_success(command_name, descriptor);
+        return spawn_success(command_name, descriptor, revive_receipt);
     }
 
     let deadline = tokio::time::Instant::now() + Duration::from_secs(wait_seconds);
@@ -1124,7 +1080,7 @@ pub(crate) async fn launch_seat(
                 if requested_model_matches(requested_model.as_deref(), bound.model.as_deref(), true)
                 {
                     let _ = tokio::fs::remove_file(&status_path).await;
-                    return spawn_success(command_name, bound);
+                    return spawn_success(command_name, bound, None);
                 }
                 let actual = bound.model.as_deref().unwrap_or("no-model");
                 let footer_deadline = tokio::time::Instant::now() + Duration::from_secs(8);
@@ -1276,21 +1232,24 @@ async fn read_spawn_exit(path: &Path) -> Result<Option<i32>> {
         })
 }
 
-fn spawn_success(command_name: &'static str, seat: SeatDescriptor) -> Response {
+fn spawn_success(
+    command_name: &'static str,
+    seat: SeatDescriptor,
+    receipt: Option<revive::Receipt>,
+) -> Response {
     let pid = seat.proc.map(|identity| identity.pid);
     let bound = pid.is_some();
-    envelope(
-        StatusCode::OK,
-        &Envelope::ok(
-            command_name,
-            SpawnResponse {
-                seat,
-                dispatched: true,
-                bound,
-                pid,
-            },
-        ),
-    )
+    let mut answer = Envelope::ok(
+        command_name,
+        SpawnResponse {
+            seat,
+            dispatched: true,
+            bound,
+            pid,
+        },
+    );
+    answer.details = receipt.map(|receipt| serde_json::json!(receipt));
+    envelope(StatusCode::OK, &answer)
 }
 
 struct SpawnFailure<'a> {
@@ -1397,7 +1356,7 @@ struct SendBodyRequest {
 }
 
 async fn send(State(state): State<AppState>, Json(request): Json<SendBodyRequest>) -> Response {
-    if request.message.from.0 == crate::background::BG_ACTOR {
+    if request.message.from.0 == pij_core::BG_ACTOR {
         return refused(
             "pij send",
             "pij-bg is a daemon-owned sender; callers cannot impersonate it",
@@ -1488,7 +1447,7 @@ pub(crate) async fn send_control(
     if request
         .to
         .as_ref()
-        .is_some_and(|seat| seat.0 == crate::background::BG_ACTOR)
+        .is_some_and(|seat| seat.0 == pij_core::BG_ACTOR)
     {
         return refused(name, "pij-bg is a daemon-owned sender, not a recipient");
     }

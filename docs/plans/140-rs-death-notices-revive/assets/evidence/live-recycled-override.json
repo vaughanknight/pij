@@ -1,0 +1,46 @@
+{
+  "fixture": {
+    "id": "p140-recycled",
+    "pid": 7000,
+    "proc_start": 20260908103126,
+    "pane": "%missing-p140",
+    "parent": "p140-parent"
+  },
+  "refusal": {
+    "exit": 2,
+    "stdout": "{\"ok\":false,\"command\":\"pij revive\",\"v\":2,\"meta\":\"E-RS-REVIVE-LIVE seat `p140-recycled` observation recycled: explicit assumption and evidence are required. For recycled/unknown processes with an absent pane, the recorded parent (or prime for a parentless seat) may use `pij revive p140-recycled --assume-dead --evidence \\\"<text>\\\"`; active processes and present or unverifiable panes cannot be overridden.\",\"error\":\"refused\",\"details\":{\"code\":\"E-RS-REVIVE-LIVE\",\"observation\":{\"liveness\":\"recycled\",\"observed_start\":20260908103127,\"pane\":\"%missing-p140\",\"pane_present\":false,\"pid\":7000,\"proc_start\":20260908103126},\"override_command\":\"pij revive p140-recycled --assume-dead --evidence \\\"<text>\\\"\",\"seat\":\"p140-recycled\"}}\n",
+    "stderr": ""
+  },
+  "assumed": {
+    "exit": 0,
+    "stdout": "{\"ok\":true,\"command\":\"pij revive\",\"v\":2,\"data\":{\"id\":\"p140-recycled\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%4324\",\"proc\":null,\"folder\":\"/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p140-proof-ocv_v86t\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":\"p140-parent\",\"relay\":false,\"cross_session_inbound_accept\":false,\"native_extension_delivery\":false,\"spawn_id\":\"s-ced855d7b2a2e6b3ee78873e99d91ef5\",\"model\":\"github-copilot/gpt-6-astra\",\"dispatched\":true,\"bound\":false},\"details\":{\"assumed_dead_seq\":17,\"seq\":18}}\n",
+    "stderr": ""
+  },
+  "replacement_alive": true,
+  "events": [
+    {
+      "seq": 17,
+      "kind": "revive.assumed-dead",
+      "payload": "{\"caller\":\"p140-parent\",\"evidence\":\"isolated fixture: recorded stamp mismatches living unrelated parent process\",\"observation\":{\"liveness\":\"recycled\",\"observed_start\":20260908103127,\"pane\":\"%missing-p140\",\"pane_present\":false,\"pid\":7000,\"proc_start\":20260908103126}}",
+      "at": 1788827691410
+    },
+    {
+      "seq": 18,
+      "kind": "seat.tombstone",
+      "payload": "{\"observation\":{\"pane\":\"%missing-p140\",\"pane_present\":false,\"pid\":7000,\"proc_start\":20260908103126},\"reason\":\"revive-assumed-dead\"}",
+      "at": 1788827691411
+    },
+    {
+      "seq": 19,
+      "kind": "seat.revive-postmortem",
+      "payload": "{\"reason\":\"revive-assumed-dead\",\"role\":null,\"semantic_state\":null,\"tombstoned_at\":1788827691411}",
+      "at": 1788827691428
+    },
+    {
+      "seq": 20,
+      "kind": "seat.put",
+      "payload": "{\"id\":\"p140-recycled\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%4324\",\"proc\":null,\"folder\":\"/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p140-proof-ocv_v86t\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":\"p140-parent\",\"relay\":false,\"cross_session_inbound_accept\":false,\"native_extension_delivery\":false,\"spawn_id\":\"s-ced855d7b2a2e6b3ee78873e99d91ef5\",\"model\":\"github-copilot/gpt-6-astra\"}",
+      "at": 1788827691428
+    }
+  ]
+}

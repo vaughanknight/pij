@@ -30,10 +30,13 @@ Verified external/paneless seats use `pij inbox register --json`, then `pij inbo
 pij-rs spawn --harness <claude|copilot|codex|pi|omp> --model <exact-model> [--effort <level>] [--cwd <absolute-path>] [--parent <seat>] [--session <tmux-session>] [--name <window-name>] --json
 pij attest <new-seat> --plan-id <plan-id> --json
 pij dispatch <new-seat> --packet <path> --wait --json
-pij-rs revive <tombstoned-seat> [--session <tmux-session>] [--name <window-name>] --json
+pij-rs revive <seat> [--session <tmux-session>] [--name <window-name>] --json
+pij-rs revive <seat> --assume-dead --evidence 'Describe why the recorded process binding is stale' --json
 ```
 
-The shim's `spawn`/`revive` are named refusals because their grammar differs. Native spawn also supports `--id`, `--bin`, `--no-wait`, `--wait-seconds` and Claude inbound-consent flags; it has no legacy `--layout`, `--task`, `--branch` or `--plan-id`. Use its reported pane/window for explicit, owner-controlled tmux placement (§ C5); do not claim a legacy side-stack default. Send a packet after real binding; attest separately. Native revive requires an explicit tombstoned id and does not implement `--print`, `--attach` or `--assume-dead`.
+The shim's `spawn`/`revive` are named refusals because their grammar differs. Native spawn also supports `--id`, `--bin`, `--no-wait`, `--wait-seconds` and Claude inbound-consent flags; it has no legacy `--layout`, `--task`, `--branch` or `--plan-id`. Use its reported pane/window for explicit, owner-controlled tmux placement (§ C5); do not claim a legacy side-stack default. Send a packet after real binding; attest separately. Native revive requires an explicit id; `--print` and `--attach` remain unsupported.
+
+Revive accepts a tombstone **or** `Dead` process observation with the recorded pane absent, without a preliminary close. It records `revive-observed-dead` retirement before relaunch under one spawn lock and cites the tombstone in `details.seq`. `Recycled`/`Unknown` observations require `--assume-dead` plus nonempty `--evidence`: only the recorded parent may override, or a caller with authoritative role `prime` **when the target is parentless**. An unrelated prime has no override on a parented seat. The `revive.assumed-dead` event retains evidence and observation (`details.assumed_dead_seq`); no replacement pid is signalled. `E-RS-REVIVE-LIVE` names the observation and exact override command. An `Active` process or a present recorded pane still vetoes revival, even with the override.
 
 An in-process host spawn tool is a separate, explicitly available capability; it does not make an unported CLI flag work. Discover model ids from the host's actual catalog; `pij models` is unported. Canary every new/provided/revived peer before trust (§ C2), using runtime footer/round-trip evidence, never a ready-ping alone. Name every owned pane/window, seed § C10 in its packet, and apply § C11 at commit boundaries.
 
@@ -84,12 +87,16 @@ pij reap --dry-run --json
 
 Close requires self or the current recorded parent. It tombstones the seat and preserves history, **not pane/process teardown**; no `--force`. Healthy peers should be compacted/reused. A separately authorized owner handles terminal teardown after actual liveness evidence; reap is conservative stale-record repair (ops route), not a killer.
 
+The daemon's **death sweep** runs every **5s** by default (`PIJ_RS_DEATH_SWEEP_MS`, milliseconds). It applies the same conservative rule as `pij-rs reap --dry-run`: `Dead`/`Recycled` process plus recorded pane absent; unknown evidence is not death. It writes one `seat.tombstone` with `reason: "observed-dead"` and the process/pane observation, then **pushes an obituary to the recorded parent** through the existing delivery service. The sender is the same daemon-owned `pij-bg` virtual actor used for bg completion (`pij_core::BG_ACTOR`), not a second identity. Do not poll for child death.
+
+A tombstoned parent or one observed-dead in the same sweep receives no notice; the daemon logs the withheld count instead, avoiding reboot floods. Queued delivery does not prove parent observation. The pinned obituary says `pij revive <id>`; use the supported native `pij-rs revive <id>` spelling above until the shim is ported. See [Death sweep](../../../../docs/how/pij-rs-api.md#death-sweep) for the exact template and [Revive](../../../../docs/how/pij-rs-api.md#revive) for the override boundary.
+
 | Observation | Move |
 |---|---|
 | Self cannot resolve | Respect extension ownership; non-extension tmux seats may adopt only their exact current pane |
 | Tombstoned self still has a live pid | Identity must refuse; inspect tombstone evidence, not a legacy descriptor |
 | Unsupported flag/leaf or legacy force | Read the stable refusal ledger; no hidden fallback |
-| Reboot / stale pane or pid | Re-observe; use explicit native revive only for a known tombstone |
+| Reboot / stale pane or pid | Re-observe; native revive accepts a tombstone or `Dead` + pane absent; `Recycled`/`Unknown` needs the authorized evidence-bearing override |
 | A new peer is ready but its first inference fails | Inspect actual model/footer/runtime; canary before dispatch |
 | Send acceptance without execution | Inspect the actual receipt/control outcome; acceptance is not completion |
 

@@ -1,0 +1,156 @@
+[
+  {
+    "seq": 1,
+    "kind": "config.claude-inbound-ensured",
+    "seat": null,
+    "payload": "{\"after\":\"accept\",\"before\":null,\"home\":\"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p140-proof-ocv_v86t/home/.claude\"}",
+    "at": 1788827464338
+  },
+  {
+    "seq": 2,
+    "kind": "config.claude-hook-ensured",
+    "seat": null,
+    "payload": "{\"after\":\"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p140-proof-ocv_v86t/home/.pij-rs/claude-session-start-pij.sh\",\"before\":null,\"home\":\"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p140-proof-ocv_v86t/home/.claude\"}",
+    "at": 1788827464338
+  },
+  {
+    "seq": 3,
+    "kind": "config.claude-statusline-ensured",
+    "seat": null,
+    "payload": "{\"after\":\"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p140-proof-ocv_v86t/home/.pij-rs/claude-statusline-pij.sh\",\"before\":null,\"home\":\"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p140-proof-ocv_v86t/home/.claude\"}",
+    "at": 1788827464339
+  },
+  {
+    "seq": 4,
+    "kind": "seat.put",
+    "seat": "p140-parent",
+    "payload": "{\"id\":\"p140-parent\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%4312\",\"proc\":null,\"folder\":\"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p140-proof-ocv_v86t\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":null,\"relay\":false,\"cross_session_inbound_accept\":false,\"native_extension_delivery\":false,\"spawn_id\":\"s-56b4856ef79663d2474267139ddc7da9\",\"model\":\"github-copilot/gemini-3.8-flash-1m\"}",
+    "at": 1788827487236
+  },
+  {
+    "seq": 5,
+    "kind": "seat.put",
+    "seat": "p140-parent",
+    "payload": "{\"id\":\"p140-parent\",\"harness\":\"omp\",\"session\":\"01a07e6d-51d1-76b8-8524-aea6570a6b23\",\"pane\":\"%4312\",\"proc\":{\"pid\":7000,\"proc_start\":20260908103127},\"folder\":\"/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p140-proof-ocv_v86t\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":\"\",\"relay\":false,\"cross_session_inbound_accept\":false,\"native_extension_delivery\":false,\"spawn_id\":\"s-56b4856ef79663d2474267139ddc7da9\"}",
+    "at": 1788827490371
+  },
+  {
+    "seq": 6,
+    "kind": "seat.put",
+    "seat": "p140-child",
+    "payload": "{\"id\":\"p140-child\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%4313\",\"proc\":null,\"folder\":\"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p140-proof-ocv_v86t\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":\"p140-parent\",\"relay\":false,\"cross_session_inbound_accept\":false,\"native_extension_delivery\":false,\"spawn_id\":\"s-59891ece4c7d10dad1947c1febcc07c5\",\"model\":\"github-copilot/gemini-3.8-flash-1m\"}",
+    "at": 1788827526310
+  },
+  {
+    "seq": 7,
+    "kind": "seat.put",
+    "seat": "p140-child",
+    "payload": "{\"id\":\"p140-child\",\"harness\":\"omp\",\"session\":\"01a07e6d-ee81-713f-ba60-011404464e50\",\"pane\":\"%4313\",\"proc\":{\"pid\":40210,\"proc_start\":20260908103206},\"folder\":\"/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p140-proof-ocv_v86t\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":\"\",\"relay\":false,\"cross_session_inbound_accept\":false,\"native_extension_delivery\":false,\"spawn_id\":\"s-59891ece4c7d10dad1947c1febcc07c5\"}",
+    "at": 1788827530494
+  },
+  {
+    "seq": 8,
+    "kind": "seat.put",
+    "seat": "p140-child",
+    "payload": "{\"id\":\"p140-child\",\"harness\":\"omp\",\"session\":\"01a07e6d-ee81-713f-ba60-011404464e50\",\"pane\":\"%4313\",\"proc\":{\"pid\":40210,\"proc_start\":20260908103206},\"folder\":\"/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p140-proof-ocv_v86t\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":\"p140-parent\",\"relay\":false,\"cross_session_inbound_accept\":false,\"native_extension_delivery\":false,\"spawn_id\":\"s-59891ece4c7d10dad1947c1febcc07c5\"}",
+    "at": 1788827596961
+  },
+  {
+    "seq": 9,
+    "kind": "seat.tombstone",
+    "seat": "p140-child",
+    "payload": "{\"observation\":{\"pane\":\"%4313\",\"pane_present\":false,\"pid\":40210,\"proc_start\":20260908103206},\"reason\":\"observed-dead\"}",
+    "at": 1788827624411
+  },
+  {
+    "seq": 10,
+    "kind": "message.pushed",
+    "seat": "p140-parent",
+    "payload": "{\"msg_id\":\"680d40fe0ed57547-0000000000000000\",\"from\":\"pij-bg\",\"body\":\"[pij] seat p140-child died (observed-dead) \u2014 pane %4313 absent, pid 40210 gone at 2026-09-08T00:33:44.411Z. It was your child; revive with `pij revive p140-child` or leave it.\"}",
+    "at": 1788827624424
+  },
+  {
+    "seq": 11,
+    "kind": "delivery.outcome",
+    "seat": "p140-parent",
+    "payload": "{\"msg_id\":\"680d40fe0ed57547-0000000000000000\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}",
+    "at": 1788827624424
+  },
+  {
+    "seq": 12,
+    "kind": "death.notice",
+    "seat": "p140-child",
+    "payload": "{\"at\":\"2026-09-08T00:33:44.411Z\",\"delivery\":\"queued\",\"notice\":{\"at\":1788827624424,\"msg_id\":\"680d40fe0ed57547-0000000000000000\",\"outcome\":{\"next_retry_at\":0,\"outcome\":\"queued\",\"reason\":\"extension-stream\"}},\"parent\":\"p140-parent\",\"tombstone_seq\":9}",
+    "at": 1788827624411
+  },
+  {
+    "seq": 13,
+    "kind": "seat.revive-postmortem",
+    "seat": "p140-child",
+    "payload": "{\"reason\":\"observed-dead\",\"role\":null,\"semantic_state\":null,\"tombstoned_at\":1788827624411}",
+    "at": 1788827637601
+  },
+  {
+    "seq": 14,
+    "kind": "seat.put",
+    "seat": "p140-child",
+    "payload": "{\"id\":\"p140-child\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%4323\",\"proc\":null,\"folder\":\"/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p140-proof-ocv_v86t\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":\"p140-parent\",\"relay\":false,\"cross_session_inbound_accept\":false,\"native_extension_delivery\":false,\"spawn_id\":\"s-237d1774f14619cf9faed58b5a1266e4\"}",
+    "at": 1788827637601
+  },
+  {
+    "seq": 15,
+    "kind": "seat.put",
+    "seat": "p140-child",
+    "payload": "{\"id\":\"p140-child\",\"harness\":\"omp\",\"session\":\"01a07e6f-a32b-7151-9091-42b9fbb02e3a\",\"pane\":\"%4323\",\"proc\":{\"pid\":34056,\"proc_start\":20260908103357},\"folder\":\"/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p140-proof-ocv_v86t\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":\"p140-parent\",\"relay\":false,\"cross_session_inbound_accept\":false,\"native_extension_delivery\":false,\"spawn_id\":\"s-237d1774f14619cf9faed58b5a1266e4\",\"model\":\"github-copilot/gpt-6-astra\"}",
+    "at": 1788827641389
+  },
+  {
+    "seq": 16,
+    "kind": "spawn.bound",
+    "seat": "p140-child",
+    "payload": "{\"pane\":\"%4323\",\"pid\":34056,\"spawn_id\":\"s-237d1774f14619cf9faed58b5a1266e4\"}",
+    "at": 1788827641389
+  },
+  {
+    "seq": 17,
+    "kind": "revive.assumed-dead",
+    "seat": "p140-recycled",
+    "payload": "{\"caller\":\"p140-parent\",\"evidence\":\"isolated fixture: recorded stamp mismatches living unrelated parent process\",\"observation\":{\"liveness\":\"recycled\",\"observed_start\":20260908103127,\"pane\":\"%missing-p140\",\"pane_present\":false,\"pid\":7000,\"proc_start\":20260908103126}}",
+    "at": 1788827691410
+  },
+  {
+    "seq": 18,
+    "kind": "seat.tombstone",
+    "seat": "p140-recycled",
+    "payload": "{\"observation\":{\"pane\":\"%missing-p140\",\"pane_present\":false,\"pid\":7000,\"proc_start\":20260908103126},\"reason\":\"revive-assumed-dead\"}",
+    "at": 1788827691411
+  },
+  {
+    "seq": 19,
+    "kind": "seat.revive-postmortem",
+    "seat": "p140-recycled",
+    "payload": "{\"reason\":\"revive-assumed-dead\",\"role\":null,\"semantic_state\":null,\"tombstoned_at\":1788827691411}",
+    "at": 1788827691428
+  },
+  {
+    "seq": 20,
+    "kind": "seat.put",
+    "seat": "p140-recycled",
+    "payload": "{\"id\":\"p140-recycled\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%4324\",\"proc\":null,\"folder\":\"/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p140-proof-ocv_v86t\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":\"p140-parent\",\"relay\":false,\"cross_session_inbound_accept\":false,\"native_extension_delivery\":false,\"spawn_id\":\"s-ced855d7b2a2e6b3ee78873e99d91ef5\",\"model\":\"github-copilot/gpt-6-astra\"}",
+    "at": 1788827691428
+  },
+  {
+    "seq": 21,
+    "kind": "seat.put",
+    "seat": "p140-recycled",
+    "payload": "{\"id\":\"p140-recycled\",\"harness\":\"omp\",\"session\":\"01a07e70-6eca-757b-9856-7f643c2894a3\",\"pane\":\"%4324\",\"proc\":{\"pid\":67974,\"proc_start\":20260908103451},\"folder\":\"/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p140-proof-ocv_v86t\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":\"p140-parent\",\"relay\":false,\"cross_session_inbound_accept\":false,\"native_extension_delivery\":false,\"spawn_id\":\"s-ced855d7b2a2e6b3ee78873e99d91ef5\",\"model\":\"github-copilot/gpt-6-astra\"}",
+    "at": 1788827693646
+  },
+  {
+    "seq": 22,
+    "kind": "spawn.bound",
+    "seat": "p140-recycled",
+    "payload": "{\"pane\":\"%4324\",\"pid\":67974,\"spawn_id\":\"s-ced855d7b2a2e6b3ee78873e99d91ef5\"}",
+    "at": 1788827693646
+  }
+]

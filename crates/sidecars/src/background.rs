@@ -292,7 +292,7 @@ impl BgWorker {
         self.persist(&record)?;
         enqueue_turn(
             &self.queue,
-            "pij-bg",
+            pij_core::BG_ACTOR,
             target,
             format!(
                 "background job `{id}` cancelled; observed process group {} gone",
@@ -402,7 +402,7 @@ impl BgWorker {
                 .map_err(|error| io_error("read output", &record.output_path, error))?;
             enqueue_turn(
                 &self.queue,
-                "pij-bg",
+                pij_core::BG_ACTOR,
                 &record.target,
                 format!(
                     "background job `{}` {label}{}\n{}",

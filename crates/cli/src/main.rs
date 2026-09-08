@@ -220,9 +220,9 @@ enum Command {
         #[arg(long, default_value_t = 30)]
         wait_seconds: u64,
     },
-    /// Relaunch one tombstoned seat with its prior identity and launch intent.
+    /// Relaunch a tombstoned or observed-dead seat with its prior launch intent.
     Revive {
-        /// Existing tombstoned seat id.
+        /// Existing seat id.
         id: String,
         /// Target tmux session; defaults from the caller pane.
         #[arg(long)]
@@ -230,6 +230,12 @@ enum Command {
         /// Tmux window name; defaults to the seat id.
         #[arg(long)]
         name: Option<String>,
+        /// Override recycled/unknown process evidence; requires parent or parentless prime.
+        #[arg(long, requires = "evidence")]
+        assume_dead: bool,
+        /// Explain the death evidence retained in the durable revive audit.
+        #[arg(long, requires = "assume_dead")]
+        evidence: Option<String>,
     },
     /// Durably enqueue one message as the acting seat.
     #[command(
@@ -1877,7 +1883,14 @@ fn spawn_cli_response(response: Envelope<SeatDescriptor>) -> Envelope<SpawnCliRe
 }
 
 fn prepare_revive_request(command: &Command) -> Result<Option<ReviveRequest>, PijError> {
-    let Command::Revive { id, session, name } = command else {
+    let Command::Revive {
+        id,
+        session,
+        name,
+        assume_dead,
+        evidence,
+    } = command
+    else {
         return Ok(None);
     };
     let caller_pane = if session.is_none() {
@@ -1899,6 +1912,9 @@ fn prepare_revive_request(command: &Command) -> Result<Option<ReviveRequest>, Pi
         session: session.clone(),
         caller_pane,
         name: name.clone(),
+        caller: caller_context(),
+        assume_dead: *assume_dead,
+        evidence: evidence.clone(),
     }))
 }
 
@@ -1985,8 +2001,7 @@ mod tests {
 
     use super::{
         Cli, Command, DaemonAction, caller_claude_warning, git_dir_is_linked,
-        prepare_revive_request, prepare_spawn_request, resolve_bind_addr, resolve_client_addr,
-        resolve_state_dir,
+        prepare_spawn_request, resolve_bind_addr, resolve_client_addr, resolve_state_dir,
     };
 
     #[test]
@@ -2556,28 +2571,6 @@ mod tests {
             !request.accept_inbound,
             "non-Claude harnesses must not silently inherit the Claude default"
         );
-    }
-
-    #[test]
-    fn revive_carries_only_identity_and_placement() {
-        let parsed = Cli::try_parse_from([
-            "pij-rs",
-            "revive",
-            "pij-old-seat",
-            "--session",
-            "fleet",
-            "--name",
-            "returning-seat",
-        ])
-        .expect("narrow revive command");
-        let request = prepare_revive_request(&parsed.command)
-            .expect("valid placement")
-            .expect("revive request");
-
-        assert_eq!(request.id, SeatId::from("pij-old-seat"));
-        assert_eq!(request.session.as_deref(), Some("fleet"));
-        assert_eq!(request.caller_pane, None);
-        assert_eq!(request.name.as_deref(), Some("returning-seat"));
     }
 
     #[test]

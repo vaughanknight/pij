@@ -318,7 +318,7 @@ impl DeliveryService {
     }
 
     async fn arrive(&self, msg: Msg, arrival: Arrival) -> Result<Receipt> {
-        if msg.to.0 == crate::background::BG_ACTOR {
+        if msg.to.0 == pij_core::BG_ACTOR {
             return Err(PijError::Adapter {
                 adapter: "daemon/virtual-sender".into(),
                 message: "pij-bg is a daemon-owned sender, not a recipient".into(),

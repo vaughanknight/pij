@@ -329,3 +329,126 @@ async fn reap_matching_live_process_is_retained_without_any_pane_probe_or_event(
         "a known live process already vetoes reconciliation"
     );
 }
+
+#[tokio::test]
+async fn death_sweep_matches_manual_candidates_and_commits_observation_once() {
+    let (services, _store) = services().await;
+    let expected = seat();
+    let before = services.registry.put(expected.clone()).await.unwrap();
+    let dry = reap(
+        services.registry.as_ref(),
+        services.liveness.as_ref(),
+        services.tmux.as_ref(),
+        true,
+    )
+    .await
+    .unwrap();
+    let swept = crate::death_sweep::sweep(&services).await.unwrap();
+    assert_eq!(swept.candidates, dry.candidates);
+    let events = services.spine.tail(None, before).await.unwrap();
+    let tombstone = events
+        .iter()
+        .find(|event| event.kind == "seat.tombstone")
+        .unwrap();
+    let payload: Value = serde_json::from_str(&tombstone.payload).unwrap();
+    assert_eq!(payload["reason"], "observed-dead");
+    assert_eq!(
+        payload["observation"],
+        json!({
+            "pid": expected.proc.unwrap().pid,
+            "proc_start": expected.proc.unwrap().proc_start,
+            "pane": expected.pane,
+            "pane_present": false
+        })
+    );
+    assert_eq!(tombstone.seq, Some(swept.reaped[0].seq));
+    let after = events.last().unwrap().seq.unwrap();
+    let again = crate::death_sweep::sweep(&services).await.unwrap();
+    assert!(again.reaped.is_empty());
+    assert!(services.spine.tail(None, after).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn death_sweep_notifies_living_parent_with_pinned_body_and_honest_receipt() {
+    let (mut services, _store) = services().await;
+    let mut child = seat();
+    child.id = "child".into();
+    child.parent = Some("parent".into());
+    let mut parent = seat();
+    parent.id = "parent".into();
+    parent.parent = None;
+    parent.pane = None;
+    parent.proc = Some(ProcIdentity {
+        pid: 4321,
+        proc_start: 123,
+    });
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(parent.proc.unwrap()));
+    services.registry.put(parent).await.unwrap();
+    let before = services.registry.put(child.clone()).await.unwrap();
+    crate::death_sweep::sweep(&services).await.unwrap();
+    let events = services.spine.tail(None, before).await.unwrap();
+    let notice = events
+        .iter()
+        .find(|event| event.kind == "death.notice")
+        .expect("audited notice");
+    let payload: Value = serde_json::from_str(&notice.payload).unwrap();
+    assert_eq!(payload["parent"], "parent");
+    assert_eq!(payload["notice"]["outcome"]["outcome"], "queued");
+    let msg_id = payload["notice"]["msg_id"].as_str().unwrap();
+    let (_, job) = services
+        .queue
+        .peek(&["delivery:parent".to_string()])
+        .await
+        .unwrap()
+        .unwrap();
+    let message: pij_core::model::Msg = serde_json::from_str(&job.payload).unwrap();
+    assert_eq!(message.msg_id, msg_id);
+    let contract: Value = serde_json::from_str(include_str!(
+        "../../testkit/fixtures/golden/api/governance-routes.json"
+    ))
+    .unwrap();
+    let expected = contract["death_notice_body_template"]
+        .as_str()
+        .unwrap()
+        .replace("{id}", child.id.as_str())
+        .replace("{reason}", "observed-dead")
+        .replace("{pane}", child.pane.as_deref().unwrap())
+        .replace("{pid}", &child.proc.unwrap().pid.to_string())
+        .replace("{iso}", payload["at"].as_str().unwrap());
+    assert_eq!(message.body, expected);
+    assert_eq!(message.from.as_str(), "pij-bg");
+    assert!(payload["tombstone_seq"].as_u64().unwrap() < notice.seq.unwrap().0);
+}
+
+#[tokio::test]
+async fn death_sweep_withholds_notices_when_parent_already_or_simultaneously_dead() {
+    for already_dead in [false, true] {
+        let (services, _store) = services().await;
+        let mut child = seat();
+        child.id = "a-child".into();
+        child.parent = Some("z-parent".into());
+        let mut parent = seat();
+        parent.id = "z-parent".into();
+        parent.parent = None;
+        if already_dead {
+            parent.tombstoned_at = Some(1);
+            parent.tombstone_reason = Some("fixture".into());
+        }
+        services.registry.put(parent).await.unwrap();
+        let before = services.registry.put(child).await.unwrap();
+        crate::death_sweep::sweep(&services).await.unwrap();
+        let events = services.spine.tail(None, before).await.unwrap();
+        assert!(
+            !events
+                .iter()
+                .any(|event| event.kind.starts_with("delivery."))
+        );
+        let notice = events
+            .iter()
+            .find(|event| event.kind == "death.notice")
+            .expect("suppression recorded");
+        let payload: Value = serde_json::from_str(&notice.payload).unwrap();
+        assert_eq!(payload["withheld"], "recipient-dead");
+        assert_eq!(payload["notice"], Value::Null);
+    }
+}

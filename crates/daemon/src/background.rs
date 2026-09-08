@@ -10,6 +10,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use pij_core::BG_ACTOR;
 use pij_core::background::{BackgroundJob, BackgroundState};
 use pij_core::error::{PijError, Result};
 use pij_core::model::{Event, Msg, ProcIdentity, SeatDescriptor, SeatId};
@@ -19,9 +20,6 @@ use tokio::sync::Mutex;
 
 use crate::delivery::DeliveryService;
 use crate::events::EventBus;
-
-/// The daemon-owned virtual sender; no registry row is needed for this actor.
-pub const BG_ACTOR: &str = "pij-bg";
 
 const TAIL_BYTES: u64 = 64 * 1024;
 const TAIL_CHARS: usize = 1200;

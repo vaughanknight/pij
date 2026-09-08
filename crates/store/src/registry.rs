@@ -57,14 +57,14 @@ impl SqliteRegistry {
             .publish_registry(Box::pin(async move {
                 require_current_schema(&pool).await?;
                 let mut tx = begin_write(&pool).await?;
-                if let Some(expected) = expected {
+                if let Some(expected) = expected.as_ref() {
                     let row = sqlx::query("SELECT * FROM seats WHERE id = ?1")
                         .bind(seat.as_str())
                         .fetch_optional(&mut *tx)
                         .await
                         .map_err(adapter_error)?;
                     let current = row.as_ref().map(row_to_descriptor).transpose()?;
-                    if current.as_ref() != Some(&expected) {
+                    if current.as_ref() != Some(expected) {
                         tx.rollback().await.map_err(adapter_error)?;
                         return Err(PijError::GovernanceRefused {
                             code: "E-RS-INCARNATION-CHANGED".to_string(),
@@ -72,11 +72,7 @@ impl SqliteRegistry {
                         });
                     }
                 }
-                let mut event = registry_event(
-                    "seat.tombstone",
-                    &seat,
-                    serde_json::json!({ "reason": reason }).to_string(),
-                )?;
+                let mut event = tombstone_event(&seat, &reason, expected.as_ref())?;
                 let seq = append_in_transaction(&mut tx, &event).await?;
                 let affected = sqlx::query(
                     "UPDATE seats SET tombstoned_at = ?2, tombstone_reason = ?3, \
@@ -279,6 +275,29 @@ pub fn registry_event(kind: &str, seat: &SeatId, payload: String) -> Result<Even
         seat: Some(seat.clone()),
         payload,
     })
+}
+
+/// Encode a retirement fact; observed-dead reasons carry the compared binding.
+/// The caller owns the two-witness observation; the store owns its atomic commit.
+pub fn tombstone_event(
+    seat: &SeatId,
+    reason: &str,
+    expected: Option<&SeatDescriptor>,
+) -> Result<Event> {
+    let mut payload = serde_json::json!({ "reason": reason });
+    if matches!(
+        reason,
+        "observed-dead" | "revive-observed-dead" | "revive-assumed-dead"
+    ) && let Some(expected) = expected
+    {
+        payload["observation"] = serde_json::json!({
+            "pid": expected.proc.map(|proc| proc.pid),
+            "proc_start": expected.proc.map(|proc| proc.proc_start),
+            "pane": expected.pane,
+            "pane_present": false,
+        });
+    }
+    registry_event("seat.tombstone", seat, payload.to_string())
 }
 
 /// Encode the exact descriptor in a stamped `seat.put` fact.

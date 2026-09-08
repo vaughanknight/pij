@@ -28,3 +28,7 @@ pub mod ports;
 pub mod report;
 pub mod watchdog;
 pub mod wire;
+
+/// The daemon-owned virtual sender shared by job completions and death notices.
+/// No registry row is required; clients may neither impersonate nor address it.
+pub const BG_ACTOR: &str = "pij-bg";

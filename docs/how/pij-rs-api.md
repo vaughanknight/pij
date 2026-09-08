@@ -45,7 +45,7 @@ Governance families accept `{ "argv": ["project", "list"], "caller": { "TMUX_PAN
 
 `RoleService` is authoritative: asserted roles live in `seat_roles`, joined into whoami, `/v1/seats`, StateCard and phonehome. A descriptor's stale role does not win. The projected role is optional (`Option<String>`): a string is an assertion; JSON `null` means no asserted role, never an inferred `worker` or empty string. Consumers must preserve null versus omission and must not reinterpret an omitted role as a request to clear it. Adoption/registration with role omitted preserves an existing assertion; a fresh unstamped seat remains null. Explicit null on adopt/register is not an unset operation. Use `pij role <seat> --unset` or typed `/v1/role` with `"role": null`; omitting role from that typed mutation is invalid.
 
-Self or the target's **current recorded parent** may assert/unset its role; an unrelated seat gets `E-RS-OWNERSHIP`. Protocol may require governors to designate roles, but the service's self-or-parent contract is explicit. An asserted display role, even `prime`, confers no governance or remote-control authority. Prime designation is a separate orchestration record.
+Self or the target's **current recorded parent** may assert/unset its role; an unrelated seat gets `E-RS-OWNERSHIP`. Protocol may require governors to designate roles, but the service's self-or-parent contract is explicit. An asserted display role, even `prime`, confers no general governance or remote-control authority. The narrowly scoped exception is [assume-dead revive of a parentless seat](#revive), which accepts an authoritative `prime` role. Prime designation is a separate orchestration record.
 
 Sources: [`identity.rs`](../../crates/daemon/src/http/identity.rs), [`role.rs`](../../crates/daemon/src/http/role.rs), [`types.rs`](../../crates/daemon/src/http/types.rs), [`governance.rs`](../../crates/daemon/src/http/governance.rs).
 
@@ -261,6 +261,34 @@ The process adapter uses `LC_ALL=C ps -o lstart=PIJ_LSTART -p <pid>`. Absence is
 
 Sources: [`reaper.rs`](../../crates/daemon/src/reaper.rs), [`proc.rs`](../../crates/harnesses/src/proc.rs).
 
+## Death sweep
+
+The daemon automatically applies the same conservative reap rule every **5 seconds** by default; set `PIJ_RS_DEATH_SWEEP_MS` on the daemon to change the interval in milliseconds. `pij-rs reap --dry-run --json` exposes the same candidates for an equivalent observation. A candidate needs a `Dead` or `Recycled` process incarnation and confirmed absence of its recorded pane (paneless records use the existing stale-process rule). Unknown evidence is not death.
+
+Each unchanged candidate receives one atomic `seat.tombstone` with `reason: "observed-dead"` and observation fields `pid`, `proc_start`, `pane`, `pane_present: false`. Already-tombstoned rows are not retired again. The sweep never signals a process or tears down a pane.
+
+After tombstoning, the daemon pushes an obituary to the child's **recorded parent** through `DeliveryService::send`. It uses `pij_core::BG_ACTOR`, the shared daemon-owned `pij-bg` virtual actor already used for background-job completion—not a second sender identity. The exact text is pinned as `death_notice_body_template` in the [stable route corpus](../../crates/testkit/fixtures/golden/api/governance-routes.json):
+
+```text
+[pij] seat <id> died (<reason>) — pane <pane> absent, pid <pid> gone at <iso>. It was your child; revive with `pij revive <id>` or leave it.
+```
+
+The pinned notice preserves that command spelling; while shim revive remains unported, run the native `pij-rs revive <id>` form below. A send receipt proves only its recorded delivery strength: queued is not parent observation. Parents need not poll for child deaths. A parent that is tombstoned or itself observed-dead in the same sweep receives no notice; the daemon counts these suppressions in one line, `death sweep: N notice(s) withheld — recipient dead too`, rather than flooding dead parents after a reboot.
+
+## Revive
+
+```bash
+pij-rs revive <seat> [--session <tmux-session>] [--name <window-name>] --json
+# Only the recorded parent, or a prime for a parentless target:
+pij-rs revive <seat> --assume-dead --evidence 'Observed stale binding; describe the evidence' --json
+```
+
+Native revive accepts an explicit tombstoned id **or** a seat observed `Dead` with its recorded pane absent; no preliminary `close` is needed. In the observed-dead case it first commits `seat.tombstone` with `reason: "revive-observed-dead"`, then relaunches under the same spawn-lock critical section. The receipt's `details.seq` cites the tombstone sequence.
+
+For `Recycled` (the pid belongs to another process incarnation) or `Unknown` (for example, the process probe is unavailable or no process binding is recorded), `--assume-dead` requires nonempty `--evidence`. The daemon resolves the caller from caller evidence: only the seat's recorded parent may override, or, **if the target has no parent**, a caller whose authoritative role is `prime`. An unrelated prime cannot override a parented seat. The override records `revive.assumed-dead` with the supplied evidence and observed binding, cited by `details.assumed_dead_seq`; it **never signals the replacement pid**. An `Active` process or a present recorded pane still vetoes revival, even with this flag.
+
+Without an eligible override, `E-RS-REVIVE-LIVE` names the observation and exact override command; its remediation does not grant authorization. Shim `pij revive` still refuses `E-RS-UNPORTED`, and native `--print`/`--attach` remain unsupported.
+
 ## Event stream and cursors
 
 `GET /v1/events` is NDJSON, **not SSE**. The first line is the fixture Hello below, not `type=hello` and not a v2 command envelope:
@@ -279,7 +307,7 @@ All producers append through the sole EventBus/store ordering seam, commit befor
 
 This anchor is permanent; refusals and shipped consumers must not depend on an active plan directory. The inventory distinguishes **shim gaps** from native capability. A missing route never enables legacy execution, even when explicitly forced, and a family row does not promise every old leaf or flag.
 
-- **Shim-only gaps / different meanings:** `spawn`, `revive`, `tail` and `daemon` refuse `E-RS-UNPORTED`; native capability is not a grammar-compatible shim port. Use the documented native forms in the [peer](../../skills/pij/references/routes/peer.md) and [ops](../../skills/pij/references/routes/ops.md) routes where available. Native tail is an event stream, not a transcript. Native revive requires a tombstoned id; no `--print`, `--attach` or `--assume-dead`. Native spawn has no legacy layout/task/branch/plan-id flags.
+- **Shim-only gaps / different meanings:** `spawn`, `revive`, `tail` and `daemon` refuse `E-RS-UNPORTED`; native capability is not a grammar-compatible shim port. Use the documented native forms in the [peer](../../skills/pij/references/routes/peer.md) and [ops](../../skills/pij/references/routes/ops.md) routes where available. Native tail is an event stream, not a transcript. [Native revive](#revive) accepts tombstoned or observed-dead ids and the authorized `--assume-dead --evidence` override; `--print` and `--attach` remain unsupported. Native spawn has no legacy layout/task/branch/plan-id flags.
 - **List/sessions filters:** shim `pij list` forwards declared `harness`, `folder`, `parent` and `scope=local` query values to GET `/v1/seats`; this is exact query forwarding, not a second Rust parser. Native `pij-rs list` is still bare/`--json`. `pij sessions` routes GET `/v1/shim/sessions` with no query flags or legacy union. Unsupported `--role`, `--here`, `--prime`, `--archived` and tree semantics refuse instead of being dropped. Prime designation has no dedicated list/getter projection here: use actual designation receipts/events and authoritative government/human evidence; role assertion or an empty filtered view cannot prove absence.
 - **Baton projection limits:** a blocked-time field is not provided. Automatic request notices and their honest delivered/queued/unverified/null projection are supported as described under [Baton leases](#baton-leases); a durable request alone still does not prove recipient observation.
 - **Unported command surfaces:** `agent`, `path`, `telegram`, `models`, `watch`, `unwatch`, `chore`, `watchdog`, `focus`, `tree` and `link` refuse through the shim. This does not remove already composed sidecar internals; it does not advertise those old administrative grammars as a native port. In particular, there is no rs reparent/root-placement command equivalent to link.

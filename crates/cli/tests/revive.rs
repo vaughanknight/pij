@@ -142,11 +142,15 @@ async fn shipped_revive_refuses_absent_and_live_ids_without_launching() {
         serde_json::from_slice(&live.stdout).expect("live JSON envelope");
     assert_eq!(live.command, "pij revive");
     assert_eq!(live.error, Some(ErrorKind::Refused));
-    let live_reason = live.meta.expect("live refusal reason");
-    assert!(live_reason.contains("pij-still-live"));
-    assert!(live_reason.contains("live"));
-    assert!(live_reason.contains("only accepts tombstoned ids"));
-    assert!(tmux.calls().is_empty(), "refusals must not launch a pane");
+    assert_eq!(
+        live.details.expect("decodable liveness refusal")["code"],
+        "E-RS-REVIVE-LIVE"
+    );
+    assert!(
+        tmux.calls()
+            .iter()
+            .all(|call| !call.starts_with("new_window:"))
+    );
 
     server.abort();
     drop(dir);
@@ -352,4 +356,115 @@ async fn shipped_revive_derives_identity_and_launches_one_prebind_incarnation() 
 
     server.abort();
     drop(dir);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shipped_revive_assumption_flags_authorize_parent_and_record_evidence() {
+    let dir = fresh_dir("pij-revive-assumed");
+    std::fs::write(dir.join("daemon.key"), "revive-test-key").unwrap();
+    let mut config = Config {
+        store_path: dir.join("pij.sqlite").to_str().unwrap().to_string(),
+        ..Config::default()
+    };
+    config.adapters.registry = AdapterChoice::Real;
+    config.adapters.spine = AdapterChoice::Real;
+    let services = pij_daemon::build_services(&config, &dir.join("signals"))
+        .await
+        .unwrap();
+    let registry = services.registry.clone();
+    let spine = services.spine.clone();
+    registry
+        .put(SeatDescriptor::new("pij-parent", Harness::Copilot, "/tmp"))
+        .await
+        .unwrap();
+    let mut prior = SeatDescriptor::new("pij-child", Harness::Copilot, "/tmp");
+    prior.parent = Some("pij-parent".into());
+    prior.proc = Some(ProcIdentity {
+        pid: 4242,
+        proc_start: 10,
+    });
+    prior.pane = Some("%old".to_string());
+    let before = registry.put(prior).await.unwrap();
+    let tmux = Arc::new(FakeTmux::new());
+    let (addr, server) = serve(
+        "revive-test-key",
+        services,
+        tmux.clone(),
+        vec![ProcIdentity {
+            pid: 4242,
+            proc_start: 20,
+        }],
+    )
+    .await;
+    let output = Command::new(env!("CARGO_BIN_EXE_pij-rs"))
+        .args([
+            "--state-dir",
+            dir.to_str().unwrap(),
+            "--addr",
+            &addr.to_string(),
+            "--json",
+            "revive",
+            "pij-child",
+            "--session",
+            "fleet",
+            "--assume-dead",
+            "--evidence",
+            "old pane killed; pid belongs to replacement",
+        ])
+        .env("PIJ_SESSION_ID", "pij-parent")
+        .env_remove("TMUX_PANE")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "revive flags must reach daemon, not be unknown flags: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let body: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(body["ok"], true, "{body}");
+    let events = spine
+        .tail(Some(&SeatId::from("pij-child")), before)
+        .await
+        .unwrap();
+    let assumption = events
+        .iter()
+        .find(|event| event.kind == "revive.assumed-dead")
+        .unwrap();
+    let payload: serde_json::Value = serde_json::from_str(&assumption.payload).unwrap();
+    assert_eq!(payload["caller"], "pij-parent");
+    assert_eq!(
+        payload["evidence"],
+        "old pane killed; pid belongs to replacement"
+    );
+    assert_eq!(
+        body["details"]["assumed_dead_seq"],
+        serde_json::json!(assumption.seq)
+    );
+    assert_eq!(
+        tmux.calls()
+            .iter()
+            .filter(|call| call.starts_with("new_window:"))
+            .count(),
+        1
+    );
+    server.abort();
+}
+
+#[test]
+fn shipped_revive_refuses_unknown_or_incomplete_override_flags_before_connecting() {
+    let dir = fresh_dir("pij-revive-bad-flags");
+    for flags in [
+        vec!["--force"],
+        vec!["--assume-dead"],
+        vec!["--evidence", "unpaired evidence"],
+    ] {
+        let mut args = vec!["revive", "pij-child", "--session", "fleet"];
+        args.extend(flags);
+        let output = run_cli(&dir, "127.0.0.1:1", &args);
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "invalid arguments must be rejected before a daemon request"
+        );
+    }
 }

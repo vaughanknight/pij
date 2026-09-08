@@ -120,7 +120,8 @@ internal = [
 # the reactor; `tokio-stream` adapts the bounded broadcast receiver to the public
 # Stream contract (u-events). `async-trait` implements the published Spine port;
 # `sha2` hashes packet bytes; pinned `globset` preserves supported fence grammar.
-external = ["async-trait", "axum", "getrandom", "globset", "hostname", "reqwest", "serde", "serde_json", "sha2", "sqlx@dev", "tokio", "tokio-stream"]
+# `time` formats death-notice UTC timestamps only (plan 140); no clock or parsing features.
+external = ["async-trait", "axum", "getrandom", "globset", "hostname", "reqwest", "serde", "serde_json", "sha2", "sqlx@dev", "time", "tokio", "tokio-stream"]
 why = "Composition root #1: wires Arc<dyn Port> from config, serves HTTP, runs tick loops and job workers; cryptographic packet digests and standard fence matching support governance boundaries."
 
 [crates.pij-cli]
