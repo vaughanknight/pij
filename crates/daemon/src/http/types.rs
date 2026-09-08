@@ -203,6 +203,16 @@ pub struct SendRequest {
 // consults routing, tombstones and the transport, and publishes both events.
 // Found by u-extension at compose.
 
+/// Lease-only heartbeat for an unconsumed OMP/Pi body claim.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InboxHeartbeatRequest {
+    /// Recipient that owns the current running body claim.
+    pub seat: SeatId,
+    /// Queue claim returned by `GET /v1/inbox`.
+    pub job_id: JobId,
+}
+
 /// Acknowledgement for the single inbox claim a client decoded.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InboxAckRequest {

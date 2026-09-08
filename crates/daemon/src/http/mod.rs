@@ -59,9 +59,9 @@ pub use client::{PeerEndpoint, get_from_peer, post_to_peer, stream_from_peer};
 pub use exposure::{Exposure, boot_banner, exposure};
 pub use identity::{CallerContext, IdentityQuery, IdentityRequest, Phonehome};
 pub use types::{
-    CursorResetDetail, FederatedRoster, InboxAckRequest, PeerStreamState, Registration,
-    ReviveRequest, SendRequest, SpawnRequest, SpawnResponse, StateCard, StateRequest, StreamFrame,
-    UnavailablePeer, UnsupportedField,
+    CursorResetDetail, FederatedRoster, InboxAckRequest, InboxHeartbeatRequest, PeerStreamState,
+    Registration, ReviveRequest, SendRequest, SpawnRequest, SpawnResponse, StateCard, StateRequest,
+    StreamFrame, UnavailablePeer, UnsupportedField,
 };
 
 #[derive(Clone)]
@@ -111,6 +111,7 @@ enum Endpoint {
     Inbox,
     InboxTyping,
     InboxAck,
+    InboxHeartbeat,
     InboxRelease,
     Hold,
     Release,
@@ -176,7 +177,7 @@ enum Endpoint {
 }
 
 impl Endpoint {
-    const ALL: [Self; 44] = [
+    const ALL: [Self; 45] = [
         Self::Health,
         Self::Register,
         Self::Spawn,
@@ -188,6 +189,7 @@ impl Endpoint {
         Self::Inbox,
         Self::InboxTyping,
         Self::InboxAck,
+        Self::InboxHeartbeat,
         Self::InboxRelease,
         Self::Hold,
         Self::Release,
@@ -236,6 +238,7 @@ impl Endpoint {
             Self::Inbox => "/v1/inbox",
             Self::InboxTyping => "/v1/inbox/typing",
             Self::InboxAck => "/v1/inbox/ack",
+            Self::InboxHeartbeat => "/v1/inbox/heartbeat",
             Self::InboxRelease => "/v1/inbox/release",
             Self::Hold => "/v1/hold",
             Self::Release => "/v1/release",
@@ -286,6 +289,7 @@ impl Endpoint {
             | Self::Background
             | Self::BackgroundKill
             | Self::InboxAck
+            | Self::InboxHeartbeat
             | Self::InboxRelease
             | Self::Hold
             | Self::Release
@@ -418,6 +422,7 @@ fn router_with_optional_federation(
                     | Endpoint::Background
                     | Endpoint::BackgroundKill
                     | Endpoint::InboxAck
+                    | Endpoint::InboxHeartbeat
                     | Endpoint::InboxRelease
                     | Endpoint::Hold
                     | Endpoint::Release
@@ -469,6 +474,7 @@ fn router_with_optional_federation(
             Endpoint::Inbox => router.route(endpoint.path(), get(inbox)),
             Endpoint::InboxTyping => router.route(endpoint.path(), get(inbox_typing)),
             Endpoint::InboxAck => router.route(endpoint.path(), post(ack_inbox)),
+            Endpoint::InboxHeartbeat => router.route(endpoint.path(), post(heartbeat_inbox)),
             Endpoint::InboxRelease => router.route(endpoint.path(), post(operator_release_inbox)),
             Endpoint::Hold => router.route(endpoint.path(), post(hold_inbox)),
             Endpoint::Release => router.route(endpoint.path(), post(release_inbox)),
@@ -1993,6 +1999,22 @@ struct InboxAckAudit {
     authenticated_machine: &'static str,
     evidence_grade: &'static str,
     outcome: pij_core::model::DeliveryOrigin,
+}
+
+/// Holding a body claim is not an acknowledgement or a delivery event.
+async fn heartbeat_inbox(
+    State(state): State<AppState>,
+    Json(request): Json<InboxHeartbeatRequest>,
+) -> Response {
+    match state
+        .services
+        .delivery
+        .heartbeat_inbox(&request.seat, request.job_id)
+        .await
+    {
+        Ok(()) => envelope(StatusCode::OK, &Envelope::ok("pij inbox", request.job_id)),
+        Err(error) => inbox_failure(error),
+    }
 }
 
 /// Record `ReaderRead` only after the queue authority commits the named job.

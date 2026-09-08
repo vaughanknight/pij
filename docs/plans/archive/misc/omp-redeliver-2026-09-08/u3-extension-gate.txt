@@ -1,0 +1,22 @@
+npm run test -- "$@"
+
+> pij@0.1.0 test
+> vitest run .pi/extensions/pij/adapters/rust-runtime.test.ts .pi/extensions/pij/adapters/daemon-http.test.ts
+
+(node:89417) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/pij-worktrees/redeliver-busy-seat
+
+ ✓ .pi/extensions/pij/adapters/daemon-http.test.ts (20 tests) 1519ms
+     ✓ reconnects with the complete cursor map and refreshes the daemon key  312ms
+     ✓ falls back to a live-only attach when the daemon refuses replay cursors  310ms
+     ✓ caps reconnect backoff after exponential growth  360ms
+ ✓ .pi/extensions/pij/adapters/rust-runtime.test.ts (78 tests) 1554ms
+     ✓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: false)  305ms
+     ✓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: true)  307ms
+
+ Test Files  2 passed (2)
+      Tests  98 passed (98)
+   Start at  20:21:48
+   Duration  1.80s (transform 187ms, setup 0ms, import 232ms, tests 3.07s, environment 0ms)

@@ -14,9 +14,11 @@ use pij_core::events::EventFilter;
 use pij_core::framing::frame_message;
 use pij_core::model::{
     DeliveryFailure, DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome,
-    Receipt, SeatDescriptor, SeatId, SemanticState,
+    Receipt, SeatDescriptor, SeatId, SemanticState, SystemState,
 };
-use pij_core::ports::{DeliveryAck, DeliveryEnqueue, LivenessPort, Queue, Registry, Transport};
+use pij_core::ports::{
+    DeliveryAck, DeliveryEnqueue, ExtensionLease, LivenessPort, Queue, Registry, Transport,
+};
 use pij_harnesses::{InteractionGate, StagedSubmission};
 use serde::{Deserialize, Serialize};
 use tokio_stream::StreamExt;
@@ -921,12 +923,25 @@ impl DeliveryService {
                 let spine = self.event_bus.raw_spine();
                 let claim_kinds = kinds.clone();
                 let worker = seat.to_string();
-                let lease = self.extension_claim_lease_secs;
+                let registry = self.registry.clone();
+                let recipient_id = seat.clone();
+                let lease_secs = self.extension_claim_lease_secs;
                 let at = (self.clock)()?;
                 let recovery_allowed = self.recovery_authority_shared;
                 let (result, native_guard) = self
                     .event_bus
                     .publish_committed_batch(async move {
+                        // Registry publication and lease recovery share admission:
+                        // a tombstone already committed must remove the busy brake.
+                        let current = registry.get(&recipient_id).await?;
+                        let lease = ExtensionLease {
+                            seconds: lease_secs,
+                            renew_working: current.is_some_and(|recipient| {
+                                recipient.tombstoned_at.is_none()
+                                    && matches!(recipient.harness, Harness::Omp | Harness::Pi)
+                                    && recipient.state == SystemState::Working
+                            }),
+                        };
                         let mut result = queue
                             .claim_extension(
                                 &claim_kinds,
@@ -1081,6 +1096,25 @@ impl DeliveryService {
         Ok(rows)
     }
 
+    /// Extend an unconsumed extension body claim without recording ReaderRead.
+    ///
+    /// # Errors
+    /// Non-extension/control/stale claims or queue mutation failures.
+    pub async fn heartbeat_inbox(&self, seat: &SeatId, job_id: JobId) -> Result<()> {
+        let _native_guard = self.native_lock.lock().await;
+        let job = self.extension_body_claim(seat, job_id).await?;
+        if !self
+            .queue
+            .heartbeat_delivery(job_id, seat, job.attempt)
+            .await?
+        {
+            return Err(native_refusal(
+                "heartbeat requires the current running body claim",
+            ));
+        }
+        Ok(())
+    }
+
     /// Fail an extension body that the runtime never consumed, without ReaderRead.
     ///
     /// # Errors
@@ -1139,11 +1173,13 @@ impl DeliveryService {
                     && matches!(recipient.harness, Harness::Omp | Harness::Pi)
             })
             .ok_or_else(|| {
-                native_refusal("failure acknowledgement requires an extension-stream recipient")
+                native_refusal("body claim requires a live extension-stream recipient")
             })?;
-        let job = self.queue.claimed_delivery(job_id).await?.ok_or_else(|| {
-            native_refusal("failure acknowledgement requires a running delivery claim")
-        })?;
+        let job = self
+            .queue
+            .claimed_delivery(job_id)
+            .await?
+            .ok_or_else(|| native_refusal("body claim requires a running delivery"))?;
         let message: Msg = serde_json::from_str(&job.payload)
             .map_err(|error| native_refusal(format!("invalid delivery payload: {error}")))?;
         if job.serial_key != recipient.id.as_str()
@@ -1151,7 +1187,7 @@ impl DeliveryService {
             || message.command.is_some()
         {
             return Err(native_refusal(
-                "failure acknowledgement must name its extension-stream body recipient",
+                "body claim must name its extension-stream recipient",
             ));
         }
         Ok(job)

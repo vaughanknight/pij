@@ -596,6 +596,131 @@ pub async fn queue_contract(queue: &dyn Queue) {
         ),
         "a terminal row reports not-live rather than resurrecting"
     );
+
+    // Holding is claim ownership, never delivered-id evidence. The primitive
+    // rejects stale attempts as well as pending, terminal and foreign claims.
+    let holder = SeatId::from("pij-heartbeat");
+    let held = Job {
+        kind: pij_core::delivery::delivery_kind(&holder),
+        serial_key: holder.to_string(),
+        payload: serde_json::json!({"to":holder,"command":null}).to_string(),
+        dedupe_key: "heartbeat-body".into(),
+        attempt: 0,
+    };
+    let held_kinds = [held.kind.clone()];
+    let held_id = queue
+        .enqueue(held.clone())
+        .await
+        .expect("enqueue heartbeat body");
+    assert!(
+        !queue
+            .heartbeat_delivery(held_id, &holder, 0)
+            .await
+            .expect("pending heartbeat")
+    );
+    queue
+        .claim(&held_kinds, holder.as_str())
+        .await
+        .expect("claim body")
+        .expect("body");
+    assert!(
+        !queue
+            .heartbeat_delivery(held_id, &SeatId::from("pij-wrong"), 0)
+            .await
+            .expect("foreign heartbeat")
+    );
+    assert!(
+        !queue
+            .heartbeat_delivery(held_id, &holder, 1)
+            .await
+            .expect("stale heartbeat")
+    );
+    assert!(
+        queue
+            .heartbeat_delivery(held_id, &holder, 0)
+            .await
+            .expect("body heartbeat")
+    );
+    assert_eq!(
+        queue
+            .enqueue(held.clone())
+            .await
+            .expect("dedupe the running body"),
+        held_id,
+        "running claims remain live for ordinary enqueue deduplication"
+    );
+    assert!(
+        matches!(queue.enqueue_delivery(held.clone()).await.expect("same body remains undelivered"),
+        DeliveryEnqueue::Queued { job_id, .. } if job_id == held_id)
+    );
+    queue
+        .retry(held_id, Duration::ZERO)
+        .await
+        .expect("retry heartbeat body");
+    queue
+        .claim(&held_kinds, holder.as_str())
+        .await
+        .expect("reclaim body")
+        .expect("body");
+    assert!(
+        !queue
+            .heartbeat_delivery(held_id, &holder, 0)
+            .await
+            .expect("old attempt heartbeat")
+    );
+    assert!(
+        queue
+            .heartbeat_delivery(held_id, &holder, 1)
+            .await
+            .expect("new attempt heartbeat")
+    );
+    queue
+        .ack_delivery(held_id, DeliveryOrigin::ReaderRead)
+        .await
+        .expect("consume body");
+    assert!(
+        !queue
+            .heartbeat_delivery(held_id, &holder, 1)
+            .await
+            .expect("terminal heartbeat")
+    );
+    for (dedupe, payload) in [
+        (
+            "heartbeat-control",
+            serde_json::json!({"to":holder,"command":"compact"}).to_string(),
+        ),
+        ("heartbeat-invalid", "not-json".into()),
+    ] {
+        let mut rejected = held.clone();
+        rejected.dedupe_key = dedupe.into();
+        rejected.payload = payload;
+        let rejected_id = queue
+            .enqueue(rejected)
+            .await
+            .expect("enqueue excluded claim");
+        queue
+            .claim(&held_kinds, holder.as_str())
+            .await
+            .expect("claim excluded row")
+            .expect("row");
+        assert!(
+            !queue
+                .heartbeat_delivery(rejected_id, &holder, 0)
+                .await
+                .expect("excluded heartbeat")
+        );
+        assert!(
+            queue
+                .claimed_delivery(rejected_id)
+                .await
+                .expect("claim remains")
+                .is_some()
+        );
+        queue
+            .ack(rejected_id, Outcome::Done)
+            .await
+            .expect("finish excluded claim");
+    }
 }
 
 /// A seat descriptor with the shape most contract tests want.

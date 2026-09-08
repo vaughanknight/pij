@@ -1,0 +1,211 @@
+{
+  "runtime": {
+    "version": "OMP 18.1.14",
+    "model": "github-copilot/gpt-5-mini",
+    "seat": {
+      "id": "pij-homeless-torrent",
+      "machine": "JordansacStudio.localdomain",
+      "harness": "omp",
+      "session": "01a0808b-7c48-7408-b5f8-e10787dd84be",
+      "pane": "%1",
+      "proc": {
+        "pid": 9480,
+        "proc_start": 20260908202338
+      },
+      "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-busy-u3-s4n57vr0/workspace",
+      "state": "idle",
+      "semantic_state": null,
+      "role": null,
+      "parent": null,
+      "relay": false,
+      "native_extension_delivery": false,
+      "generation": "rs"
+    },
+    "canary": "CANARY_U3_1788863022761769000"
+  },
+  "isolation": {
+    "root": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-busy-u3-s4n57vr0",
+    "addr": "127.0.0.1:53240",
+    "socket": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-busy-u3-s4n57vr0/tmux.sock",
+    "state": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-busy-u3-s4n57vr0/state"
+  },
+  "source_root": "/Users/jordanknight/pi-hacking/pij-worktrees/redeliver-busy-seat",
+  "boot": {
+    "result": "green",
+    "typecheck": true,
+    "smoke": true
+  },
+  "cases": {
+    "busy": {
+      "message_id": "71bac779-0215-472a-96c5-855a76065776",
+      "nonce": "BUSY_U3_71bac779-0215-472a-96c5-855a76065776",
+      "send": {
+        "msg_id": "71bac779-0215-472a-96c5-855a76065776",
+        "outcome": {
+          "outcome": "queued",
+          "reason": "extension-stream",
+          "next_retry_at": 0
+        },
+        "at": 1788863087420
+      },
+      "samples": [
+        {
+          "elapsed_s": 20.0,
+          "id": 1,
+          "state": "running",
+          "claimed_at": 1788863087,
+          "lease_expirations": 0,
+          "attempt": 0,
+          "acked_at": null
+        },
+        {
+          "elapsed_s": 40.0,
+          "id": 1,
+          "state": "running",
+          "claimed_at": 1788863108,
+          "lease_expirations": 0,
+          "attempt": 0,
+          "acked_at": null
+        },
+        {
+          "elapsed_s": 65.0,
+          "id": 1,
+          "state": "running",
+          "claimed_at": 1788863148,
+          "lease_expirations": 0,
+          "attempt": 0,
+          "acked_at": null
+        },
+        {
+          "elapsed_s": 125.0,
+          "id": 1,
+          "state": "running",
+          "claimed_at": 1788863208,
+          "lease_expirations": 0,
+          "attempt": 0,
+          "acked_at": null
+        }
+      ],
+      "job_id": 1,
+      "done": {
+        "id": 1,
+        "state": "done",
+        "claimed_at": 1788863228,
+        "lease_expirations": 0,
+        "attempt": 0,
+        "acked_at": 1788863236
+      },
+      "pane_copies": 1,
+      "resends": 0,
+      "elapsed_s": 151.66,
+      "acks": [
+        {
+          "seq": 8,
+          "v": 1,
+          "at": 1788863236317,
+          "kind": "delivery.inbox-ack",
+          "seat": "pij-homeless-torrent",
+          "payload": "{\"job_id\":1,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+        }
+      ],
+      "events": [
+        {
+          "seq": 5,
+          "v": 1,
+          "at": 1788863087420,
+          "kind": "message.pushed",
+          "seat": "pij-homeless-torrent",
+          "payload": "{\"msg_id\":\"71bac779-0215-472a-96c5-855a76065776\",\"from\":\"pij-u3-busy\",\"body\":\"Reply locally exactly BUSY_U3_71bac779-0215-472a-96c5-855a76065776. No tools. This is the authorized isolated busy-turn proof.\"}"
+        },
+        {
+          "seq": 6,
+          "v": 1,
+          "at": 1788863087420,
+          "kind": "delivery.outcome",
+          "seat": "pij-homeless-torrent",
+          "payload": "{\"msg_id\":\"71bac779-0215-472a-96c5-855a76065776\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+        },
+        {
+          "seq": 7,
+          "v": 1,
+          "at": 1788863236316,
+          "kind": "delivery.outcome",
+          "seat": "pij-homeless-torrent",
+          "payload": "{\"msg_id\":\"71bac779-0215-472a-96c5-855a76065776\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+        }
+      ]
+    },
+    "escape": {
+      "message_id": "571de44f-edcf-415c-96ac-185fda0f5edb",
+      "nonce": "ESCAPE_U3_571de44f-edcf-415c-96ac-185fda0f5edb",
+      "send": {
+        "msg_id": "571de44f-edcf-415c-96ac-185fda0f5edb",
+        "outcome": {
+          "outcome": "queued",
+          "reason": "extension-stream",
+          "next_retry_at": 0
+        },
+        "at": 1788863270879
+      },
+      "ack_after_escape_s": 10.54,
+      "job_id": 2,
+      "resends": 1,
+      "acks": [
+        {
+          "seq": 12,
+          "v": 1,
+          "at": 1788863283586,
+          "kind": "delivery.inbox-ack",
+          "seat": "pij-homeless-torrent",
+          "payload": "{\"job_id\":2,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+        }
+      ],
+      "events": [
+        {
+          "seq": 9,
+          "v": 1,
+          "at": 1788863270879,
+          "kind": "message.pushed",
+          "seat": "pij-homeless-torrent",
+          "payload": "{\"msg_id\":\"571de44f-edcf-415c-96ac-185fda0f5edb\",\"from\":\"pij-u3-escape\",\"body\":\"Reply locally exactly ESCAPE_U3_571de44f-edcf-415c-96ac-185fda0f5edb. No tools. The sender is an unregistered test address.\"}"
+        },
+        {
+          "seq": 10,
+          "v": 1,
+          "at": 1788863270879,
+          "kind": "delivery.outcome",
+          "seat": "pij-homeless-torrent",
+          "payload": "{\"msg_id\":\"571de44f-edcf-415c-96ac-185fda0f5edb\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+        },
+        {
+          "seq": 11,
+          "v": 1,
+          "at": 1788863283586,
+          "kind": "delivery.outcome",
+          "seat": "pij-homeless-torrent",
+          "payload": "{\"msg_id\":\"571de44f-edcf-415c-96ac-185fda0f5edb\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+        }
+      ],
+      "done": {
+        "id": 2,
+        "state": "done",
+        "claimed_at": 1788863270,
+        "lease_expirations": 0,
+        "attempt": 0,
+        "acked_at": 1788863283
+      }
+    }
+  },
+  "binary_sha256": "661238b6ace5867120be6bf12cc3f09b5b0ead2d9c5ba7b1ff5ee5c22e36799c",
+  "health": {
+    "status": "healthy",
+    "build": "pij-rs 0.1.0",
+    "offline": false,
+    "machine": "JordansacStudio.localdomain"
+  },
+  "cleanup": {
+    "daemon": "stopped via supervised process owner",
+    "tmux": "owned private server stopped; proof seat terminated",
+    "sqlite_probe": "closed"
+  }
+}

@@ -83,6 +83,18 @@ impl Queue for CountingQueue {
         Ok(None)
     }
 
+    async fn heartbeat_delivery(
+        &self,
+        _job: JobId,
+        _recipient: &SeatId,
+        _attempt: u32,
+    ) -> Result<bool> {
+        Err(PijError::Adapter {
+            adapter: "test/counting-queue".into(),
+            message: "enqueue-only fixture cannot heartbeat deliveries".into(),
+        })
+    }
+
     async fn ack(&self, _job: JobId, _outcome: Outcome) -> Result<()> {
         Ok(())
     }
@@ -123,7 +135,7 @@ impl Queue for CountingQueue {
         &self,
         _kinds: &[String],
         _worker: &str,
-        _lease_secs: u64,
+        _lease: pij_core::ports::ExtensionLease,
         _at: u64,
         _spine: &dyn Spine,
         _recovery_allowed: bool,
@@ -290,6 +302,273 @@ async fn redelivery_request(request: reqwest::RequestBuilder) -> serde_json::Val
         .json()
         .await
         .expect("machine-decodable inbox envelope")
+}
+
+#[tokio::test]
+async fn redelivery_heartbeat_renews_only_claim_age_until_consumption() {
+    let (pool, services, _, spine) = redelivery_fixture().await;
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+    let inbox = format!("http://{addr}/v1/inbox?seat=pij-reader");
+    let first = redelivery_request(client.get(&inbox)).await;
+    let id = first["data"][0]["job_id"].as_u64().unwrap();
+    sqlx::query("UPDATE jobs SET claimed_at=unixepoch()-40, lease_expirations=1 WHERE id=?")
+        .bind(id as i64)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let before = spine.tail(None, pij_core::model::Seq(0)).await.unwrap();
+    let heartbeat = redelivery_request(
+        client
+            .post(format!("http://{addr}/v1/inbox/heartbeat"))
+            .json(&serde_json::json!({"seat":"pij-reader","job_id":id})),
+    )
+    .await;
+    assert_eq!(heartbeat["ok"], true, "{heartbeat}");
+    assert_eq!(heartbeat["data"], id);
+    let golden: serde_json::Value = serde_json::from_str(&pij_testkit::fixtures::read(
+        "golden/api/inbox-recovery.json",
+    ))
+    .unwrap();
+    assert_eq!(heartbeat, golden["heartbeat"]["response"]);
+    let claim: (String, i64, i64, i64, Option<i64>) = sqlx::query_as(
+        "SELECT state, attempt, lease_expirations, unixepoch()-claimed_at, acked_at FROM jobs WHERE id=?",
+    )
+    .bind(id as i64)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        (claim.0.as_str(), claim.1, claim.2, claim.4),
+        ("running", 0, 1, None)
+    );
+    assert!(claim.3 <= 2, "heartbeat must reset claim age: {claim:?}");
+    assert_eq!(
+        spine.tail(None, pij_core::model::Seq(0)).await.unwrap(),
+        before
+    );
+    let delivered: i64 = sqlx::query_scalar("SELECT count(*) FROM delivered_messages")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(delivered, 0, "holding is not ReaderRead");
+    assert_eq!(
+        redelivery_request(client.get(&inbox)).await["data"],
+        serde_json::json!([])
+    );
+    let ack = redelivery_request(
+        client
+            .post(format!("http://{addr}/v1/inbox/ack"))
+            .json(&serde_json::json!({"seat":"pij-reader","job_id":id})),
+    )
+    .await;
+    assert_eq!(ack["ok"], true, "{ack}");
+    let delivered: i64 = sqlx::query_scalar("SELECT count(*) FROM delivered_messages")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(delivered, 1, "only consumption records delivery");
+    server.abort();
+}
+
+#[tokio::test]
+async fn redelivery_heartbeat_rejects_wrong_recipient_control_terminal_and_native_claims() {
+    for case in [
+        "wrong-recipient",
+        "control",
+        "terminal",
+        "pending",
+        "native",
+        "tombstoned",
+    ] {
+        let (pool, services, registry, _) = redelivery_fixture().await;
+        let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+        let client = reqwest::Client::new();
+        let first =
+            redelivery_request(client.get(format!("http://{addr}/v1/inbox?seat=pij-reader"))).await;
+        let mut id = first["data"][0]["job_id"].as_u64().unwrap();
+        match case {
+            "control" => {
+                sqlx::query(
+                    "UPDATE jobs SET payload=json_set(payload, '$.command', 'compact') WHERE id=?",
+                )
+                .bind(id as i64)
+                .execute(&pool)
+                .await
+                .unwrap();
+            }
+            "terminal" => {
+                let ack = redelivery_request(
+                    client
+                        .post(format!("http://{addr}/v1/inbox/ack"))
+                        .json(&serde_json::json!({"seat":"pij-reader","job_id":id})),
+                )
+                .await;
+                assert_eq!(ack["ok"], true, "{ack}");
+            }
+            "pending" => {
+                id = sqlx::query_scalar::<_, i64>("SELECT id FROM jobs WHERE state='pending'")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap() as u64;
+            }
+            "native" => {
+                let mut seat = registry.get(&"pij-reader".into()).await.unwrap().unwrap();
+                seat.harness = Harness::Claude;
+                registry.put(seat).await.unwrap();
+            }
+            "tombstoned" => {
+                registry
+                    .tombstone(&"pij-reader".into(), "host exited")
+                    .await
+                    .unwrap();
+            }
+            _ => {}
+        }
+        let before: (String, Option<i64>, i64, Option<i64>) = sqlx::query_as(
+            "SELECT state, claimed_at, lease_expirations, acked_at FROM jobs WHERE id=?",
+        )
+        .bind(id as i64)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let seat = if case == "wrong-recipient" {
+            "pij-stranger"
+        } else {
+            "pij-reader"
+        };
+        let rejected = redelivery_request(
+            client
+                .post(format!("http://{addr}/v1/inbox/heartbeat"))
+                .json(&serde_json::json!({"seat":seat,"job_id":id})),
+        )
+        .await;
+        assert_eq!(rejected["ok"], false, "{case}: {rejected}");
+        let after: (String, Option<i64>, i64, Option<i64>) = sqlx::query_as(
+            "SELECT state, claimed_at, lease_expirations, acked_at FROM jobs WHERE id=?",
+        )
+        .bind(id as i64)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(after, before, "{case} must not alter a claim");
+        server.abort();
+    }
+}
+
+#[tokio::test]
+async fn redelivery_working_seat_renews_expired_claim_without_spending_lease_budget() {
+    let (pool, services, registry, spine) = redelivery_fixture().await;
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+    let inbox = format!("http://{addr}/v1/inbox?seat=pij-reader");
+    let first = redelivery_request(client.get(&inbox)).await;
+    let id = first["data"][0]["job_id"].as_u64().unwrap();
+    let mut seat = registry.get(&"pij-reader".into()).await.unwrap().unwrap();
+    seat.state = pij_core::model::SystemState::Working;
+    registry.put(seat).await.unwrap();
+    let before = spine.tail(None, pij_core::model::Seq(0)).await.unwrap();
+    for _ in 0..4 {
+        sqlx::query("UPDATE jobs SET claimed_at=unixepoch()-61 WHERE id=?")
+            .bind(id as i64)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let page = redelivery_request(client.get(&inbox)).await;
+        assert_eq!(
+            page["data"],
+            serde_json::json!([]),
+            "a busy claim is not reclaimed: {page}"
+        );
+        let state: (String, i64, i64, i64) = sqlx::query_as(
+            "SELECT state, attempt, lease_expirations, unixepoch()-claimed_at FROM jobs WHERE id=?",
+        )
+        .bind(id as i64)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!((state.0.as_str(), state.1, state.2), ("running", 0, 0));
+        assert!(state.3 <= 2, "working seat must renew the claim: {state:?}");
+    }
+    assert_eq!(
+        spine.tail(None, pij_core::model::Seq(0)).await.unwrap(),
+        before
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn redelivery_silent_extension_after_heartbeat_parks_after_three_leases() {
+    for tombstoned_working in [false, true] {
+        let (pool, services, registry, spine) = redelivery_fixture().await;
+        let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+        let client = reqwest::Client::new();
+        let inbox = format!("http://{addr}/v1/inbox?seat=pij-reader");
+        let first = redelivery_request(client.get(&inbox)).await;
+        let id = first["data"][0]["job_id"].as_u64().unwrap();
+        let heartbeat = redelivery_request(
+            client
+                .post(format!("http://{addr}/v1/inbox/heartbeat"))
+                .json(&serde_json::json!({"seat":"pij-reader","job_id":id})),
+        )
+        .await;
+        assert_eq!(heartbeat["ok"], true, "{heartbeat}");
+        if tombstoned_working {
+            let mut seat = registry.get(&"pij-reader".into()).await.unwrap().unwrap();
+            seat.state = pij_core::model::SystemState::Working;
+            registry.put(seat).await.unwrap();
+            registry
+                .tombstone(&"pij-reader".into(), "host exited during turn")
+                .await
+                .unwrap();
+        }
+        for expiration in 1..=3 {
+            sqlx::query("UPDATE jobs SET claimed_at=unixepoch()-61 WHERE id=?")
+                .bind(id as i64)
+                .execute(&pool)
+                .await
+                .unwrap();
+            let page = redelivery_request(client.get(&inbox)).await;
+            assert_eq!(
+                page["data"][0]["message"]["msg_id"],
+                if expiration == 3 {
+                    "successor"
+                } else {
+                    "lost-body"
+                }
+            );
+            let state: (String, i64) =
+                sqlx::query_as("SELECT state, lease_expirations FROM jobs WHERE id=?")
+                    .bind(id as i64)
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap();
+            assert_eq!(
+                state,
+                (
+                    if expiration == 3 { "failed" } else { "running" }.into(),
+                    expiration
+                )
+            );
+        }
+        let parked: Vec<_> = spine
+            .tail(None, pij_core::model::Seq(0))
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|event| event.kind == "delivery.parked")
+            .collect();
+        assert_eq!(parked.len(), 1);
+        let payload: serde_json::Value = serde_json::from_str(&parked[0].payload).unwrap();
+        assert_eq!(payload["jobId"], id);
+        assert_eq!(payload["outcome"], "undelivered:lease-exhausted");
+        let delivered: i64 = sqlx::query_scalar("SELECT count(*) FROM delivered_messages")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(delivered, 0);
+        server.abort();
+    }
 }
 
 #[tokio::test]

@@ -1,0 +1,70 @@
+╭─── omp v18.1.14 ─────────────────────────────────────────────────────────────────────────────────╮
+│                          │ Tips                                                                  │
+│      Welcome back!       │ # for prompt actions                                                  │
+│                          │ / for commands                                                        │
+│       ████████████       │ ! to run bash                                                         │
+│          ██  ██          │ $ to run python                                                       │
+│          ██  ██          │ ───────────────────────────────────────────────────────────────────── │
+│          ▒▒  ██          │ LSP Servers                                                           │
+│              ██          │ No LSP servers                                                        │
+│                          │                                                                       │
+│        GPT-5 Mini        │                                                                       │
+│      github-copilot      │                                                                       │
+│                          │ ───────────────────────────────────────────────────────────────────── │
+│                          │ Recent sessions                                                       │
+│                          │ No recent sessions                                                    │
+│                          │                                                                       │
+│                          │                                                                       │
+│                          │                                                                       │
+│                          │                                                                       │
+╰──────────────────────────┴───────────────────────────────────────────────────────────────────────╯
+ Tip: Try starting your prompt with a ->, and writing a list (1. Do X, 2. Do Y)
+
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                                                  │
+│ 📦 pij                                                                                                                                                                           │
+│                                                                                                                                                                                  │
+│ You are pij session pij-homeless-torrent (PEER). This is context only — no action is required.                                                                                   │
+│ Peers can reach you; their messages arrive inline as "[pij-rs from <id>]" on its own line, then the body, then "[/pij]". Only those injected messages are live instructions.     │
+│ Do NOT read, list, or act on files under your pij data/inbox directory — they are an internal transport log, not tasks, and replaying them re-runs old requests.                 │
+│ To reply or message a peer, call the pij_send tool ({ to, message }) — your id is stamped automatically. For control, pij_send takes { to, command: "compact" | "new" | "reload" │
+│ } instead of message. Do NOT shell out to the pij CLI to send.                                                                                                                   │
+│ To observe peers, use the pij CLI: "pij list --here" (peers), "pij tail <id>" / "pij state <id>" (watch one).                                                                    │
+│                                                                                                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ CANARY 64fb4c90-9e3a-4b5b-9b2f-1e2a7d0f3c9a
+
+ 2026-09-08 20:23:40  ⤵ 1.4K  ⤴ 54  ⏱ 1.5s  ⚡ 30.8/s
+
+
+ Reply exactly CANARY_U3_1788863022761769000. No tools.
+
+
+ Connected to MCP server: perplexity.
+
+ CANARY_U3_1788863022761769000
+
+ 2026-09-08 20:23:42  ⤵ 2.6K  ⤴ 30  ⏱ 1.0s  ⚡ 25.0/s
+
+
+ Run exactly sleep 150 with bash timeout 180. Wait for it to finish; do not background it. Afterwards reply SLEEP_DONE_U3, unless a peer message asks for a different nonce.
+
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ $ sleep 150                                                                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ 2026-09-08 20:24:43  ⤵ 2.8K  ⤴ 45  ⏱ 1.6s  ⚡ 19.5/s
+
+ 📨 pij from pij-u3-busy: Reply locally exactly BUSY_U3_71bac779-0215-472a-96c5-855a76065776. No tools. Th…
+
+  ⎋ run sleep 150
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ◫ 1.1%/264K ⟲ · rs·pij-homeless-torrent · ○ GPT-5 Mini · S0.00 ★ 2
+rs pij-homeless-torrent
+📨 1 pending

@@ -113,14 +113,22 @@ impl Queue for FailFirstClaim {
         &self,
         kinds: &[String],
         worker: &str,
-        lease_secs: u64,
+        lease: pij_core::ports::ExtensionLease,
         at: u64,
         spine: &dyn pij_core::ports::Spine,
         recovery_allowed: bool,
     ) -> pij_core::error::Result<pij_core::ports::ExtensionClaim> {
         self.inner
-            .claim_extension(kinds, worker, lease_secs, at, spine, recovery_allowed)
+            .claim_extension(kinds, worker, lease, at, spine, recovery_allowed)
             .await
+    }
+    async fn heartbeat_delivery(
+        &self,
+        job: JobId,
+        recipient: &SeatId,
+        attempt: u32,
+    ) -> Result<bool> {
+        self.inner.heartbeat_delivery(job, recipient, attempt).await
     }
     async fn peek_parked(
         &self,
@@ -617,14 +625,22 @@ impl Queue for RefuseFirstDelivery {
         &self,
         kinds: &[String],
         worker: &str,
-        lease_secs: u64,
+        lease: pij_core::ports::ExtensionLease,
         at: u64,
         spine: &dyn pij_core::ports::Spine,
         recovery_allowed: bool,
     ) -> pij_core::error::Result<pij_core::ports::ExtensionClaim> {
         self.inner
-            .claim_extension(kinds, worker, lease_secs, at, spine, recovery_allowed)
+            .claim_extension(kinds, worker, lease, at, spine, recovery_allowed)
             .await
+    }
+    async fn heartbeat_delivery(
+        &self,
+        job: JobId,
+        recipient: &SeatId,
+        attempt: u32,
+    ) -> Result<bool> {
+        self.inner.heartbeat_delivery(job, recipient, attempt).await
     }
     async fn peek_parked(
         &self,
