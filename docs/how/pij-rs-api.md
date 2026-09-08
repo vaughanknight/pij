@@ -270,10 +270,10 @@ Each unchanged candidate receives one atomic `seat.tombstone` with `reason: "obs
 After tombstoning, the daemon pushes an obituary to the child's **recorded parent** through `DeliveryService::send`. It uses `pij_core::BG_ACTOR`, the shared daemon-owned `pij-bg` virtual actor already used for background-job completion—not a second sender identity. The exact text is pinned as `death_notice_body_template` in the [stable route corpus](../../crates/testkit/fixtures/golden/api/governance-routes.json):
 
 ```text
-[pij] seat <id> died (<reason>) — pane <pane> absent, pid <pid> gone at <iso>. It was your child; revive with `pij revive <id>` or leave it.
+[pij] seat <id> died (<reason>) — pane <pane> absent, pid <pid> gone at <iso>. It was your child; revive with `pij-rs revive <id>` or leave it.
 ```
 
-The pinned notice preserves that command spelling; while shim revive remains unported, run the native `pij-rs revive <id>` form below. A send receipt proves only its recorded delivery strength: queued is not parent observation. Parents need not poll for child deaths. A parent that is tombstoned or itself observed-dead in the same sweep receives no notice; the daemon counts these suppressions in one line, `death sweep: N notice(s) withheld — recipient dead too`, rather than flooding dead parents after a reboot.
+A send receipt proves only its recorded delivery strength: queued is not parent observation. Parents need not poll for child deaths. A parent that is tombstoned or itself observed-dead in the same sweep receives no notice; the daemon counts these suppressions in one line, `death sweep: N notice(s) withheld — recipient dead too`, rather than flooding dead parents after a reboot.
 
 ## Revive
 

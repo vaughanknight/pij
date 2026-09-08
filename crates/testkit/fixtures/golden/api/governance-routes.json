@@ -74,7 +74,7 @@
     }
   ],
   "baton_notice_body_template": "[pij orchestration] baton '{baton}' requested by {requester}: {purpose} (request {request_id})",
-  "death_notice_body_template": "[pij] seat {id} died ({reason}) — pane {pane} absent, pid {pid} gone at {iso}. It was your child; revive with `pij revive {id}` or leave it.",
+  "death_notice_body_template": "[pij] seat {id} died ({reason}) — pane {pane} absent, pid {pid} gone at {iso}. It was your child; revive with `pij-rs revive {id}` or leave it.",
   "baton_notice_invariants": [
     "baton.request persists its request and publishes baton.requested before using the existing DeliveryService.send once, from requester to definition.created_by, with the legacy request notice body.",
     "Missing or dissolved keeper returns notice:null without a delivery admission; the committed request and event remain.",

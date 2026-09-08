@@ -25,7 +25,7 @@ Chronological baseline-compatible tests called the existing reaper before the ne
 - `cargo test -p pij-cli --test revive -- --nocapture`: 2 passed, 2 failed. `shipped_revive_assumption_flags_authorize_parent_and_record_evidence` failed with `unexpected argument '--assume-dead' found`; the existing refusal contract lacked its decodable liveness code. [RED CLI](assets/evidence/red-revive-cli.log).
 - Ninth HTTP regression subsequently added: `revive_assumption_publication_failure_cannot_retire_or_launch`, with a real SQLite publication failure.
 
-## Final gates
+## Initial delivery gates (426d3215)
 
 Commands ran from the assigned worktree; Rust used `~/.cargo/bin/cargo`.
 
@@ -57,7 +57,7 @@ Runtime: this worktree's `target/debug/pij-rs`; state and daemon HOME under a un
 
 - The requested `github-copilot/gemini-3.8-flash-1m` selector was unavailable in OMP 18.1.14; the parent displayed `no-model`, as anticipated by the packet. Its pane visibly received the obituary notification, but model-turn insertion failed with `No model configured`. **This proves pushed parent visibility, not model processing or delivered acknowledgement.** Receipt remains queued; no success upgrade.
 - OMP spawn from a linked-worktree cwd is explicitly refused by existing collision protection. Proof seats therefore ran in the isolated temporary cwd while using this worktree's daemon binary. An empty inherited `PIJ_PARENT_ID` initially overrode the child's spawn parent; verified native registration set the real binding before the kill. Subsequent proof spawns inherited `p140-parent` explicitly.
-- The pinned template intentionally says `pij revive`; the shim still refuses that legacy grammar. Docs name native `pij-rs revive`. No shim port added.
+- Prime corrected AC2 after initial delivery: the obituary now names native `pij-rs revive`, not the unsupported shim command. Historical live captures below `assets/evidence/` preserve the original run unchanged; they are not evidence of the corrected text. No shim port added.
 - `time` was approved by prime: default features disabled, only `formatting`; one daemon-only allowlist edge with reason. `arch_drift.rs` reads `arch-allowlist.toml`; both metadata fixtures were deliberately regenerated. Stable route corpus is designed source, not an executed golden capture; only its manifest hash/length changed. Existing parity capture was not fabricated or regenerated without its missing runner.
 
 ## Harness contribution and retrospective
@@ -67,3 +67,22 @@ Encoded: canonical reaper regressions for automatic death evidence, repeat-sweep
 DL-001: baseline `harness boot` passed dependency readiness and typecheck but hit the 90s smoke deadline at `file-watch-notify`. Prime's applicable history pointer is `docs/plans/archive/misc/prime-ledger-2026-09.md`, “smoke flake under full gate”; standalone smoke subsequently passed. The separate flow-pair cleanup race also passed in isolation per prime's ruling. No unrelated fixes applied. Harness harvest found zero existing 140 retros; this report retains the session findings.
 
 Highest-value next encoding offered to prime: a reusable live-death proof fixture that owns a private daemon/tmux environment and returns tombstone/delivery seqs plus parent pane capture. It would eliminate re-deriving isolation, inherited-parent handling and acknowledgement-vs-notification proof on the next lifecycle change. Not added without scope approval.
+
+## Native-command correction after initial delivery
+
+Prime requested a new commit, not a rewrite of `426d3215`: use executable `pij-rs revive <id>` in the obituary. Updated renderer, exact UTC-millisecond example, stable corpus and manifest, AC2, API and peer guidance. Historical live captures remain untouched.
+
+RED: changing the expected command before the renderer produced `FAILED. 0 passed; 1 failed`, showing actual `pij revive pij-child` versus expected `pij-rs revive pij-child`. [Output](assets/evidence/native-command-red.log).
+
+GREEN after correcting the renderer:
+
+```text
+cargo test -p pij-daemon --lib death_sweep -- --nocapture
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 347 filtered out; finished in 0.13s
+cargo test -p pij-testkit --test corpus
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+cargo fmt --all -- --check
+(exit 0, no output)
+```
+
+[Executed correction checks](assets/evidence/native-command-green.log). `just pij-skill-check` also exited 0 ([output](assets/evidence/native-command-skill.log)). These scoped checks verify the corrected template and corpus; the initial full-workspace and live evidence above belong to `426d3215`.

@@ -89,7 +89,7 @@ Close requires self or the current recorded parent. It tombstones the seat and p
 
 The daemon's **death sweep** runs every **5s** by default (`PIJ_RS_DEATH_SWEEP_MS`, milliseconds). It applies the same conservative rule as `pij-rs reap --dry-run`: `Dead`/`Recycled` process plus recorded pane absent; unknown evidence is not death. It writes one `seat.tombstone` with `reason: "observed-dead"` and the process/pane observation, then **pushes an obituary to the recorded parent** through the existing delivery service. The sender is the same daemon-owned `pij-bg` virtual actor used for bg completion (`pij_core::BG_ACTOR`), not a second identity. Do not poll for child death.
 
-A tombstoned parent or one observed-dead in the same sweep receives no notice; the daemon logs the withheld count instead, avoiding reboot floods. Queued delivery does not prove parent observation. The pinned obituary says `pij revive <id>`; use the supported native `pij-rs revive <id>` spelling above until the shim is ported. See [Death sweep](../../../../docs/how/pij-rs-api.md#death-sweep) for the exact template and [Revive](../../../../docs/how/pij-rs-api.md#revive) for the override boundary.
+A tombstoned parent or one observed-dead in the same sweep receives no notice; the daemon logs the withheld count instead, avoiding reboot floods. Queued delivery does not prove parent observation. The obituary names the supported native `pij-rs revive <id>` command. See [Death sweep](../../../../docs/how/pij-rs-api.md#death-sweep) for the exact template and [Revive](../../../../docs/how/pij-rs-api.md#revive) for the override boundary.
 
 | Observation | Move |
 |---|---|

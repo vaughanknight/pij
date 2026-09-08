@@ -397,8 +397,8 @@ answer = "Both CLI surfaces emit these exact complete envelope bytes with --json
 
 [[fixture]]
 path = "golden/api/governance-routes.json"
-sha256 = "1c84b7d2052e9a15c072cae851b6e93b113840933b7becd97ff4b0e7de4ae4a8"
-bytes = 88939
+sha256 = "2676cc36112db998ffd95874cbd800bd9717a1a4fc2d2e1bfd4fdcb911d58f01"
+bytes = 88942
 note = "DESIGNED merged governance route contract promoted from docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json at e22833b0d0caf00d95346008dab1587005d0173d, not a runtime capture. The historical original remains unchanged. The unported refusal's meta and details.ledger_item are rebased to docs/how/pij-rs-api.md#unsupported-status so refusal guidance survives plan archival. The wire invariant corrects historical kebab-case prose to the existing snake_case ErrorKind contract; no v2 wire change is introduced. All request, response, terminal-only supersede and backend-pairing cases are retained."
 answer = "Permanent readers consume this stable contract rather than the active plan copy. Preserve complete v2 success and refusal envelopes, daemon-owned attribution and role joins, observed lease-id requirements, and terminal-only answer supersede. Pending answers stay in transit, delivered answers cannot be replaced, and mixed/fake queue-spine authority refuses E-RS-ANSWER-AUTHORITY-SPLIT. Unsupported commands point to the stable unsupported-status ledger."
 

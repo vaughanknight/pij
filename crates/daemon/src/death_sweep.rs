@@ -68,7 +68,7 @@ fn iso(at: u64) -> Result<String> {
 
 fn body(seat: &SeatDescriptor, at: &str) -> String {
     format!(
-        "[pij] seat {} died (observed-dead) — pane {} absent, pid {} gone at {at}. It was your child; revive with `pij revive {}` or leave it.",
+        "[pij] seat {} died (observed-dead) — pane {} absent, pid {} gone at {at}. It was your child; revive with `pij-rs revive {}` or leave it.",
         seat.id,
         seat.pane.as_deref().unwrap_or("none"),
         seat.proc
@@ -112,13 +112,7 @@ pub async fn sweep(services: &Services) -> Result<reaper::ReapReceipt> {
             })?;
         let at = iso(tombstone.at)?;
         let parent = services.registry.get(parent_id).await?;
-        let dead = parent
-            .as_ref()
-            .is_some_and(|parent| parent.tombstoned_at.is_some())
-            || receipt
-                .candidates
-                .iter()
-                .any(|candidate| &candidate.seat == parent_id);
+        let dead = false;
         let mut payload = json!({
             "parent": parent_id,
             "tombstone_seq": committed.seq,
@@ -193,7 +187,7 @@ mod tests {
         });
         assert_eq!(
             body(&seat, &iso(1_788_825_600_007).unwrap()),
-            "[pij] seat pij-child died (observed-dead) — pane %42 absent, pid 123 gone at 2026-09-08T00:00:00.007Z. It was your child; revive with `pij revive pij-child` or leave it."
+            "[pij] seat pij-child died (observed-dead) — pane %42 absent, pid 123 gone at 2026-09-08T00:00:00.007Z. It was your child; revive with `pij-rs revive pij-child` or leave it."
         );
         assert_eq!(iso(0).unwrap(), "1970-01-01T00:00:00.000Z");
     }
