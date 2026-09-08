@@ -1,0 +1,65 @@
+
+> pij@0.1.0 test
+> vitest run .pi/extensions/pij/index.test.ts -t preserves a resend draft
+
+(node:95760) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/pij-resend-preserve-draft
+
+ ❯ .pi/extensions/pij/index.test.ts (25 tests | 1 failed | 21 skipped) 10ms
+     × preserves a resend draft while respecting unchanged human input 6ms
+     ✓ preserves a resend draft while respecting replaced human input 2ms
+     ✓ preserves a resend draft while respecting cleared human input 1ms
+     ✓ preserves a resend draft while respecting submitted human input 1ms
+     ↓ keeps an OMP parent's registration when in-process children start and stop
+     ↓ preserves an independently hosted headless OMP print root
+     ↓ preserves an independently hosted headless OMP rpc root
+     ↓ retains headless Pi registration with session metadata
+     ↓ publishes the pij id to the status bar on session_start
+     ↓ marks the selected default Rust generation in Pi's status segment
+     ↓ publishes the selected default Rust id through OMP's session_name segment
+     ↓ publishes the pij id through OMP's default session_name segment
+     ↓ does not reassert after startup publication has settled successfully
+     ↓ reasserts immediately on the first turn when startup publication missed
+     ↓ announces recovery when the first turn succeeds after the retry notice
+     ↓ cancels a stale retry window on session shutdown
+     ↓ reuses on reload, mints on new, and preserves an existing opaque id with prime metadata
+     ↓ passes the exact shutdown reason: replacement dissolves, quit stays observable
+     ↓ registers Pi with its structural parent and freshly resolved repository identity
+     ↓ stamps the explicit spawn plan id from PIJ_PLAN_ID
+     ↓ blocks ask_user_question only for a structurally managed Pi peer and still captures it
+     ↓ does not block ask_user_question for an un-managed Pi session
+     ↓ allocates a memorable SDK/test fallback when Pi exposes no native session id
+     ↓ marks a retained unread message only after onInbound injects it, then reload skips it
+     ↓ records and marks receipt history without injecting or replaying it
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/index.test.ts > pij index — footer status bar > preserves a resend draft while respecting unchanged human input
+AssertionError: expected '' to be 'HUMAN DRAFT IN PROGRESS do not clobbe…' // Object.is equality
+
+- Expected
++ Received
+
+- HUMAN DRAFT IN PROGRESS do not clobber me
+- More typing 你好
+
+ ❯ .pi/extensions/pij/index.test.ts:247:24
+    245|     }
+    246|     await vi.runAllTimersAsync();
+    247|     expect(editorText).toBe(
+       |                        ^
+    248|      action === "unchanged"
+    249|       ? draftAtConsumption
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 passed | 21 skipped (25)
+   Start at  14:47:47
+   Duration  605ms (transform 259ms, setup 0ms, import 516ms, tests 10ms, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/pij-resend-preserve-draft/.pi/extensions/pij/index.test.ts,title=.pi/extensions/pij/index.test.ts > pij index — footer status bar > preserves a resend draft while respecting unchanged human input,line=247,column=24::AssertionError: expected '' to be 'HUMAN DRAFT IN PROGRESS do not clobbe…' // Object.is equality%0A%0A- Expected%0A+ Received%0A%0A- HUMAN DRAFT IN PROGRESS do not clobber me%0A- More typing 你好%0A%0A ❯ .pi/extensions/pij/index.test.ts:247:24%0A%0A

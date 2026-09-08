@@ -19,6 +19,7 @@ import * as daemonHttp from "./adapters/daemon-http.js";
 import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { GitRepositoryAdapter } from "./adapters/git-repository.js";
+import { PiRuntimeAdapter } from "./adapters/pi-runtime.js";
 import { deriveSelfId, memorableIdentitySeed } from "./core/discovery.js";
 import { receiptBody } from "./core/message.js";
 import pijExtension from "./index.js";
@@ -196,6 +197,66 @@ describe("pij index — footer status bar", () => {
 		else process.env.PIJ_ANNOUNCE_TO = origAnnounceTo;
 		if (origDaemonGeneration === undefined) delete process.env.PIJ_DAEMON_GENERATION;
 		else process.env.PIJ_DAEMON_GENERATION = origDaemonGeneration;
+	});
+
+	it.each([
+		"unchanged",
+		"replaced",
+		"cleared",
+	] as const)("preserves a resend draft while respecting %s human input", async (action) => {
+		process.env.OMPCODE = "1";
+		vi.useFakeTimers();
+		try {
+			const { pi, handlers } = makeFakePi();
+			const { ctx } = makeFakeCtx();
+			let editorText = "HUMAN DRAFT IN PROGRESS do not clobber me";
+			const terminalListeners = new Set<(data: string) => unknown>();
+			ctx.ui.getEditorText = () => editorText;
+			ctx.ui.setEditorText = (text) => {
+				editorText = text;
+			};
+			ctx.ui.onTerminalInput = (listener) => {
+				terminalListeners.add(listener);
+				return () => terminalListeners.delete(listener);
+			};
+			const queued: string[] = [];
+			pi.sendUserMessage = (content) => {
+				queued.push(String(content));
+			};
+			pijExtension(pi);
+			const runtime = new PiRuntimeAdapter(pi, ctx, "omp");
+			runtime.inject("Incoming peer body", "steer", "resend-own-id", 1);
+			// A draft never delays the prompt; typing during its queue wait
+			// must survive, rather than restoring the stale injection snapshot.
+			expect(queued).toHaveLength(1);
+			editorText += "\nMore typing 你好";
+			const draftAtConsumption = editorText;
+			const prompt = queued.shift();
+			if (prompt === undefined) throw new Error("resend was not submitted immediately");
+			await handlers.get("message_start")?.(
+				{ message: { role: "user", content: [{ type: "text", text: prompt }] } },
+				ctx,
+			);
+			// OMP awaits extension handlers, THEN its EventController clears.
+			ctx.ui.setEditorText("");
+			if (action === "replaced") editorText = "New human draft";
+			if (action === "cleared") {
+				for (const listener of terminalListeners) listener("human input");
+				editorText = "";
+			}
+			await vi.runAllTimersAsync();
+			expect(editorText).toBe(
+				action === "unchanged"
+					? draftAtConsumption
+					: action === "replaced"
+						? "New human draft"
+						: "",
+			);
+			expect(queued).toEqual([]);
+			expect(terminalListeners.size).toBe(0);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("keeps an OMP parent's registration when in-process children start and stop", async () => {

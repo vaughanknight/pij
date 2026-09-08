@@ -20,7 +20,7 @@ import {
 	reloadWithCompletion,
 } from "./adapters/pi-runtime.js";
 import { NodeProcess } from "./adapters/process.js";
-import { RustRuntimeSession } from "./adapters/rust-runtime.js";
+import { consumedMessageId, RustRuntimeSession } from "./adapters/rust-runtime.js";
 import { FsSpawnExpectationStore } from "./adapters/spawn-expectation-store.js";
 import { TmuxAdapter } from "./adapters/tmux.js";
 import { FsWatchdogStore } from "./adapters/watchdog-store.js";
@@ -570,7 +570,37 @@ export default function (pi: ExtensionAPI): void {
 	pi.on("tool_result", (event) => session?.capture("tool_result", event));
 	pi.on("message_end", (event) => session?.capture("message", event));
 	// Forward the full envelope: prompt recovery carries its id in user content.
-	pi.on("message_start", (event) => rustRuntime?.onMessageStart(event.message));
+	pi.on("message_start", async (event, ctx) => {
+		try {
+			await rustRuntime?.onMessageStart(event.message);
+		} finally {
+			if (
+				runtimeBin === "omp" &&
+				ctx.hasUI &&
+				event.message.role === "user" &&
+				consumedMessageId(event.message) !== undefined
+			) {
+				// OMP 18.1.14 awaits extension handlers before EventController clears
+				// external user prompts. Snapshot AFTER the ACK wait (not at enqueue),
+				// then restore after that clear, never over intervening human input.
+				const draft = ctx.ui.getEditorText();
+				if (draft) {
+					let humanInput = false;
+					const unsubscribe = ctx.ui.onTerminalInput(() => {
+						humanInput = true;
+						return undefined;
+					});
+					setTimeout(() => {
+						unsubscribe();
+						if (!humanInput && ctx.ui.getEditorText() === "") {
+							// OMP setEditorText delegates to setText, placing the cursor at EOF.
+							ctx.ui.setEditorText(draft);
+						}
+					}, 0);
+				}
+			}
+		}
+	});
 	pi.on("agent_end", (event) => {
 		const willContinue = "willContinue" in event && event.willContinue === true;
 		rustRuntime?.onAgentEnd(willContinue);

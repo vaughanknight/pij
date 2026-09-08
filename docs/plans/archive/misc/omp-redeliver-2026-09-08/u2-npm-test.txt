@@ -1,0 +1,450 @@
+
+> pij@0.1.0 test
+> vitest run
+
+(node:33366) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/pij-resend-preserve-draft
+
+(node:33542) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ skills/flow-pair/test/cli-observe.test.ts (3 tests) 2827ms
+     ✓ success: stdout = exactly 'diffId: diff-NNNN' (one line, exit 0)  989ms
+     ✓ --json: stdout parses as full ObserveResult shape (exit 0)  958ms
+     ✓ error: invalid --run-id → stderr + exit 2  879ms
+ ✓ harness/scripts/bounce-daemon.test.ts (3 tests) 3413ms
+     ✓ fetches and refuses a canonical checkout behind origin/main before stopping  1001ms
+     ✓ refuses daemon-relevant dirt unless --force is explicit  831ms
+     ✓ announces, gracefully stops, restarts the captured invocation, and verifies health  1581ms
+ ✓ skills/flow-pair/test/cli-review.test.ts (6 tests) 3631ms
+     ✓ review: stdout = exactly 'verdict: FIX_REQUIRED' (missing log), exit 0  501ms
+     ✓ review --json: stdout parses as JSON with verdict field and findings array  521ms
+     ✓ review: missing required arg → non-zero exit + stderr message  526ms
+     ✓ fix --json: fix packet has allowedFiles array and pointerMsg  1006ms
+     ✓ fix rejects traversal runId before reading escaped review records  520ms
+     ✓ fix rejects traversal reviewId before reading outside reviews/  557ms
+ ✓ harness/scripts/worktree-deps.test.ts (18 tests) 4515ms
+     ✓ links unscoped/scoped packages and executable bins without copying or nesting node_modules  407ms
+     ✓ is idempotent and accepts an explicit checkout from a worktree subdirectory  308ms
+     ✓ checks read-only, prescribes the exact repair, and detects broken required links  369ms
+     ✓ never modifies the canonical checkout or links a worktree to itself  366ms
+ ✓ harness/scripts/npm-resolution-policy.integration.test.ts (1 test) 4469ms
+     ✓ revalidates stale metadata, fails closed on proxy gaps, enforces age, and never falls back  4469ms
+ ✓ .pi/extensions/pij/body-file.integration.test.ts (24 tests) 4713ms
+ ✓ .pi/extensions/pij/core/agents/cli-verbs.test.ts (25 tests) 1259ms
+ ✓ harness/scripts/release-age-policy.test.ts (11 tests) 6074ms
+     ✓ propagates governed values through the fail-closed runner and preserves child status  737ms
+     ✓ restores the Windows caller environment even when a governed command fails  5189ms
+ ✓ harness/scripts/link-global.test.ts (33 tests) 1880ms
+     ✓ keeps the present CLI outcome distinct from strict doctor  736ms
+     ✓ keeps the broken CLI outcome distinct from strict doctor  481ms
+ ✓ skills/flow-pair/test/observe.test.ts (17 tests) 6791ms
+     ✓ returns {ok:true} with a real git fixture  434ms
+     ✓ writes diff-0001.patch (non-empty)  500ms
+     ✓ writes diff-0001.stat.txt (non-empty)  382ms
+     ✓ writes diff-0001.changed-files.json with required fields  451ms
+     ✓ result.changedFiles includes the staged file  457ms
+     ✓ result.changedFiles includes the untracked file (HIGH-B: porcelain sourcing)  323ms
+     ✓ MED-2: .patch includes synthetic patch content for untracked file  378ms
+     ✓ nested docs/plans/016-flow-pair/.the-flow-state.json staged → {ok:false} + no writes [HIGH-A load-bearing]  427ms
+     ✓ root-level the-flow.json staged → {ok:false} + no writes  379ms
+     ✓ .flow-pair/runs/x staged → {ok:false} + no writes [prefix guard]  366ms
+     ✓ untracked the-flow.md (not staged) → {ok:false} + no writes [HIGH-B guard-bypass test]  403ms
+     ✓ space-in-dirname forbidden path → {ok:false} + no writes [HIGH-1: NUL-delimited parsing]  456ms
+     ✓ P9: appendFileSync(events.jsonl) before any writeFileSync(diffs/)  396ms
+     ✓ P9 guard: FailDeps appendFileSync throws → {ok:false} + diff files NOT written  407ms
+     ✓ files.changed event in events.jsonl has required field set  353ms
+     ✓ {ok:false} on invalid runId (resolveRunDir guard)  327ms
+     ✓ LOW-3: writeFileSync throws → {ok:false} + P9 event already appended  352ms
+ ✓ .pi/extensions/pij/orchestration-notice.integration.test.ts (8 tests) 3254ms
+     ✓ 'queued for an idle live pi target unt…'  401ms
+     ✓ 'queued for a working live pi target'  411ms
+     ✓ 'queued for a live control-plane targe…'  379ms
+     ✓ 'unverified for a stale native incarna…'  398ms
+     ✓ 'unverified for a dead target'  363ms
+     ✓ 'no notice or send for a missing target'  388ms
+     ✓ 'no notice or send for a dissolved pul…'  387ms
+     ✓ 'queued with one native notice for a l…'  526ms
+ ✓ harness/scripts/packages-bootstrap.test.ts (2 tests) 1916ms
+     ✓ attempts every install and exits nonzero after execution failures  937ms
+     ✓ keeps stale fail vet verdicts report-only when installs succeed  977ms
+ ✓ .pi/extensions/pij/daemon.bootstrap.test.ts (27 tests) 3756ms
+     ✓ refuses [ 'daemon', 'restart' ] without changing legacy files or the live holder  375ms
+ ✓ .pi/extensions/pij/core/worktree.test.ts (7 tests) 1782ms
+     ✓ creates from a base SHA resolved at create-time and verifies branch/SHA/common-dir  388ms
+     ✓ verify refuses a branch or SHA mismatch  357ms
+     ✓ safeRemove refuses WIP and removes a clean linked worktree  447ms
+stderr | harness/scripts/smoke.test.ts > runWatchdogSmoke > refuses real watchdog mutation under both routing modes without changing private authority
+{"smoke":"watchdog-refusal","code":"E-RS-UNPORTED","cursor":4,"forcedLegacy":"refused","mutation":"none"}
+
+ ✓ skills/flow-pair/test/cli-learning.test.ts (3 tests) 2185ms
+     ✓ learn: stdout = exactly 'learning: learn-0001' and writes implement-code candidate  703ms
+     ✓ learn --json: stdout includes candidatePath and cluster  565ms
+     ✓ learn invalid cluster exits 2 and writes no candidate  917ms
+ ✓ harness/scripts/smoke.test.ts (9 tests) 1873ms
+     ✓ refuses real watchdog mutation under both routing modes without changing private authority  1864ms
+ ✓ .pi/extensions/pij/cli.background.integration.test.ts (2 tests) 1851ms
+     ✓ prints the shared native envelope with --json before or after the leaf, and data.line for humans  1474ms
+     ✓ prints an unchanged refusal envelope to stdout and exits unsuccessfully  376ms
+ ✓ .pi/extensions/pij/adapters/spine-store.test.ts (21 tests) 2761ms
+     ✓ multi-process atomicity: 4 concurrent writers x 25 appends allocate seqs exactly 1..100  445ms
+     ✓ a held (fresh) events.lock makes append err E-NOREG after the acquisition budget  2004ms
+ ✓ skills/flow-pair/test/identity.test.ts (6 tests) 1045ms
+     ✓ derives host-owner-repo from HTTPS remote  385ms
+     ✓ is stable across repeated calls  309ms
+ ✓ .pi/extensions/pij/index.test.ts (24 tests) 1541ms
+     ✓ reasserts immediately on the first turn when startup publication missed  357ms
+     ✓ cancels a stale retry window on session shutdown  328ms
+ ✓ .pi/extensions/pij/core/memorable-id.test.ts (12 tests) 2296ms
+       ✓ walks the full space from a SHIP start too, not only a pair start  1088ms
+     ✓ walks the full space without repeating (pairs + ships)  1185ms
+ ✓ harness/driver/compact-assert.test.ts (17 tests) 7610ms
+     ✓ case (a): pre + postCompact + postReload all match → ok: true, no divergences  1513ms
+     ✓ case (b): postCompact diverges (D-005 confirmed shape) → ok: false, phase=compact  1512ms
+     ✓ case (c): includeReloadCheck=false omits postReload entirely  1007ms
+     ✓ case (d): timeouts plumb through (small compact/reload/status timeouts accepted on idle)  1511ms
+     ✓ case (e) — F004 regression: stale pre JSON in scrollback does NOT pass when post emits no fresh JSON  1006ms
+     ✓ case (e2) — F004 regression: malformed post JSON also throws (no silent {} pass)  1006ms
+ ✓ .pi/extensions/pij/core/cli.test.ts (459 tests) 1521ms
+       ✓ runs create → fence show → close through real filesystem and git adapters  604ms
+       ✓ public family help describes the Rust route, not retired local grammar  621ms
+ ✓ .pi/extensions/pij/daemon.durability.test.ts (7 tests) 1412ms
+     ✓ a failed send is retried on the very next pass, not only after a restart  305ms
+ ✓ .pi/extensions/pij/adapters/fs-registry.test.ts (41 tests | 1 skipped) 3259ms
+     ✓ overlapping processes claiming one free native identity all converge on attempt zero  1508ms
+     ✓ overlapping processes skip an unowned legacy attempt zero without changing its bytes  1587ms
+ ✓ .pi/extensions/pij/core/agents/inline.test.ts (8 tests) 971ms
+ ✓ .pi/extensions/pij/core/daemon/watchdog-manager.test.ts (75 tests) 1303ms
+     ✓ keeps an idle watchdog stall latched until real recovery and notices once  463ms
+ ✓ .pi/extensions/pij/adapters/git-repository.test.ts (3 tests) 438ms
+ ✓ .pi/extensions/pij/core/agents/runner.test.ts (13 tests) 310ms
+ ✓ .pi/extensions/pij/daemon.delivery.test.ts (8 tests) 824ms
+ ✓ harness/scripts/vetters/agent.test.ts (3 tests) 618ms
+     ✓ returns fail Verdict when packagePath missing (with PIJ_VET_SKIP_AGENT unset)  616ms
+ ✓ .pi/extensions/pij/adapters/tmux.test.ts (6 tests) 988ms
+     ✓ kills a newly created pane when title assignment fails  402ms
+     ✓ kills a newly split pane when title assignment fails  582ms
+ ✓ harness/scripts/copilot-models.test.ts (1 test) 321ms
+     ✓ retries a stale Pi credential with a fresh OMP token  321ms
+ ✓ .pi/extensions/pij/core/agents/contract.test.ts (2 tests) 265ms
+ ✓ harness/scripts/pij-commit-trailers.test.ts (15 tests) 310ms
+ ✓ .pi/extensions/pij/daemon.test.ts (62 tests | 2 skipped) 10799ms
+     ✓ idle-releases at 60 seconds even while rendered composer text remains  317ms
+     ✓ coalesces repeated watchdog intervals while the composer hold is active  784ms
+     ✓ AC-02: performs zero registry writes for the tick heartbeat  493ms
+     ✓ AC-03: still exactly one persist with 50 owned descriptors  2231ms
+ ✓ .pi/extensions/pij/telegram/bridge.test.ts (71 tests | 1 skipped) 701ms
+ ✓ skills/flow-pair/test/cli-dispatch.test.ts (2 tests) 446ms
+     ✓ stdout is EXACTLY the pointer line — one line, no prefix, no metadata  440ms
+ ✓ .pi/extensions/pij/adapters/rust-runtime.test.ts (71 tests) 1517ms
+     ✓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: true)  305ms
+ ✓ .pi/extensions/pij/adapters/daemon-http.test.ts (19 tests) 1425ms
+     ✓ caps reconnect backoff after exponential growth  359ms
+ ✓ .pi/extensions/pij/telegram/index.test.ts (20 tests | 1 skipped) 496ms
+     ✓ shares successful outbound speech with numeric inbound chat ids and isolates other chats  313ms
+ ✓ harness/driver.test.ts (26 tests) 802ms
+     ✓ Session.run() throws DriverAssertionError when expect never matches  607ms
+ ✓ .pi/extensions/pij/adapters/channel.test.ts (14 tests | 1 skipped) 383ms
+ ✓ .pi/extensions/pij/acceptance-sweep.test.ts (14 tests) 361ms
+ ✓ .pi/extensions/pij/core/usage-flags.test.ts (3 tests) 245ms
+ ✓ .pi/extensions/pij/adapters/platform-stores.contract.test.ts (103 tests) 265ms
+ ✓ .pi/extensions/pij/core/agents/builtin-flowspace.test.ts (3 tests) 329ms
+     ✓ runs always-ephemeral: zero writes under builtin-agents/ and runDir null  323ms
+ ✓ .pi/extensions/pij/adapters/process.test.ts (8 tests) 215ms
+ ✓ .pi/extensions/pij/adapters/platform-write-lock.test.ts (6 tests) 140ms
+ ✓ .pi/extensions/pij/daemon-real-adapter.test.ts (5 tests) 165ms
+ ✓ .pi/extensions/pij/adapters/fs-registry.overlay.test.ts (44 tests) 178ms
+ ✓ skills/flow-pair/test/review.test.ts (21 tests) 128ms
+ ✓ skills/flow-pair/test/context-pack-compile.test.ts (15 tests) 124ms
+ ✓ .pi/extensions/pij/adapters/fs-registry.archive.test.ts (29 tests) 147ms
+ ✓ .pi/extensions/file-watch-notify/index.test.ts (14 tests) 167ms
+ ✓ skills/flow-pair/test/learning.test.ts (11 tests) 131ms
+ ✓ .pi/extensions/pij/core/registry-write-law.test.ts (4 tests) 119ms
+ ✓ .pi/extensions/pij/core/daemon/death-reconciler.snapshot.test.ts (5 tests) 106ms
+ ✓ .pi/extensions/pij/core/daemon/watch.test.ts (13 tests) 136ms
+ ✓ skills/flow-pair/test/ledger-run.test.ts (10 tests) 60ms
+ ✓ .pi/extensions/file-watch-notify/watcher.test.ts (9 tests) 66ms
+ ✓ skills/flow-pair/test/ledger-records.test.ts (7 tests) 41ms
+ ✓ harness/scripts/local-path-check.test.ts (4 tests) 112ms
+ ✓ .pi/extensions/pij/core/agent-peer.test.ts (26 tests) 106ms
+ ✓ .pi/extensions/pij/core/message.test.ts (31 tests) 72ms
+ ✓ skills/flow-pair/test/packet-write.test.ts (13 tests) 55ms
+ ✓ .pi/extensions/pij/core/identity-selfheal.test.ts (16 tests) 97ms
+ ✓ skills/flow-pair/test/context-pack-extract.test.ts (11 tests) 42ms
+ ✓ skills/flow-pair/test/ledger-p9.test.ts (9 tests) 37ms
+ ✓ .pi/extensions/pij/core/focus.test.ts (15 tests) 61ms
+ ✓ .pi/extensions/minih-workbench/minih-adapter.test.ts (11 tests) 62ms
+(node:56617) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ harness/scripts/sync-models.test.ts (8 tests) 28ms
+ ✓ .pi/extensions/pij/adapters/op-journal.test.ts (20 tests) 77ms
+ ✓ .pi/extensions/pij/adapters/assignment-store.test.ts (12 tests) 36ms
+ ✓ .pi/extensions/session-sql/store.test.ts (40 tests) 63ms
+ ✓ .pi/extensions/pij/adapters/project-store.test.ts (10 tests) 38ms
+ ✓ .pi/extensions/pij/daemon.archive.test.ts (13 tests) 97ms
+ ✓ .pi/extensions/pij/adapters/generation-cutover.test.ts (83 tests) 34ms
+ ✓ .pi/extensions/pij/core/agents/report.test.ts (5 tests) 54ms
+⚠️  tmux GONE: pane %42 does not exist — the binding is stale, not the send; message left unconsumed in the mailbox and this pane will no longer be targeted — can't find pane: %42
+⚠️  tmux FAILED: send to pane %42 threw before submission — nothing reliably landed; the message stays queued — error connecting to /private/tmp/tmux-501/default (No such file or directory)
+⚠️  copilot UNVERIFIED: send to pane %42 (pid ?) lacked positive submission confirmation; payload was typed once — text tail «…lztp8] (pij delivery diagnostic — please ignore)».
+⚠️  copilot UNVERIFIED: send to pane %42 (pid ?) lacked positive submission confirmation; payload was typed once — text tail «…lztp8] (pij delivery diagnostic — please ignore)».
+⚠️  copilot UNVERIFIED: send to pane %42 (pid ?) lacked positive submission confirmation; payload was typed once — text tail «…lztp8] (pij delivery diagnostic — please ignore)».
+ ✓ .pi/extensions/pij/core/daemon/tick-heartbeat.test.ts (33 tests) 16ms
+ ✓ .pi/extensions/pij/adapters/generation-router.test.ts (67 tests) 28ms
+ ✓ .pi/extensions/pij/core/tree.test.ts (24 tests) 27ms
+⚠️  tmux GONE: pane %99999999 does not exist — the binding is stale, not the send; message left unconsumed in the mailbox and this pane will no longer be targeted — Command failed: tmux send-keys -t %99999999 -l x
+can't find pane: %99999999
+
+ ✓ .pi/extensions/pij/adapters/daemon-tmux.test.ts (32 tests) 62ms
+ ✓ skills/flow-pair/test/packet-render.test.ts (14 tests) 23ms
+ ✓ .pi/extensions/pij/core/chores/boundary.test.ts (12 tests) 8ms
+ ✓ .pi/extensions/pij/adapters/generation-seam.test.ts (47 tests) 22ms
+ ✓ .pi/extensions/pij/daemon.wiring.test.ts (3 tests) 33ms
+ ✓ .pi/extensions/pij/core/liveness-cost.test.ts (13 tests) 29ms
+(node:57063) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ harness/scripts/step-on-probe.test.ts (18 tests | 4 skipped) 18ms
+ ✓ skills/flow-pair/test/paths.test.ts (8 tests) 2ms
+ ✓ .pi/extensions/pij/adapters/fence-store.test.ts (4 tests) 16ms
+ ✓ .pi/extensions/pij/adapters/event-log.test.ts (8 tests) 19ms
+ ✓ .pi/extensions/pij/core/daemon/death-reconciler.test.ts (36 tests) 17ms
+ ✓ .pi/extensions/pi-peacock/index.test.ts (3 tests) 5ms
+(node:57094) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ .pi/extensions/pij/core/orchestration/role.integration.test.ts (13 tests) 18ms
+ ✓ .pi/extensions/pij/core/watchdog.test.ts (54 tests) 15ms
+ ✓ .pi/extensions/pij/adapters/dispatch-store.test.ts (3 tests) 14ms
+ ✓ harness/scripts/vetters/audit-writeback.test.ts (6 tests) 11ms
+ ✓ .pi/extensions/pij/adapters/watchdog-global-store.test.ts (4 tests) 8ms
+ ✓ .pi/extensions/pij/adapters/process-states.test.ts (14 tests) 10ms
+ ✓ .pi/extensions/todo/store.test.ts (20 tests) 17ms
+ ✓ .pi/extensions/pij/core/agents/pack.test.ts (8 tests) 18ms
+ ✓ .pi/extensions/pij/adapters/chore-store.test.ts (6 tests) 12ms
+ ✓ .pi/extensions/pij/adapters/baton-store.test.ts (5 tests) 12ms
+ ✓ .pi/extensions/pij/telegram/lockfile.test.ts (12 tests) 11ms
+ ✓ .pi/extensions/pij/core/revive.test.ts (60 tests) 10ms
+ ✓ .pi/extensions/pij/core/daemon/loop.test.ts (67 tests) 11ms
+ ✓ .pi/extensions/pij/core/spawn.test.ts (159 tests) 11ms
+ ✓ harness/scripts/omp-install-policy.test.ts (8 tests) 11ms
+ ✓ .pi/extensions/pij/core/daemon/pane-signals.test.ts (39 tests) 8ms
+ ✓ .pi/extensions/ralph-loop/store.test.ts (65 tests) 9ms
+ ✓ .pi/extensions/minih-workbench/store.test.ts (23 tests) 11ms
+ ✓ .pi/extensions/pij/core/orchestration/baton.test.ts (30 tests) 10ms
+ ✓ .pi/extensions/pij/core/platform/journal.test.ts (46 tests) 8ms
+ ✓ .pi/extensions/pij/core/chores/resolve.test.ts (4 tests) 11ms
+ ✓ .pi/extensions/pi-peacock/ui.test.ts (13 tests) 9ms
+ ✓ .pi/extensions/pij/core/anomalies.test.ts (82 tests) 9ms
+ ✓ .pi/extensions/pij/core/chores/reduce.test.ts (12 tests) 10ms
+ ✓ .pi/extensions/pij/core/orchestration/pa-capability.test.ts (33 tests) 9ms
+ ✓ .pi/extensions/pij/telegram/config.test.ts (8 tests) 8ms
+ ✓ .pi/extensions/pij/core/session.test.ts (53 tests) 9ms
+ ✓ .pi/extensions/pij/adapters/allocation-store.test.ts (4 tests) 10ms
+ ✓ .pi/extensions/pij/core/platform/assignment.test.ts (39 tests) 6ms
+ ✓ .pi/extensions/pij/core/orchestration/cli.test.ts (55 tests) 8ms
+ ✓ .pi/extensions/minih-workbench/index.test.ts (2 tests) 12ms
+ ✓ .pi/extensions/pij/core/platform/types.test.ts (152 tests) 9ms
+ ✓ .pi/extensions/pij/core/daemon/anomaly-sweep.test.ts (14 tests) 9ms
+ ✓ .pi/extensions/pij/adapters/context-reader.test.ts (7 tests) 8ms
+ ✓ .pi/extensions/pij/core/orchestration/role.test.ts (31 tests) 9ms
+ ✓ .pi/extensions/pij/core/models/registry.test.ts (49 tests) 8ms
+ ✓ .pi/extensions/pij/core/generation-routing.test.ts (45 tests) 8ms
+ ✓ .pi/extensions/file-watch-notify/inject.test.ts (13 tests) 5ms
+ ✓ .pi/extensions/pij/telegram/match.test.ts (13 tests) 3ms
+ ✓ .pi/extensions/pij/core/platform/boundary.test.ts (46 tests) 6ms
+ ✓ .pi/extensions/pij/adapters/atomic-file.test.ts (4 tests) 6ms
+ ✓ .pi/extensions/pij/core/platform/project.test.ts (43 tests) 7ms
+ ✓ .pi/extensions/pij/core/state.test.ts (74 tests) 19ms
+ ✓ .pi/extensions/minih-workbench/ui.test.ts (7 tests) 6ms
+ ✓ .pi/extensions/pij/adapters/spawn-expectation-store.test.ts (1 test) 6ms
+ ✓ .pi/extensions/pij/core/daemon/baton-sweep.test.ts (5 tests) 5ms
+ ✓ .pi/extensions/pij/core/stream.test.ts (7 tests) 6ms
+ ✓ .pi/extensions/pij/telegram/commands.test.ts (17 tests) 5ms
+ ✓ .pi/extensions/pij/adapters/focus-store.test.ts (3 tests) 5ms
+ ✓ .pi/extensions/pij/core/inbox.test.ts (17 tests) 8ms
+ ✓ .pi/extensions/file-watch-notify/store.test.ts (25 tests) 8ms
+ ✓ .pi/extensions/pij/core/models/cli-models.test.ts (24 tests) 8ms
+ ✓ .pi/extensions/pij/core/daemon/typing-guard-contract.test.ts (32 tests) 6ms
+ ✓ harness/scripts/lockfile-allowlist.test.ts (6 tests) 5ms
+ ✓ .pi/extensions/pij/core/archive.test.ts (38 tests) 4ms
+ ✓ .pi/extensions/pij/core/bind-health.test.ts (10 tests) 4ms
+ ✓ .pi/extensions/pij/core/generation-skill-coverage.test.ts (4 tests) 5ms
+ ✓ .pi/extensions/pij/core/daemon/runtime-axis.test.ts (10 tests) 7ms
+ ✓ .pi/extensions/pij/adapters/pi-runtime.test.ts (17 tests) 5ms
+ ✓ .pi/extensions/pij/core/agents/boundary.test.ts (31 tests) 6ms
+ ✓ .pi/extensions/pij/core/daemon-wire.test.ts (23 tests) 4ms
+ ✓ .pi/extensions/pij/core/platform/spine.test.ts (20 tests) 5ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts (22 tests) 9ms
+ ✓ .pi/extensions/pij/core/agents/peer-packet.test.ts (5 tests) 8ms
+ ✓ .pi/extensions/pij/core/watch-subscription.test.ts (17 tests) 6ms
+ ✓ harness/scripts/vetters/scorecard.test.ts (7 tests) 2ms
+ ✓ .pi/extensions/pij/core/models/validate.test.ts (38 tests) 3ms
+ ✓ .pi/extensions/pij/adapters/fakes.test.ts (14 tests) 5ms
+ ✓ .pi/extensions/pij/core/binding.test.ts (37 tests) 5ms
+ ✓ .pi/extensions/pij/core/platform/render-spine-md.test.ts (21 tests) 5ms
+ ✓ .pi/extensions/pij/core/bg.test.ts (24 tests) 4ms
+ ✓ .pi/extensions/pij/telegram/init.test.ts (10 tests) 5ms
+ ✓ .pi/extensions/pij/core/session-join.test.ts (16 tests) 5ms
+ ✓ .pi/extensions/pij/core/platform/time.test.ts (8 tests) 3ms
+ ✓ .pi/extensions/pij/core/harness/transcript.test.ts (9 tests) 5ms
+ ✓ .pi/extensions/pij/core/daemon/source-staleness.test.ts (12 tests) 3ms
+ ✓ .pi/extensions/pij/core/status-nudge.test.ts (9 tests) 5ms
+ ✓ .pi/extensions/pij/index.send-schema.test.ts (8 tests) 5ms
+ ✓ .pi/extensions/pij/core/harness/codex.test.ts (17 tests) 3ms
+ ✓ .pi/extensions/pij/core/discovery.test.ts (32 tests) 4ms
+ ✓ .pi/extensions/pij/core/agents/cli-args.test.ts (42 tests) 4ms
+stderr | harness/scripts/vetters/override-scope.test.ts > parseOverrides (FX001-1) > parses legacy free-text strings as { rules: [], reason: <text> } (fail-safe — accepts nothing)
+⚠ deprecated: vetted.overrides as a plain string accepts no rules; migrate to { rules: [<rule-slug>], reason: <text> }
+
+ ✓ harness/scripts/vetters/override-scope.test.ts (10 tests) 3ms
+ ✓ .pi/extensions/pij/core/models/spawn-validation.test.ts (14 tests) 3ms
+ ✓ harness/test-utils.test.ts (2 tests) 2ms
+ ✓ .pi/extensions/pij/core/events.test.ts (10 tests) 3ms
+ ✓ .pi/extensions/ralph-loop/runner.test.ts (8 tests) 4ms
+ ✓ .pi/extensions/pij/core/context/gauge.test.ts (13 tests) 3ms
+ ✓ .pi/extensions/pij/core/interstitial.test.ts (13 tests) 4ms
+ ✓ .pi/extensions/pij/core/daemon/lifecycle.test.ts (26 tests) 4ms
+ ✓ harness/scripts/vetters/aggregate.test.ts (8 tests) 3ms
+ ✓ .pi/extensions/pij/core/types.test.ts (49 tests) 3ms
+ ✓ .pi/extensions/pij/cli.integration.test.ts (66 tests) 15220ms
+     ✓ routes bare list and --json as GET without a legacy union  361ms
+     ✓ routes bare sessions and --json as GET without a legacy union  377ms
+     ✓ preserves success envelope bytes with "\n\n" termination  355ms
+     ✓ forwards exact streams and exit without HTTP or JSON wrapping: {"json":false,"code":0}  596ms
+     ✓ forwards exact streams and exit without HTTP or JSON wrapping: {"json":true,"code":0}  612ms
+     ✓ forwards exact streams and exit without HTTP or JSON wrapping: {"json":false,"code":23}  515ms
+     ✓ forwards exact streams and exit without HTTP or JSON wrapping: {"json":true,"code":23}  530ms
+     ✓ forwards native --help to the child instead of rendering shim help  523ms
+     ✓ forwards direct wrapper 'SIGTERM' to the native child and waits for inherited pipes to close  520ms
+     ✓ forwards direct wrapper 'SIGINT' to the native child and waits for inherited pipes to close  590ms
+     ✓ forwards an empty native stdout without appending a newline or envelope  315ms
+ ✓ .pi/extensions/pij/core/registry-write.test.ts (18 tests) 6ms
+ ✓ .pi/extensions/pij/core/daemon/tap-retention.test.ts (12 tests) 4ms
+ ✓ .pi/extensions/pij/core/death-reason.test.ts (20 tests) 3ms
+ ✓ .pi/extensions/pi-peacock/store.test.ts (10 tests) 4ms
+ ✓ .pi/extensions/pij/core/harness/claude.test.ts (19 tests) 5ms
+ ✓ .pi/extensions/pij/core/current-session.test.ts (13 tests) 3ms
+ ✓ .pi/extensions/pij/core/platform/dispatch.test.ts (3 tests) 3ms
+ ✓ .pi/extensions/pij/core/agents/adapters/codex.test.ts (11 tests) 4ms
+ ✓ .pi/extensions/pij/core/agents/adapters/claude.test.ts (9 tests) 4ms
+ ✓ .pi/extensions/pij/core/harness/types.test.ts (11 tests) 2ms
+ ✓ .pi/extensions/image-see/store.test.ts (14 tests) 3ms
+ ✓ .pi/extensions/pij/core/canary.test.ts (12 tests) 4ms
+ ✓ .pi/extensions/pij/core/spawn-expectation.test.ts (4 tests) 4ms
+ ✓ .pi/extensions/pij/adapters/tmux-keys.test.ts (11 tests) 3ms
+ ✓ .pi/extensions/skill-runner/store.test.ts (14 tests) 3ms
+ ✓ .pi/extensions/pij/core/readiness.test.ts (17 tests) 3ms
+ ✓ .pi/extensions/pij/telegram/media.test.ts (19 tests) 4ms
+ ✓ .pi/extensions/pij/core/session-name.test.ts (8 tests) 3ms
+ ✓ .pi/extensions/pij/core/harness/copilot.test.ts (11 tests) 4ms
+ ✓ .pi/extensions/pij/core/close.test.ts (15 tests) 3ms
+ ✓ .pi/extensions/minih-workbench/session-persistence.test.ts (5 tests) 3ms
+ ✓ .pi/extensions/pij/core/daemon/index-state.test.ts (7 tests) 3ms
+ ✓ .pi/extensions/pij/telegram/chunk.test.ts (9 tests) 3ms
+ ✓ .pi/extensions/pij/core/harness/badmodel.test.ts (16 tests) 3ms
+ ✓ .pi/extensions/pij/core/models/match.test.ts (10 tests) 4ms
+ ✓ .pi/extensions/pij/core/orchestration/prime.test.ts (10 tests) 3ms
+ ✓ .pi/extensions/pij/core/daemon/watchdog-scheduler-projection.test.ts (8 tests) 3ms
+ ✓ .pi/extensions/pij/core/orchestration/pa-target.test.ts (9 tests) 2ms
+ ✓ .pi/extensions/pij/core/receipts.test.ts (10 tests) 2ms
+ ✓ harness/scripts/vetters/audit-unmanifested.test.ts (5 tests) 2ms
+ ✓ .pi/extensions/minih-workbench/feed.test.ts (3 tests) 2ms
+ ✓ .pi/extensions/pij/core/platform/allocation.test.ts (4 tests) 3ms
+ ✓ harness/scripts/vetters/resolve-path.test.ts (6 tests) 2ms
+ ✓ .pi/extensions/pij/core/context/window.test.ts (8 tests) 3ms
+ ✓ .pi/extensions/pij/core/agents/adapters/copilot.test.ts (3 tests) 3ms
+ ✓ .pi/extensions/pij/core/commands.test.ts (6 tests) 2ms
+ ✓ .pi/extensions/pij/core/daemon/process-staleness.test.ts (9 tests) 2ms
+ ✓ .pi/extensions/pij/core/harness/pi.test.ts (3 tests) 2ms
+ ✓ harness/scripts/vetters/npm-audit.test.ts (4 tests) 2ms
+ ✓ harness/scripts/cli-invocation.test.ts (3 tests) 2ms
+ ✓ harness/scripts/vetters/types.test.ts (9 tests) 5ms
+ ✓ harness/scripts/snapshot-refresh.test.ts (7 tests) 2ms
+ ✓ harness/scripts/skill-link-policy.test.ts (3 tests) 2ms
+ ✓ .pi/extensions/pij/core/daemon/lock.test.ts (6 tests) 2ms
+ ✓ .pi/extensions/pij/core/agents/paths.test.ts (7 tests) 2ms
+ ✓ .pi/extensions/pij/core/invariant-guard.test.ts (2 tests) 2ms
+ ✓ .pi/extensions/pij/core/seat-label.test.ts (2 tests) 2ms
+ ✓ .pi/extensions/pij/core/seq.test.ts (3 tests) 2ms
+ ↓ harness/driver.it.test.ts (2 tests | 2 skipped)
+ ✓ .pi/extensions/pij/core/platform/fence.test.ts (3 tests) 2ms
+ ↓ harness/scripts/vetters/agent.live.test.ts (2 tests | 2 skipped)
+ ↓ .pi/extensions/pij/core/agents/peer.live.test.ts (3 tests | 3 skipped)
+ ↓ .pi/extensions/pij/core/agents/adapters/adapters.live.test.ts (3 tests | 3 skipped)
+ ✓ harness/scripts/copilot-native-smoke.test.ts (209 tests) 15684ms
+     ✓ waits through welcome and incomplete repaint before two exact confirmations  755ms
+     ✓ times out without a modal and never resends approval if dismissal stalls  501ms
+       ✓ never approves active or incomplete modal on preauthorized path  504ms
+ ✓ .pi/extensions/pij/daemon-push.test.ts (21 tests | 2 skipped) 14582ms
+     ✓ pushes a stalled notice to the creator when a bound session is working+stale  605ms
+     ✓ does NOT push for a non-stalled session (working with fresh events)  697ms
+     ✓ DOES push stalled when the pane is byte-STABLE past the window (genuine stall)  992ms
+     ✓ pushes a dead notice to the creator when the bound session's pid is gone  755ms
+     ✓ pushes only once for a dead session (latch)  906ms
+     ✓ dead push: registry descriptor carries failureReason after tick  512ms
+     ✓ stalled push: registry descriptor carries failureReason='stalled' after tick  622ms
+     ✓ daemon driveSession detects bad model → fail with model-not-supported → creator notified  649ms
+     ✓ detects quota error in pane of idle pid-alive bound session → pushes once to creator  854ms
+     ✓ does NOT push yet for an idle pid-alive bound session with fresh activity  944ms
+     ✓ pushes only ONCE per provider-failure (latch)  2021ms
+     ✓ persists failureReason='quota' on the descriptor after provider-failure push  462ms
+     ✓ does NOT push for an idle session with no recognisable error (transient text)  430ms
+     ✓ detects the sakana credit error in a pi worker's pane → pushes once to creator  528ms
+     ✓ persists failureReason='quota' on the pi worker descriptor  675ms
+     ✓ does NOT push for a pi worker whose pane shows only transient text  838ms
+     ✓ does NOT peek a pi worker with no creator (spawnedBy absent)  559ms
+     ✓ a dead session whose pane shows only billing-domain prose → failureReason unknown  995ms
+     ✓ a stale-idle pid-alive session with only billing prose → no provider-failure push  534ms
+ ✓ .pi/extensions/pij/core/chores/drive.test.ts (98 tests) 17646ms
+     ✓ refuses 'seat add' as named v2 without legacy mutations  340ms
+     ✓ refuses 'list' as named v2 without legacy mutations  360ms
+     ✓ refuses 'verbose list' as named v2 without legacy mutations  322ms
+     ✓ refuses 'run' as named v2 without legacy mutations  389ms
+     ✓ refuses 'dry run' as named v2 without legacy mutations  306ms
+     ✓ refuses 'remove' as named v2 without legacy mutations  339ms
+     ✓ refuses before legacy identity resolution for 'adopted pane'  346ms
+     ✓ refuses before legacy identity resolution for 'unknown named seat'  344ms
+     ✓ refuses before legacy identity resolution for 'unknown UUID seat'  322ms
+     ✓ refuses before legacy identity resolution for 'mismatched seat and pane'  355ms
+     ✓ refuses 'repo add' as named v2 without legacy mutations  335ms
+ ✓ harness/scripts/governance-branch.test.ts (20 tests) 18722ms
+     ✓ resolves the exact registered worktree from cwd or explicit repo, preserving unusual paths  678ms
+     ✓ resolves a fresh orphan created by the generic bootstrap recipe  475ms
+     ✓ refuses a local government tree without a standing worktree (branch exists: false)  492ms
+     ✓ refuses an unavailable registered worktree without pruning it  406ms
+     ✓ refuses an absent government directory instead of returning the main copy  412ms
+     ✓ dry-runs without changing any files or refs or contacting attribution  999ms
+     ✓ prepares a single attributed orphan with the exact tree without touching the standing checkout or source  1886ms
+     ✓ refuses an existing refs/tags/prime-governance-pre-orphan-2026-09-07 without clobbering any ref  852ms
+     ✓ refuses an existing refs/heads/prime-governance-orphan-2026-09-07 without clobbering any ref  862ms
+     ✓ refuses a tracked dirty standing worktree before preparation  873ms
+     ✓ refuses a untracked dirty standing worktree before preparation  1029ms
+     ✓ refuses a staged dirty standing worktree before preparation  1300ms
+     ✓ refuses an in-progress operation even if the index and worktree are clean  695ms
+     ✓ refuses a source that advances during attribution without creating backup or candidate refs  1669ms
+     ✓ fails closed when attribution is unavailable  1530ms
+     ✓ hands off safely from a checked-out branch and preserves the standing files  2058ms
+     ✓ refuses a dirty worktree at prime handoff without resetting it  825ms
+     ✓ refuses a advanced worktree at prime handoff without resetting it  738ms
+     ✓ refuses a detached worktree at prime handoff without resetting it  692ms
+ ✓ .pi/extensions/pij/cli.inbox.integration.test.ts (17 tests) 22193ms
+     ✓ runs whoami from a live external host without PIJ_SESSION_ID or tmux  1247ms
+     ✓ delivers literal raw text and correlated replies through public CLI inbox reads  3897ms
+     ✓ 'Claude' ambient registration binds the host idempotently and finite wait returns v2 JSON  2109ms
+     ✓ 'Copilot' ambient registration binds the host idempotently and finite wait returns v2 JSON  2407ms
+     ✓ 'Codex' ambient registration binds the host idempotently and finite wait returns v2 JSON  1990ms
+     ✓ keeps bare finite inbox waits available to external pull seats  1112ms
+     ✓ refuses an infinite inbox wait for a paned pushed-delivery compatibility seat  1419ms
+     ✓ inbox register returns pure whoami for an already-bound Claude pane without ambient identity  972ms
+     ✓ inbox register preserves self-registered pi pane compatibility and human guidance  915ms
+     ✓ inbox register preserves self-registered omp pane compatibility and human guidance  610ms
+     ✓ repairs stale PIJ_SESSION_ID without replacing authoritative native identity  799ms
+     ✓ refuses conflicting native session evidence observed in the host argv  739ms
+     ✓ refuses ambiguous ambient identities rather than selecting a harness  303ms
+     ✓ refuses ambient-only registration without a matching real host ancestor  363ms
+     ✓ round-trips concurrent wait, send, output acknowledgement and a correlated reply exactly once  2862ms
+
+ Test Files  240 passed | 4 skipped (244)
+      Tests  5264 passed | 22 skipped (5286)
+   Start at  14:57:02
+   Duration  22.56s (transform 8.84s, setup 0ms, import 20.40s, tests 209.92s, environment 11ms)
