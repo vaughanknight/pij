@@ -1,0 +1,77 @@
+npm run windows:check
+
+> pij@0.1.0 windows:check
+> tsx harness/scripts/windows-compat.ts
+
+
+=== windows-compat: typecheck ===
+
+> pij@0.1.0 typecheck
+> tsc --noEmit
+
+
+=== windows-compat: lint ===
+
+> pij@0.1.0 lint
+> biome check .
+
+biome.json:2:13 deserialize ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  i The configuration schema version does not match the CLI version 2.4.14
+  
+    1 │ {
+  > 2 │ 	"$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
+      │ 	           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    3 │ 	"files": {
+    4 │ 		"includes": [
+  
+  i   Expected:                     2.4.14
+      Found:                        2.0.0
+  
+  
+  i Run the command biome migrate to migrate the configuration file.
+  
+
+Checked 538 files in 341ms. No fixes applied.
+Found 1 info.
+
+=== windows-compat: focused-tests ===
+
+> pij@0.1.0 test
+> vitest run .pi/extensions/pij/adapters/channel.test.ts .pi/extensions/pij/adapters/fakes.test.ts .pi/extensions/pij/adapters/fs-registry.test.ts .pi/extensions/pij/cli.inbox.integration.test.ts
+
+(node:73226) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-rs-death-notices-revive
+
+ ✓ .pi/extensions/pij/adapters/fakes.test.ts (14 tests) 5ms
+ ✓ .pi/extensions/pij/adapters/channel.test.ts (14 tests | 1 skipped) 382ms
+ ✓ .pi/extensions/pij/adapters/fs-registry.test.ts (41 tests | 1 skipped) 2659ms
+     ✓ overlapping processes claiming one free native identity all converge on attempt zero  1279ms
+     ✓ overlapping processes skip an unowned legacy attempt zero without changing its bytes  1271ms
+ ✓ .pi/extensions/pij/cli.inbox.integration.test.ts (17 tests) 24887ms
+     ✓ runs whoami from a live external host without PIJ_SESSION_ID or tmux  1083ms
+     ✓ delivers literal raw text and correlated replies through public CLI inbox reads  3262ms
+     ✓ 'Claude' ambient registration binds the host idempotently and finite wait returns v2 JSON  1493ms
+     ✓ 'Copilot' ambient registration binds the host idempotently and finite wait returns v2 JSON  1723ms
+     ✓ 'Codex' ambient registration binds the host idempotently and finite wait returns v2 JSON  1375ms
+     ✓ keeps bare finite inbox waits available to external pull seats  939ms
+     ✓ refuses an infinite inbox wait for a paned pushed-delivery compatibility seat  712ms
+     ✓ inbox register returns pure whoami for an already-bound Claude pane without ambient identity  1018ms
+     ✓ inbox register preserves self-registered pi pane compatibility and human guidance  1681ms
+     ✓ inbox register preserves self-registered omp pane compatibility and human guidance  1607ms
+     ✓ repairs stale PIJ_SESSION_ID without replacing authoritative native identity  1838ms
+     ✓ refuses conflicting native session evidence observed in the host argv  1543ms
+     ✓ keeps register fail-loud with neither ambient identity nor a pane  795ms
+     ✓ refuses ambiguous ambient identities rather than selecting a harness  709ms
+     ✓ refuses ambient-only registration without a matching real host ancestor  1030ms
+     ✓ round-trips concurrent wait, send, output acknowledgement and a correlated reply exactly once  3869ms
+
+ Test Files  4 passed (4)
+      Tests  84 passed | 2 skipped (86)
+   Start at  10:30:48
+   Duration  25.04s (transform 276ms, setup 0ms, import 357ms, tests 27.93s, environment 0ms)
+
+
+windows-compat: all portable stages passed.

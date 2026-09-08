@@ -182,7 +182,7 @@ fn ownership_failure(
     envelope(StatusCode::FORBIDDEN, &answer)
 }
 
-fn runtime_failure(command: &str, error: PijError) -> Response {
+pub(super) fn runtime_failure(command: &str, error: PijError) -> Response {
     match &error {
         PijError::GovernanceRefused { code, record } => {
             let mut answer: Envelope<Value> =
@@ -199,43 +199,43 @@ fn runtime_failure(command: &str, error: PijError) -> Response {
 }
 
 #[derive(Serialize)]
-struct CloseReceipt {
+pub(super) struct CloseReceipt {
     seat: SeatId,
     tombstoned_at: u64,
     reason: String,
-    seq: Seq,
+    pub(super) seq: Seq,
 }
 
-async fn tombstone_receipt(
+pub(super) async fn tombstone_receipt(
     spine: &dyn Spine,
     seat: &SeatId,
     expected_seq: Option<Seq>,
     existing: Option<&SeatDescriptor>,
-) -> Result<CloseReceipt> {
+) -> Result<Option<CloseReceipt>> {
     let inconsistent = || PijError::Adapter {
         adapter: "lifecycle/tombstone-receipt".to_string(),
         message: format!("no matching durable tombstone event for {seat}"),
     };
-    let event = spine
-        .latest_matching(seat, &["seat.tombstone"])
-        .await?
-        .ok_or_else(inconsistent)?;
+    let Some(event) = spine.latest_matching(seat, &["seat.tombstone"]).await? else {
+        return Ok(None);
+    };
     let seq = event.seq.ok_or_else(inconsistent)?;
     let payload: Value = serde_json::from_str(&event.payload).map_err(|_| inconsistent())?;
     let reason = payload["reason"].as_str().ok_or_else(inconsistent)?;
-    if expected_seq.is_some_and(|expected| expected != seq)
-        || existing.is_some_and(|raw| {
-            raw.tombstoned_at != Some(event.at) || raw.tombstone_reason.as_deref() != Some(reason)
-        })
-    {
+    if expected_seq.is_some_and(|expected| expected != seq) {
         return Err(inconsistent());
     }
-    Ok(CloseReceipt {
+    if existing.is_some_and(|raw| {
+        raw.tombstoned_at != Some(event.at) || raw.tombstone_reason.as_deref() != Some(reason)
+    }) {
+        return Ok(None);
+    }
+    Ok(Some(CloseReceipt {
         seat: seat.clone(),
         tombstoned_at: event.at,
         reason: reason.to_string(),
         seq,
-    })
+    }))
 }
 
 pub(crate) async fn close(
@@ -333,7 +333,14 @@ async fn handle(
                 }
             };
             match receipt {
-                Ok(receipt) => envelope(StatusCode::OK, &Envelope::ok(command, receipt)),
+                Ok(Some(receipt)) => envelope(StatusCode::OK, &Envelope::ok(command, receipt)),
+                Ok(None) => runtime_failure(
+                    command,
+                    PijError::Adapter {
+                        adapter: "lifecycle/tombstone-receipt".to_string(),
+                        message: format!("no matching durable tombstone event for {target}"),
+                    },
+                ),
                 Err(error) => runtime_failure(command, error),
             }
         }

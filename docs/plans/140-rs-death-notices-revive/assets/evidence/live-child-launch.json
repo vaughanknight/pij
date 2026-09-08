@@ -1,0 +1,5 @@
+{
+  "exit": 0,
+  "stdout": "{\"ok\":true,\"command\":\"pij spawn\",\"v\":2,\"data\":{\"id\":\"p140-child\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%4313\",\"proc\":null,\"folder\":\"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/p140-proof-ocv_v86t\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":\"p140-parent\",\"relay\":false,\"cross_session_inbound_accept\":false,\"native_extension_delivery\":false,\"spawn_id\":\"s-59891ece4c7d10dad1947c1febcc07c5\",\"model\":\"github-copilot/gemini-3.8-flash-1m\",\"dispatched\":true,\"bound\":false}}\n",
+  "stderr": ""
+}

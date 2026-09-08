@@ -60,7 +60,7 @@ use crate::registration::RegistrationError;
 /// vacuously.
 ///
 /// Every field is a CLAIM. None of them is trusted on its own.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CallerContext {
     /// The seat the caller believes it is. LOCATES a row; never creates one.
     #[serde(
@@ -778,7 +778,7 @@ pub(crate) async fn resolve_seat(
     asserted: Option<String>,
     pane: Option<String>,
 ) -> Resolved {
-    if asserted.as_deref() == Some(crate::background::BG_ACTOR) {
+    if asserted.as_deref() == Some(pij_core::BG_ACTOR) {
         return Resolved::Refusal(refused(
             command,
             "pij-bg is a daemon-owned sender, not a caller seat",
@@ -835,7 +835,7 @@ pub(crate) async fn resolve_seat(
                 ));
             }
         };
-        if seat.id.0 == crate::background::BG_ACTOR {
+        if seat.id.0 == pij_core::BG_ACTOR {
             return Resolved::Refusal(refused(
                 command,
                 "pij-bg is a daemon-owned sender, not a caller seat",

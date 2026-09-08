@@ -1,0 +1,21 @@
+# Plan 140 — rs death notices + revive of observed-dead seats
+
+Owner: pij-minor-unicorn (prime). Ruling: Jordan 2026-09-08 — "pij seats are not being told if their child seats are killed or die" and "after a kill, revive says the seat is still alive; TS had a way to force it". Folds ledger items *reap rule automation* and *revive recycled-pid refusal*.
+
+## Problem (verified live 2026-09-08 on daemon pid 45954)
+1. Child `pij-curved-wallaby` (parent pij-minor-unicorn) window killed by hand → `pij state` shows `liveness: dead` within seconds, but NO tombstone is written and NO message reaches the parent. TS did both (daemon.ts `reconcileDeaths` → registry write "close" + `channel.deliver` obituary to parent; suppressed + counted when the parent is dead too).
+2. `pij-rs revive pij-curved-wallaby` on that dead seat → refused "seat is live — revive only accepts tombstoned ids" (crates/daemon/src/http/mod.rs:867-877). No `--assume-dead`. Workaround today: `close` then `revive`.
+
+Root: rs liveness is OBSERVED per query (mod.rs:2040) and never becomes an event; the reaper (`pij-rs reap`, crates/daemon/src/reaper.rs) is manual; nothing on the death path calls `DeliveryService::send` (crates/daemon/src/delivery/mod.rs:239).
+
+## Acceptance
+- AC1 Automatic death sweep: the daemon runs the existing reap rule (proc Dead/Recycled AND recorded pane absent; ps exit 1 + header-only = ABSENT) on a cadence (default 5s, `PIJ_RS_DEATH_SWEEP_MS`), committing ONE `seat.tombstone` event per seat with `reason: "observed-dead"` and the observation (`pid`, `proc_start`, `pane`, `pane_present:false`). Dry-run parity with the manual verb: `pij-rs reap --dry-run` and the sweep name the same candidates (existing reaper_tests extended, not forked).
+- AC2 Obituary: on each such tombstone the daemon sends, via `DeliveryService::send`, from the ONE daemon-owned system sender (define the constant once in crates/core; reuse the bg sender pattern if it already exists) to the seat's recorded `parent`, a body matching the pinned template `[pij] seat <id> died (<reason>) — pane <pane> absent, pid <pid> gone at <iso>. It was your child; revive with \`pij-rs revive <id>\` or leave it.` Template pinned in the stable route corpus like `baton_notice_body_template`.
+- AC3 Suppression: no send when the parent is tombstoned or itself observed-dead in the same sweep; count and log one line `death sweep: N notice(s) withheld — recipient dead too`. A host reboot must NOT produce N messages.
+- AC4 Revive accepts observed-dead: `pij-rs revive <id>` succeeds when the seat is tombstoned OR when the live observation is Dead with pane absent; in the latter case it tombstones first (`reason: "revive-observed-dead"`) then relaunches, one atomic sequence, seq cited in the receipt.
+- AC5 `--assume-dead`: when the observation is Recycled or Unknown (pid reused / ps unavailable), `pij-rs revive <id> --assume-dead --evidence "<text>"` proceeds ONLY if the caller is the seat's recorded parent, or the seat is parentless and the caller holds role prime. Records `revive.assumed-dead` with the evidence and the observation; NEVER signals the replacement pid. Refusal otherwise is decodable: `E-RS-REVIVE-LIVE` naming the observation and the exact override command.
+- AC6 Skill + docs: `docs/how/pij-rs-api.md` (Revive, new Death sweep section) and the pij skill peer route (`~/.claude/skills/pij/references/routes/peer.md` is the operator copy; the repo copy under `skills/` is the source) describe: obituaries are pushed to parents; `revive` accepts observed-dead; `--assume-dead` is the override. Skill gate green.
+- AC7 Live proof on an isolated daemon (never the production one): spawn child with `--parent`, `tmux kill-window` it, parent receives the obituary within 2 sweeps (cite delivery.outcome seq + pane capture); revive that seat without close; revive a recycled-pid fixture refuses without `--assume-dead` and proceeds with it. Then the same obituary observed on the PRODUCTION daemon after merge+bounce is the prime's closing receipt, not the coder's.
+
+## Non-goals
+Pane-present-but-proc-dead classification (TS `classifyDeathReason` frame scraping) — out; rs keeps the two-witness rule. No watchdog changes. No legacy TS edits.

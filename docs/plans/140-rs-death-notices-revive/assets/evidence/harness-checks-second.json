@@ -1,0 +1,82 @@
+{
+  "command": "checks",
+  "status": "error",
+  "timestamp": "2026-09-08T00:33:51.828Z",
+  "error": {
+    "code": "checks-failed",
+    "message": "1 check(s) failed: test.",
+    "details": {
+      "results": [
+        {
+          "name": "local-paths",
+          "status": "pass",
+          "code": 0,
+          "proves": "operational files contain no user-specific absolute home paths"
+        },
+        {
+          "name": "typecheck",
+          "status": "pass",
+          "code": 0,
+          "proves": "the TypeScript surface compiles"
+        },
+        {
+          "name": "lint",
+          "status": "pass",
+          "code": 0,
+          "proves": "Biome (errors + warnings) is clean"
+        },
+        {
+          "name": "test",
+          "status": "fail",
+          "code": 1,
+          "proves": "the vitest suite passes"
+        },
+        {
+          "name": "copilot-native",
+          "status": "pass",
+          "code": 0,
+          "proves": "native Copilot extension node:test contracts pass"
+        },
+        {
+          "name": "windows-compat",
+          "status": "pass",
+          "code": 0,
+          "proves": "portable typecheck, lint, registry replacement, inbox, fake, and no-tmux CLI checks pass"
+        },
+        {
+          "name": "smoke",
+          "status": "pass",
+          "code": 0,
+          "proves": "the tmux-driven end-to-end driver scenarios pass"
+        },
+        {
+          "name": "pkg-audit",
+          "status": "pass",
+          "code": 0,
+          "proves": "third-party package vetting surfaces no new findings"
+        },
+        {
+          "name": "snapshots",
+          "status": "pass",
+          "code": 0,
+          "proves": "agent-pack snapshots have not drifted"
+        },
+        {
+          "name": "pij-commit-trailers",
+          "status": "warn",
+          "code": 0,
+          "proves": "branch-local harness commits carry derived pij attribution (advisory)",
+          "output": "{\"status\":\"warn\",\"checked\":1,\"findings\":[],\"unverified\":[\"ebb7ebc6509842ec15be70c331c618fb40e7085e: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime\"]}\n"
+        }
+      ],
+      "failures": [
+        {
+          "name": "test",
+          "output": "\u26a0\ufe0f  tmux GONE: pane %42 does not exist \u2014 the binding is stale, not the send; message left unconsumed in the mailbox and this pane will no longer be targeted \u2014 can't find pane: %42\n\u26a0\ufe0f  tmux FAILED: send to pane %42 threw before submission \u2014 nothing reliably landed; the message stays queued \u2014 error connecting to /private/tmp/tmux-501/default (No such file or directory)\n\u26a0\ufe0f  copilot UNVERIFIED: send to pane %42 (pid ?) lacked positive submission confirmation; payload was typed once \u2014 text tail \u00ab\u2026lztp8] (pij delivery diagnostic \u2014 please ignore)\u00bb.\n\u26a0\ufe0f  copilot UNVERIFIED: send to pane %42 (pid ?) lacked positive submission confirmation; payload was typed once \u2014 text tail \u00ab\u2026lztp8] (pij delivery diagnostic \u2014 please ignore)\u00bb.\n\u26a0\ufe0f  copilot UNVERIFIED: send to pane %42 (pid ?) lacked positive submission confirmation; payload was typed once \u2014 text tail \u00ab\u2026lztp8] (pij delivery diagnostic \u2014 please ignore)\u00bb.\n\u26a0\ufe0f  tmux GONE: pane %99999999 does not exist \u2014 the binding is stale, not the send; message left unconsumed in the mailbox and this pane will no longer be targeted \u2014 Command failed: tmux send-keys -t %99999999 -l x\ncan't find pane: %99999999\n\n(node:44907) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:45297) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n(node:45295) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\nstderr | harness/scripts/vetters/override-scope.test.ts > parseOverrides (FX001-1) > parses legacy free-text strings as { rules: [], reason: <text> } (fail-safe \u2014 accepts nothing)\n\u26a0 deprecated: vetted.overrides as a plain string accepts no rules; migrate to { rules: [<rule-slug>], reason: <text> }\n\n\n\u23af\u23af\u23af\u23af\u23af\u23af\u23af Failed Tests 1 \u23af\u23af\u23af\u23af\u23af\u23af\u23af\n\n FAIL  skills/flow-pair/test/identity.test.ts > deriveRepoId > falls back to basename-hash when git has no remote\nError: ENOTEMPTY: directory not empty, rmdir '/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/fp-test-VBfogH/.git'\n\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af\u23af[1/1]\u23af\n\nerror: Recipe `test` failed on line 92 with exit code 1"
+        }
+      ],
+      "skipped": []
+    }
+  },
+  "next_action": "Fix the failing check(s) above (test), then re-run `harness checks`. Not ship/done-ready until this is green. Review advisory attribution findings with `just pij-commit-trailers`; JSON details are in results[].output."
+}

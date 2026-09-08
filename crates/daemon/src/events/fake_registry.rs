@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use pij_core::error::{PijError, Result};
 use pij_core::model::{SeatDescriptor, SeatId, Seq};
 use pij_core::ports::{PutBinding, Registry, SeatFilter};
-use pij_store::registry::{descriptor_event, registry_event};
+use pij_store::registry::{descriptor_event, tombstone_event};
 use pij_store::spine::RegistryPublisher;
 use pij_testkit::fakes::FakeRegistry;
 
@@ -40,8 +40,8 @@ impl PublishedFakeRegistry {
             // All composed fake writers share this bus ordering boundary. The
             // raw fake is not an alternate production write entry point.
             let current = registry.get(&seat).await?;
-            if let Some(expected) = expected
-                && current.as_ref() != Some(&expected)
+            if let Some(expected) = expected.as_ref()
+                && current.as_ref() != Some(expected)
             {
                 return Err(PijError::GovernanceRefused {
                     code: "E-RS-INCARNATION-CHANGED".to_string(),
@@ -52,7 +52,7 @@ impl PublishedFakeRegistry {
                 seat: seat.clone(),
                 store: "the daemon's in-memory fake registry".to_string(),
             })?;
-            let mut event = registry_event("seat.tombstone", &seat, serde_json::json!({ "reason": reason }).to_string())?;
+            let mut event = tombstone_event(&seat, &reason, expected.as_ref())?;
             descriptor.tombstoned_at = Some(event.at);
             descriptor.tombstone_reason = Some(reason);
             descriptor.native_extension_delivery = false;

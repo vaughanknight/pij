@@ -1,0 +1,64 @@
+{
+  "elapsed_seconds": 1.35,
+  "before_seq": 8,
+  "events": [
+    {
+      "seq": 9,
+      "kind": "seat.tombstone",
+      "payload": {
+        "observation": {
+          "pane": "%4313",
+          "pane_present": false,
+          "pid": 40210,
+          "proc_start": 20260908103206
+        },
+        "reason": "observed-dead"
+      },
+      "at": 1788827624411
+    },
+    {
+      "seq": 10,
+      "kind": "message.pushed",
+      "payload": {
+        "msg_id": "680d40fe0ed57547-0000000000000000",
+        "from": "pij-bg",
+        "body": "[pij] seat p140-child died (observed-dead) \u2014 pane %4313 absent, pid 40210 gone at 2026-09-08T00:33:44.411Z. It was your child; revive with `pij revive p140-child` or leave it."
+      },
+      "at": 1788827624424
+    },
+    {
+      "seq": 11,
+      "kind": "delivery.outcome",
+      "payload": {
+        "msg_id": "680d40fe0ed57547-0000000000000000",
+        "outcome": {
+          "outcome": "queued",
+          "reason": "extension-stream",
+          "next_retry_at": 0
+        },
+        "transport": "claude-uds"
+      },
+      "at": 1788827624424
+    },
+    {
+      "seq": 12,
+      "kind": "death.notice",
+      "payload": {
+        "at": "2026-09-08T00:33:44.411Z",
+        "delivery": "queued",
+        "notice": {
+          "at": 1788827624424,
+          "msg_id": "680d40fe0ed57547-0000000000000000",
+          "outcome": {
+            "next_retry_at": 0,
+            "outcome": "queued",
+            "reason": "extension-stream"
+          }
+        },
+        "parent": "p140-parent",
+        "tombstone_seq": 9
+      },
+      "at": 1788827624411
+    }
+  ]
+}

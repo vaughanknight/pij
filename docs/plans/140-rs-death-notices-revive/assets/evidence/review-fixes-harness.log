@@ -1,0 +1,6 @@
+Command: harness checks --json
+Result: completed successfully. The hub wait renderer truncated the completed job's stdout; the retained excerpt below is not a complete JSON document. No full stdout is claimed.
+
+{"command":"checks","status":"ok","timestamp":"2026-09-08T01:05:12.150Z","data":{"ok":true,"ran":["local-paths","typecheck","lint","test","copilot-native","windows-compat","smoke","pkg-audit","snapshots","pij-commit-trailers"],"skipped":[],"results":[{"name":"local-paths","status":"pass","code":0,"proves":"operational files contain no user-specific absolute home paths"},{"name":"typecheck","status":"pass","code":0,"proves":"the TypeScript surface compiles"},{"name":"lint","status":"pass","code":0,"proves":"Biome (errors + warnings) is clean"},{"name":"test","status":"pass","code":0,"proves":"the vitest suite passes"},{"name":"copilot-native","status":"pass","code":0,"proves":"native Copilot extension node:test contracts pass"},{"name":"windows-compat","st…
+
+Wall time: 135.24 seconds

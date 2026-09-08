@@ -142,12 +142,13 @@ pub struct SpawnResponse {
 
 /// Request accepted by `POST /v1/revive`.
 ///
-/// Only placement crosses the wire. The daemon derives durable seat identity
-/// and launch intent from the tombstoned descriptor; process identity and the
-/// prior incarnation's resource stamps must never be carried forward.
+/// Placement and caller evidence cross the wire. The daemon derives durable
+/// seat identity and launch intent from registry truth; the prior incarnation's
+/// process identity and resource stamps never cross into the new incarnation.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ReviveRequest {
-    /// Existing tombstoned seat id to relaunch.
+    /// Existing tombstoned or observed-dead seat id to relaunch.
     pub id: SeatId,
     /// Explicit target tmux session, when supplied.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -158,6 +159,15 @@ pub struct ReviveRequest {
     /// Requested tmux window name; the seat id is used when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// Claimed caller context, resolved by the daemon before authorizing an override.
+    #[serde(default)]
+    pub caller: super::CallerContext,
+    /// Explicitly assume a recycled or unverifiable process is dead.
+    #[serde(default)]
+    pub assume_dead: bool,
+    /// Operator evidence required with `assume_dead`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<String>,
 }
 
 /// Request accepted by `POST /v1/send`.

@@ -82,6 +82,7 @@ getrandom = "0.3"
 hostname = "0.4"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "time", "net", "signal", "test-util"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
+time = { version = "0.3", default-features = false, features = ["formatting"] }
 uuid = { version = "1", features = ["v7"] }
 
 # Warnings are errors in the gate (`clippy -D warnings`); this keeps a plain

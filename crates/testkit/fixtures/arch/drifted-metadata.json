@@ -291,6 +291,10 @@
           "kind": null
         },
         {
+          "name": "time",
+          "kind": null
+        },
+        {
           "name": "tokio",
           "kind": null
         },

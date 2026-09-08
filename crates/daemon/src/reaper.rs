@@ -115,6 +115,19 @@ pub async fn reap(
     tmux: &dyn TmuxPort,
     dry_run: bool,
 ) -> Result<ReapReceipt> {
+    reap_with_reason(registry, liveness, tmux, dry_run, None)
+        .await
+        .map(|(receipt, _)| receipt)
+}
+
+pub(crate) async fn reap_with_reason(
+    registry: &dyn Registry,
+    liveness: &dyn LivenessPort,
+    tmux: &dyn TmuxPort,
+    dry_run: bool,
+    tombstone_reason: Option<&str>,
+) -> Result<(ReapReceipt, Vec<SeatDescriptor>)> {
+    let mut retired = Vec::new();
     let seats = registry.list(SeatFilter::default()).await?;
     let before = seats
         .iter()
@@ -175,14 +188,20 @@ pub async fn reap(
                 continue;
             }
         };
+        let snapshot = tombstone_reason.map(|_| expected.clone());
         match registry
-            .tombstone_if_unchanged(expected, reason.to_string())
+            .tombstone_if_unchanged(expected, tombstone_reason.unwrap_or(reason).to_string())
             .await
         {
-            Ok(seq) => receipt.reaped.push(ReapedSeat {
-                seat: candidate.seat,
-                seq,
-            }),
+            Ok(seq) => {
+                receipt.reaped.push(ReapedSeat {
+                    seat: candidate.seat,
+                    seq,
+                });
+                if let Some(snapshot) = snapshot {
+                    retired.push(snapshot);
+                }
+            }
             Err(PijError::GovernanceRefused { code, .. }) if code == "E-RS-INCARNATION-CHANGED" => {
                 receipt.unverifiable.push(UnverifiableSeat {
                     seat: candidate.seat,
@@ -200,7 +219,7 @@ pub async fn reap(
             .filter(|seat| seat.tombstoned_at.is_none())
             .count();
     }
-    Ok(receipt)
+    Ok((receipt, retired))
 }
 
 #[cfg(test)]

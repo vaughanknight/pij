@@ -1,0 +1,71 @@
+    Blocking waiting for file lock on build directory
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-death-notices-revive/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 26.82s
+     Running tests/revive_http.rs (target/debug/deps/revive_http-9f7d95f4c12e88d9)
+
+running 8 tests
+
+thread 'revive_assumed_dead_records_parent_evidence_and_actual_observation' (1174182109) panicked at crates/daemon/tests/revive_http.rs:161:9:
+assertion `left == right` failed: {"command":"pij revive","error":"refused","meta":"seat `pij-child` is live — revive only accepts tombstoned ids","ok":false,"v":2}
+  left: Bool(false)
+ right: true
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'revive_assumption_never_overrides_active_process_or_present_pane' (1174182110) panicked at crates/daemon/tests/revive_http.rs:107:5:
+assertion `left == right` failed: {"command":"pij revive","error":"refused","meta":"seat `pij-child` is live — revive only accepts tombstoned ids","ok":false,"v":2}
+  left: Null
+ right: "E-RS-REVIVE-LIVE"
+
+thread 'revive_assumption_refuses_missing_evidence_self_and_forged_parent' (1174182111) panicked at crates/daemon/tests/revive_http.rs:107:5:
+assertion `left == right` failed: {"command":"pij revive","error":"refused","meta":"seat `pij-child` is live — revive only accepts tombstoned ids","ok":false,"v":2}
+  left: Null
+ right: "E-RS-REVIVE-LIVE"
+
+thread 'revive_recycled_and_unknown_refuse_with_exact_override_guidance' (1174182114) panicked at crates/daemon/tests/revive_http.rs:107:5:
+assertion `left == right` failed: {"command":"pij revive","error":"refused","meta":"seat `pij-child` is live — revive only accepts tombstoned ids","ok":false,"v":2}
+  left: Null
+ right: "E-RS-REVIVE-LIVE"
+
+thread 'revive_observed_dead_tombstones_before_relaunch_and_cites_seq' (1174182113) panicked at crates/daemon/tests/revive_http.rs:120:5:
+assertion `left == right` failed: {"command":"pij revive","error":"refused","meta":"seat `pij-child` is live — revive only accepts tombstoned ids","ok":false,"v":2}
+  left: Bool(false)
+ right: true
+
+thread 'revive_assumption_requires_parent_or_authoritative_prime_for_parentless' (1174182112) panicked at crates/daemon/tests/revive_http.rs:107:5:
+assertion `left == right` failed: {"command":"pij revive","error":"refused","meta":"seat `pij-child` is live — revive only accepts tombstoned ids","ok":false,"v":2}
+  left: Null
+ right: "E-RS-REVIVE-LIVE"
+
+thread 'revive_recycled_process_is_never_signaled' (1174182115) panicked at crates/daemon/tests/revive_http.rs:264:5:
+assertion `left == right` failed
+  left: Bool(false)
+ right: true
+test revive_assumption_requires_parent_or_authoritative_prime_for_parentless ... FAILED
+test revive_assumption_never_overrides_active_process_or_present_pane ... FAILED
+test revive_assumption_refuses_missing_evidence_self_and_forged_parent ... FAILED
+test revive_recycled_and_unknown_refuse_with_exact_override_guidance ... FAILED
+test revive_observed_dead_tombstones_before_relaunch_and_cites_seq ... FAILED
+
+thread 'concurrent_observed_dead_revives_launch_exactly_one_incarnation' (1174182108) panicked at crates/daemon/tests/revive_http.rs:245:5:
+assertion `left == right` failed
+  left: 0
+ right: 1
+test revive_assumed_dead_records_parent_evidence_and_actual_observation ... FAILED
+test revive_recycled_process_is_never_signaled ... FAILED
+test concurrent_observed_dead_revives_launch_exactly_one_incarnation ... FAILED
+
+failures:
+
+failures:
+    concurrent_observed_dead_revives_launch_exactly_one_incarnation
+    revive_assumed_dead_records_parent_evidence_and_actual_observation
+    revive_assumption_never_overrides_active_process_or_present_pane
+    revive_assumption_refuses_missing_evidence_self_and_forged_parent
+    revive_assumption_requires_parent_or_authoritative_prime_for_parentless
+    revive_observed_dead_tombstones_before_relaunch_and_cites_seq
+    revive_recycled_and_unknown_refuse_with_exact_override_guidance
+    revive_recycled_process_is_never_signaled
+
+test result: FAILED. 0 passed; 8 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s
+
+error: test failed, to rerun pass `-p pij-daemon --test revive_http`

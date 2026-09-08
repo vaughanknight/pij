@@ -11,6 +11,7 @@ pub mod admission;
 pub mod auth;
 pub mod background;
 mod claude_bind;
+pub mod death_sweep;
 pub mod delivery;
 pub mod events;
 pub mod federation;
@@ -155,6 +156,7 @@ pub struct Daemon {
     drain_loop: lifecycle::TickLoop,
     claude_bind_loop: lifecycle::TickLoop,
     background_loop: lifecycle::TickLoop,
+    death_sweep_loop: lifecycle::TickLoop,
     /// Owned so no tap outlives the daemon that attached it: `shutdown` joins an
     /// in-flight observation and DETACHES every pane. A tap left open is a
     /// `pipe-pane` writing into a sink nobody drains.
@@ -186,7 +188,7 @@ impl Daemon {
         // HTTP drain can leave queue workers claiming new rows in the meantime.
         let _ = self.shutdown.send(());
         let _ = self.governance_shutdown.send(());
-        let (served, drained, bound, observed, forwarded, background, (), governance) = tokio::join!(
+        let (served, drained, bound, observed, forwarded, background, deaths, (), governance) = tokio::join!(
             async {
                 self.joined.await.map_err(|error| PijError::Adapter {
                     adapter: "daemon".to_string(),
@@ -198,6 +200,7 @@ impl Daemon {
             self.pane_observer.shutdown(),
             self.federation_worker.shutdown(),
             self.background_loop.shutdown(),
+            self.death_sweep_loop.shutdown(),
             self.sidecars.shutdown(),
             async {
                 self.governance_observer
@@ -216,6 +219,7 @@ impl Daemon {
         observed?;
         governance?;
         background?;
+        deaths?;
         forwarded
     }
 }
@@ -636,6 +640,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     let delivery_interval =
         lifecycle::TickInterval::new(Duration::from_secs(config.delivery_interval_secs))?;
     let background_interval = lifecycle::TickInterval::new(Duration::from_millis(100))?;
+    let death_interval = death_sweep::interval()?;
 
     // 8. This record can be true only after bind: it says this exact process won
     //    the port. It must also precede daemon.key, the point of no return. A
@@ -738,6 +743,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
             Ok(())
         }
     });
+    let death_sweep_loop = death_sweep::start(Arc::new(services.clone()), death_interval);
 
     let event_bus = Arc::clone(&services.event_bus);
     let router = http::router_with_federation(
@@ -768,6 +774,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         drain_loop,
         claude_bind_loop,
         background_loop,
+        death_sweep_loop,
         pane_observer,
         sidecars,
         governance_shutdown,

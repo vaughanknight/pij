@@ -1,0 +1,44 @@
+$ /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --test revive_http -- --nocapture
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-death-notices-revive/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.72s
+     Running tests/revive_http.rs (target/debug/deps/revive_http-243c1ef819ffa621)
+
+running 11 tests
+test revive_observed_dead_tombstones_before_relaunch_and_cites_seq ... ok
+test revive_assumption_refuses_missing_evidence_self_and_forged_parent ... ok
+test concurrent_observed_dead_revives_launch_exactly_one_incarnation ... ok
+test revive_recycled_process_is_never_signaled ... ok
+test revive_assumption_publication_failure_cannot_retire_or_launch ... ok
+test revive_legacy_audit_failure_does_not_relaunch ... ok
+test revive_assumption_requires_parent_or_authoritative_prime_for_parentless ... ok
+test revive_recycled_and_unknown_refuse_with_exact_override_guidance ... ok
+test revive_legacy_tombstone_records_audit_before_relaunch ... ok
+test revive_assumed_dead_records_parent_evidence_and_actual_observation ... ok
+test revive_assumption_never_overrides_active_process_or_present_pane ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+
+
+exit=0
+
+$ /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --lib death_sweep -- --nocapture
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-death-notices-revive/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.78s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-043514ab0ddb16b1)
+
+running 5 tests
+test death_sweep::tests::obituary_has_exact_utc_millisecond_timestamp_and_revival_command ... ok
+death sweep: 1 notice(s) withheld — recipient dead too
+test reaper::tests::death_sweep_matches_manual_candidates_and_commits_observation_once ... ok
+test reaper::tests::death_sweep_notifies_living_parent_with_pinned_body_and_honest_receipt ... ok
+death sweep: notice for a-child failed: message 93c91f61abf11cf6-0000000000000000 was queued, but its audit event was not written (store/spine: error returned from database: (code: 1811) injected first obituary failure) — reconcile by msg-id; do not blindly resend
+death sweep: notice for a-child failed: store/spine: error returned from database: (code: 1811) injected first obituary failure
+death sweep: 1 notice(s) failed
+test reaper::tests::death_sweep_isolates_failed_send_and_audit_from_next_obituary ... ok
+death sweep: 1 notice(s) withheld — recipient dead too
+test reaper::tests::death_sweep_withholds_notices_when_parent_already_or_simultaneously_dead ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 347 filtered out; finished in 0.13s
+
+
+exit=0

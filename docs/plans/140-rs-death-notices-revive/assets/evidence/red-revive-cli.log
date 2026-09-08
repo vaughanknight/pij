@@ -1,0 +1,48 @@
+    Blocking waiting for file lock on build directory
+   Compiling utf8parse v0.2.2
+   Compiling colorchoice v1.0.5
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling getrandom v0.4.3
+   Compiling anstyle-query v1.1.5
+   Compiling anstyle v1.0.14
+   Compiling clap_lex v1.1.0
+   Compiling strsim v0.11.1
+   Compiling clap_derive v4.6.4
+   Compiling anstyle-parse v1.0.0
+   Compiling anstream v1.0.0
+   Compiling clap_builder v4.6.6
+   Compiling uuid v1.26.0
+   Compiling clap v4.6.6
+   Compiling pij-cli v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-death-notices-revive/crates/cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.15s
+     Running tests/revive.rs (target/debug/deps/revive-1e64f51823e55bc1)
+
+running 4 tests
+
+thread 'shipped_revive_assumption_flags_authorize_parent_and_record_evidence' (1174188491) panicked at crates/cli/tests/revive.rs:386:5:
+revive flags must reach daemon, not be unknown flags: error: unexpected argument '--assume-dead' found
+
+  tip: to pass '--assume-dead' as a value, use '-- --assume-dead'
+
+Usage: pij-rs revive --session <SESSION> <ID>
+
+For more information, try '--help'.
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test shipped_revive_assumption_flags_authorize_parent_and_record_evidence ... FAILED
+test shipped_revive_refuses_unknown_or_incomplete_override_flags_before_connecting ... ok
+
+thread 'shipped_revive_refuses_absent_and_live_ids_without_launching' (1174188493) panicked at crates/cli/tests/revive.rs:146:22:
+decodable liveness refusal
+test shipped_revive_refuses_absent_and_live_ids_without_launching ... FAILED
+test shipped_revive_derives_identity_and_launches_one_prebind_incarnation ... ok
+
+failures:
+
+failures:
+    shipped_revive_assumption_flags_authorize_parent_and_record_evidence
+    shipped_revive_refuses_absent_and_live_ids_without_launching
+
+test result: FAILED. 2 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.38s
+
+error: test failed, to rerun pass `-p pij-cli --test revive`
