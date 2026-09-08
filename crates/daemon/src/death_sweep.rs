@@ -112,7 +112,13 @@ pub async fn sweep(services: &Services) -> Result<reaper::ReapReceipt> {
             })?;
         let at = iso(tombstone.at)?;
         let parent = services.registry.get(parent_id).await?;
-        let dead = false;
+        let dead = parent
+            .as_ref()
+            .is_some_and(|parent| parent.tombstoned_at.is_some())
+            || receipt
+                .candidates
+                .iter()
+                .any(|candidate| &candidate.seat == parent_id);
         let mut payload = json!({
             "parent": parent_id,
             "tombstone_seq": committed.seq,
