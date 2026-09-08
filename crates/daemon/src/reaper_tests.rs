@@ -452,3 +452,69 @@ async fn death_sweep_withholds_notices_when_parent_already_or_simultaneously_dea
         assert_eq!(payload["notice"], Value::Null);
     }
 }
+
+#[tokio::test]
+async fn death_sweep_isolates_failed_send_and_audit_from_next_obituary() {
+    let (mut services, store) = services().await;
+    let parent_proc = ProcIdentity {
+        pid: 4321,
+        proc_start: 123,
+    };
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(parent_proc));
+    for (child_id, parent_id) in [("a-child", "parent-a"), ("b-child", "parent-b")] {
+        let mut parent = seat();
+        parent.id = parent_id.into();
+        parent.parent = None;
+        parent.pane = None;
+        parent.proc = Some(parent_proc);
+        services.registry.put(parent).await.unwrap();
+        let mut child = seat();
+        child.id = child_id.into();
+        child.parent = Some(parent_id.into());
+        services.registry.put(child).await.unwrap();
+    }
+    let pool = pij_store::open(&store.path()).await.unwrap();
+    sqlx::query("CREATE TRIGGER reject_first_obituary BEFORE INSERT ON spine_events WHEN (NEW.kind = 'message.pushed' AND NEW.seat = 'parent-a') OR (NEW.kind = 'death.notice' AND NEW.seat = 'a-child') BEGIN SELECT RAISE(ABORT, 'injected first obituary failure'); END")
+        .execute(&pool).await.unwrap();
+    let receipt = crate::death_sweep::sweep(&services)
+        .await
+        .expect("one failed obituary must not abort the sweep");
+    assert_eq!(
+        receipt
+            .reaped
+            .iter()
+            .map(|row| row.seat.as_str())
+            .collect::<Vec<_>>(),
+        ["a-child", "b-child"]
+    );
+    let (_, job) = services
+        .queue
+        .peek(&["delivery:parent-b".into()])
+        .await
+        .unwrap()
+        .expect("second parent receives its child's obituary");
+    let message: pij_core::model::Msg = serde_json::from_str(&job.payload).unwrap();
+    assert!(
+        message
+            .body
+            .starts_with("[pij] seat b-child died (observed-dead)")
+    );
+    let notice = services
+        .spine
+        .latest_matching(&"b-child".into(), &["death.notice"])
+        .await
+        .unwrap()
+        .expect("second obituary is audited");
+    let payload: Value = serde_json::from_str(&notice.payload).unwrap();
+    assert_eq!(payload["notice"]["msg_id"], message.msg_id);
+    assert_eq!(payload["notice"]["outcome"]["outcome"], "queued");
+    assert!(
+        services
+            .spine
+            .latest_matching(&"parent-a".into(), &["message.pushed"])
+            .await
+            .unwrap()
+            .is_none(),
+        "the first send must actually fail"
+    );
+}

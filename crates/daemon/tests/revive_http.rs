@@ -145,7 +145,7 @@ fn assert_live_refusal(body: &Value, observation: &str) {
     );
     assert_eq!(
         body["details"]["override_command"],
-        "pij revive pij-child --assume-dead --evidence \"<text>\""
+        "pij-rs revive pij-child --assume-dead --evidence \"<text>\""
     );
     assert!(body["meta"].as_str().unwrap().contains(observation));
 }
@@ -183,6 +183,73 @@ async fn revive_observed_dead_tombstones_before_relaunch_and_cites_seq() {
     assert_eq!(revived.parent, prior.parent);
     assert_eq!(revived.model, prior.model);
     assert_ne!(revived.pane, prior.pane);
+}
+
+#[tokio::test]
+async fn revive_legacy_tombstone_records_audit_before_relaunch() {
+    for older_event in [false, true] {
+        let f = fixture(Arc::new(FakeLiveness::new())).await;
+        let mut prior = target();
+        if older_event {
+            f.services.registry.put(prior.clone()).await.unwrap();
+            f.services
+                .registry
+                .tombstone_if_unchanged(prior.clone(), "previous incarnation".into())
+                .await
+                .unwrap();
+        }
+        prior.tombstoned_at = Some(1);
+        prior.tombstone_reason = Some("superseded at a native session boundary".into());
+        let before = f.services.registry.put(prior.clone()).await.unwrap();
+        let body = post(&f, &request()).await;
+        assert_eq!(body["ok"], true, "{body}");
+        let events = f
+            .services
+            .spine
+            .tail(Some(&prior.id), before)
+            .await
+            .unwrap();
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.kind.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "revive.legacy-tombstone",
+                "seat.revive-postmortem",
+                "seat.put"
+            ]
+        );
+        let audit: Value = serde_json::from_str(&events[0].payload).unwrap();
+        assert_eq!(audit["tombstoned_at"], prior.tombstoned_at.unwrap());
+        assert_eq!(audit["reason"], json!(prior.tombstone_reason));
+        assert_eq!(
+            body["details"]["legacy_tombstone_seq"],
+            json!(events[0].seq)
+        );
+        assert!(
+            body["details"].get("seq").is_none(),
+            "do not label the legacy audit as a tombstone receipt"
+        );
+        let revived = f.services.registry.get(&prior.id).await.unwrap().unwrap();
+        assert_eq!(revived.tombstoned_at, None);
+        assert_ne!(revived.pane, prior.pane);
+    }
+}
+
+#[tokio::test]
+async fn revive_legacy_audit_failure_does_not_relaunch() {
+    let f = fixture(Arc::new(FakeLiveness::new())).await;
+    let mut prior = target();
+    prior.tombstoned_at = Some(1);
+    prior.tombstone_reason = Some("legacy retirement".into());
+    let before = f.services.registry.put(prior.clone()).await.unwrap();
+    let pool = pij_store::open(&f.store.path()).await.unwrap();
+    sqlx::query("CREATE TRIGGER reject_legacy_audit BEFORE INSERT ON spine_events WHEN NEW.kind = 'revive.legacy-tombstone' BEGIN SELECT RAISE(ABORT, 'injected legacy audit publication failure'); END")
+        .execute(&pool).await.unwrap();
+    let body = post(&f, &request()).await;
+    assert_eq!(body["ok"], false, "{body}");
+    unchanged(&f, &prior, before).await;
 }
 
 #[tokio::test]

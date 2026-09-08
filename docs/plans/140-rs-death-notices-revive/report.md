@@ -86,3 +86,38 @@ cargo fmt --all -- --check
 ```
 
 [Executed correction checks](assets/evidence/native-command-green.log). `just pij-skill-check` also exited 0 ([output](assets/evidence/native-command-skill.log)). These scoped checks verify the corrected template and corpus; the initial full-workspace and live evidence above belong to `426d3215`.
+
+## Required review corrections (F1–F3)
+
+Base: `cf8408cd`, after the reviewer's suppression repair `0c2d3ad9`. Prime lifted the hold and required F1–F3 in one new commit. F4–F6 remain recorded findings, not part of this correction.
+
+- **F1:** a matching durable tombstone receipt is optional for revive, while close retains its existing strict receipt requirement. A legacy row with no matching event publishes `revive.legacy-tombstone` before relaunch; the receipt uses `legacy_tombstone_seq` and omits `seq`. Tests cover both no historical event and an older incarnation's event. A real SQLite audit-publication failure leaves the row untouched and launches nothing.
+- **F2:** the override remediation now names `pij-rs revive`; the envelope's conventional `command: "pij revive"` is unchanged. Existing authorization/refusal tests enforce the executable remediation.
+- **F3:** each obituary's preparation, send and audit run inside a per-seat error boundary. Errors are logged, later parents are still notified, and a summary counts failed seats once. The regression injects a first-seat send audit error followed by a failed `death.notice` publication; the second parent still receives its queued obituary and durable notice. The first send has a **partial admission** (queued message, failed audit), not proof that nothing was queued.
+
+RED before source fixes ([executed output](assets/evidence/review-fixes-red.log)):
+
+```text
+cargo test -p pij-daemon --test revive_http -- --nocapture
+test result: FAILED. 6 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out
+cargo test -p pij-daemon --lib death_sweep_isolates_failed_send_and_audit_from_next_obituary -- --nocapture
+one failed obituary must not abort the sweep: Adapter { adapter: "store/spine", message: "error returned from database: (code: 1811) injected first obituary failure" }
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 351 filtered out
+```
+
+GREEN after fixes ([executed output](assets/evidence/review-fixes-targeted-green.log)):
+
+```text
+cargo test -p pij-daemon --test revive_http -- --nocapture
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+cargo test -p pij-daemon --lib death_sweep -- --nocapture
+death sweep: 1 notice(s) failed
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 347 filtered out; finished in 0.13s
+```
+
+Final correction gates:
+
+- `cargo test --workspace`: **1033 passed**, 84 suites, 8 ignored (tool aggregate). `cargo clippy --all-targets -- -D warnings` finished successfully in 10.23s; `cargo fmt --all -- --check` exited 0. [Full Rust gate output](assets/evidence/review-fixes-workspace.log).
+- `harness checks --json`: **status `ok`, `data.ok: true`, no stages skipped**, 135.24s. This correction obtained a green full invocation, unlike the initial delivery. [Recovered verdict excerpt](assets/evidence/review-fixes-harness.log); the hub completion renderer truncated stdout, so the file explicitly preserves an excerpt, not a fabricated complete JSON envelope.
+
+Harness lesson: retain gate stdout before consuming completion through a compact job snapshot. The new permanent regressions encode the more important product lessons: missing historical receipts cannot veto a valid retirement row, and one obituary's failure cannot suppress another parent's notification.

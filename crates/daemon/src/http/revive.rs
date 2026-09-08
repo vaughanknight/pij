@@ -19,9 +19,12 @@ const COMMAND: &str = "pij revive";
 
 #[derive(Serialize)]
 pub(super) struct Receipt {
-    seq: Seq,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seq: Option<Seq>,
     #[serde(skip_serializing_if = "Option::is_none")]
     assumed_dead_seq: Option<Seq>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    legacy_tombstone_seq: Option<Seq>,
 }
 
 #[derive(Serialize)]
@@ -79,7 +82,7 @@ async fn observe<'a>(state: &AppState, seat: &'a SeatDescriptor) -> Observation<
 }
 
 fn live_refusal(seat: &SeatId, observation: &Observation<'_>, reason: &str) -> Response {
-    let override_command = format!("pij revive {seat} --assume-dead --evidence \"<text>\"");
+    let override_command = format!("pij-rs revive {seat} --assume-dead --evidence \"<text>\"");
     let mut answer: Envelope<Value> = Envelope::refused(
         COMMAND,
         ErrorKind::Refused,
@@ -146,10 +149,44 @@ pub(super) async fn revive_seat(
     let receipt = if prior.tombstoned_at.is_some() {
         match tombstone_receipt(state.services.spine.as_ref(), &prior.id, None, Some(&prior)).await
         {
-            Ok(receipt) => Receipt {
-                seq: receipt.seq,
+            Ok(Some(receipt)) => Receipt {
+                seq: Some(receipt.seq),
                 assumed_dead_seq: None,
+                legacy_tombstone_seq: None,
             },
+            Ok(None) => {
+                // A registry tombstone is sufficient even when an older native
+                // retirement never published its own seat.tombstone event.
+                let at = match system_time_ms() {
+                    Ok(at) => at,
+                    Err(error) => return internal(COMMAND, error),
+                };
+                let seq = match state
+                    .services
+                    .event_bus
+                    .publish(Event {
+                        seq: None,
+                        v: wire::EVENT_VERSION,
+                        at,
+                        kind: "revive.legacy-tombstone".to_string(),
+                        seat: Some(prior.id.clone()),
+                        payload: json!({
+                            "tombstoned_at": prior.tombstoned_at,
+                            "reason": prior.tombstone_reason,
+                        })
+                        .to_string(),
+                    })
+                    .await
+                {
+                    Ok(seq) => seq,
+                    Err(error) => return internal(COMMAND, error),
+                };
+                Receipt {
+                    seq: None,
+                    assumed_dead_seq: None,
+                    legacy_tombstone_seq: Some(seq),
+                }
+            }
             Err(error) => return internal(COMMAND, error),
         }
     } else {
@@ -252,8 +289,9 @@ pub(super) async fn revive_seat(
             Err(error) => return runtime_failure(COMMAND, error),
         };
         Receipt {
-            seq,
+            seq: Some(seq),
             assumed_dead_seq,
+            legacy_tombstone_seq: None,
         }
     };
 

@@ -83,8 +83,8 @@ fn body(seat: &SeatDescriptor, at: &str) -> String {
 /// child's obituary to a parent later in the same sweep's ordering.
 ///
 /// # Errors
-/// Registry or event-publication failures. Individual delivery failures are
-/// audited and logged without preventing notices to other surviving parents.
+/// Canonical reaper failures. Per-seat obituary failures are logged and counted
+/// without preventing notices to other surviving parents.
 pub async fn sweep(services: &Services) -> Result<reaper::ReapReceipt> {
     let (receipt, retired) = reaper::reap_with_reason(
         services.registry.as_ref(),
@@ -95,85 +95,101 @@ pub async fn sweep(services: &Services) -> Result<reaper::ReapReceipt> {
     )
     .await?;
     let mut withheld = 0;
+    let mut failures = 0;
     for (committed, seat) in receipt.reaped.iter().zip(&retired) {
         let Some(parent_id) = &seat.parent else {
             continue;
         };
-        let tombstone = services
-            .spine
-            .latest_matching(&seat.id, &["seat.tombstone"])
-            .await?
-            .filter(|event| event.seq == Some(committed.seq))
-            .ok_or_else(|| {
-                error(format!(
-                    "cannot find committed tombstone {} for {}",
-                    committed.seq.0, seat.id
-                ))
-            })?;
-        let at = iso(tombstone.at)?;
-        let parent = services.registry.get(parent_id).await?;
-        let dead = parent
-            .as_ref()
-            .is_some_and(|parent| parent.tombstoned_at.is_some())
-            || receipt
-                .candidates
-                .iter()
-                .any(|candidate| &candidate.seat == parent_id);
-        let mut payload = json!({
-            "parent": parent_id,
-            "tombstone_seq": committed.seq,
-            "at": at,
-            "notice": null,
-            "delivery": null,
-        });
-        if dead {
-            withheld += 1;
-            payload["withheld"] = json!("recipient-dead");
-        } else if let Some(parent) = parent {
-            match services
-                .delivery
-                .send(BG_ACTOR.into(), parent.id, body(seat, &at))
-                .await
-            {
-                Ok(notice) => {
-                    let outcome = match &notice.outcome {
-                        DeliveryOutcome::Delivered { .. } => "delivered",
-                        DeliveryOutcome::Queued { .. } => "queued",
-                        DeliveryOutcome::Held { .. } => "held",
-                        DeliveryOutcome::Refused { .. } => "refused",
-                    };
-                    let unverified = match parent.proc {
-                        Some(proc) => !matches!(
-                            alive(proc, services.liveness.as_ref()).await,
-                            Ok(Liveness::Active)
-                        ),
-                        None => false,
-                    };
-                    payload["delivery"] = json!(if unverified { "unverified" } else { outcome });
-                    payload["notice"] = json!(notice);
+        let mut failed = false;
+        let result: Result<()> = async {
+            let tombstone = services
+                .spine
+                .latest_matching(&seat.id, &["seat.tombstone"])
+                .await?
+                .filter(|event| event.seq == Some(committed.seq))
+                .ok_or_else(|| {
+                    error(format!(
+                        "cannot find committed tombstone {} for {}",
+                        committed.seq.0, seat.id
+                    ))
+                })?;
+            let at = iso(tombstone.at)?;
+            let parent = services.registry.get(parent_id).await?;
+            let dead = parent
+                .as_ref()
+                .is_some_and(|parent| parent.tombstoned_at.is_some())
+                || receipt
+                    .candidates
+                    .iter()
+                    .any(|candidate| &candidate.seat == parent_id);
+            let mut payload = json!({
+                "parent": parent_id,
+                "tombstone_seq": committed.seq,
+                "at": at,
+                "notice": null,
+                "delivery": null,
+            });
+            if dead {
+                withheld += 1;
+                payload["withheld"] = json!("recipient-dead");
+            } else if let Some(parent) = parent {
+                match services
+                    .delivery
+                    .send(BG_ACTOR.into(), parent.id, body(seat, &at))
+                    .await
+                {
+                    Ok(notice) => {
+                        let outcome = match &notice.outcome {
+                            DeliveryOutcome::Delivered { .. } => "delivered",
+                            DeliveryOutcome::Queued { .. } => "queued",
+                            DeliveryOutcome::Held { .. } => "held",
+                            DeliveryOutcome::Refused { .. } => "refused",
+                        };
+                        let unverified = match parent.proc {
+                            Some(proc) => !matches!(
+                                alive(proc, services.liveness.as_ref()).await,
+                                Ok(Liveness::Active)
+                            ),
+                            None => false,
+                        };
+                        payload["delivery"] =
+                            json!(if unverified { "unverified" } else { outcome });
+                        payload["notice"] = json!(notice);
+                    }
+                    Err(cause) => {
+                        failed = true;
+                        eprintln!("death sweep: notice for {} failed: {cause}", seat.id);
+                        payload["error"] = json!(cause.to_string());
+                    }
                 }
-                Err(cause) => {
-                    eprintln!("death sweep: notice for {} failed: {cause}", seat.id);
-                    payload["error"] = json!(cause.to_string());
-                }
+            } else {
+                payload["withheld"] = json!("recipient-missing");
             }
-        } else {
-            payload["withheld"] = json!("recipient-missing");
+            services
+                .event_bus
+                .publish(Event {
+                    seq: None,
+                    v: 1,
+                    at: tombstone.at,
+                    kind: "death.notice".into(),
+                    seat: Some(seat.id.clone()),
+                    payload: payload.to_string(),
+                })
+                .await?;
+            Ok(())
         }
-        services
-            .event_bus
-            .publish(Event {
-                seq: None,
-                v: 1,
-                at: tombstone.at,
-                kind: "death.notice".into(),
-                seat: Some(seat.id.clone()),
-                payload: payload.to_string(),
-            })
-            .await?;
+        .await;
+        if let Err(cause) = result {
+            failed = true;
+            eprintln!("death sweep: notice for {} failed: {cause}", seat.id);
+        }
+        failures += usize::from(failed);
     }
     if withheld > 0 {
         eprintln!("death sweep: {withheld} notice(s) withheld — recipient dead too");
+    }
+    if failures > 0 {
+        eprintln!("death sweep: {failures} notice(s) failed");
     }
     Ok(receipt)
 }

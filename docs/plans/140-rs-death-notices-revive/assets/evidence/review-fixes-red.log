@@ -1,0 +1,82 @@
+$ /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --test revive_http -- --nocapture
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-death-notices-revive/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.15s
+     Running tests/revive_http.rs (target/debug/deps/revive_http-243c1ef819ffa621)
+
+running 11 tests
+
+thread 'revive_recycled_and_unknown_refuse_with_exact_override_guidance' (1176315148) panicked at crates/daemon/tests/revive_http.rs:146:5:
+assertion `left == right` failed
+  left: String("pij revive pij-child --assume-dead --evidence \"<text>\"")
+ right: "pij-rs revive pij-child --assume-dead --evidence \"<text>\""
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'revive_legacy_tombstone_records_audit_before_relaunch' (1176315146) panicked at crates/daemon/tests/revive_http.rs:205:9:
+assertion `left == right` failed: {"command":"pij revive","error":"adapter","meta":"lifecycle/tombstone-receipt: no matching durable tombstone event for pij-child","ok":false,"v":2}
+  left: Bool(false)
+ right: true
+test revive_recycled_and_unknown_refuse_with_exact_override_guidance ... FAILED
+
+thread 'revive_assumption_requires_parent_or_authoritative_prime_for_parentless' (1176315144) panicked at crates/daemon/tests/revive_http.rs:146:5:
+assertion `left == right` failed
+  left: String("pij revive pij-child --assume-dead --evidence \"<text>\"")
+ right: "pij-rs revive pij-child --assume-dead --evidence \"<text>\""
+test revive_legacy_tombstone_records_audit_before_relaunch ... FAILED
+test revive_assumption_requires_parent_or_authoritative_prime_for_parentless ... FAILED
+
+thread 'revive_assumption_never_overrides_active_process_or_present_pane' (1176315141) panicked at crates/daemon/tests/revive_http.rs:146:5:
+assertion `left == right` failed
+  left: String("pij revive pij-child --assume-dead --evidence \"<text>\"")
+ right: "pij-rs revive pij-child --assume-dead --evidence \"<text>\""
+
+thread 'revive_assumption_refuses_missing_evidence_self_and_forged_parent' (1176315143) panicked at crates/daemon/tests/revive_http.rs:146:5:
+assertion `left == right` failed
+  left: String("pij revive pij-child --assume-dead --evidence \"<text>\"")
+ right: "pij-rs revive pij-child --assume-dead --evidence \"<text>\""
+test revive_recycled_process_is_never_signaled ... ok
+test revive_assumption_never_overrides_active_process_or_present_pane ... FAILED
+test revive_assumption_refuses_missing_evidence_self_and_forged_parent ... FAILED
+test revive_observed_dead_tombstones_before_relaunch_and_cites_seq ... ok
+test concurrent_observed_dead_revives_launch_exactly_one_incarnation ... ok
+test revive_assumption_publication_failure_cannot_retire_or_launch ... ok
+test revive_legacy_audit_failure_does_not_relaunch ... ok
+test revive_assumed_dead_records_parent_evidence_and_actual_observation ... ok
+
+failures:
+
+failures:
+    revive_assumption_never_overrides_active_process_or_present_pane
+    revive_assumption_refuses_missing_evidence_self_and_forged_parent
+    revive_assumption_requires_parent_or_authoritative_prime_for_parentless
+    revive_legacy_tombstone_records_audit_before_relaunch
+    revive_recycled_and_unknown_refuse_with_exact_override_guidance
+
+test result: FAILED. 6 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+
+error: test failed, to rerun pass `-p pij-daemon --test revive_http`
+
+exit=101
+
+$ /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --lib death_sweep_isolates_failed_send_and_audit_from_next_obituary -- --nocapture
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-rs-death-notices-revive/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.04s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-043514ab0ddb16b1)
+
+running 1 test
+death sweep: notice for a-child failed: message 5bf33a6d8d53b40e-0000000000000000 was queued, but its audit event was not written (store/spine: error returned from database: (code: 1811) injected first obituary failure) — reconcile by msg-id; do not blindly resend
+
+thread 'reaper::tests::death_sweep_isolates_failed_send_and_audit_from_next_obituary' (1176320342) panicked at crates/daemon/src/reaper_tests.rs:478:10:
+one failed obituary must not abort the sweep: Adapter { adapter: "store/spine", message: "error returned from database: (code: 1811) injected first obituary failure" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test reaper::tests::death_sweep_isolates_failed_send_and_audit_from_next_obituary ... FAILED
+
+failures:
+
+failures:
+    reaper::tests::death_sweep_isolates_failed_send_and_audit_from_next_obituary
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 351 filtered out; finished in 0.04s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`
+
+exit=101

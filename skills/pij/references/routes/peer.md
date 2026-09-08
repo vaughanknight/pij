@@ -38,6 +38,8 @@ The shim's `spawn`/`revive` are named refusals because their grammar differs. Na
 
 Revive accepts a tombstone **or** `Dead` process observation with the recorded pane absent, without a preliminary close. It records `revive-observed-dead` retirement before relaunch under one spawn lock and cites the tombstone in `details.seq`. `Recycled`/`Unknown` observations require `--assume-dead` plus nonempty `--evidence`: only the recorded parent may override, or a caller with authoritative role `prime` **when the target is parentless**. An unrelated prime has no override on a parented seat. The `revive.assumed-dead` event retains evidence and observation (`details.assumed_dead_seq`); no replacement pid is signalled. `E-RS-REVIVE-LIVE` names the observation and exact override command. An `Active` process or a present recorded pane still vetoes revival, even with the override.
 
+A legacy tombstone row without a matching spine event also revives: `revive.legacy-tombstone` records its stored retirement before relaunch, cited by `details.legacy_tombstone_seq` instead of a fabricated `details.seq`.
+
 An in-process host spawn tool is a separate, explicitly available capability; it does not make an unported CLI flag work. Discover model ids from the host's actual catalog; `pij models` is unported. Canary every new/provided/revived peer before trust (§ C2), using runtime footer/round-trip evidence, never a ready-ping alone. Name every owned pane/window, seed § C10 in its packet, and apply § C11 at commit boundaries.
 
 Focus save/list/launch and watch/unwatch are unported; do not silently route them to TS.

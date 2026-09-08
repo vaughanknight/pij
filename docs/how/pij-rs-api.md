@@ -275,6 +275,8 @@ After tombstoning, the daemon pushes an obituary to the child's **recorded paren
 
 A send receipt proves only its recorded delivery strength: queued is not parent observation. Parents need not poll for child deaths. A parent that is tombstoned or itself observed-dead in the same sweep receives no notice; the daemon counts these suppressions in one line, `death sweep: N notice(s) withheld — recipient dead too`, rather than flooding dead parents after a reboot.
 
+Obituary preparation, send and audit failures are isolated per seat: log the error, continue with the remaining parents, then report `death sweep: N notice(s) failed` once. A failed obituary does not roll back retirement or gain an automatic retry.
+
 ## Revive
 
 ```bash
@@ -284,6 +286,8 @@ pij-rs revive <seat> --assume-dead --evidence 'Observed stale binding; describe 
 ```
 
 Native revive accepts an explicit tombstoned id **or** a seat observed `Dead` with its recorded pane absent; no preliminary `close` is needed. In the observed-dead case it first commits `seat.tombstone` with `reason: "revive-observed-dead"`, then relaunches under the same spawn-lock critical section. The receipt's `details.seq` cites the tombstone sequence.
+
+A tombstone row is sufficient even when an older native retirement left no matching `seat.tombstone` event. Before relaunch, the daemon records `revive.legacy-tombstone` with the stored retirement timestamp and reason; `details.legacy_tombstone_seq` cites this audit and `details.seq` is omitted rather than inventing a tombstone receipt. A tombstone event from a previous incarnation does not count as a receipt for the current row. Audit publication failure leaves the tombstoned row untouched.
 
 For `Recycled` (the pid belongs to another process incarnation) or `Unknown` (for example, the process probe is unavailable or no process binding is recorded), `--assume-dead` requires nonempty `--evidence`. The daemon resolves the caller from caller evidence: only the seat's recorded parent may override, or, **if the target has no parent**, a caller whose authoritative role is `prime`. An unrelated prime cannot override a parented seat. The override records `revive.assumed-dead` with the supplied evidence and observed binding, cited by `details.assumed_dead_seq`; it **never signals the replacement pid**. An `Active` process or a present recorded pane still vetoes revival, even with this flag.
 
