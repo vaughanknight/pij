@@ -559,7 +559,7 @@ send({ type: "ready", pid: process.pid });
 		expect(envelope).toEqual({ v: 2, command: "pij inbox", ok: true, data: envelope.data });
 		expect(envelope.data).toHaveLength(messages.length);
 		for (const [index, message] of messages.entries()) {
-			expect(envelope.data[index]).toEqual({
+			expect(envelope.data[index]).toMatchObject({
 				job_id: expect.any(Number),
 				message,
 				native_consumer: { native_session: reader.session, ...reader.proc },

@@ -268,8 +268,10 @@ enum Command {
     CompactSelf,
     /// Destructively read and acknowledge this acting seat's inbox.
     ///
-    /// `--peek` is the only cross-seat form and never claims or acknowledges.
+    /// `--peek` inspects another seat; `release` is explicit prime/parent recovery.
     Inbox {
+        #[command(subcommand)]
+        action: Option<InboxAction>,
         /// Inbox to read. Defaults to the derived acting seat.
         #[arg(long)]
         seat: Option<String>,
@@ -414,6 +416,19 @@ enum Command {
         /// Replay after `MACHINE=CURSOR`; repeat once per machine.
         #[arg(long, value_parser = parse_machine_cursor)]
         since: Vec<MachineCursor>,
+    },
+}
+
+#[derive(Clone, Debug, Subcommand)]
+enum InboxAction {
+    /// Park a running head after observing failed consumption; never claims delivery.
+    Release {
+        #[arg(long)]
+        seat: String,
+        #[arg(long)]
+        job: u64,
+        #[arg(long)]
+        evidence: String,
     },
 }
 
@@ -901,7 +916,37 @@ async fn run(cli: Cli) -> ExitCode {
             response.raw_json = None;
             emit(&response, cli.json)
         }
-        Command::Inbox { seat, wait, peek } => {
+        Command::Inbox {
+            action,
+            seat,
+            wait,
+            peek,
+        } => {
+            if let Some(InboxAction::Release {
+                seat: target,
+                job,
+                evidence,
+            }) = action
+            {
+                if seat.is_some() || wait || peek {
+                    return emit(
+                        &setup_refusal::<Value>(
+                            "pij inbox release",
+                            PijError::Adapter {
+                                adapter: "pij inbox".into(),
+                                message: "release cannot be combined with inbox read flags".into(),
+                            },
+                        ),
+                        cli.json,
+                    );
+                }
+                return emit(
+                    &client
+                        .release_inbox(&target.into(), job, &evidence, &caller_context())
+                        .await,
+                    cli.json,
+                );
+            }
             let explicit = seat.map(SeatId::from);
             let target = if peek {
                 match explicit {
@@ -937,7 +982,11 @@ async fn run(cli: Cli) -> ExitCode {
                 }
                 target
             };
-            emit(&client.inbox(&target, wait, peek).await, cli.json)
+            if peek {
+                emit(&client.peek_inbox(&target).await, cli.json)
+            } else {
+                emit(&client.inbox(&target, wait).await, cli.json)
+            }
         }
 
         Command::Bg { action } => {

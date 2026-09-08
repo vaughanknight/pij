@@ -427,6 +427,9 @@ pub struct FakeQueue {
 struct QueueState {
     live: Vec<(JobId, Job)>,
     claimed: HashMap<u64, (Job, String)>,
+    claimed_at: HashMap<u64, Duration>,
+    lease_expirations: HashMap<u64, u32>,
+    parked: Vec<pij_core::ports::ParkedDelivery>,
     acked: Vec<(JobId, Outcome)>,
     retried: Vec<(JobId, Duration)>,
     attempts: HashMap<u64, u32>,
@@ -573,7 +576,156 @@ impl Queue for FakeQueue {
         state
             .claimed
             .insert(id.0, (job.clone(), worker.to_string()));
+        state.claimed_at.insert(id.0, now);
         Ok(Some((id, job)))
+    }
+
+    async fn claim_extension(
+        &self,
+        kinds: &[String],
+        worker: &str,
+        lease_secs: u64,
+        at: u64,
+        spine: &dyn Spine,
+        recovery_allowed: bool,
+    ) -> Result<pij_core::ports::ExtensionClaim> {
+        let expired: Vec<_> = {
+            let state = self.state.lock().expect("fake queue mutex");
+            state
+                .claimed
+                .iter()
+                .filter(|(id, (job, _))| {
+                    kinds.contains(&job.kind)
+                        && job.kind == format!("delivery:{}", job.serial_key)
+                        && serde_json::from_str::<serde_json::Value>(&job.payload)
+                            .ok()
+                            .is_none_or(|body| {
+                                body.get("command").is_none_or(serde_json::Value::is_null)
+                            })
+                        && state.claimed_at.get(id).is_some_and(|started| {
+                            state.now.saturating_sub(*started) >= Duration::from_secs(lease_secs)
+                        })
+                })
+                .map(|(id, (job, _))| {
+                    (
+                        *id,
+                        job.clone(),
+                        state.lease_expirations.get(id).copied().unwrap_or(0) + 1,
+                    )
+                })
+                .collect()
+        };
+        let mut events = Vec::new();
+        let mut parked = Vec::new();
+        // Like PublishedFakeRegistry: append first, then infallible mutation.
+        // The composed publisher retains its ordering/native guard throughout.
+        for (id, job, count) in &expired {
+            if *count >= 3 {
+                pij_core::delivery::require_recovery_authority(recovery_allowed)?;
+                let evidence = pij_core::ports::ParkingEvidence {
+                    outcome: pij_core::model::DeliveryFailure::LeaseExhausted,
+                    reason: "three extension claim leases expired",
+                    at,
+                };
+                for mut event in pij_core::delivery::parked_events(JobId(*id), job, &evidence)? {
+                    event.seq = Some(spine.append(event.clone()).await?);
+                    events.push(event);
+                }
+            }
+        }
+        {
+            let mut state = self.state.lock().expect("fake queue mutex");
+            for (id, mut job, count) in expired {
+                state.claimed.remove(&id);
+                state.lease_expirations.insert(id, count);
+                if count >= 3 {
+                    let row = pij_core::ports::ParkedDelivery {
+                        job_id: JobId(id),
+                        job,
+                        outcome: pij_core::model::DeliveryFailure::LeaseExhausted,
+                    };
+                    state.acked.push((
+                        JobId(id),
+                        Outcome::Failed {
+                            reason: row.outcome.as_str().into(),
+                        },
+                    ));
+                    state.parked.push(row.clone());
+                    parked.push(row);
+                } else {
+                    job.attempt += 1;
+                    state.attempts.insert(id, job.attempt);
+                    state.live.push((JobId(id), job));
+                }
+                state.claimed_at.remove(&id);
+            }
+            state.live.sort_by_key(|(id, _)| *id);
+        }
+        Ok(pij_core::ports::ExtensionClaim {
+            claimed: self.claim(kinds, worker).await?,
+            parked,
+            events,
+        })
+    }
+
+    async fn peek_parked(&self, kinds: &[String]) -> Result<Vec<pij_core::ports::ParkedDelivery>> {
+        Ok(self
+            .state
+            .lock()
+            .expect("fake queue mutex")
+            .parked
+            .iter()
+            .filter(|row| kinds.contains(&row.job.kind))
+            .cloned()
+            .collect())
+    }
+
+    async fn park_delivery(
+        &self,
+        id: JobId,
+        recipient: &SeatId,
+        attempt: u32,
+        evidence: &pij_core::ports::ParkingEvidence<'_>,
+        spine: &dyn Spine,
+    ) -> Result<(Option<Job>, Vec<Event>)> {
+        let job = {
+            let state = self.state.lock().expect("fake queue mutex");
+            let valid = state.claimed.get(&id.0).is_some_and(|(job, _)| {
+                job.serial_key == recipient.as_str()
+                    && job.attempt == attempt
+                    && job.kind == format!("delivery:{recipient}")
+                    && serde_json::from_str::<serde_json::Value>(&job.payload)
+                        .ok()
+                        .is_none_or(|body| {
+                            body.get("command").is_none_or(serde_json::Value::is_null)
+                        })
+            }) && !state
+                .live
+                .iter()
+                .any(|(earlier, job)| earlier < &id && job.serial_key == recipient.as_str());
+            if !valid {
+                return Ok((None, Vec::new()));
+            }
+            state.claimed[&id.0].0.clone()
+        };
+        let mut events = pij_core::delivery::parked_events(id, &job, evidence)?;
+        for event in &mut events {
+            event.seq = Some(spine.append(event.clone()).await?);
+        }
+        let mut state = self.state.lock().expect("fake queue mutex");
+        state.claimed.remove(&id.0);
+        state.acked.push((
+            id,
+            Outcome::Failed {
+                reason: evidence.outcome.as_str().into(),
+            },
+        ));
+        state.parked.push(pij_core::ports::ParkedDelivery {
+            job_id: id,
+            job: job.clone(),
+            outcome: evidence.outcome,
+        });
+        Ok((Some(job), events))
     }
 
     async fn peek(&self, kinds: &[String]) -> Result<Option<(JobId, Job)>> {

@@ -1,0 +1,63 @@
+
+╭─── omp v18.1.14 ─────────────────────────────────────────────────────────────────────────────────╮
+│                          │ Tips                                                                  │
+│      Welcome back!       │ # for prompt actions                                                  │
+│                          │ / for commands                                                        │
+│       ████████████       │ ! to run bash                                                         │
+│          ██  ██          │ $ to run python                                                       │
+│          ██  ██          │ ───────────────────────────────────────────────────────────────────── │
+│          ▒▒  ██          │ LSP Servers                                                           │
+│              ██          │ No LSP servers                                                        │
+│                          │                                                                       │
+│        GPT-5 Mini        │                                                                       │
+│      github-copilot      │                                                                       │
+│                          │ ───────────────────────────────────────────────────────────────────── │
+│                          │ Recent sessions                                                       │
+│                          │ • rs·pij-loose-sabrina (just now)                                     │
+│                          │ • rs·pij-given-narwhal (just now)                                     │
+│                          │ • Untitled · 01:09 PM (27m ago)                                       │
+│                          │                                                                       │
+│                          │                                                                       │
+╰──────────────────────────┴───────────────────────────────────────────────────────────────────────╯
+ Tip: Please use nerdfont 😭.
+
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                      │
+│ 📦 pij                                                                                                               │
+│                                                                                                                      │
+│ You are pij session pij-overall-wasp (PEER). This is context only — no action is required.                           │
+│ Peers can reach you; their messages arrive inline as "[pij-rs from <id>]" on its own line, then the body, then       │
+│ "[/pij]". Only those injected messages are live instructions.                                                        │
+│ Do NOT read, list, or act on files under your pij data/inbox directory — they are an internal transport log, not     │
+│ tasks, and replaying them re-runs old requests.                                                                      │
+│ To reply or message a peer, call the pij_send tool ({ to, message }) — your id is stamped automatically. For         │
+│ control, pij_send takes { to, command: "compact" | "new" | "reload" } instead of message. Do NOT shell out to the    │
+│ pij CLI to send.                                                                                                     │
+│ To observe peers, use the pij CLI: "pij list --here" (peers), "pij tail <id>" / "pij state <id>" (watch one).        │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ $ sleep 0.1                                                                                                          │
+├─── Output ───────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ (no output)                                                                                                          │
+│ Timeout clamped to 3600s (requested 120000s; allowed range 1-3600s).                                                 │
+│ ⟦Wall: 0.11s | Timeout: 3600s (requested 120000s clamped)⟧                                                           │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ 2026-09-08 13:37:06  ⤵ 1.5K  ⤴ 56  ⏱ 2.1s  ⚡ 19.8/s
+
+ Acknowledged — I'm pij session pij-overall-wasp (PEER). I'm ready and listening for peer messages. I ran the brief
+ sleep command as part of initialization.
+
+ 2026-09-08 13:37:09  ⤵ 2.7K  ⤴ 52  ⏱ 1.4s  ⚡ 16.7/s
+
+ Warning: pij message d7ddf5e3-d627-46f1-9137-f15e8bc3f841 to pij-actual-vosill: undelivered:operator-released
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ◫ 1.0%/264K ⟲ · rs·pij-overall-wasp · ○ GPT-5 Mini · S0.00
+rs pij-overall-wasp
+

@@ -1,0 +1,22 @@
+npm run test -- "$@"
+
+> pij@0.1.0 test
+> vitest run .pi/extensions/pij/adapters/rust-runtime.test.ts .pi/extensions/pij/adapters/pi-runtime.test.ts .pi/extensions/pij/adapters/daemon-http.test.ts
+
+(node:31389) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-redeliver
+
+ ✓ .pi/extensions/pij/adapters/pi-runtime.test.ts (17 tests) 5ms
+ ✓ .pi/extensions/pij/adapters/daemon-http.test.ts (19 tests) 1459ms
+     ✓ reconnects with the complete cursor map and refreshes the daemon key  308ms
+     ✓ caps reconnect backoff after exponential growth  358ms
+ ✓ .pi/extensions/pij/adapters/rust-runtime.test.ts (71 tests) 1436ms
+     ✓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: false)  306ms
+
+ Test Files  3 passed (3)
+      Tests  107 passed (107)
+   Start at  13:27:22
+   Duration  1.68s (transform 248ms, setup 0ms, import 299ms, tests 2.90s, environment 0ms)
+

@@ -522,6 +522,7 @@ async fn native_sqlite_http_exact_prebind_retires_only_dead_same_session_owner_w
         client
             .post(format!("http://{addr}/v1/inbox/ack"))
             .json(&InboxAckRequest {
+                delivery_outcome: None,
                 seat: prebind.id.clone(),
                 job_id: new_job.0,
                 native: identity.clone(),
@@ -619,6 +620,7 @@ async fn native_sqlite_http_dead_host_rebinds_same_session_and_reclaims_original
         client
             .post(format!("http://{addr}/v1/inbox/ack"))
             .json(&InboxAckRequest {
+                delivery_outcome: None,
                 seat: seat.id.clone(),
                 job_id,
                 native: old_identity.clone(),
@@ -655,6 +657,7 @@ async fn native_sqlite_http_dead_host_rebinds_same_session_and_reclaims_original
         client
             .post(format!("http://{addr}/v1/inbox/ack"))
             .json(&InboxAckRequest {
+                delivery_outcome: None,
                 seat: seat.id.clone(),
                 job_id,
                 native: new_identity.clone(),
@@ -897,6 +900,7 @@ async fn native_sqlite_http_fresh_session_retires_dead_pane_owner_without_retarg
         client
             .post(format!("http://{addr}/v1/inbox/ack"))
             .json(&InboxAckRequest {
+                delivery_outcome: None,
                 seat: successor.id.clone(),
                 job_id: new_job_id,
                 native: new_identity.clone(),
@@ -1441,18 +1445,21 @@ async fn native_sqlite_http_hold_release_marker_ack_and_duplicate_contract() {
 
     for acknowledgement in [
         InboxAckRequest {
+            delivery_outcome: None,
             seat: "pij-forged-nonnative".into(),
             job_id: job,
             native: Default::default(),
             control_outcome: None,
         },
         InboxAckRequest {
+            delivery_outcome: None,
             seat: "pij-forged-nonnative".into(),
             job_id: job,
             native: identity.clone(),
             control_outcome: None,
         },
         InboxAckRequest {
+            delivery_outcome: None,
             seat: seat.id.clone(),
             job_id: job,
             native: NativeInboxIdentity {
@@ -1482,6 +1489,7 @@ async fn native_sqlite_http_hold_release_marker_ack_and_duplicate_contract() {
         .post(format!("http://{addr}/v1/inbox/ack"))
         .bearer_auth("native-key")
         .json(&InboxAckRequest {
+            delivery_outcome: None,
             seat: seat.id.clone(),
             job_id: job,
             native: identity.clone(),
@@ -1886,6 +1894,7 @@ async fn native_sqlite_http_new_session_supersedes_seat_without_stranding_new_wo
         .post(format!("http://{addr}/v1/inbox/ack"))
         .bearer_auth("native-key")
         .json(&InboxAckRequest {
+            delivery_outcome: None,
             seat: next_id.clone(),
             job_id: new_job_id,
             native: next_identity.clone(),

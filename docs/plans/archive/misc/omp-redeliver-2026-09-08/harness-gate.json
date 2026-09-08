@@ -1,0 +1,20 @@
+{
+  "command": "harness checks | jq .",
+  "harness_timestamp": "2026-09-08T03:36:17.196Z",
+  "harness_status": "ok",
+  "skipped": [],
+  "sensors": {
+    "local-paths": { "status": "pass", "code": 0 },
+    "typecheck": { "status": "pass", "code": 0 },
+    "lint": { "status": "pass", "code": 0 },
+    "test": { "status": "pass", "code": 0 },
+    "copilot-native": { "status": "pass", "code": 0 },
+    "windows-compat": { "status": "pass", "code": 0 },
+    "smoke": { "status": "pass", "code": 0 },
+    "pkg-audit": { "status": "pass", "code": 0 },
+    "snapshots": { "status": "pass", "code": 0 },
+    "pij-commit-trailers": { "status": "pass", "code": 0, "checked_before_commit": 0 }
+  },
+  "next_action": "All checks green — safe to ship / declare this task done.",
+  "method": "Summary transcribed from the observed complete harness JSON verdict; not an independent rerun."
+}

@@ -228,6 +228,33 @@ describe("pij-rs HTTP client", () => {
 		});
 	});
 
+	it("encodes swallowed delivery failure without changing ordinary or control acknowledgements", async () => {
+		const requests: unknown[] = [];
+		const client = new PijDaemonClient(
+			{ addr: "127.0.0.1:1", stateDir: "/unused" },
+			"secret",
+			deps(
+				vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+					const request = JSON.parse(String(init?.body)) as { job_id: number };
+					requests.push(request);
+					return new Response(
+						JSON.stringify({ ok: true, v: 2, command: "pij inbox", data: request.job_id }),
+					);
+				}) as typeof fetch,
+			),
+		);
+		await client.ackInbox("seat", 1);
+		await client.ackInbox("seat", 2, { outcome: "executed" });
+		await expect(
+			client.ackInbox("seat", 3, undefined, "undelivered:harness-swallowed"),
+		).resolves.toBe(3);
+		expect(requests).toEqual([
+			{ seat: "seat", job_id: 1 },
+			{ seat: "seat", job_id: 2, control_outcome: { outcome: "executed" } },
+			{ seat: "seat", job_id: 3, delivery_outcome: "undelivered:harness-swallowed" },
+		]);
+	});
+
 	it("forwards unknown frames and keeps reading pushed turns", async () => {
 		const fetchMock = vi.fn(async () => new Response(fixture("events-v1.ndjson")));
 		const client = new PijDaemonClient(

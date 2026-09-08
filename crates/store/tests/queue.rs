@@ -788,6 +788,143 @@ async fn control_claim_lease_brake_preserves_body_and_non_json_recovery() {
     }
 }
 
+fn extension_body_job(kind: &str, serial: &str, dedupe: &str) -> Job {
+    let mut job = job(kind, serial, dedupe);
+    job.payload = serde_json::to_string(&pij_core::model::Msg {
+        from: "sender".into(),
+        from_machine: None,
+        to: serial.into(),
+        body: "preserved body".into(),
+        command: None,
+        msg_id: dedupe.into(),
+        in_reply_to: None,
+    })
+    .unwrap();
+    job
+}
+
+#[tokio::test]
+async fn extension_lease_budget_counts_expirations_not_ordinary_retries() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.unwrap();
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).unwrap();
+    let spine = pij_store::SqliteSpine::new(pool.clone());
+    let kinds = [String::from("delivery:pij-reader")];
+    let id = queue
+        .enqueue(extension_body_job(&kinds[0], "pij-reader", "body"))
+        .await
+        .unwrap();
+    for _ in 0..5 {
+        queue
+            .claim_extension(&kinds, "reader", 60, 0, &spine, true)
+            .await
+            .unwrap();
+        queue.retry(id, Duration::ZERO).await.unwrap();
+    }
+    queue
+        .claim_extension(&kinds, "reader", 60, 0, &spine, true)
+        .await
+        .unwrap();
+    for expiration in 1..=3 {
+        sqlx::query("UPDATE jobs SET claimed_at = unixepoch() - 61 WHERE id = ?")
+            .bind(id.0 as i64)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let page = queue
+            .claim_extension(&kinds, "reader", 60, 0, &spine, true)
+            .await
+            .unwrap();
+        if expiration < 3 {
+            assert_eq!(page.claimed.unwrap().0, id);
+            assert!(page.parked.is_empty());
+        } else {
+            assert!(page.claimed.is_none());
+            assert_eq!(page.parked[0].job_id, id);
+            assert_eq!(
+                page.parked[0].outcome,
+                pij_core::model::DeliveryFailure::LeaseExhausted
+            );
+        }
+    }
+    assert!(
+        queue
+            .claim_extension(&kinds, "reader", 60, 0, &spine, true)
+            .await
+            .unwrap()
+            .parked
+            .is_empty(),
+        "a terminal failure is announced once"
+    );
+}
+
+#[tokio::test]
+async fn extension_short_lease_excludes_controls_and_stale_operator_attempts() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.unwrap();
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).unwrap();
+    let spine = pij_store::SqliteSpine::new(pool.clone());
+    let kinds = [String::from("delivery:pij-reader")];
+    let mut command = job(&kinds[0], "pij-reader", "control");
+    command.payload = r#"{"command":"compact"}"#.into();
+    let id = queue.enqueue(command).await.unwrap();
+    queue
+        .claim_extension(&kinds, "reader", 60, 0, &spine, true)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE jobs SET claimed_at = unixepoch() - 61 WHERE id = ?")
+        .bind(id.0 as i64)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let page = queue
+        .claim_extension(&kinds, "reader", 60, 0, &spine, true)
+        .await
+        .unwrap();
+    assert!(page.claimed.is_none());
+    assert!(page.parked.is_empty());
+    assert!(
+        queue.claimed_delivery(id).await.unwrap().is_some(),
+        "controls retain the original lease"
+    );
+    queue.ack(id, Outcome::Done).await.unwrap();
+    let body = queue
+        .enqueue(extension_body_job(&kinds[0], "pij-reader", "body"))
+        .await
+        .unwrap();
+    queue
+        .claim_extension(&kinds, "reader", 60, 0, &spine, true)
+        .await
+        .unwrap();
+    queue.retry(body, Duration::ZERO).await.unwrap();
+    queue
+        .claim_extension(&kinds, "reader", 60, 0, &spine, true)
+        .await
+        .unwrap();
+    let evidence = pij_core::ports::ParkingEvidence {
+        outcome: pij_core::model::DeliveryFailure::OperatorReleased,
+        reason: "observed silent injection",
+        at: 0,
+    };
+    assert!(
+        queue
+            .park_delivery(body, &"pij-reader".into(), 0, &evidence, &spine)
+            .await
+            .unwrap()
+            .0
+            .is_none(),
+        "an operator observation cannot retire a newer running attempt"
+    );
+    assert!(
+        queue
+            .park_delivery(body, &"pij-reader".into(), 1, &evidence, &spine)
+            .await
+            .unwrap()
+            .0
+            .is_some()
+    );
+}
+
 #[tokio::test]
 async fn delivery_enqueue_returns_the_persisted_not_before_after_backoff() {
     let fresh = FreshStore::new();

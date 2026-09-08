@@ -62,8 +62,8 @@ function bindRuntime(
 	pi: Parameters<RustRuntimeSession["setPi"]>[0],
 ): void {
 	const inject = pi.inject.bind(pi);
-	vi.spyOn(pi, "inject").mockImplementation((text, mode, messageId) => {
-		inject(text, mode, messageId);
+	vi.spyOn(pi, "inject").mockImplementation((text, mode, messageId, resendAttempt) => {
+		inject(text, mode, messageId, resendAttempt);
 		if (messageId !== undefined && pi.isIdle()) {
 			void runtime.onMessageStart({
 				role: "custom",
@@ -1072,6 +1072,8 @@ class GraceClient extends PijDaemonClient {
 	readonly jobs: Array<{
 		job_id: number;
 		message: GraceMessage;
+		attempt: number;
+		outcome?: string;
 		claimed: boolean;
 		acked: boolean;
 		not_before: number;
@@ -1081,6 +1083,7 @@ class GraceClient extends PijDaemonClient {
 	readonly holdRequests: Array<Record<string, unknown>> = [];
 	readonly releases: Array<Record<string, unknown>> = [];
 	readonly acks: number[] = [];
+	readonly parks: Array<{ jobId: number; outcome: string }> = [];
 	readonly operations: string[] = [];
 	semanticHold = false;
 
@@ -1121,17 +1124,38 @@ class GraceClient extends PijDaemonClient {
 		);
 		if (!job) return [];
 		job.claimed = true;
-		return [{ job_id: job.job_id, message: job.message }];
+		return [{ job_id: job.job_id, message: job.message, attempt: job.attempt }];
 	}
 	override async peekInbox(): Promise<unknown> {
 		const job = this.jobs.find((candidate) => !candidate.acked);
-		return job ? [{ job_id: job.job_id, message: job.message }] : [];
+		return [
+			...(job ? [{ job_id: job.job_id, message: job.message, attempt: job.attempt }] : []),
+			...this.jobs
+				.filter((candidate) => candidate.outcome !== undefined)
+				.map((candidate) => ({
+					job_id: candidate.job_id,
+					message: candidate.message,
+					attempt: candidate.attempt,
+					state: "failed",
+					outcome: candidate.outcome,
+				})),
+		];
 	}
-	override async ackInbox(_seat: string, jobId: number): Promise<number> {
+	override async ackInbox(
+		_seat: string,
+		jobId: number,
+		_controlOutcome?: Parameters<PijDaemonClient["ackInbox"]>[2],
+		deliveryOutcome?: "undelivered:harness-swallowed",
+	): Promise<number> {
 		const job = this.jobs.find((candidate) => candidate.job_id === jobId);
 		if (!job) throw new Error("unknown fake inbox job");
 		expect(job.claimed, "ack must follow an authoritative reclaim").toBe(true);
 		job.acked = true;
+		if (deliveryOutcome !== undefined) {
+			job.outcome = deliveryOutcome;
+			this.parks.push({ jobId, outcome: deliveryOutcome });
+			return jobId;
+		}
 		this.acks.push(jobId);
 		this.operations.push(`ack:${job.message.msg_id}`);
 		return jobId;
@@ -1171,6 +1195,7 @@ class GraceClient extends PijDaemonClient {
 		this.jobs.push({
 			job_id: this.jobs.length + 1,
 			message,
+			attempt: 0,
 			claimed: false,
 			acked: false,
 			not_before: 0,
@@ -1185,6 +1210,31 @@ class GraceClient extends PijDaemonClient {
 	}
 	async replay(): Promise<void> {
 		for (const job of this.jobs) if (!job.acked) await this.announce(job.message);
+	}
+	async park(jobId: number, outcome: string, recipient = this.id): Promise<void> {
+		const job = this.jobs.find((candidate) => candidate.job_id === jobId);
+		if (!job) throw new Error("unknown parked message");
+		if (recipient === this.id) {
+			job.acked = true;
+			job.outcome = outcome;
+		}
+		await this.listener?.({
+			machine: "fake",
+			cursor: ++this.cursor,
+			event: {
+				v: 1,
+				at: Date.now(),
+				kind: "delivery.parked",
+				seat: job.message.from,
+				payload: JSON.stringify({
+					messageId: job.message.msg_id,
+					jobId,
+					recipient,
+					outcome,
+					reason: "test recovery exhausted",
+				}),
+			},
+		});
 	}
 	private async announce(message: GraceMessage): Promise<void> {
 		await this.listener?.({
@@ -1212,6 +1262,7 @@ describe("extension-stream delivery", () => {
 	async function start(
 		client = new GraceClient(),
 		bind?: (pi: TypingPiRuntime) => Parameters<RustRuntimeSession["setPi"]>[0],
+		autoConsume = true,
 	) {
 		vi.stubEnv("PIJ_SESSION_ID", "pij-grace-test");
 		vi.stubEnv("PIJ_ANNOUNCE_TO", "");
@@ -1220,7 +1271,9 @@ describe("extension-stream delivery", () => {
 		const runtime = new RustRuntimeSession(client, new FakeTmux(), []);
 		runtimes.push(runtime);
 		const pi = new TypingPiRuntime();
-		bindRuntime(runtime, bind?.(pi) ?? pi);
+		const port = bind?.(pi) ?? pi;
+		if (autoConsume) bindRuntime(runtime, port);
+		else runtime.setPi(port);
 		await runtime.boot({
 			folder: "/abs/tree",
 			dataDir: "",
@@ -1245,6 +1298,267 @@ describe("extension-stream delivery", () => {
 	afterEach(() => {
 		for (const runtime of runtimes.splice(0)) runtime.shutdown("quit");
 		vi.useRealTimers();
+	});
+
+	async function startSwallowing(client = new GraceClient()) {
+		const api = { sendMessage: vi.fn(), sendUserMessage: vi.fn() };
+		const started = await start(
+			client,
+			(sink) =>
+				new PiRuntimeAdapter(
+					api,
+					{
+						isIdle: () => sink.isIdle(),
+						compact: () => {},
+						ui: {
+							setStatus: (_key, text) => sink.setStatus(text),
+							notify: (text, level) => sink.notify(text, level),
+						},
+					},
+					"omp",
+				),
+			false,
+		);
+		api.sendMessage.mockClear();
+		api.sendUserMessage.mockClear();
+		return { ...started, api };
+	}
+
+	it("resends silently swallowed custom mail through the prompt after continuous idle and acknowledges its id once", async () => {
+		const { runtime, pi, client, api } = await startSwallowing();
+		await client.push(message("swallowed", { body: "keep this body\n你好" }));
+		expect(api.sendMessage).toHaveBeenCalledOnce();
+		expect(client.acks).toEqual([]);
+		await vi.advanceTimersByTimeAsync(9_000);
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+		expect(pi.statuses.at(-1)).toBe("📨 1 pending");
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(api.sendUserMessage).toHaveBeenCalledExactlyOnceWith(
+			`[pij resend 1]\n[pijMessageId:swallowed]\n${frame("pij-sender", "keep this body\n你好")}`,
+		);
+		expect(runtime.eventCount("delivery.resend")).toBe(1);
+		expect(pi.statuses.at(-1)).toBeUndefined();
+		expect(client.acks).toEqual([]);
+		const content = [{ type: "text", text: api.sendUserMessage.mock.calls[0]?.[0] }];
+		await runtime.onMessageStart({ role: "user", content });
+		await runtime.onMessageStart({ role: "user", content });
+		await runtime.onMessageStart({
+			role: "custom",
+			customType: "pij",
+			details: { pijMessageId: "swallowed" },
+		});
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(client.acks).toEqual([1]);
+		expect(api.sendUserMessage).toHaveBeenCalledOnce();
+		expect(client.parks).toEqual([]);
+	});
+
+	it("resets the resend idle window on every turn start without treating a turn as consumption", async () => {
+		vi.stubEnv("PIJ_REDELIVER_IDLE_MS", "2000");
+		const { runtime, pi, client, api } = await startSwallowing();
+		await client.push(message("continuous-idle"));
+		await vi.advanceTimersByTimeAsync(1_000);
+		runtime.onTurnStart(new Date().toISOString());
+		pi.setBusy(true);
+		await vi.advanceTimersByTimeAsync(5_000);
+		pi.setBusy(false);
+		runtime.onTurnEnd();
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(api.sendUserMessage).toHaveBeenCalledOnce();
+		expect(client.acks).toEqual([]);
+	});
+
+	it("parks swallowed mail only after three prompt resends each get an idle consumption window", async () => {
+		const { runtime, pi, client, api } = await startSwallowing();
+		await client.push(message("bounded"));
+		for (let attempt = 1; attempt <= 3; attempt++) {
+			await vi.advanceTimersByTimeAsync(10_000);
+			expect(api.sendUserMessage).toHaveBeenCalledTimes(attempt);
+			expect(api.sendUserMessage.mock.calls.at(-1)?.[0]).toContain(`[pij resend ${attempt}]\n`);
+			expect(client.parks).toEqual([]);
+			runtime.onAgentEnd(); // Interrupt recovery must not be an unbounded alternate.
+		}
+		await vi.advanceTimersByTimeAsync(9_000);
+		expect(client.parks).toEqual([]);
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(client.parks).toEqual([{ jobId: 1, outcome: "undelivered:harness-swallowed" }]);
+		expect(client.acks).toEqual([]);
+		expect(pi.statuses.at(-1)).toBeUndefined();
+		expect(
+			pi.notices.filter((notice) => notice.text.includes("bounded") && notice.level === "warning"),
+		).toHaveLength(1);
+		await client.park(1, "undelivered:harness-swallowed");
+		await vi.advanceTimersByTimeAsync(50_000);
+		expect(api.sendUserMessage).toHaveBeenCalledTimes(3);
+		expect(pi.notices.filter((notice) => notice.level === "warning")).toHaveLength(1);
+	});
+
+	it.each([
+		false,
+		true,
+	])("resends a reclaimed unconsumed claim through the prompt with busy=%s", async (busy) => {
+		const { runtime, pi, client, api } = await startSwallowing();
+		await client.push(message("reclaimed"));
+		pi.setBusy(busy);
+		const job = client.jobs[0];
+		if (!job) throw new Error("missing claimed fixture job");
+		job.claimed = false;
+		job.attempt = 1;
+		await client.repeat("reclaimed");
+		expect(api.sendMessage).toHaveBeenCalledOnce();
+		expect(api.sendUserMessage.mock.calls).toEqual([
+			[
+				`[pij resend 1]\n[pijMessageId:reclaimed]\n${frame("pij-sender", "reclaimed")}`,
+				...(busy ? [{ deliverAs: "steer" }] : []),
+			],
+		]);
+		expect(runtime.eventCount("delivery.resend")).toBe(1);
+		expect(client.acks).toEqual([]);
+	});
+
+	it("clears sender-addressed parked ids once and never claims parked peek rows ahead of live mail", async () => {
+		const { runtime, pi, client, api } = await startSwallowing();
+		await client.push(message("parked-id"));
+		await client.park(1, "undelivered:lease-exhausted", "another-recipient");
+		expect(pi.statuses.at(-1)).toBe("📨 1 pending");
+		expect(pi.notices.filter((notice) => notice.level === "warning")).toEqual([]);
+		await client.park(1, "undelivered:lease-exhausted");
+		await client.park(1, "undelivered:lease-exhausted");
+		expect(pi.statuses.at(-1)).toBeUndefined();
+		expect(
+			pi.notices.filter((notice) => notice.level === "warning").map((notice) => notice.text),
+		).toEqual([expect.stringContaining("parked-id")]);
+		await vi.advanceTimersByTimeAsync(20_000);
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+		runtime.shutdown("reload");
+		await client.push(message("live-after-park"), false);
+		const recovered = await startSwallowing(client);
+		expect(recovered.api.sendUserMessage).not.toHaveBeenCalled();
+		expect(client.jobs[1]?.claimed).toBe(true);
+		expect(recovered.runtime.eventCount("daemon_event_error")).toBe(0);
+	});
+
+	it("does not resurrect a parked message when an earlier claim response arrives late", async () => {
+		const { pi, client, api } = await startSwallowing();
+		await client.push(message("park-before-response"));
+		let releaseClaim: ((value: unknown) => void) | undefined;
+		const lateResponse = new Promise<unknown>((resolve) => {
+			releaseClaim = resolve;
+		});
+		vi.spyOn(client, "claimInbox").mockReturnValueOnce(lateResponse);
+		const delivery = client.repeat("park-before-response");
+		await Promise.resolve();
+		await client.park(1, "undelivered:operator-released");
+		releaseClaim?.([{ job_id: 1, attempt: 1, message: message("park-before-response") }]);
+		await delivery;
+		await vi.advanceTimersByTimeAsync(20_000);
+		expect(api.sendMessage).toHaveBeenCalledOnce();
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+		expect(pi.statuses.at(-1)).toBeUndefined();
+		expect(client.acks).toEqual([]);
+	});
+
+	it("visibly reports a parked outbound message once without clearing unrelated inbound mail", async () => {
+		const { pi, client } = await startSwallowing();
+		await client.push(message("still-pending-inbound"));
+		await client.push(message("outbound-failed", { from: client.id }), false);
+		await client.park(2, "undelivered:lease-exhausted", "pij-other");
+		await client.park(2, "undelivered:lease-exhausted", "pij-other");
+		expect(pi.statuses.at(-1)).toBe("📨 1 pending");
+		expect(
+			pi.notices.filter((notice) => notice.level === "warning").map((notice) => notice.text),
+		).toEqual(["pij message outbound-failed to pij-other: undelivered:lease-exhausted"]);
+	});
+
+	it("shares three resend attempts across idle recovery and lease reclaims", async () => {
+		const { client, api } = await startSwallowing();
+		await client.push(message("shared-bound"));
+		await vi.advanceTimersByTimeAsync(10_000);
+		const job = client.jobs[0];
+		if (!job) throw new Error("missing claimed fixture job");
+		job.claimed = false;
+		job.attempt = 1;
+		await client.repeat("shared-bound");
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(api.sendUserMessage).toHaveBeenCalledTimes(3);
+		job.claimed = false;
+		job.attempt = 2;
+		await client.repeat("shared-bound");
+		await vi.advanceTimersByTimeAsync(9_000);
+		expect(client.parks).toEqual([]);
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(api.sendUserMessage).toHaveBeenCalledTimes(3);
+		expect(client.parks).toEqual([{ jobId: 1, outcome: "undelivered:harness-swallowed" }]);
+	});
+
+	it("polls an unconsumed claim for lease recovery without a second pushed event", async () => {
+		const { pi, client, api } = await startSwallowing();
+		pi.setBusy(true);
+		await client.push(message("poll-reclaim"));
+		const job = client.jobs[0];
+		if (!job) throw new Error("missing claimed fixture job");
+		job.claimed = false;
+		job.attempt = 1;
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(api.sendUserMessage).toHaveBeenCalledExactlyOnceWith(
+			`[pij resend 1]\n[pijMessageId:poll-reclaim]\n${frame("pij-sender", "poll-reclaim")}`,
+			{ deliverAs: "steer" },
+		);
+	});
+
+	it("reconciles a parked acknowledgement whose response was lost using failed peek history", async () => {
+		const { pi, client, api } = await startSwallowing();
+		await client.push(message("lost-park-response"));
+		await vi.advanceTimersByTimeAsync(30_000);
+		const acknowledge = client.ackInbox.bind(client);
+		const requests = vi.spyOn(client, "ackInbox").mockImplementationOnce(async (...args) => {
+			await acknowledge(...args);
+			throw new Error("park response lost after commit");
+		});
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(requests).toHaveBeenCalledOnce();
+		expect(client.parks).toEqual([{ jobId: 1, outcome: "undelivered:harness-swallowed" }]);
+		expect(client.acks).toEqual([]);
+		expect(api.sendUserMessage).toHaveBeenCalledTimes(3);
+		expect(pi.notices.filter((notice) => notice.level === "warning")).toHaveLength(1);
+	});
+
+	it("correlates an encoded prompt id but ignores unrelated and malformed user markers", async () => {
+		const { runtime, client, api } = await startSwallowing();
+		await client.push(message("id with ]\n你好"));
+		await vi.advanceTimersByTimeAsync(10_000);
+		await runtime.onMessageStart({
+			role: "user",
+			content: "[pij resend 1]\n[pijMessageId:%zz]\nbody",
+		});
+		await runtime.onMessageStart({
+			role: "user",
+			content: `quoted:\n${api.sendUserMessage.mock.calls[0]?.[0]}`,
+		});
+		await runtime.onMessageStart({
+			role: "user",
+			content: "[pij resend 1]\n[pijMessageId:other]\nbody",
+		});
+		expect(client.acks).toEqual([]);
+		await runtime.onMessageStart({ role: "user", content: api.sendUserMessage.mock.calls[0]?.[0] });
+		expect(client.acks).toEqual([1]);
+	});
+
+	it("rejects malformed attempt metadata without injecting or acknowledging a claim", async () => {
+		const { client, api } = await startSwallowing();
+		vi.spyOn(client, "claimInbox").mockResolvedValueOnce([
+			{
+				job_id: 1,
+				attempt: -1,
+				message: message("bad-attempt"),
+			},
+		]);
+		await expect(client.push(message("bad-attempt"))).rejects.toThrow("attempt");
+		expect(api.sendMessage).not.toHaveBeenCalled();
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+		expect(client.acks).toEqual([]);
 	});
 
 	// Plan 136 changed: extension streams never type into the human's composer.
@@ -1347,26 +1661,23 @@ describe("extension-stream delivery", () => {
 		expect(client.acks).toEqual([]);
 	});
 
-	it("reinjects interrupted unconsumed mail once and never repeats consumed mail", async () => {
-		const { runtime, pi, client } = await start();
+	it("recovers interrupted mail through the same bounded prompt path and never repeats consumed mail", async () => {
+		const { runtime, pi, client, api } = await startSwallowing();
 		pi.setBusy(true);
+		runtime.onTurnStart(new Date().toISOString());
 		await client.push(message("survive-interrupt"));
-		pi.injects.length = 0; // Escape dropped the native steering queue.
 		pi.setBusy(false);
 		runtime.onAgentEnd();
+		await vi.advanceTimersByTimeAsync(9_000);
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
 		await vi.advanceTimersByTimeAsync(1_000);
-		expect(pi.injects.map((row) => row.text)).toEqual([frame("pij-sender", "survive-interrupt")]);
-		expect(pi.notices.at(-1)?.text).toBe("📨 re-queued 1 pij messages after interrupt");
-		await runtime.onMessageStart({
-			role: "custom",
-			customType: "pij",
-			details: { pijMessageId: "survive-interrupt" },
-		});
+		expect(api.sendUserMessage).toHaveBeenCalledOnce();
+		await runtime.onMessageStart({ role: "user", content: api.sendUserMessage.mock.calls[0]?.[0] });
 		expect(client.acks).toEqual([1]);
 		runtime.onAgentEnd();
 		await client.repeat("survive-interrupt");
-		await vi.advanceTimersByTimeAsync(2_000);
-		expect(pi.injects).toHaveLength(1);
+		await vi.advanceTimersByTimeAsync(20_000);
+		expect(api.sendUserMessage).toHaveBeenCalledOnce();
 		expect(client.acks).toEqual([1]);
 	});
 
@@ -1390,23 +1701,6 @@ describe("extension-stream delivery", () => {
 			["first", "second", "third"].map((id) => frame("pij-sender", id)),
 		);
 		expect(pi.isIdle()).toBe(false);
-	});
-
-	it("reclaims an expired lease without injecting the queued envelope twice", async () => {
-		const { runtime, pi, client } = await start();
-		pi.setBusy(true);
-		await client.push(message("long-tool"));
-		for (const job of client.jobs) job.claimed = false;
-		await client.repeat("long-tool");
-		expect(pi.injects).toHaveLength(1);
-		expect(pi.notices).toHaveLength(1);
-		expect(client.acks).toEqual([]);
-		await runtime.onMessageStart({
-			role: "custom",
-			customType: "pij",
-			details: { pijMessageId: "long-tool" },
-		});
-		expect(client.acks).toEqual([1]);
 	});
 
 	it("retries failed consumption acknowledgements without reinjection", async () => {

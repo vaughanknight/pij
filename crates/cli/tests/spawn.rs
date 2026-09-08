@@ -7,6 +7,7 @@ use pij_core::model::{
     DeliveryOrigin, DeliveryOutcome, Envelope, Harness, Msg, ProcIdentity, Receipt, SeatDescriptor,
     SeatId, SemanticState, Seq,
 };
+use pij_daemon::delivery::InboxClaim;
 use pij_daemon::http::{HttpConfig, router_with_config};
 use pij_testkit::fakes::{FakeLiveness, FakeTmux, FakeTransport};
 use pij_testkit::fresh_dir;
@@ -685,9 +686,10 @@ async fn shipped_cli_registers_sends_reads_acks_and_does_not_read_twice() {
         "peek: {}",
         String::from_utf8_lossy(&peeked.stdout)
     );
-    let peeked: Envelope<Vec<Msg>> = serde_json::from_slice(&peeked.stdout).expect("peek JSON");
+    let peeked: Envelope<Vec<InboxClaim>> =
+        serde_json::from_slice(&peeked.stdout).expect("peek JSON");
     assert_eq!(
-        peeked.data.expect("peek data")[0].body,
+        peeked.data.expect("peek data")[0].message.body,
         "hello through the shipped binary"
     );
 

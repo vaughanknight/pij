@@ -701,6 +701,31 @@ impl DeliveryOrigin {
     }
 }
 
+/// Terminal inbox recovery outcomes; none is evidence that a body was read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DeliveryFailure {
+    /// Three extension delivery leases expired without consumption.
+    #[serde(rename = "undelivered:lease-exhausted")]
+    LeaseExhausted,
+    /// The runtime swallowed the bounded resend attempts.
+    #[serde(rename = "undelivered:harness-swallowed")]
+    HarnessSwallowed,
+    /// An authorized operator released a running head with evidence.
+    #[serde(rename = "undelivered:operator-released")]
+    OperatorReleased,
+}
+
+impl DeliveryFailure {
+    /// Stable persisted and wire vocabulary.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::LeaseExhausted => "undelivered:lease-exhausted",
+            Self::HarnessSwallowed => "undelivered:harness-swallowed",
+            Self::OperatorReleased => "undelivered:operator-released",
+        }
+    }
+}
+
 /// What honestly happened to a message.
 ///
 /// `Queued` is a promise the store has already kept — the row exists — not an
