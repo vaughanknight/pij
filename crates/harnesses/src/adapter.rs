@@ -1,3 +1,4 @@
+use crate::composer::is_codex_footer;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -218,15 +219,6 @@ fn classify_readiness(kind: Harness, text: &str) -> Readiness {
                 .to_string(),
         }
     }
-}
-
-fn is_codex_footer(line: &str) -> bool {
-    let Some((left, right)) = line.rsplit_once('·') else {
-        return false;
-    };
-    let path = right.trim();
-    let words = left.split_whitespace().count();
-    words >= 2 && (path.starts_with('/') || path.starts_with("~/"))
 }
 
 fn is_horizontal_rule(line: &str) -> bool {
@@ -934,6 +926,41 @@ mod tests {
         assert_eq!(
             observation.admission,
             Admission::Refuse(RefusalReason::NoBindEvidence)
+        );
+    }
+}
+
+#[cfg(test)]
+mod codex_0_153_4_footer {
+    #![allow(clippy::doc_markdown)]
+    use super::{Harness, Readiness, classify_readiness, observed_cwd, observed_model};
+
+    const CAPTURE: &str = include_str!("../tests/fixtures/2026-09-08-codex-v0.153.4-pane-4409.txt");
+
+    #[test]
+    fn absolute_cwd_footer_reads_ready_model_and_cwd() {
+        assert_eq!(
+            classify_readiness(Harness::Codex, CAPTURE),
+            Readiness::Ready
+        );
+        assert_eq!(
+            observed_model(Harness::Codex, CAPTURE).as_deref(),
+            Some("gpt-6-astra")
+        );
+        assert!(
+            observed_cwd(Harness::Codex, CAPTURE)
+                .is_some_and(|cwd| cwd.starts_with("/private/tmp/claude-501/")),
+            "cwd comes from the right-hand side of the bar"
+        );
+    }
+
+    #[test]
+    fn home_relative_cwd_footer_still_reads() {
+        let home = CAPTURE.replace("/private/tmp/claude-501/", "~/scratch/");
+        assert_eq!(classify_readiness(Harness::Codex, &home), Readiness::Ready);
+        assert_eq!(
+            observed_model(Harness::Codex, &home).as_deref(),
+            Some("gpt-6-astra")
         );
     }
 }

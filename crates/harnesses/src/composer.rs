@@ -194,10 +194,21 @@ fn is_copilot_footer(line: &str) -> bool {
         || lower.contains("context")
 }
 
-fn is_codex_footer(line: &str) -> bool {
-    let trimmed = line.trim();
-    trimmed.contains(" · ")
-        && (trimmed.contains("~/") || trimmed.contains(" context") || trimmed.contains(" tokens"))
+/// Codex renders `<model> <effort> · <cwd>` under its prompt. ONE definition for
+/// readiness, model/cwd extraction and composer recognition: two copies once
+/// disagreed (the composer copy required `~/`, so a seat with a cwd outside
+/// `$HOME` was held `unrecognized` forever — 2026-09-08, pane %4409).
+pub(crate) fn is_codex_footer(line: &str) -> bool {
+    let Some((left, right)) = line.rsplit_once('·') else {
+        return false;
+    };
+    let path = right.trim();
+    let words = left.split_whitespace().count();
+    words >= 2
+        && (path.starts_with('/')
+            || path.starts_with("~/")
+            || path.contains(" context")
+            || path.contains(" tokens"))
 }
 
 #[cfg(test)]
@@ -473,6 +484,29 @@ mod tests {
         assert_eq!(
             composer_region(capture, 14, 0),
             ComposerRegion::Recognized("keepmeposted".to_string())
+        );
+    }
+}
+
+#[cfg(test)]
+mod codex_0_153_4 {
+    use super::{ComposerRegion, composer_region};
+
+    /// Recorded 2026-09-08 from pane %4409, Codex CLI 0.153.4, cursor (2, 50).
+    /// The cwd is an absolute path outside `$HOME`; the composer's private
+    /// footer rule required `~/`, so every delivery was held `unrecognized`
+    /// (job 4864, 19+ retries).
+    #[test]
+    fn codex_0_153_4_absolute_cwd_footer_is_recognized() {
+        let capture = include_str!("../tests/fixtures/2026-09-08-codex-v0.153.4-pane-4409.txt");
+        assert_eq!(
+            composer_region(capture, 2, 50),
+            ComposerRegion::Recognized(String::new())
+        );
+        let draft = capture.replace("› Ask Codex to do anything", "› human draft");
+        assert_eq!(
+            composer_region(&draft, 13, 50),
+            ComposerRegion::Recognized("human draft".to_string())
         );
     }
 }
