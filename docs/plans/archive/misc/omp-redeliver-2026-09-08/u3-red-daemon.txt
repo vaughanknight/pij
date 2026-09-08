@@ -1,0 +1,44 @@
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/pij-worktrees/redeliver-busy-seat/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 15.27s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-02c80a6f3c580e00)
+
+running 12 tests
+test http::tests::redelivery_split_authority_refuses_recovery_without_changing_ordinary_reads ... ok
+
+thread 'http::tests::redelivery_working_seat_renews_expired_claim_without_spending_lease_budget' (1215738975) panicked at crates/daemon/src/http/tests.rs:421:9:
+assertion `left == right` failed: a busy claim is not reclaimed: {"command":"pij inbox","data":[{"attempt":1,"job_id":1,"message":{"body":"body for lost-body","from":"pij-parent","msg_id":"lost-body","to":"pij-reader"}}],"ok":true,"v":2}
+  left: Array [Object {"attempt": Number(1), "job_id": Number(1), "message": Object {"body": String("body for lost-body"), "from": String("pij-parent"), "msg_id": String("lost-body"), "to": String("pij-reader")}}]
+ right: Array []
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test http::tests::redelivery_working_seat_renews_expired_claim_without_spending_lease_budget ... FAILED
+
+thread 'http::tests::redelivery_heartbeat_renews_only_claim_age_until_consumption' (1215738967) panicked at crates/daemon/src/http/tests.rs:292:10:
+machine-decodable inbox envelope: reqwest::Error { kind: Decode, source: Error("EOF while parsing a value", line: 1, column: 0) }
+test http::tests::redelivery_heartbeat_renews_only_claim_age_until_consumption ... FAILED
+test http::tests::redelivery_operator_release_requires_parent_or_authoritative_prime_and_running_head ... ok
+
+thread 'http::tests::redelivery_silent_extension_after_heartbeat_parks_after_three_leases' (1215738972) panicked at crates/daemon/src/http/tests.rs:292:10:
+machine-decodable inbox envelope: reqwest::Error { kind: Decode, source: Error("EOF while parsing a value", line: 1, column: 0) }
+test http::tests::redelivery_silent_extension_after_heartbeat_parks_after_three_leases ... FAILED
+test http::tests::redelivery_operator_release_racing_consumption_has_one_terminal_winner ... ok
+
+thread 'http::tests::redelivery_heartbeat_rejects_wrong_recipient_control_terminal_and_native_claims' (1215738966) panicked at crates/daemon/src/http/tests.rs:292:10:
+machine-decodable inbox envelope: reqwest::Error { kind: Decode, source: Error("EOF while parsing a value", line: 1, column: 0) }
+test http::tests::redelivery_heartbeat_rejects_wrong_recipient_control_terminal_and_native_claims ... FAILED
+test http::tests::redelivery_swallowed_ack_is_failure_not_reader_read_and_rejects_wrong_recipient ... ok
+test http::tests::redelivery_parking_rolls_back_if_its_durable_event_cannot_commit ... ok
+test http::tests::redelivery_extension_three_expired_leases_park_and_unblock_serial_head ... ok
+test http::tests::redelivery_release_reads_authority_after_prior_ordered_reparent_or_prime_unset ... ok
+test http::tests::redelivery_failure_ack_refuses_controls_native_recipients_and_unknown_outcomes ... ok
+
+failures:
+
+failures:
+    http::tests::redelivery_heartbeat_rejects_wrong_recipient_control_terminal_and_native_claims
+    http::tests::redelivery_heartbeat_renews_only_claim_age_until_consumption
+    http::tests::redelivery_silent_extension_after_heartbeat_parks_after_three_leases
+    http::tests::redelivery_working_seat_renews_expired_claim_without_spending_lease_budget
+
+test result: FAILED. 8 passed; 4 failed; 0 ignored; 0 measured; 352 filtered out; finished in 0.93s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

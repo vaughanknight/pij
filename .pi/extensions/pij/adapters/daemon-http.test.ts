@@ -255,6 +255,29 @@ describe("pij-rs HTTP client", () => {
 		]);
 	});
 
+	it("busy-seat heartbeat renews the claim through its authenticated dedicated endpoint", async () => {
+		const requests: Array<{ path: string; init?: RequestInit }> = [];
+		const client = new PijDaemonClient(
+			{ addr: "127.0.0.1:1", stateDir: "/unused" },
+			"secret",
+			deps(
+				vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+					requests.push({ path: new URL(String(url)).pathname, init });
+					return new Response(JSON.stringify({ ok: true, v: 2, command: "pij inbox", data: 17 }));
+				}) as typeof fetch,
+			),
+		);
+		await expect(client.heartbeatInbox("busy seat", 17)).resolves.toBe(17);
+		expect(requests).toHaveLength(1);
+		expect(requests[0]?.path).toBe("/v1/inbox/heartbeat");
+		expect(requests[0]?.init?.method).toBe("POST");
+		expect(requests[0]?.init?.headers).toMatchObject({
+			Authorization: "Bearer secret",
+			"Content-Type": "application/json",
+		});
+		expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({ seat: "busy seat", job_id: 17 });
+	});
+
 	it("forwards unknown frames and keeps reading pushed turns", async () => {
 		const fetchMock = vi.fn(async () => new Response(fixture("events-v1.ndjson")));
 		const client = new PijDaemonClient(

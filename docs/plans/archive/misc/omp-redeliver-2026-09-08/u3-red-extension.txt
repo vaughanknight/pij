@@ -1,0 +1,372 @@
+npm run test -- "$@"
+
+> pij@0.1.0 test
+> vitest run .pi/extensions/pij/adapters/rust-runtime.test.ts .pi/extensions/pij/adapters/daemon-http.test.ts -t busy-seat
+
+(node:7865) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/pij-worktrees/redeliver-busy-seat
+
+ ❯ .pi/extensions/pij/adapters/daemon-http.test.ts (20 tests | 1 failed | 19 skipped) 3ms
+     ↓ defaults to rs and accepts only the two explicit generation values
+     ↓ resolves strict extension address and state controls
+     ↓ uses the authenticated Rust daemon when rs is selected
+     ↓ preserves validated health auth refusal bytes when the daemon key is absent
+     ↓ selects legacy explicitly without probing Rust
+     ↓ fails loudly instead of falling back when selected Rust is unavailable in node
+     ↓ fails loudly instead of falling back when selected Rust is unavailable in bun
+     ↓ authenticates registration and sends the exact structural identity
+     ↓ encodes swallowed delivery failure without changing ordinary or control acknowledgements
+     × busy-seat heartbeat renews the claim through its authenticated dedicated endpoint 3ms
+     ↓ forwards unknown frames and keeps reading pushed turns
+     ↓ reconnects with the complete cursor map and refreshes the daemon key
+     ↓ falls back to a live-only attach when the daemon refuses replay cursors
+     ↓ refreshes and retries any request once after an authentication refusal
+     ↓ caps reconnect backoff after exponential growth
+     ↓ reports a stream protocol error while continuing the supervised reconnect
+     ↓ does not advance a cursor until asynchronous frame consumption succeeds
+     ↓ keeps the HTTP status backstop when a failed response has a success envelope
+     ↓ resets reconnect backoff after a stream consumes a frame
+     ↓ bounds poison-frame retries, notices once, and continues with the next frame
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts (77 tests | 10 failed | 66 skipped) 28ms
+     ↓ settles the original new claim after runtime teardown
+     ↓ settles the original reload claim after runtime teardown
+     ↓ executes a claimed compact command and acknowledges its outcome
+     ↓ executes a claimed new command and acknowledges its outcome
+     ↓ executes a claimed reload command and acknowledges its outcome
+     ↓ waits for a claimed command runtime outcome before acknowledging
+     ↓ refuses an unarmed new command without later execution
+     ↓ refuses an unarmed reload command without later execution
+     ↓ acknowledges command runtime errors as refused instead of retrying execution
+     ↓ native control sends carry command and pane caller proof with no scaffold body
+     ↓ does not overwrite a claude seat when omp boots in the same pane
+       ↓ binding=created, pre-existing row=false injects announceText 1 times
+       ↓ binding=rebound, pre-existing row=true injects announceText 1 times
+       ↓ binding=same, pre-existing row=true injects announceText 0 times
+       ↓ binding=same, pre-existing row=false injects announceText 0 times
+       ↓ reports only pane provenance (pane) while announcing rebound once and same never
+       ↓ reports only pane provenance (harness) while announcing rebound once and same never
+       ↓ reports only pane provenance (undefined) while announcing rebound once and same never
+       ↓ reports unbound when pane provenance has no process identity
+       ↓ announces the new session id once on new, not again on reload
+       ↓ announces the new session id once on fork, not again on reload
+       ↓ preserves old-daemon inference with no binding (pre-existing row=false)
+       ↓ preserves old-daemon inference with no binding (pre-existing row=true)
+     ↓ registers structural identity, forwards unknown events, injects a push, and correlates reply
+     ↓ binds startup to the daemon row for the spawned pane
+     ↓ suppresses injection when another worker already owns the queued row
+     ↓ leaves an in-flight claim unacked when a new session replaces its seat
+     ↓ delivers the authority-owned claim when the pushed event names a different message
+     ↓ does not acknowledge when the runtime injection fails
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: false)
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: true)
+     × busy-seat heartbeats preserve a steered claim for 200 seconds and acknowledge consumption once 14ms
+     × busy-seat heartbeat requests never overlap and a late completion cannot revive consumed mail 3ms
+     × busy-seat heartbeats stop after park without consuming the pending body 2ms
+     × busy-seat heartbeats stop after shutdown without consuming the pending body 1ms
+     ↓ resends silently swallowed custom mail through the prompt after continuous idle and acknowledges its id once
+     ↓ resets the resend idle window on every turn start without treating a turn as consumption
+     ✓ busy-seat idle swallowing parks only after three prompt resends each get an idle consumption window 4ms
+     × busy-seat reclaim only refreshes tracking before the idle window with busy=false 1ms
+     × busy-seat reclaim only refreshes tracking before the idle window with busy=true 1ms
+     × busy-seat previously unseen reclaimed mail waits for idle with busy=false 0ms
+     × busy-seat previously unseen reclaimed mail waits for idle with busy=true 0ms
+     ↓ clears sender-addressed parked ids once and never claims parked peek rows ahead of live mail
+     ↓ does not resurrect a parked message when an earlier claim response arrives late
+     ↓ visibly reports a parked outbound message once without clearing unrelated inbound mail
+     × busy-seat lease reclaims never spend the three idle resend attempts 1ms
+     × busy-seat polls an unconsumed claim for tracking recovery without resending 0ms
+     ↓ reconciles a parked acknowledgement whose response was lost using failed peek history
+     ↓ correlates an encoded prompt id but ignores unrelated and malformed user markers
+     ↓ rejects malformed attempt metadata without injecting or acknowledging a claim
+     ↓ extension stream delivers while a draft is actively typed (busy=false)
+     ↓ extension stream delivers while a draft is actively typed (busy=true)
+     ↓ delivers through the OMP adapter without clearing or submitting a human draft
+     ↓ delivers immediately after spawn input has left an empty editor
+     ↓ does not acknowledge queued delivery before its own message starts
+     ↓ never treats idle or an unrelated turn as message consumption
+     ↓ recovers interrupted mail through the same bounded prompt path and never repeats consumed mail
+     ↓ counts only the claimed unconsumed envelope while draining three messages in order
+     ↓ retries failed consumption acknowledgements without reinjection
+     ↓ does not requeue during a scheduled continuation or acknowledge after shutdown
+     ↓ reconciles a committed acknowledgement whose response was lost without endless retries
+     ↓ announces busy arrivals and clears pending on consumption while still busy
+     ↓ truncates a long announcement to 80 characters
+     ↓ does not deliver or announce an acknowledged replay twice
+     ↓ preserves claim order during sustained typing regardless of daemon grace
+     ↓ keeps commands and urgent delivery without a typing bypass
+     ↓ does not release or execute an active control peek during reload startup
+     ↓ claims startup controls without a pre-claim release
+     ↓ recovers an older deferred row before newer eligible rows without another send
+     ↓ resumes startup semantic Hold after ready without a second send
+     ↓ resumes an initially held startup backlog in A B C order across deferred rows
+     ↓ resumes a pushed semantic Hold backlog after ready and then stops polling
+     ↓ does not poll an empty inbox
+     ↓ cancels pending semantic recovery on shutdown
+     ↓ queues at most one pending-inbox retry and ignores its stale result
+     ↓ recovers an unconsumed message after the previous runtime claim expires
+     ↓ acknowledges ordinary claims without calling the release endpoint
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 11 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/adapters/daemon-http.test.ts > pij-rs HTTP client > busy-seat heartbeat renews the claim through its authenticated dedicated endpoint
+TypeError: client.heartbeatInbox is not a function
+ ❯ .pi/extensions/pij/adapters/daemon-http.test.ts:270:23
+    268|    ),
+    269|   );
+    270|   await expect(client.heartbeatInbox("busy seat", 17)).resolves.toBe(1…
+       |                       ^
+    271|   expect(requests).toHaveLength(1);
+    272|   expect(requests[0]?.path).toBe("/v1/inbox/heartbeat");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/11]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat heartbeats preserve a steered claim for 200 seconds and acknowledge consumption once
+AssertionError: expected { job_id: 1, message: { …(3) }, …(8) } to match object { claimed: true, acked: false, …(1) }
+(10 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "acked": false,
+-   "claimed": true,
+-   "lease_expirations": 0,
++   "acked": true,
++   "claimed": false,
++   "lease_expirations": 3,
+  }
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1365:26
+    1363|   await client.push(message("long-turn"));
+    1364|   await vi.advanceTimersByTimeAsync(200_000);
+    1365|   expect(client.jobs[0]).toMatchObject({ claimed: true, acked: false, …
+       |                          ^
+    1366|   expect(client.heartbeats).toHaveLength(10);
+    1367|   expect(client.jobs[0]?.claimed_at).toBe(Date.now());
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/11]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat heartbeat requests never overlap and a late completion cannot revive consumed mail
+AssertionError: expected "heartbeatInbox" to be called once, but got 0 times
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1401:20
+    1399|   expect(requests).not.toHaveBeenCalled();
+    1400|   await vi.advanceTimersByTimeAsync(61_000);
+    1401|   expect(requests).toHaveBeenCalledOnce();
+       |                    ^
+    1402|   await runtime.onMessageStart({
+    1403|    role: "custom",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/11]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat heartbeats stop after park without consuming the pending body
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat heartbeats stop after shutdown without consuming the pending body
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1421:30
+    1419|    await client.push(message("held-ending"));
+    1420|    await vi.advanceTimersByTimeAsync(20_000);
+    1421|    expect(client.heartbeats).toHaveLength(1);
+       |                              ^
+    1422|    if (ending === "park") await client.park(1, "undelivered:operator-r…
+    1423|    else runtime.shutdown("quit");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/11]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat reclaim only refreshes tracking before the idle window with busy=false
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      "[pij resend 1]
+    [pijMessageId:reclaimed]
+    [pij-rs from pij-sender]
+    reclaimed
+    [/pij]",
+    ]
+
+
+Number of calls: 1
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1518:35
+    1516|   await client.repeat("reclaimed");
+    1517|   expect(api.sendMessage).toHaveBeenCalledOnce();
+    1518|   expect(api.sendUserMessage).not.toHaveBeenCalled();
+       |                                   ^
+    1519|   expect(runtime.eventCount("delivery.resend")).toBe(0);
+    1520|   expect(job.claimed).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/11]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat reclaim only refreshes tracking before the idle window with busy=true
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      "[pij resend 1]
+    [pijMessageId:reclaimed]
+    [pij-rs from pij-sender]
+    reclaimed
+    [/pij]",
+      Object {
+        "deliverAs": "steer",
+      },
+    ]
+
+
+Number of calls: 1
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1518:35
+    1516|   await client.repeat("reclaimed");
+    1517|   expect(api.sendMessage).toHaveBeenCalledOnce();
+    1518|   expect(api.sendUserMessage).not.toHaveBeenCalled();
+       |                                   ^
+    1519|   expect(runtime.eventCount("delivery.resend")).toBe(0);
+    1520|   expect(job.claimed).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/11]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat previously unseen reclaimed mail waits for idle with busy=false
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      "[pij resend 1]
+    [pijMessageId:unseen-reclaim]
+    [pij-rs from pij-sender]
+    unseen-reclaim
+    [/pij]",
+    ]
+
+
+Number of calls: 1
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1547:36
+    1545|    await client.repeat("unseen-reclaim");
+    1546|    expect(api.sendMessage).not.toHaveBeenCalled();
+    1547|    expect(api.sendUserMessage).not.toHaveBeenCalled();
+       |                                    ^
+    1548|    if (busy) {
+    1549|     await vi.advanceTimersByTimeAsync(70_000);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/11]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat previously unseen reclaimed mail waits for idle with busy=true
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      "[pij resend 1]
+    [pijMessageId:unseen-reclaim]
+    [pij-rs from pij-sender]
+    unseen-reclaim
+    [/pij]",
+      Object {
+        "deliverAs": "steer",
+      },
+    ]
+
+
+Number of calls: 1
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1547:36
+    1545|    await client.repeat("unseen-reclaim");
+    1546|    expect(api.sendMessage).not.toHaveBeenCalled();
+    1547|    expect(api.sendUserMessage).not.toHaveBeenCalled();
+       |                                    ^
+    1548|    if (busy) {
+    1549|     await vi.advanceTimersByTimeAsync(70_000);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/11]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat lease reclaims never spend the three idle resend attempts
+AssertionError: expected "vi.fn()" to be called +0 times, but got 1 times
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1628:32
+    1626|    job.attempt = attempt;
+    1627|    await client.repeat("shared-bound");
+    1628|    expect(api.sendUserMessage).toHaveBeenCalledTimes(attempt - 1);
+       |                                ^
+    1629|    await vi.advanceTimersByTimeAsync(5_000);
+    1630|    expect(api.sendUserMessage).toHaveBeenCalledTimes(attempt);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/11]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat polls an unconsumed claim for tracking recovery without resending
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      "[pij resend 1]
+    [pijMessageId:poll-reclaim]
+    [pij-rs from pij-sender]
+    poll-reclaim
+    [/pij]",
+      Object {
+        "deliverAs": "steer",
+      },
+    ]
+
+
+Number of calls: 1
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1652:35
+    1650|   expect(job.claimed).toBe(true);
+    1651|   expect(api.sendMessage).toHaveBeenCalledOnce();
+    1652|   expect(api.sendUserMessage).not.toHaveBeenCalled();
+       |                                   ^
+    1653|  });
+    1654|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/11]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  11 failed | 1 passed | 85 skipped (97)
+   Start at  20:15:29
+   Duration  290ms (transform 185ms, setup 0ms, import 232ms, tests 31ms, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/redeliver-busy-seat/.pi/extensions/pij/adapters/daemon-http.test.ts,title=.pi/extensions/pij/adapters/daemon-http.test.ts > pij-rs HTTP client > busy-seat heartbeat renews the claim through its authenticated dedicated endpoint,line=270,column=23::TypeError: client.heartbeatInbox is not a function%0A ❯ .pi/extensions/pij/adapters/daemon-http.test.ts:270:23%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/redeliver-busy-seat/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat heartbeats preserve a steered claim for 200 seconds and acknowledge consumption once,line=1365,column=26::AssertionError: expected { job_id: 1, message: { …(3) }, …(8) } to match object { claimed: true, acked: false, …(1) }%0A(10 matching properties omitted from actual)%0A%0A- Expected%0A+ Received%0A%0A  {%0A-   "acked": false,%0A-   "claimed": true,%0A-   "lease_expirations": 0,%0A+   "acked": true,%0A+   "claimed": false,%0A+   "lease_expirations": 3,%0A  }%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1365:26%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/redeliver-busy-seat/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat heartbeat requests never overlap and a late completion cannot revive consumed mail,line=1401,column=20::AssertionError: expected "heartbeatInbox" to be called once, but got 0 times%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1401:20%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/redeliver-busy-seat/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat heartbeats stop after park without consuming the pending body,line=1421,column=30::AssertionError: expected [] to have a length of 1 but got +0%0A%0A- Expected%0A+ Received%0A%0A- 1%0A+ 0%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1421:30%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/redeliver-busy-seat/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat heartbeats stop after shutdown without consuming the pending body,line=1421,column=30::AssertionError: expected [] to have a length of 1 but got +0%0A%0A- Expected%0A+ Received%0A%0A- 1%0A+ 0%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1421:30%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/redeliver-busy-seat/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat reclaim only refreshes tracking before the idle window with busy=false,line=1518,column=35::AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times%0A%0AReceived:%0A%0A  1st vi.fn() call:%0A%0A    Array [%0A      "[pij resend 1]%0A    [pijMessageId:reclaimed]%0A    [pij-rs from pij-sender]%0A    reclaimed%0A    [/pij]",%0A    ]%0A%0A%0ANumber of calls: 1%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1518:35%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/redeliver-busy-seat/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat reclaim only refreshes tracking before the idle window with busy=true,line=1518,column=35::AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times%0A%0AReceived:%0A%0A  1st vi.fn() call:%0A%0A    Array [%0A      "[pij resend 1]%0A    [pijMessageId:reclaimed]%0A    [pij-rs from pij-sender]%0A    reclaimed%0A    [/pij]",%0A      Object {%0A        "deliverAs": "steer",%0A      },%0A    ]%0A%0A%0ANumber of calls: 1%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1518:35%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/redeliver-busy-seat/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat previously unseen reclaimed mail waits for idle with busy=false,line=1547,column=36::AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times%0A%0AReceived:%0A%0A  1st vi.fn() call:%0A%0A    Array [%0A      "[pij resend 1]%0A    [pijMessageId:unseen-reclaim]%0A    [pij-rs from pij-sender]%0A    unseen-reclaim%0A    [/pij]",%0A    ]%0A%0A%0ANumber of calls: 1%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1547:36%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/redeliver-busy-seat/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat previously unseen reclaimed mail waits for idle with busy=true,line=1547,column=36::AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times%0A%0AReceived:%0A%0A  1st vi.fn() call:%0A%0A    Array [%0A      "[pij resend 1]%0A    [pijMessageId:unseen-reclaim]%0A    [pij-rs from pij-sender]%0A    unseen-reclaim%0A    [/pij]",%0A      Object {%0A        "deliverAs": "steer",%0A      },%0A    ]%0A%0A%0ANumber of calls: 1%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1547:36%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/redeliver-busy-seat/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat lease reclaims never spend the three idle resend attempts,line=1628,column=32::AssertionError: expected "vi.fn()" to be called +0 times, but got 1 times%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1628:32%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/redeliver-busy-seat/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat polls an unconsumed claim for tracking recovery without resending,line=1652,column=35::AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times%0A%0AReceived:%0A%0A  1st vi.fn() call:%0A%0A    Array [%0A      "[pij resend 1]%0A    [pijMessageId:poll-reclaim]%0A    [pij-rs from pij-sender]%0A    poll-reclaim%0A    [/pij]",%0A      Object {%0A        "deliverAs": "steer",%0A      },%0A    ]%0A%0A%0ANumber of calls: 1%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1652:35%0A%0A
+error: Recipe `test` failed on line 92 with exit code 1

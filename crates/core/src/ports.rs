@@ -215,6 +215,16 @@ pub struct ParkingEvidence<'a> {
     pub at: u64,
 }
 
+/// Extension body lease policy and the recipient's observed expiry brake.
+#[derive(Clone, Copy)]
+pub struct ExtensionLease {
+    /// Positive lease duration in seconds.
+    pub seconds: u64,
+    /// Renew expired bodies for the worker's non-tombstoned working seat.
+    /// This can only suppress recovery; controls never receive this protection.
+    pub renew_working: bool,
+}
+
 /// Atomic extension lease recovery followed by the ordinary serial claim.
 #[derive(Default)]
 pub struct ExtensionClaim {
@@ -253,7 +263,7 @@ pub trait Queue: Send + Sync {
         &self,
         kinds: &[String],
         worker: &str,
-        lease_secs: u64,
+        lease: ExtensionLease,
         at: u64,
         spine: &dyn Spine,
         recovery_allowed: bool,
@@ -283,6 +293,16 @@ pub trait Queue: Send + Sync {
     /// This read does not claim, acknowledge, or extend the job's lease;
     /// acknowledgement must still validate the running claim.
     async fn claimed_delivery(&self, job: JobId) -> Result<Option<Job>>;
+
+    /// Refresh only the named recipient's running body claim at this attempt.
+    /// False means the claim changed, is not a body, or belongs to another seat.
+    /// No acknowledgement, delivered-id evidence, attempt, or expiry is recorded.
+    async fn heartbeat_delivery(
+        &self,
+        job: JobId,
+        recipient: &SeatId,
+        attempt: u32,
+    ) -> Result<bool>;
 
     /// Record how a claimed job ended, freeing its serial key.
     async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()>;

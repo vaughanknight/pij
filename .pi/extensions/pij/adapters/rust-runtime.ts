@@ -57,12 +57,15 @@ interface PendingConsumption {
 	readonly lifecycle: number;
 	consumed: boolean;
 	acknowledging: boolean;
+	heartbeating: boolean;
+	lastHeartbeatAt: number;
 	resends: number;
 	injectedAt: number;
 	lastResentAt?: number;
 }
 
 const MAIL_STATUS_TICK_MS = 1_000;
+const CLAIM_HEARTBEAT_MS = 20_000;
 const DEFAULT_REDELIVER_IDLE_MS = 10_000;
 const MAX_RESENDS = 3;
 const PARKED_OUTCOMES = new Set([
@@ -106,6 +109,8 @@ export class RustRuntimeSession {
 	private readonly lastInbound = new Map<string, string>();
 	/** Retained until native consumption AND a successful daemon acknowledgement. */
 	private readonly pendingConsumption = new Map<string, PendingConsumption>();
+	/** Claims are serialized, so only the latest ACK can overtake a claim response. */
+	private lastAcknowledgedJobId: number | undefined;
 	private idleSince: number | undefined;
 	private readonly parkedNotifications = new Set<string>();
 	private readonly redeliverIdleMs: number;
@@ -187,6 +192,7 @@ export class RustRuntimeSession {
 		const acceptedId = accepted.id;
 		// A replacement runtime has no claim on its predecessor's volatile queue.
 		this.pendingConsumption.clear();
+		this.lastAcknowledgedJobId = undefined;
 		this.idleSince = this.pi.isIdle() ? this.clock() : undefined;
 		this.parkedNotifications.clear();
 		this.inboxPending = false;
@@ -272,6 +278,7 @@ export class RustRuntimeSession {
 			this.recoverUnconsumed();
 			for (const pending of this.pendingConsumption.values()) {
 				if (pending.consumed) void this.ackConsumed(pending);
+				else void this.heartbeatPending(pending);
 			}
 			// Lease expiry is claim-driven; an unconsumed head needs polling even
 			// without another message.pushed event.
@@ -388,6 +395,7 @@ export class RustRuntimeSession {
 		this.idleSince = undefined;
 		this.parkedNotifications.clear();
 		this.pendingConsumption.clear();
+		this.lastAcknowledgedJobId = undefined;
 		this.pi.setStatus(undefined);
 		this.stopEvents?.();
 		this.stopEvents = undefined;
@@ -520,8 +528,12 @@ export class RustRuntimeSession {
 		lifecycle: number,
 	): Promise<void> {
 		if (this.self !== seat || this.lifecycle !== lifecycle) return;
-		// Parking can overtake an in-flight claim response; terminal mail stays terminal.
-		if (this.parkedNotifications.has(claim.message.messageId)) return;
+		// An ACK or parking can overtake an in-flight claim response.
+		if (
+			this.lastAcknowledgedJobId === claim.jobId ||
+			this.parkedNotifications.has(claim.message.messageId)
+		)
+			return;
 		// Announce before a busy runtime queues the message at its next boundary.
 		if (!this.pendingConsumption.has(claim.message.messageId)) this.announceArrival(claim);
 		await this.injectAndAck(claim, seat, client, lifecycle);
@@ -549,10 +561,10 @@ export class RustRuntimeSession {
 		const id = claim.message.messageId;
 		const existing = this.pendingConsumption.get(id);
 		if (existing) {
-			const reclaimed = claim.attempt > existing.claim.attempt;
+			if (claim.attempt < existing.claim.attempt) return;
+			if (claim.attempt > existing.claim.attempt) existing.lastHeartbeatAt = this.clock();
 			existing.claim = claim;
 			if (existing.consumed) await this.ackConsumed(existing);
-			else if (reclaimed) this.resendPending(existing, "lease-reclaim");
 			return;
 		}
 		const pending: PendingConsumption = {
@@ -562,15 +574,16 @@ export class RustRuntimeSession {
 			lifecycle,
 			consumed: false,
 			acknowledging: false,
+			heartbeating: false,
+			lastHeartbeatAt: this.clock(),
 			resends: 0,
 			injectedAt: this.clock(),
 		};
 		this.pendingConsumption.set(id, pending);
-		if (claim.attempt > 0) {
-			this.resendPending(pending, "lease-reclaim");
-			return;
-		}
+		// A reclaimed row may already be queued in the harness. Only idle
+		// non-consumption authorizes another injection, even after a restart.
 		this.showMailStatus();
+		if (claim.attempt > 0) return;
 		try {
 			this.session.onInbound(claim.message, id, true);
 		} catch (error) {
@@ -642,6 +655,40 @@ export class RustRuntimeSession {
 		this.pi.setStatus(count > 0 ? `📨 ${count} pending` : undefined);
 	}
 
+	private async heartbeatPending(pending: PendingConsumption): Promise<void> {
+		const now = this.clock();
+		if (
+			pending.consumed ||
+			pending.acknowledging ||
+			pending.heartbeating ||
+			this.self !== pending.seat ||
+			this.lifecycle !== pending.lifecycle ||
+			this.pendingConsumption.get(pending.claim.message.messageId) !== pending ||
+			now - pending.lastHeartbeatAt < CLAIM_HEARTBEAT_MS
+		)
+			return;
+		pending.heartbeating = true;
+		pending.lastHeartbeatAt = now;
+		try {
+			await pending.client.heartbeatInbox(pending.seat, pending.claim.jobId);
+		} catch (error) {
+			if (
+				!pending.consumed &&
+				this.self === pending.seat &&
+				this.lifecycle === pending.lifecycle &&
+				this.pendingConsumption.get(pending.claim.message.messageId) === pending
+			) {
+				this.session.capture("daemon_event_heartbeat_error", {
+					jobId: pending.claim.jobId,
+					messageId: pending.claim.message.messageId,
+					message: error instanceof Error ? error.message : String(error),
+				});
+			}
+		} finally {
+			pending.heartbeating = false;
+		}
+	}
+
 	private async ackConsumed(
 		pending: PendingConsumption,
 		deliveryOutcome?: "undelivered:harness-swallowed",
@@ -672,6 +719,7 @@ export class RustRuntimeSession {
 		if (this.self !== pending.seat || this.lifecycle !== pending.lifecycle) return;
 		this.inboxPending = true; // An expired claim may need reclaiming before ACK can succeed.
 		if (!acked) return;
+		this.lastAcknowledgedJobId = pending.claim.jobId;
 		this.pendingConsumption.delete(pending.claim.message.messageId);
 		if (deliveryOutcome !== undefined) {
 			this.noteParked(pending.claim.message.messageId, deliveryOutcome);
@@ -691,20 +739,18 @@ export class RustRuntimeSession {
 				if (pending.resends >= MAX_RESENDS) {
 					void this.ackConsumed(pending, "undelivered:harness-swallowed");
 				} else {
-					this.resendPending(pending, "idle-unconsumed");
+					this.resendPending(pending);
 				}
 			}
 		}
 		this.showMailStatus();
 	}
 
-	private resendPending(
-		pending: PendingConsumption,
-		reason: "idle-unconsumed" | "lease-reclaim",
-	): void {
+	private resendPending(pending: PendingConsumption): void {
 		if (
 			pending.consumed ||
 			pending.acknowledging ||
+			!this.pi.isIdle() ||
 			pending.resends >= MAX_RESENDS ||
 			this.self !== pending.seat ||
 			this.lifecycle !== pending.lifecycle
@@ -714,15 +760,14 @@ export class RustRuntimeSession {
 		pending.injectedAt = this.clock();
 		pending.lastResentAt = pending.injectedAt;
 		const message = pending.claim.message;
-		this.session.capture("delivery.resend", { messageId: message.messageId, attempt, reason });
+		this.session.capture("delivery.resend", {
+			messageId: message.messageId,
+			attempt,
+			reason: "idle-unconsumed",
+		});
 		this.showMailStatus();
 		try {
-			this.pi.inject(
-				frame(message.from, message.body),
-				this.pi.isIdle() ? "immediate" : "steer",
-				message.messageId,
-				attempt,
-			);
+			this.pi.inject(frame(message.from, message.body), "immediate", message.messageId, attempt);
 		} catch (error) {
 			this.session.capture("daemon_event_error", {
 				message: error instanceof Error ? error.message : String(error),

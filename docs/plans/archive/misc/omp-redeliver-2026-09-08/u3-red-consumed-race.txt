@@ -1,0 +1,149 @@
+npm run test -- "$@"
+
+> pij@0.1.0 test
+> vitest run .pi/extensions/pij/adapters/rust-runtime.test.ts -t overtaken by consumption
+
+(node:44447) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/pij-worktrees/redeliver-busy-seat
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts (78 tests | 1 failed | 77 skipped) 10ms
+     ↓ settles the original new claim after runtime teardown
+     ↓ settles the original reload claim after runtime teardown
+     ↓ executes a claimed compact command and acknowledges its outcome
+     ↓ executes a claimed new command and acknowledges its outcome
+     ↓ executes a claimed reload command and acknowledges its outcome
+     ↓ waits for a claimed command runtime outcome before acknowledging
+     ↓ refuses an unarmed new command without later execution
+     ↓ refuses an unarmed reload command without later execution
+     ↓ acknowledges command runtime errors as refused instead of retrying execution
+     ↓ native control sends carry command and pane caller proof with no scaffold body
+     ↓ does not overwrite a claude seat when omp boots in the same pane
+       ↓ binding=created, pre-existing row=false injects announceText 1 times
+       ↓ binding=rebound, pre-existing row=true injects announceText 1 times
+       ↓ binding=same, pre-existing row=true injects announceText 0 times
+       ↓ binding=same, pre-existing row=false injects announceText 0 times
+       ↓ reports only pane provenance (pane) while announcing rebound once and same never
+       ↓ reports only pane provenance (harness) while announcing rebound once and same never
+       ↓ reports only pane provenance (undefined) while announcing rebound once and same never
+       ↓ reports unbound when pane provenance has no process identity
+       ↓ announces the new session id once on new, not again on reload
+       ↓ announces the new session id once on fork, not again on reload
+       ↓ preserves old-daemon inference with no binding (pre-existing row=false)
+       ↓ preserves old-daemon inference with no binding (pre-existing row=true)
+     ↓ registers structural identity, forwards unknown events, injects a push, and correlates reply
+     ↓ binds startup to the daemon row for the spawned pane
+     ↓ suppresses injection when another worker already owns the queued row
+     ↓ leaves an in-flight claim unacked when a new session replaces its seat
+     ↓ delivers the authority-owned claim when the pushed event names a different message
+     ↓ does not acknowledge when the runtime injection fails
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: false)
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: true)
+     ↓ busy-seat heartbeats preserve a steered claim for 200 seconds and acknowledge consumption once
+     ↓ busy-seat heartbeat requests never overlap and a late completion cannot revive consumed mail
+     ↓ busy-seat heartbeats stop after park without consuming the pending body
+     ↓ busy-seat heartbeats stop after shutdown without consuming the pending body
+     ↓ resends silently swallowed custom mail through the prompt after continuous idle and acknowledges its id once
+     ↓ resets the resend idle window on every turn start without treating a turn as consumption
+     ↓ busy-seat idle swallowing parks only after three prompt resends each get an idle consumption window
+     ↓ busy-seat reclaim only refreshes tracking before the idle window with busy=false
+     ↓ busy-seat reclaim only refreshes tracking before the idle window with busy=true
+     ↓ busy-seat previously unseen reclaimed mail waits for idle with busy=false
+     ↓ busy-seat previously unseen reclaimed mail waits for idle with busy=true
+     ↓ clears sender-addressed parked ids once and never claims parked peek rows ahead of live mail
+     ↓ does not resurrect a parked message when an earlier claim response arrives late
+     × busy-seat ignores a reclaim response overtaken by consumption 9ms
+     ↓ visibly reports a parked outbound message once without clearing unrelated inbound mail
+     ↓ busy-seat lease reclaims never spend the three idle resend attempts
+     ↓ busy-seat polls an unconsumed claim for tracking recovery without resending
+     ↓ reconciles a parked acknowledgement whose response was lost using failed peek history
+     ↓ correlates an encoded prompt id but ignores unrelated and malformed user markers
+     ↓ rejects malformed attempt metadata without injecting or acknowledging a claim
+     ↓ extension stream delivers while a draft is actively typed (busy=false)
+     ↓ extension stream delivers while a draft is actively typed (busy=true)
+     ↓ delivers through the OMP adapter without clearing or submitting a human draft
+     ↓ delivers immediately after spawn input has left an empty editor
+     ↓ does not acknowledge queued delivery before its own message starts
+     ↓ never treats idle or an unrelated turn as message consumption
+     ↓ recovers interrupted mail through the same bounded prompt path and never repeats consumed mail
+     ↓ counts only the claimed unconsumed envelope while draining three messages in order
+     ↓ retries failed consumption acknowledgements without reinjection
+     ↓ does not requeue during a scheduled continuation or acknowledge after shutdown
+     ↓ reconciles a committed acknowledgement whose response was lost without endless retries
+     ↓ announces busy arrivals and clears pending on consumption while still busy
+     ↓ truncates a long announcement to 80 characters
+     ↓ does not deliver or announce an acknowledged replay twice
+     ↓ preserves claim order during sustained typing regardless of daemon grace
+     ↓ keeps commands and urgent delivery without a typing bypass
+     ↓ does not release or execute an active control peek during reload startup
+     ↓ claims startup controls without a pre-claim release
+     ↓ recovers an older deferred row before newer eligible rows without another send
+     ↓ resumes startup semantic Hold after ready without a second send
+     ↓ resumes an initially held startup backlog in A B C order across deferred rows
+     ↓ resumes a pushed semantic Hold backlog after ready and then stops polling
+     ↓ does not poll an empty inbox
+     ↓ cancels pending semantic recovery on shutdown
+     ↓ queues at most one pending-inbox retry and ignores its stale result
+     ↓ busy-seat recovers an expired previous runtime claim only after the idle window
+     ↓ acknowledges ordinary claims without calling the release endpoint
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat ignores a reclaim response overtaken by consumption
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 3 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      "[pij resend 1]
+    [pijMessageId:consumed-before-response]
+    [pij-rs from pij-sender]
+    consumed-before-response
+    [/pij]",
+    ]
+
+  2nd vi.fn() call:
+
+    Array [
+      "[pij resend 2]
+    [pijMessageId:consumed-before-response]
+    [pij-rs from pij-sender]
+    consumed-before-response
+    [/pij]",
+    ]
+
+  3rd vi.fn() call:
+
+    Array [
+      "[pij resend 3]
+    [pijMessageId:consumed-before-response]
+    [pij-rs from pij-sender]
+    consumed-before-response
+    [/pij]",
+    ]
+
+
+Number of calls: 3
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1626:35
+    1624|   await vi.advanceTimersByTimeAsync(30_000);
+    1625|   expect(api.sendMessage).toHaveBeenCalledOnce();
+    1626|   expect(api.sendUserMessage).not.toHaveBeenCalled();
+       |                                   ^
+    1627|   expect(pi.statuses.at(-1)).toBeUndefined();
+    1628|   expect(client.acks).toEqual([1]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 77 skipped (78)
+   Start at  20:17:41
+   Duration  254ms (transform 134ms, setup 0ms, import 165ms, tests 10ms, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/pij-worktrees/redeliver-busy-seat/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > busy-seat ignores a reclaim response overtaken by consumption,line=1626,column=35::AssertionError: expected "vi.fn()" to not be called at all, but actually been called 3 times%0A%0AReceived:%0A%0A  1st vi.fn() call:%0A%0A    Array [%0A      "[pij resend 1]%0A    [pijMessageId:consumed-before-response]%0A    [pij-rs from pij-sender]%0A    consumed-before-response%0A    [/pij]",%0A    ]%0A%0A  2nd vi.fn() call:%0A%0A    Array [%0A      "[pij resend 2]%0A    [pijMessageId:consumed-before-response]%0A    [pij-rs from pij-sender]%0A    consumed-before-response%0A    [/pij]",%0A    ]%0A%0A  3rd vi.fn() call:%0A%0A    Array [%0A      "[pij resend 3]%0A    [pijMessageId:consumed-before-response]%0A    [pij-rs from pij-sender]%0A    consumed-before-response%0A    [/pij]",%0A    ]%0A%0A%0ANumber of calls: 3%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1626:35%0A%0A
+error: Recipe `test` failed on line 92 with exit code 1

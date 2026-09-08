@@ -21,8 +21,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use pij_core::error::{PijError, Result};
 use pij_core::model::{DeliveryFailure, DeliveryOrigin, Job, JobId, Outcome, SeatId};
 use pij_core::ports::{
-    DeferNoopReason, DeferOutcome, DeliveryAck, DeliveryEnqueue, ExtensionClaim, ParkedDelivery,
-    Queue, ReleaseOutcome,
+    DeferNoopReason, DeferOutcome, DeliveryAck, DeliveryEnqueue, ExtensionClaim, ExtensionLease,
+    ParkedDelivery, Queue, ReleaseOutcome,
 };
 
 use crate::migrate::require_current_schema;
@@ -107,7 +107,7 @@ impl SqliteQueue {
         &self,
         kinds: &[String],
         worker: &str,
-        extension_lease_secs: Option<u64>,
+        extension_lease: Option<ExtensionLease>,
         at: u64,
         recovery_allowed: bool,
     ) -> Result<ExtensionClaim> {
@@ -121,8 +121,8 @@ impl SqliteQueue {
             adapter: "store/queue".to_string(),
             message: format!("could not encode the claim filter: {error}"),
         })?;
-        let lease_secs = match extension_lease_secs {
-            Some(seconds) => i64::try_from(seconds)
+        let lease_secs = match extension_lease {
+            Some(ExtensionLease { seconds, .. }) => i64::try_from(seconds)
                 .ok()
                 .filter(|seconds| *seconds > 0)
                 .ok_or_else(|| PijError::Adapter {
@@ -134,7 +134,24 @@ impl SqliteQueue {
         let mut result = ExtensionClaim::default();
 
         let mut tx = self.begin_write().await?;
-        if extension_lease_secs.is_some() {
+        if let Some(lease) = extension_lease {
+            if lease.renew_working {
+                // A live busy recipient is a one-directional safety interlock:
+                // age alone cannot revoke its body claim or spend its budget.
+                sqlx::query(
+                    "UPDATE jobs SET claimed_at = unixepoch() \
+                     WHERE state = 'running' AND claimed_at <= unixepoch() - ?1 \
+                       AND serial_key = ?3 AND kind = 'delivery:' || serial_key \
+                       AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.command') END IS NULL \
+                       AND kind IN (SELECT value FROM json_each(?2))",
+                )
+                .bind(lease_secs)
+                .bind(&kinds_json)
+                .bind(worker)
+                .execute(&mut *tx)
+                .await
+                .map_err(adapter_error)?;
+            }
             let parked = sqlx::query(
                 "UPDATE jobs SET state = 'failed', outcome = 'undelivered:lease-exhausted', \
                     lease_expirations = lease_expirations + 1, acked_at = unixepoch() \
@@ -189,7 +206,7 @@ impl SqliteQueue {
         )
         .bind(lease_secs)
         .bind(&kinds_json)
-        .bind(i64::from(extension_lease_secs.is_some()))
+        .bind(i64::from(extension_lease.is_some()))
         .execute(&mut *tx)
         .await
         .map_err(adapter_error)?;
@@ -376,12 +393,12 @@ impl Queue for SqliteQueue {
         &self,
         kinds: &[String],
         worker: &str,
-        lease_secs: u64,
+        lease: ExtensionLease,
         at: u64,
         _spine: &dyn pij_core::ports::Spine,
         recovery_allowed: bool,
     ) -> Result<ExtensionClaim> {
-        self.claim_inner(kinds, worker, Some(lease_secs), at, recovery_allowed)
+        self.claim_inner(kinds, worker, Some(lease), at, recovery_allowed)
             .await
     }
 
@@ -516,6 +533,33 @@ impl Queue for SqliteQueue {
                 .map_err(adapter_error)?
                 .max(0) as u32,
         }))
+    }
+
+    async fn heartbeat_delivery(
+        &self,
+        job: JobId,
+        recipient: &SeatId,
+        attempt: u32,
+    ) -> Result<bool> {
+        require_current_schema(&self.pool).await?;
+        let Ok(id) = i64::try_from(job.0) else {
+            return Ok(false);
+        };
+        let changed = sqlx::query(
+            "UPDATE jobs SET claimed_at = unixepoch() \
+             WHERE id = ?1 AND state = 'running' AND serial_key = ?2 AND attempt = ?3 \
+               AND kind = 'delivery:' || serial_key \
+               AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.to') END = ?2 \
+               AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.command') END IS NULL",
+        )
+        .bind(id)
+        .bind(recipient.as_str())
+        .bind(i64::from(attempt))
+        .execute(&self.pool)
+        .await
+        .map_err(adapter_error)?
+        .rows_affected();
+        Ok(changed != 0)
     }
 
     /// R4-AMEND-1: pending again, counted, and not before `delay` has passed —

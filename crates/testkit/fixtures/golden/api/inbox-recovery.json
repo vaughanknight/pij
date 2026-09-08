@@ -13,6 +13,12 @@
     "outcome": "undelivered:lease-exhausted",
     "reason": "three extension claim leases expired"
   },
+  "heartbeat": {
+    "method": "POST",
+    "path": "/v1/inbox/heartbeat",
+    "request": { "seat": "pij-reader", "job_id": 1 },
+    "response": { "ok": true, "command": "pij inbox", "v": 2, "data": 1 }
+  },
   "operator_release": {
     "method": "POST",
     "path": "/v1/inbox/release",

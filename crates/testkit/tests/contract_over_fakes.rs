@@ -51,6 +51,86 @@ fn fake_queue_honours_the_queue_contract() {
 }
 
 #[test]
+fn fake_extension_heartbeat_and_working_brake_preserve_the_silent_lease_budget() {
+    block_on(async {
+        let queue = FakeQueue::new(1_024).unwrap();
+        let spine = FakeSpine::new();
+        let recipient = SeatId::from("pij-heartbeat");
+        let body = Job {
+            kind: pij_core::delivery::delivery_kind(&recipient),
+            serial_key: recipient.to_string(),
+            payload: serde_json::json!({
+                "from":"pij-sender","to":recipient,"body":"held body","msg_id":"held-body"
+            })
+            .to_string(),
+            dedupe_key: "held-body".into(),
+            attempt: 0,
+        };
+        let kinds = [body.kind.clone()];
+        let id = queue.enqueue(body).await.unwrap();
+        let mut lease = pij_core::ports::ExtensionLease {
+            seconds: 60,
+            renew_working: false,
+        };
+        queue
+            .claim_extension(&kinds, recipient.as_str(), lease, 0, &spine, true)
+            .await
+            .unwrap();
+        queue.advance(Duration::from_secs(40));
+        assert!(queue.heartbeat_delivery(id, &recipient, 0).await.unwrap());
+        queue.advance(Duration::from_secs(40));
+        let held = queue
+            .claim_extension(&kinds, recipient.as_str(), lease, 0, &spine, true)
+            .await
+            .unwrap();
+        assert!(
+            held.claimed.is_none(),
+            "heartbeat moved the expiration deadline"
+        );
+        lease.renew_working = true;
+        for _ in 0..4 {
+            queue.advance(Duration::from_secs(60));
+            let held = queue
+                .claim_extension(&kinds, recipient.as_str(), lease, 0, &spine, true)
+                .await
+                .unwrap();
+            assert!(held.claimed.is_none());
+            assert!(held.parked.is_empty());
+            assert!(held.events.is_empty());
+        }
+        assert_eq!(queue.attempts(id), 0);
+        assert!(queue.acked().is_empty());
+        lease.renew_working = false;
+        for expiration in 1..=3 {
+            queue.advance(Duration::from_secs(60));
+            let page = queue
+                .claim_extension(&kinds, recipient.as_str(), lease, 0, &spine, true)
+                .await
+                .unwrap();
+            if expiration < 3 {
+                let (claimed_id, claimed) = page.claimed.unwrap();
+                assert_eq!((claimed_id, claimed.attempt), (id, expiration));
+                assert!(page.parked.is_empty());
+            } else {
+                assert!(page.claimed.is_none());
+                assert_eq!(page.parked[0].job_id, id);
+                assert_eq!(
+                    page.parked[0].outcome,
+                    pij_core::model::DeliveryFailure::LeaseExhausted
+                );
+                assert_eq!(
+                    page.events
+                        .iter()
+                        .filter(|event| event.kind == "delivery.parked")
+                        .count(),
+                    1
+                );
+            }
+        }
+    });
+}
+
+#[test]
 fn fake_queue_defer_running_preserves_identity_body_attempt_and_delay() {
     block_on(async {
         let queue = FakeQueue::new(1_024).expect("valid queue policy");

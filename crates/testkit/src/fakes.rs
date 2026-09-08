@@ -508,9 +508,11 @@ impl Queue for FakeQueue {
         if let Some((id, _)) = state
             .live
             .iter()
+            .map(|(id, job)| (*id, job))
+            .chain(state.claimed.iter().map(|(id, (job, _))| (JobId(*id), job)))
             .find(|(_, live)| live.dedupe_key == job.dedupe_key && live.kind == job.kind)
         {
-            return Ok(*id);
+            return Ok(id);
         }
         state.next_id += 1;
         let id = JobId(state.next_id);
@@ -529,8 +531,10 @@ impl Queue for FakeQueue {
         if let Some(id) = state
             .live
             .iter()
+            .map(|(id, job)| (*id, job))
+            .chain(state.claimed.iter().map(|(id, (job, _))| (JobId(*id), job)))
             .find(|(_, live)| live.dedupe_key == job.dedupe_key && live.kind == job.kind)
-            .map(|(id, _)| *id)
+            .map(|(id, _)| id)
         {
             let not_before = state.not_before.get(&id.0).copied().unwrap_or(state.now);
             return Ok(DeliveryEnqueue::Queued {
@@ -584,7 +588,7 @@ impl Queue for FakeQueue {
         &self,
         kinds: &[String],
         worker: &str,
-        lease_secs: u64,
+        lease: pij_core::ports::ExtensionLease,
         at: u64,
         spine: &dyn Spine,
         recovery_allowed: bool,
@@ -603,7 +607,7 @@ impl Queue for FakeQueue {
                                 body.get("command").is_none_or(serde_json::Value::is_null)
                             })
                         && state.claimed_at.get(id).is_some_and(|started| {
-                            state.now.saturating_sub(*started) >= Duration::from_secs(lease_secs)
+                            state.now.saturating_sub(*started) >= Duration::from_secs(lease.seconds)
                         })
                 })
                 .map(|(id, (job, _))| {
@@ -620,7 +624,7 @@ impl Queue for FakeQueue {
         // Like PublishedFakeRegistry: append first, then infallible mutation.
         // The composed publisher retains its ordering/native guard throughout.
         for (id, job, count) in &expired {
-            if *count >= 3 {
+            if *count >= 3 && !(lease.renew_working && job.serial_key == worker) {
                 pij_core::delivery::require_recovery_authority(recovery_allowed)?;
                 let evidence = pij_core::ports::ParkingEvidence {
                     outcome: pij_core::model::DeliveryFailure::LeaseExhausted,
@@ -636,6 +640,11 @@ impl Queue for FakeQueue {
         {
             let mut state = self.state.lock().expect("fake queue mutex");
             for (id, mut job, count) in expired {
+                if lease.renew_working && job.serial_key == worker {
+                    let now = state.now;
+                    state.claimed_at.insert(id, now);
+                    continue;
+                }
                 state.claimed.remove(&id);
                 state.lease_expirations.insert(id, count);
                 if count >= 3 {
@@ -752,6 +761,32 @@ impl Queue for FakeQueue {
                 claimed.kind.strip_prefix("delivery:") == Some(claimed.serial_key.as_str())
             })
             .map(|(claimed, _)| claimed.clone()))
+    }
+
+    async fn heartbeat_delivery(
+        &self,
+        job: JobId,
+        recipient: &SeatId,
+        attempt: u32,
+    ) -> Result<bool> {
+        let mut state = self.state.lock().expect("fake queue mutex");
+        let valid = state.claimed.get(&job.0).is_some_and(|(claimed, _)| {
+            claimed.kind.strip_prefix("delivery:") == Some(recipient.as_str())
+                && claimed.serial_key == recipient.as_str()
+                && claimed.attempt == attempt
+                && serde_json::from_str::<serde_json::Value>(&claimed.payload)
+                    .ok()
+                    .is_some_and(|body| {
+                        body.get("to").and_then(serde_json::Value::as_str)
+                            == Some(recipient.as_str())
+                            && body.get("command").is_none_or(serde_json::Value::is_null)
+                    })
+        });
+        if valid {
+            let now = state.now;
+            state.claimed_at.insert(job.0, now);
+        }
+        Ok(valid)
     }
 
     async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()> {

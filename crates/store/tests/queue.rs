@@ -804,25 +804,79 @@ fn extension_body_job(kind: &str, serial: &str, dedupe: &str) -> Job {
 }
 
 #[tokio::test]
+async fn extension_working_brake_never_renews_or_replays_an_expired_control() {
+    let pool = pij_store::open("").await.unwrap();
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).unwrap();
+    let spine = pij_store::SqliteSpine::new(pool.clone());
+    let kinds = [String::from("delivery:pij-reader")];
+    let mut control = extension_body_job(&kinds[0], "pij-reader", "control");
+    let mut message: pij_core::model::Msg = serde_json::from_str(&control.payload).unwrap();
+    message.command = Some("compact".into());
+    control.payload = serde_json::to_string(&message).unwrap();
+    let id = queue.enqueue(control).await.unwrap();
+    let lease = pij_core::ports::ExtensionLease {
+        seconds: 60,
+        renew_working: true,
+    };
+    queue
+        .claim_extension(&kinds, "pij-reader", lease, 0, &spine, true)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE jobs SET claimed_at=unixepoch()-301 WHERE id=?")
+        .bind(id.0 as i64)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let expired = queue
+        .claim_extension(&kinds, "pij-reader", lease, 0, &spine, true)
+        .await
+        .unwrap();
+    assert!(expired.claimed.is_none());
+    assert!(
+        expired.parked.is_empty(),
+        "control failure is not body recovery"
+    );
+    let state: (String, String, i64) =
+        sqlx::query_as("SELECT state, outcome, lease_expirations FROM jobs WHERE id=?")
+            .bind(id.0 as i64)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(state.0, "failed");
+    assert!(state.1.contains("outcome unknown"));
+    assert_eq!(state.2, 0);
+    assert!(
+        !queue
+            .heartbeat_delivery(id, &"pij-reader".into(), 0)
+            .await
+            .unwrap()
+    );
+}
+
+#[tokio::test]
 async fn extension_lease_budget_counts_expirations_not_ordinary_retries() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.unwrap();
     let queue = SqliteQueue::new(pool.clone(), 300, 1_024).unwrap();
     let spine = pij_store::SqliteSpine::new(pool.clone());
     let kinds = [String::from("delivery:pij-reader")];
+    let lease = pij_core::ports::ExtensionLease {
+        seconds: 60,
+        renew_working: false,
+    };
     let id = queue
         .enqueue(extension_body_job(&kinds[0], "pij-reader", "body"))
         .await
         .unwrap();
     for _ in 0..5 {
         queue
-            .claim_extension(&kinds, "reader", 60, 0, &spine, true)
+            .claim_extension(&kinds, "reader", lease, 0, &spine, true)
             .await
             .unwrap();
         queue.retry(id, Duration::ZERO).await.unwrap();
     }
     queue
-        .claim_extension(&kinds, "reader", 60, 0, &spine, true)
+        .claim_extension(&kinds, "reader", lease, 0, &spine, true)
         .await
         .unwrap();
     for expiration in 1..=3 {
@@ -832,7 +886,7 @@ async fn extension_lease_budget_counts_expirations_not_ordinary_retries() {
             .await
             .unwrap();
         let page = queue
-            .claim_extension(&kinds, "reader", 60, 0, &spine, true)
+            .claim_extension(&kinds, "reader", lease, 0, &spine, true)
             .await
             .unwrap();
         if expiration < 3 {
@@ -849,7 +903,7 @@ async fn extension_lease_budget_counts_expirations_not_ordinary_retries() {
     }
     assert!(
         queue
-            .claim_extension(&kinds, "reader", 60, 0, &spine, true)
+            .claim_extension(&kinds, "reader", lease, 0, &spine, true)
             .await
             .unwrap()
             .parked
@@ -865,11 +919,15 @@ async fn extension_short_lease_excludes_controls_and_stale_operator_attempts() {
     let queue = SqliteQueue::new(pool.clone(), 300, 1_024).unwrap();
     let spine = pij_store::SqliteSpine::new(pool.clone());
     let kinds = [String::from("delivery:pij-reader")];
+    let lease = pij_core::ports::ExtensionLease {
+        seconds: 60,
+        renew_working: false,
+    };
     let mut command = job(&kinds[0], "pij-reader", "control");
     command.payload = r#"{"command":"compact"}"#.into();
     let id = queue.enqueue(command).await.unwrap();
     queue
-        .claim_extension(&kinds, "reader", 60, 0, &spine, true)
+        .claim_extension(&kinds, "reader", lease, 0, &spine, true)
         .await
         .unwrap();
     sqlx::query("UPDATE jobs SET claimed_at = unixepoch() - 61 WHERE id = ?")
@@ -878,7 +936,7 @@ async fn extension_short_lease_excludes_controls_and_stale_operator_attempts() {
         .await
         .unwrap();
     let page = queue
-        .claim_extension(&kinds, "reader", 60, 0, &spine, true)
+        .claim_extension(&kinds, "reader", lease, 0, &spine, true)
         .await
         .unwrap();
     assert!(page.claimed.is_none());
@@ -893,12 +951,12 @@ async fn extension_short_lease_excludes_controls_and_stale_operator_attempts() {
         .await
         .unwrap();
     queue
-        .claim_extension(&kinds, "reader", 60, 0, &spine, true)
+        .claim_extension(&kinds, "reader", lease, 0, &spine, true)
         .await
         .unwrap();
     queue.retry(body, Duration::ZERO).await.unwrap();
     queue
-        .claim_extension(&kinds, "reader", 60, 0, &spine, true)
+        .claim_extension(&kinds, "reader", lease, 0, &spine, true)
         .await
         .unwrap();
     let evidence = pij_core::ports::ParkingEvidence {

@@ -425,7 +425,7 @@ answer = "The original 66 shared comparisons preserve original stdout bytes with
 
 [[fixture]]
 path = "golden/api/inbox-recovery.json"
-sha256 = "c38a2f6a889cb087eeb9078f7069c78c374f7b185939f72bad0fc44bf7d164bf"
-bytes = 769
+sha256 = "51011d03924956d6515ae1b5b8af97635f895c131c407a118c96b875777a1970"
+bytes = 976
 note = "DESIGNED OMP/Pi inbox recovery contract, exercised by Rust HTTP regressions against SQLite; not a production capture. Native release remains distinct from extension typing release."
-answer = "Three expired extension body leases or bounded swallowed resends park failed rows without ReaderRead. Peek lists live head before parked rows. delivery.parked is sender-addressed and names its recipient, message, job, outcome and reason. Native operator release requires authoritative prime or recorded parent and explicit evidence."
+answer = "Heartbeat renews only a running recipient-owned extension body claim without ReaderRead or lease-expiration spending. Live working seats renew at expiry; three silent unprotected leases or bounded idle swallowed resends park failed rows. Peek lists live head before parked rows. delivery.parked is sender-addressed and names its recipient, message, job, outcome and reason. Native operator release requires authoritative prime or recorded parent and explicit evidence."

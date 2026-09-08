@@ -1075,6 +1075,8 @@ class GraceClient extends PijDaemonClient {
 		attempt: number;
 		outcome?: string;
 		claimed: boolean;
+		claimed_at?: number;
+		lease_expirations: number;
 		acked: boolean;
 		not_before: number;
 		held: boolean;
@@ -1083,9 +1085,11 @@ class GraceClient extends PijDaemonClient {
 	readonly holdRequests: Array<Record<string, unknown>> = [];
 	readonly releases: Array<Record<string, unknown>> = [];
 	readonly acks: number[] = [];
+	readonly heartbeats: Array<{ jobId: number; at: number }> = [];
 	readonly parks: Array<{ jobId: number; outcome: string }> = [];
 	readonly operations: string[] = [];
 	semanticHold = false;
+	leaseMs: number | undefined;
 
 	constructor(private readonly graceMs: number | undefined = HOLD_CONTRACT.grace.default_ms) {
 		super({ addr: "127.0.0.1:1", stateDir: "/unused" }, "fake", {
@@ -1117,6 +1121,7 @@ class GraceClient extends PijDaemonClient {
 		};
 	}
 	override async claimInbox(): Promise<unknown> {
+		await this.expireLeases();
 		if (this.semanticHold) return [];
 		if (this.jobs.some((job) => job.claimed && !job.acked)) return [];
 		const job = this.jobs.find(
@@ -1124,6 +1129,7 @@ class GraceClient extends PijDaemonClient {
 		);
 		if (!job) return [];
 		job.claimed = true;
+		job.claimed_at = Date.now();
 		return [{ job_id: job.job_id, message: job.message, attempt: job.attempt }];
 	}
 	override async peekInbox(): Promise<unknown> {
@@ -1140,6 +1146,30 @@ class GraceClient extends PijDaemonClient {
 					outcome: candidate.outcome,
 				})),
 		];
+	}
+	override async heartbeatInbox(seat: string, jobId: number): Promise<number> {
+		const job = this.jobs.find((candidate) => candidate.job_id === jobId);
+		if (seat !== this.id || !job?.claimed || job.acked || job.message.command !== undefined)
+			throw new Error("heartbeat requires this seat's running body claim");
+		job.claimed_at = Date.now();
+		this.heartbeats.push({ jobId, at: job.claimed_at });
+		return jobId;
+	}
+	async expireLeases(): Promise<void> {
+		if (this.leaseMs === undefined) return;
+		for (const job of this.jobs) {
+			if (
+				!job.claimed ||
+				job.acked ||
+				job.claimed_at === undefined ||
+				Date.now() - job.claimed_at < this.leaseMs
+			)
+				continue;
+			job.claimed = false;
+			job.lease_expirations++;
+			job.attempt = job.lease_expirations;
+			if (job.lease_expirations >= 3) await this.park(job.job_id, "undelivered:lease-exhausted");
+		}
 	}
 	override async ackInbox(
 		_seat: string,
@@ -1197,6 +1227,7 @@ class GraceClient extends PijDaemonClient {
 			message,
 			attempt: 0,
 			claimed: false,
+			lease_expirations: 0,
 			acked: false,
 			not_before: 0,
 			held: false,
@@ -1324,6 +1355,79 @@ describe("extension-stream delivery", () => {
 		return { ...started, api };
 	}
 
+	it("busy-seat heartbeats preserve a steered claim for 200 seconds and acknowledge consumption once", async () => {
+		const { runtime, pi, client, api } = await startSwallowing();
+		client.leaseMs = 60_000;
+		pi.setBusy(true);
+		runtime.onTurnStart(new Date().toISOString());
+		await client.push(message("long-turn"));
+		await vi.advanceTimersByTimeAsync(200_000);
+		expect(client.jobs[0]).toMatchObject({ claimed: true, acked: false, lease_expirations: 0 });
+		expect(client.heartbeats).toHaveLength(10);
+		expect(client.jobs[0]?.claimed_at).toBe(Date.now());
+		expect(client.parks).toEqual([]);
+		expect(api.sendMessage).toHaveBeenCalledOnce();
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+		expect(runtime.eventCount("delivery.resend")).toBe(0);
+		expect(client.acks).toEqual([]);
+		const consumed = {
+			role: "custom",
+			customType: "pij",
+			details: { pijMessageId: "long-turn" },
+		};
+		await runtime.onMessageStart(consumed);
+		await runtime.onMessageStart(consumed);
+		await vi.advanceTimersByTimeAsync(80_000);
+		expect(client.acks).toEqual([1]);
+		expect(client.heartbeats).toHaveLength(10);
+		expect(api.sendMessage).toHaveBeenCalledOnce();
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+		expect(client.jobs[0]?.lease_expirations).toBe(0);
+	});
+
+	it("busy-seat heartbeat requests never overlap and a late completion cannot revive consumed mail", async () => {
+		const { runtime, pi, client } = await startSwallowing();
+		pi.setBusy(true);
+		await client.push(message("slow-heartbeat"));
+		let completeHeartbeat!: (jobId: number) => void;
+		const requests = vi.spyOn(client, "heartbeatInbox").mockReturnValueOnce(
+			new Promise<number>((resolve) => {
+				completeHeartbeat = resolve;
+			}),
+		);
+		await vi.advanceTimersByTimeAsync(19_000);
+		expect(requests).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(61_000);
+		expect(requests).toHaveBeenCalledOnce();
+		await runtime.onMessageStart({
+			role: "custom",
+			customType: "pij",
+			details: { pijMessageId: "slow-heartbeat" },
+		});
+		completeHeartbeat(1);
+		await vi.advanceTimersByTimeAsync(80_000);
+		expect(requests).toHaveBeenCalledOnce();
+		expect(client.acks).toEqual([1]);
+	});
+
+	it.each([
+		"park",
+		"shutdown",
+	] as const)("busy-seat heartbeats stop after %s without consuming the pending body", async (ending) => {
+		const { runtime, pi, client, api } = await startSwallowing();
+		client.leaseMs = 60_000;
+		pi.setBusy(true);
+		await client.push(message("held-ending"));
+		await vi.advanceTimersByTimeAsync(20_000);
+		expect(client.heartbeats).toHaveLength(1);
+		if (ending === "park") await client.park(1, "undelivered:operator-released");
+		else runtime.shutdown("quit");
+		await vi.advanceTimersByTimeAsync(200_000);
+		expect(client.heartbeats).toHaveLength(1);
+		expect(client.acks).toEqual([]);
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+	});
+
 	it("resends silently swallowed custom mail through the prompt after continuous idle and acknowledges its id once", async () => {
 		const { runtime, pi, client, api } = await startSwallowing();
 		await client.push(message("swallowed", { body: "keep this body\n你好" }));
@@ -1370,8 +1474,9 @@ describe("extension-stream delivery", () => {
 		expect(client.acks).toEqual([]);
 	});
 
-	it("parks swallowed mail only after three prompt resends each get an idle consumption window", async () => {
+	it("busy-seat idle swallowing parks only after three prompt resends each get an idle consumption window", async () => {
 		const { runtime, pi, client, api } = await startSwallowing();
+		client.leaseMs = 60_000;
 		await client.push(message("bounded"));
 		for (let attempt = 1; attempt <= 3; attempt++) {
 			await vi.advanceTimersByTimeAsync(10_000);
@@ -1385,6 +1490,7 @@ describe("extension-stream delivery", () => {
 		await vi.advanceTimersByTimeAsync(1_000);
 		expect(client.parks).toEqual([{ jobId: 1, outcome: "undelivered:harness-swallowed" }]);
 		expect(client.acks).toEqual([]);
+		expect(client.jobs[0]?.lease_expirations).toBe(0);
 		expect(pi.statuses.at(-1)).toBeUndefined();
 		expect(
 			pi.notices.filter((notice) => notice.text.includes("bounded") && notice.level === "warning"),
@@ -1398,23 +1504,60 @@ describe("extension-stream delivery", () => {
 	it.each([
 		false,
 		true,
-	])("resends a reclaimed unconsumed claim through the prompt with busy=%s", async (busy) => {
+	])("busy-seat reclaim only refreshes tracking before the idle window with busy=%s", async (busy) => {
 		const { runtime, pi, client, api } = await startSwallowing();
-		await client.push(message("reclaimed"));
 		pi.setBusy(busy);
+		await client.push(message("reclaimed"));
+		await vi.advanceTimersByTimeAsync(3_000);
 		const job = client.jobs[0];
 		if (!job) throw new Error("missing claimed fixture job");
 		job.claimed = false;
 		job.attempt = 1;
 		await client.repeat("reclaimed");
 		expect(api.sendMessage).toHaveBeenCalledOnce();
-		expect(api.sendUserMessage.mock.calls).toEqual([
-			[
-				`[pij resend 1]\n[pijMessageId:reclaimed]\n${frame("pij-sender", "reclaimed")}`,
-				...(busy ? [{ deliverAs: "steer" }] : []),
-			],
-		]);
-		expect(runtime.eventCount("delivery.resend")).toBe(1);
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+		expect(runtime.eventCount("delivery.resend")).toBe(0);
+		expect(job.claimed).toBe(true);
+		if (busy) {
+			await vi.advanceTimersByTimeAsync(70_000);
+			expect(api.sendUserMessage).not.toHaveBeenCalled();
+			pi.setBusy(false);
+			runtime.onAgentEnd();
+		}
+		await vi.advanceTimersByTimeAsync(busy ? 9_000 : 6_000);
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(api.sendUserMessage).toHaveBeenCalledExactlyOnceWith(
+			`[pij resend 1]\n[pijMessageId:reclaimed]\n${frame("pij-sender", "reclaimed")}`,
+		);
+		expect(client.acks).toEqual([]);
+	});
+
+	it.each([
+		false,
+		true,
+	])("busy-seat previously unseen reclaimed mail waits for idle with busy=%s", async (busy) => {
+		const { runtime, pi, client, api } = await startSwallowing();
+		pi.setBusy(busy);
+		await client.push(message("unseen-reclaim"), false);
+		const job = client.jobs[0];
+		if (!job) throw new Error("missing reclaimed fixture job");
+		job.attempt = 1;
+		await client.repeat("unseen-reclaim");
+		expect(api.sendMessage).not.toHaveBeenCalled();
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+		if (busy) {
+			await vi.advanceTimersByTimeAsync(70_000);
+			expect(api.sendUserMessage).not.toHaveBeenCalled();
+			pi.setBusy(false);
+			runtime.onAgentEnd();
+		}
+		await vi.advanceTimersByTimeAsync(9_000);
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(api.sendUserMessage).toHaveBeenCalledExactlyOnceWith(
+			`[pij resend 1]\n[pijMessageId:unseen-reclaim]\n${frame("pij-sender", "unseen-reclaim")}`,
+		);
 		expect(client.acks).toEqual([]);
 	});
 
@@ -1460,6 +1603,32 @@ describe("extension-stream delivery", () => {
 		expect(client.acks).toEqual([]);
 	});
 
+	it("busy-seat ignores a reclaim response overtaken by consumption", async () => {
+		const { runtime, pi, client, api } = await startSwallowing();
+		await client.push(message("consumed-before-response"));
+		let releaseClaim!: (value: unknown) => void;
+		vi.spyOn(client, "claimInbox").mockReturnValueOnce(
+			new Promise<unknown>((resolve) => {
+				releaseClaim = resolve;
+			}),
+		);
+		const delivery = client.repeat("consumed-before-response");
+		await Promise.resolve();
+		await runtime.onMessageStart({
+			role: "custom",
+			customType: "pij",
+			details: { pijMessageId: "consumed-before-response" },
+		});
+		releaseClaim([{ job_id: 1, attempt: 1, message: message("consumed-before-response") }]);
+		await delivery;
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(api.sendMessage).toHaveBeenCalledOnce();
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+		expect(pi.statuses.at(-1)).toBeUndefined();
+		expect(client.acks).toEqual([1]);
+		expect(client.heartbeats).toEqual([]);
+	});
+
 	it("visibly reports a parked outbound message once without clearing unrelated inbound mail", async () => {
 		const { pi, client } = await startSwallowing();
 		await client.push(message("still-pending-inbound"));
@@ -1472,20 +1641,22 @@ describe("extension-stream delivery", () => {
 		).toEqual(["pij message outbound-failed to pij-other: undelivered:lease-exhausted"]);
 	});
 
-	it("shares three resend attempts across idle recovery and lease reclaims", async () => {
+	it("busy-seat lease reclaims never spend the three idle resend attempts", async () => {
 		const { client, api } = await startSwallowing();
 		await client.push(message("shared-bound"));
-		await vi.advanceTimersByTimeAsync(10_000);
 		const job = client.jobs[0];
 		if (!job) throw new Error("missing claimed fixture job");
-		job.claimed = false;
-		job.attempt = 1;
-		await client.repeat("shared-bound");
-		await vi.advanceTimersByTimeAsync(10_000);
-		expect(api.sendUserMessage).toHaveBeenCalledTimes(3);
-		job.claimed = false;
-		job.attempt = 2;
-		await client.repeat("shared-bound");
+		for (let attempt = 1; attempt <= 3; attempt++) {
+			await vi.advanceTimersByTimeAsync(5_000);
+			job.claimed = false;
+			job.attempt = attempt;
+			await client.repeat("shared-bound");
+			expect(api.sendUserMessage).toHaveBeenCalledTimes(attempt - 1);
+			await vi.advanceTimersByTimeAsync(5_000);
+			expect(api.sendUserMessage).toHaveBeenCalledTimes(attempt);
+			expect(api.sendUserMessage.mock.calls.at(-1)?.[0]).toContain(`[pij resend ${attempt}]\n`);
+			expect(client.parks).toEqual([]);
+		}
 		await vi.advanceTimersByTimeAsync(9_000);
 		expect(client.parks).toEqual([]);
 		await vi.advanceTimersByTimeAsync(1_000);
@@ -1493,7 +1664,7 @@ describe("extension-stream delivery", () => {
 		expect(client.parks).toEqual([{ jobId: 1, outcome: "undelivered:harness-swallowed" }]);
 	});
 
-	it("polls an unconsumed claim for lease recovery without a second pushed event", async () => {
+	it("busy-seat polls an unconsumed claim for tracking recovery without resending", async () => {
 		const { pi, client, api } = await startSwallowing();
 		pi.setBusy(true);
 		await client.push(message("poll-reclaim"));
@@ -1502,10 +1673,9 @@ describe("extension-stream delivery", () => {
 		job.claimed = false;
 		job.attempt = 1;
 		await vi.advanceTimersByTimeAsync(1_000);
-		expect(api.sendUserMessage).toHaveBeenCalledExactlyOnceWith(
-			`[pij resend 1]\n[pijMessageId:poll-reclaim]\n${frame("pij-sender", "poll-reclaim")}`,
-			{ deliverAs: "steer" },
-		);
+		expect(job.claimed).toBe(true);
+		expect(api.sendMessage).toHaveBeenCalledOnce();
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
 	});
 
 	it("reconciles a parked acknowledgement whose response was lost using failed peek history", async () => {
@@ -1991,14 +2161,22 @@ describe("extension-stream delivery", () => {
 		expect(pi.injects).toEqual([]);
 	});
 
-	it("recovers an unconsumed message after the previous runtime claim expires", async () => {
+	it("busy-seat recovers an expired previous runtime claim only after the idle window", async () => {
 		const { runtime, pi, client } = await start();
+		client.leaseMs = 60_000;
 		pi.setBusy(true);
 		await client.push(message("before restart"));
 		expect(pi.statuses.at(-1)).toBe("📨 1 pending");
 		runtime.shutdown("quit");
-		for (const job of client.jobs) job.claimed = false; // Daemon claim lease expiry after owner exit.
+		await vi.advanceTimersByTimeAsync(60_000);
+		await client.expireLeases();
+		expect(client.jobs[0]?.lease_expirations).toBe(1);
 		const restarted = await start(client);
+		expect(restarted.pi.injects).toEqual([]);
+		expect(client.acks).toEqual([]);
+		await vi.advanceTimersByTimeAsync(9_000);
+		expect(restarted.pi.injects).toEqual([]);
+		await vi.advanceTimersByTimeAsync(1_000);
 		expect(restarted.pi.injects.map((row) => row.text)).toEqual([
 			frame("pij-sender", "before restart"),
 		]);

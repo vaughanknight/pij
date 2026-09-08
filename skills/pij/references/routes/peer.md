@@ -72,14 +72,20 @@ Expired claims terminate with unknown-outcome/missing-ack, never replay; refused
 
 **OMP/Pi body recovery** ([wire contract](../../../../docs/how/pij-rs-api.md#extension-inbox-recovery)):
 unconsumed delivery idle for `PIJ_REDELIVER_IDLE_MS` (default 10s) resends through
-the prompt path, marked `[pij resend n]`; reclaim resends rather than silently
-holding the head. Three resends or three expired extension leases (default 60s,
-`PIJ_RS_EXT_CLAIM_LEASE_SECS`) park with a sender-visible failure receipt and
-`delivery.parked` event. Controls retain their non-replay contract above.
+the prompt path, marked `[pij resend n]`; lease reclaim only refreshes tracking.
+Never resend while streaming: a queued steer is not lost. Every 20s the extension
+renews unconsumed claims via `POST /v1/inbox/heartbeat` (`seat`, `job_id`), without
+consumption ACK or lease-expiration count. Live `working` seats also renew at expiry
+(a one-directional safety interlock, not a parking policy). Three idle resends
+without consumption park as `undelivered:harness-swallowed`; three silent,
+unprotected expired leases (default 60s, `PIJ_RS_EXT_CLAIM_LEASE_SECS`) park as
+`undelivered:lease-exhausted`. Both emit sender-visible failure and `delivery.parked`.
+Controls retain their non-replay contract above.
 `pij-rs inbox --seat <seat> --peek --json` distinguishes parked rows.
 `pij-rs inbox release --seat <seat> --job <id> --evidence '<observed blockage>'`
-parks the running body head; only its recorded parent or authoritative prime
-may do this. It neither sends keys nor kills a seat. The pending badge excludes
+parks the running body head as `undelivered:operator-released`; only its recorded
+parent or authoritative prime may do this. It neither sends keys nor kills a seat.
+The pending badge excludes
 recent resends and clears parked ids with a visible notice; pending forever is
 delivery failure, not successful queuing.
 

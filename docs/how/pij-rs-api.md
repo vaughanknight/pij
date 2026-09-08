@@ -112,18 +112,29 @@ Restoration requires an empty editor and no intervening terminal input; human
 typing, submission, or clearing wins. Restored text places the cursor at its end
 and is never submitted as part of the resend.
 
-A reclaimed unconsumed message is resent immediately: prompt path while idle,
-steering while busy. Consumption remains deduplicated by message id. Three
-resends are the limit; after the last resend gets its idle consumption window,
+A reclaimed unconsumed message refreshes claim tracking, never triggers a resend.
+Only the idle-unconsumed detector can resend: a steer queued behind a running turn
+is not lost. Consumption remains deduplicated by message id. Three resends are
+the limit; after the last resend gets its idle consumption window,
 `POST /v1/inbox/ack` with
 `"delivery_outcome":"undelivered:harness-swallowed"` terminally fails the claim
-instead of recording successful delivery.
+instead of recording successful delivery. Escape retains this idle recovery path.
 
 Extension body claims use `PIJ_RS_EXT_CLAIM_LEASE_SECS` (default `60`).
-Three expired leases park the job as `state:"failed"` with
-`outcome:"undelivered:lease-exhausted"`, unblocking the serial queue. Parking is
-a **policy**, not a one-directional safety interlock: expiry changes the delivery
-outcome. Neither short leases nor resends replay remote controls or change
+While holding an unconsumed claim, the extension sends
+`POST /v1/inbox/heartbeat` with `{"seat":"<seat>","job_id":123}` every 20s.
+The successful v2 envelope has `data:123`; renewal resets `claimed_at` without
+incrementing `lease_expirations`, acknowledging consumption, or recording
+`ReaderRead`. Only the recipient's running OMP/Pi body claim can renew; wrong
+recipients, controls, and terminal claims refuse.
+
+At expiry, a live seat persisted as `working` renews rather than spending a lease.
+This working-state check is a **one-directional safety interlock (brake)**:
+removing it can only expire/park more mail. Three silent, unprotected lease
+expirations park the job as `state:"failed"` with
+`outcome:"undelivered:lease-exhausted"`, unblocking the serial queue; ordinary busy
+turns do not count as extension failure. Parking remains a **policy**: it changes
+the delivery outcome. Neither leases nor resends replay remote controls or change
 Claude/Copilot delivery.
 
 ```bash
