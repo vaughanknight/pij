@@ -217,6 +217,9 @@ pub struct InboxAckRequest {
     /// Runtime result for a control claim; never inferred from claim receipt.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub control_outcome: Option<pij_core::control::ControlOutcome>,
+    /// Explicit failed consumption; only harness-swallowed is accepted on this route.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery_outcome: Option<String>,
 }
 
 /// Typed roster payload. `unavailable` distinguishes a down peer from an empty

@@ -118,6 +118,42 @@ impl Queue for CountingQueue {
             message: "the enqueue-only fixture must not release deferrals".to_string(),
         })
     }
+
+    async fn claim_extension(
+        &self,
+        _kinds: &[String],
+        _worker: &str,
+        _lease_secs: u64,
+        _at: u64,
+        _spine: &dyn Spine,
+        _recovery_allowed: bool,
+    ) -> Result<pij_core::ports::ExtensionClaim> {
+        Err(PijError::Adapter {
+            adapter: "test/counting-queue".into(),
+            message: "enqueue-only fixture cannot claim an extension inbox".into(),
+        })
+    }
+
+    async fn peek_parked(&self, _kinds: &[String]) -> Result<Vec<pij_core::ports::ParkedDelivery>> {
+        Err(PijError::Adapter {
+            adapter: "test/counting-queue".into(),
+            message: "enqueue-only fixture cannot inspect parked deliveries".into(),
+        })
+    }
+
+    async fn park_delivery(
+        &self,
+        _job: JobId,
+        _recipient: &SeatId,
+        _attempt: u32,
+        _evidence: &pij_core::ports::ParkingEvidence<'_>,
+        _spine: &dyn Spine,
+    ) -> Result<(Option<Job>, Vec<Event>)> {
+        Err(PijError::Adapter {
+            adapter: "test/counting-queue".into(),
+            message: "enqueue-only fixture cannot park deliveries".into(),
+        })
+    }
 }
 
 pub(super) async fn test_services(
@@ -181,6 +217,615 @@ pub(super) async fn test_services(
         services.liveness.clone(),
     ));
     services
+}
+
+async fn redelivery_fixture() -> (
+    sqlx::SqlitePool,
+    Services,
+    Arc<FakeRegistry>,
+    Arc<pij_store::SqliteSpine>,
+) {
+    let pool = pij_store::open("").await.expect("isolated queue");
+    let queue = Arc::new(pij_store::SqliteQueue::new(pool.clone(), 300, 1_024).unwrap());
+    let registry = Arc::new(FakeRegistry::new());
+    for (id, harness) in [
+        ("pij-reader", Harness::Omp),
+        ("pij-parent", Harness::Pi),
+        ("pij-stranger", Harness::Pi),
+    ] {
+        let mut seat = SeatDescriptor::new(id, harness, "/abs/tree");
+        if id == "pij-reader" {
+            seat.parent = Some("pij-parent".into());
+        }
+        registry.put(seat).await.unwrap();
+    }
+    let spine = Arc::new(pij_store::SqliteSpine::new(pool.clone()));
+    let bus = Arc::new(crate::events::EventBus::new(spine.clone(), 32).unwrap());
+    let mut services = test_services(registry.clone(), queue, Arc::new(FakeSpine::new())).await;
+    services.registry = Arc::new(crate::events::PublishedFakeRegistry::new(
+        registry.clone(),
+        bus.clone(),
+    ));
+    services.spine = bus.clone();
+    services.event_bus = bus.clone();
+    services.roles = Arc::new(super::role::RoleService::new(
+        services.registry.clone(),
+        pij_store::SqliteOrchestration::new(pool.clone()),
+        bus.clone(),
+    ));
+    services.delivery = Arc::new(
+        crate::delivery::DeliveryService::new(
+            services.registry.clone(),
+            services.queue.clone(),
+            services.transport.clone(),
+            services.interaction.clone(),
+            bus,
+        )
+        .unwrap(),
+    );
+    for id in ["lost-body", "successor"] {
+        services
+            .delivery
+            .accept(Msg {
+                from: "pij-parent".into(),
+                from_machine: None,
+                to: "pij-reader".into(),
+                body: format!("body for {id}"),
+                command: None,
+                msg_id: id.into(),
+                in_reply_to: None,
+            })
+            .await
+            .unwrap();
+    }
+    (pool, services, registry, spine)
+}
+
+async fn redelivery_request(request: reqwest::RequestBuilder) -> serde_json::Value {
+    request
+        .bearer_auth("key")
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .expect("machine-decodable inbox envelope")
+}
+
+#[tokio::test]
+async fn redelivery_extension_three_expired_leases_park_and_unblock_serial_head() {
+    let (pool, services, _, spine) = redelivery_fixture().await;
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+    let url = format!("http://{addr}/v1/inbox?seat=pij-reader");
+    let first = redelivery_request(client.get(&url)).await;
+    assert_eq!(
+        first["data"][0]["message"]["msg_id"], "lost-body",
+        "{first}"
+    );
+    let id = first["data"][0]["job_id"].as_u64().unwrap();
+    for attempt in 1..=3 {
+        sqlx::query("UPDATE jobs SET claimed_at = unixepoch() - 61 WHERE id = ?")
+            .bind(id as i64)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let next = redelivery_request(client.get(&url)).await;
+        assert_eq!(
+            next["data"][0]["message"]["msg_id"],
+            if attempt == 3 {
+                "successor"
+            } else {
+                "lost-body"
+            }
+        );
+        assert_eq!(
+            next["data"][0]["attempt"],
+            if attempt == 3 { 0 } else { attempt }
+        );
+    }
+    let parked = redelivery_request(client.get(format!("{url}&peek=true"))).await;
+    assert_eq!(parked["data"][0]["message"]["msg_id"], "successor");
+    assert_eq!(parked["data"][1]["job_id"], id);
+    assert_eq!(parked["data"][1]["state"], "failed");
+    assert_eq!(parked["data"][1]["outcome"], "undelivered:lease-exhausted");
+    let golden: serde_json::Value = serde_json::from_str(&pij_testkit::fixtures::read(
+        "golden/api/inbox-recovery.json",
+    ))
+    .unwrap();
+    assert_eq!(parked["data"][1]["outcome"], golden["outcomes"]["lease"]);
+    let stale = redelivery_request(
+        client
+            .post(format!("http://{addr}/v1/inbox/ack"))
+            .json(&serde_json::json!({"seat":"pij-reader","job_id":id})),
+    )
+    .await;
+    assert_eq!(stale["ok"], false);
+    let parked_events: Vec<_> = spine
+        .tail(None, pij_core::model::Seq(0))
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|event| event.kind == "delivery.parked")
+        .collect();
+    assert_eq!(parked_events.len(), 1);
+    assert_eq!(parked_events[0].seat, Some("pij-parent".into()));
+    let payload: serde_json::Value = serde_json::from_str(&parked_events[0].payload).unwrap();
+    assert_eq!(payload["recipient"], "pij-reader");
+    assert_eq!(payload["messageId"], "lost-body");
+    assert_eq!(payload, golden["lease_parked_event"]);
+    server.abort();
+}
+
+#[tokio::test]
+async fn redelivery_swallowed_ack_is_failure_not_reader_read_and_rejects_wrong_recipient() {
+    let (pool, services, _, spine) = redelivery_fixture().await;
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+    let first =
+        redelivery_request(client.get(format!("http://{addr}/v1/inbox?seat=pij-reader"))).await;
+    let id = first["data"][0]["job_id"].as_u64().unwrap();
+    for seat in ["pij-stranger", "pij-reader"] {
+        let result = redelivery_request(
+            client
+                .post(format!("http://{addr}/v1/inbox/ack"))
+                .json(&serde_json::json!({"seat":seat,"job_id":id,
+                "delivery_outcome":"undelivered:harness-swallowed"})),
+        )
+        .await;
+        assert_eq!(result["ok"], seat == "pij-reader", "{result}");
+    }
+    let row: (String, String) = sqlx::query_as("SELECT state, outcome FROM jobs WHERE id = ?")
+        .bind(id as i64)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        row,
+        ("failed".into(), "undelivered:harness-swallowed".into())
+    );
+    let delivered: i64 = sqlx::query_scalar("SELECT count(*) FROM delivered_messages")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        delivered, 0,
+        "a swallowed injection is not delivery evidence"
+    );
+    let events: Vec<_> = spine
+        .tail(None, pij_core::model::Seq(0))
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|event| event.kind == "delivery.parked")
+        .collect();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].seat, Some("pij-parent".into()));
+    let next =
+        redelivery_request(client.get(format!("http://{addr}/v1/inbox?seat=pij-reader"))).await;
+    assert_eq!(next["data"][0]["message"]["msg_id"], "successor");
+    server.abort();
+}
+
+#[tokio::test]
+async fn redelivery_operator_release_requires_parent_or_authoritative_prime_and_running_head() {
+    let (pool, services, registry, _) = redelivery_fixture().await;
+    let roles = services.roles.clone();
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+    let pending: i64 = sqlx::query_scalar("SELECT min(id) FROM jobs")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let release = |actor: &str, job: i64, evidence: &str| {
+        client
+            .post(format!("http://{addr}/v1/inbox/release"))
+            .json(&serde_json::json!({
+                "seat":"pij-reader", "job_id":job, "evidence":evidence,
+                "caller":{"PIJ_SESSION_ID":actor}
+            }))
+    };
+    let unclaimed =
+        redelivery_request(release("pij-parent", pending, "observed silent injection")).await;
+    assert_eq!(unclaimed["ok"], false, "pending is not a running head");
+    let first =
+        redelivery_request(client.get(format!("http://{addr}/v1/inbox?seat=pij-reader"))).await;
+    let id = first["data"][0]["job_id"].as_i64().unwrap();
+    let denied = redelivery_request(release("pij-stranger", id, "observed silent injection")).await;
+    assert_eq!(denied["ok"], false);
+    assert_eq!(denied["details"]["code"], "E-RS-OWNERSHIP");
+    let blank = redelivery_request(release("pij-parent", id, " ")).await;
+    assert_eq!(blank["ok"], false);
+    let parent = redelivery_request(release("pij-parent", id, "observed silent injection")).await;
+    assert_eq!(parent["ok"], true, "{parent}");
+    assert_eq!(parent["data"]["outcome"], "undelivered:operator-released");
+    let repeated = redelivery_request(release("pij-parent", id, "stale operator")).await;
+    assert_eq!(repeated["ok"], false);
+    let second =
+        redelivery_request(client.get(format!("http://{addr}/v1/inbox?seat=pij-reader"))).await;
+    let second_id = second["data"][0]["job_id"].as_i64().unwrap();
+    // A stale descriptor role is not authority.
+    let mut stranger = registry.get(&"pij-stranger".into()).await.unwrap().unwrap();
+    stranger.role = Some("prime".into());
+    registry.put(stranger).await.unwrap();
+    let spoof =
+        redelivery_request(release("pij-stranger", second_id, "descriptor role only")).await;
+    assert_eq!(spoof["ok"], false);
+    roles
+        .assert_role(
+            &"pij-stranger".into(),
+            &"pij-stranger".into(),
+            Some("prime".into()),
+        )
+        .await
+        .unwrap();
+    let prime = redelivery_request(release("pij-stranger", second_id, "authoritative prime")).await;
+    assert_eq!(prime["ok"], true, "{prime}");
+    server.abort();
+}
+
+#[tokio::test]
+async fn redelivery_failure_ack_refuses_controls_native_recipients_and_unknown_outcomes() {
+    for (harness, command, outcome) in [
+        (
+            Harness::Omp,
+            Some("compact"),
+            "undelivered:harness-swallowed",
+        ),
+        (Harness::Claude, None, "undelivered:harness-swallowed"),
+        (Harness::Copilot, None, "undelivered:harness-swallowed"),
+        (Harness::Omp, None, "undelivered:lease-exhausted"),
+    ] {
+        let (_, services, registry, _) = redelivery_fixture().await;
+        let mut target = registry.get(&"pij-reader".into()).await.unwrap().unwrap();
+        target.harness = harness;
+        registry.put(target).await.unwrap();
+        let queue = services.queue.clone();
+        let (id, mut job) = queue
+            .claim(&["delivery:pij-reader".into()], "test-reader")
+            .await
+            .unwrap()
+            .unwrap();
+        if let Some(command) = command {
+            queue.ack(id, Outcome::Done).await.unwrap();
+            let mut body: Msg = serde_json::from_str(&job.payload).unwrap();
+            body.command = Some(command.into());
+            job.payload = serde_json::to_string(&body).unwrap();
+            job.serial_key = "pij-control".into();
+            job.kind = "delivery:pij-control".into();
+            body.to = "pij-control".into();
+            job.payload = serde_json::to_string(&body).unwrap();
+            let mut control = SeatDescriptor::new("pij-control", harness, "/abs/tree");
+            control.parent = Some("pij-parent".into());
+            registry.put(control).await.unwrap();
+            queue.enqueue(job).await.unwrap();
+        }
+        let (seat, id) = if command.is_some() {
+            let (id, _) = queue
+                .claim(&["delivery:pij-control".into()], "test-reader")
+                .await
+                .unwrap()
+                .unwrap();
+            ("pij-control", id)
+        } else {
+            ("pij-reader", id)
+        };
+        let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+        let result = redelivery_request(
+            reqwest::Client::new()
+                .post(format!("http://{addr}/v1/inbox/ack"))
+                .json(&serde_json::json!({"seat":seat,"job_id":id,"delivery_outcome":outcome})),
+        )
+        .await;
+        assert_eq!(result["ok"], false, "{harness:?}: {result}");
+        assert!(
+            queue.claimed_delivery(id).await.unwrap().is_some(),
+            "a refused failure acknowledgement must leave its claim untouched"
+        );
+        if harness != Harness::Omp || command.is_some() {
+            let release = redelivery_request(
+                reqwest::Client::new()
+                    .post(format!("http://{addr}/v1/inbox/release"))
+                    .json(
+                        &serde_json::json!({"seat":seat,"job_id":id,"evidence":"observed loss",
+                    "caller":{"PIJ_SESSION_ID":"pij-parent"}}),
+                    ),
+            )
+            .await;
+            assert_eq!(
+                release["ok"], false,
+                "authorized release must reject {harness:?} controls/native: {release}"
+            );
+            assert!(queue.claimed_delivery(id).await.unwrap().is_some());
+        }
+        server.abort();
+    }
+}
+
+#[tokio::test]
+async fn redelivery_operator_release_racing_consumption_has_one_terminal_winner() {
+    let (pool, services, _, spine) = redelivery_fixture().await;
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+    let claim =
+        redelivery_request(client.get(format!("http://{addr}/v1/inbox?seat=pij-reader"))).await;
+    let id = claim["data"][0]["job_id"].as_u64().unwrap();
+    let (release, ack) = tokio::join!(
+        redelivery_request(client.post(format!("http://{addr}/v1/inbox/release")).json(
+            &serde_json::json!({"seat":"pij-reader","job_id":id,"evidence":"observed loss",
+                "caller":{"PIJ_SESSION_ID":"pij-parent"}})
+        )),
+        redelivery_request(
+            client
+                .post(format!("http://{addr}/v1/inbox/ack"))
+                .json(&serde_json::json!({"seat":"pij-reader","job_id":id}))
+        ),
+    );
+    assert_ne!(
+        release["ok"], ack["ok"],
+        "exactly one terminal transition: {release} {ack}"
+    );
+    let state: String = sqlx::query_scalar("SELECT state FROM jobs WHERE id = ?")
+        .bind(id as i64)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        state,
+        if release["ok"] == true {
+            "failed"
+        } else {
+            "done"
+        }
+    );
+    let events = spine.tail(None, pij_core::model::Seq(0)).await.unwrap();
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.kind == "delivery.parked")
+            .count(),
+        usize::from(release["ok"] == true)
+    );
+    let next =
+        redelivery_request(client.get(format!("http://{addr}/v1/inbox?seat=pij-reader"))).await;
+    assert_eq!(next["data"][0]["message"]["msg_id"], "successor");
+    server.abort();
+}
+
+#[tokio::test]
+async fn redelivery_parking_rolls_back_if_its_durable_event_cannot_commit() {
+    let (pool, services, _, spine) = redelivery_fixture().await;
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+    let claim =
+        redelivery_request(client.get(format!("http://{addr}/v1/inbox?seat=pij-reader"))).await;
+    let id = claim["data"][0]["job_id"].as_u64().unwrap();
+    sqlx::query(
+        "CREATE TRIGGER reject_park BEFORE INSERT ON spine_events \
+        WHEN NEW.kind = 'delivery.parked' BEGIN SELECT RAISE(ABORT, 'scripted spine failure'); END",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let failure = || {
+        client
+            .post(format!("http://{addr}/v1/inbox/ack"))
+            .json(&serde_json::json!({"seat":"pij-reader","job_id":id,
+            "delivery_outcome":"undelivered:harness-swallowed"}))
+    };
+    let refused = redelivery_request(failure()).await;
+    assert_eq!(refused["ok"], false);
+    let state: String = sqlx::query_scalar("SELECT state FROM jobs WHERE id = ?")
+        .bind(id as i64)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        state, "running",
+        "event failure cannot silently retire a body"
+    );
+    let receipts: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM spine_events \
+        WHERE kind='delivery.outcome' AND json_extract(payload,'$.outcome.reason') \
+            = 'undelivered:harness-swallowed'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        receipts, 0,
+        "the sender receipt rolls back with the parked event"
+    );
+    sqlx::query("DROP TRIGGER reject_park")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(redelivery_request(failure()).await["ok"], true);
+    let rows = spine.tail(None, pij_core::model::Seq(0)).await.unwrap();
+    assert_eq!(
+        rows.iter()
+            .filter(|event| event.kind == "delivery.parked")
+            .count(),
+        1
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn redelivery_split_authority_refuses_recovery_without_changing_ordinary_reads() {
+    let file = pij_testkit::FreshStore::new();
+    let policy = pij_core::config::Config {
+        store_path: file.path(),
+        adapters: pij_core::config::Adapters {
+            queue: pij_core::config::AdapterChoice::Real,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let services = crate::build_services(&policy, std::path::Path::new("/unused-recovery-test"))
+        .await
+        .unwrap();
+    let mut target = SeatDescriptor::new("pij-reader", Harness::Omp, "/abs/tree");
+    target.parent = Some("pij-parent".into());
+    services.registry.put(target).await.unwrap();
+    services
+        .registry
+        .put(SeatDescriptor::new("pij-parent", Harness::Omp, "/abs/tree"))
+        .await
+        .unwrap();
+    services
+        .delivery
+        .accept(Msg {
+            from: "pij-parent".into(),
+            from_machine: None,
+            to: "pij-reader".into(),
+            body: "durable body".into(),
+            command: None,
+            msg_id: "split-body".into(),
+            in_reply_to: None,
+        })
+        .await
+        .unwrap();
+    let pool = pij_store::open(&file.path()).await.unwrap();
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+    let claim =
+        redelivery_request(client.get(format!("http://{addr}/v1/inbox?seat=pij-reader"))).await;
+    let id = claim["data"][0]["job_id"]
+        .as_u64()
+        .expect("ordinary claim still works");
+    let failed = redelivery_request(
+        client
+            .post(format!("http://{addr}/v1/inbox/ack"))
+            .json(&serde_json::json!({"seat":"pij-reader","job_id":id,
+            "delivery_outcome":"undelivered:harness-swallowed"})),
+    )
+    .await;
+    assert_eq!(failed["details"]["code"], "E-RS-INBOX-AUTHORITY-SPLIT");
+    let released = redelivery_request(client.post(format!("http://{addr}/v1/inbox/release")).json(
+        &serde_json::json!({"seat":"pij-reader","job_id":id,"evidence":"observed loss",
+            "caller":{"PIJ_SESSION_ID":"pij-parent"}}),
+    ))
+    .await;
+    assert_eq!(released["details"]["code"], "E-RS-INBOX-AUTHORITY-SPLIT");
+    sqlx::query("UPDATE jobs SET lease_expirations=2, claimed_at=unixepoch()-61 WHERE id=?")
+        .bind(id as i64)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let expired =
+        redelivery_request(client.get(format!("http://{addr}/v1/inbox?seat=pij-reader"))).await;
+    assert_eq!(expired["details"]["code"], "E-RS-INBOX-AUTHORITY-SPLIT");
+    let state: (String, i64) =
+        sqlx::query_as("SELECT state, lease_expirations FROM jobs WHERE id=?")
+            .bind(id as i64)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        state,
+        ("running".into(), 2),
+        "refusal rolls back terminal recovery"
+    );
+    let events: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM spine_events WHERE kind='delivery.parked'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(events, 0);
+    let ack = redelivery_request(
+        client
+            .post(format!("http://{addr}/v1/inbox/ack"))
+            .json(&serde_json::json!({"seat":"pij-reader","job_id":id})),
+    )
+    .await;
+    assert_eq!(ack["ok"], true, "ordinary consumption remains supported");
+    server.abort();
+}
+
+#[tokio::test]
+async fn redelivery_release_reads_authority_after_prior_ordered_reparent_or_prime_unset() {
+    for prime in [false, true] {
+        let (pool, services, registry, spine) = redelivery_fixture().await;
+        let target = SeatId::from("pij-reader");
+        let actor = SeatId::from(if prime { "pij-stranger" } else { "pij-parent" });
+        if prime {
+            services
+                .roles
+                .assert_role(&actor, &actor, Some("prime".into()))
+                .await
+                .unwrap();
+        }
+        let id = services.delivery.claim_inbox(&target, false).await.unwrap()[0].job_id;
+        let queue = services.queue.clone();
+        let bus = services.event_bus.clone();
+        let raw_spine = spine.clone();
+        let changed_seat = target.clone();
+        let changed_actor = actor.clone();
+        let (entered, admitted) = tokio::sync::oneshot::channel();
+        let (release, released) = tokio::sync::oneshot::channel();
+        let prior = tokio::spawn(async move {
+            bus.publish_committed(async move {
+                entered.send(()).unwrap();
+                released.await.unwrap();
+                let event = if prime {
+                    pij_store::SqliteOrchestration::new(pool)
+                        .assert_role_committed(&changed_actor, &changed_actor, None, 1)
+                        .await?
+                } else {
+                    let mut changed = registry.get(&changed_seat).await?.unwrap();
+                    changed.parent = None;
+                    registry.put(changed.clone()).await?;
+                    let mut event = Event {
+                        seq: None,
+                        v: 1,
+                        at: 1,
+                        kind: "seat.put".into(),
+                        seat: Some(changed_seat),
+                        payload: serde_json::to_string(&changed).unwrap(),
+                    };
+                    event.seq = Some(raw_spine.append(event.clone()).await?);
+                    event
+                };
+                Ok((event, ()))
+            })
+            .await
+        });
+        admitted.await.unwrap();
+        let (started, starting) = tokio::sync::oneshot::channel();
+        let mut request = tokio::spawn(async move {
+            started.send(()).unwrap();
+            services
+                .delivery
+                .release_inbox_head(&target, id, "observed loss", actor, services.roles.clone())
+                .await
+        });
+        starting.await.unwrap();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(30), &mut request)
+                .await
+                .is_err(),
+            "release waits behind the already-admitted authority mutation"
+        );
+        release.send(()).unwrap();
+        prior.await.unwrap().unwrap();
+        let error = request
+            .await
+            .unwrap()
+            .expect_err("former authority must be refused");
+        assert!(
+            matches!(error, PijError::GovernanceRefused { code, .. } if code == "E-RS-OWNERSHIP")
+        );
+        assert!(queue.claimed_delivery(id).await.unwrap().is_some());
+        assert!(
+            spine
+                .tail(None, pij_core::model::Seq(0))
+                .await
+                .unwrap()
+                .iter()
+                .all(|event| event.kind != "delivery.parked")
+        );
+    }
 }
 
 pub(super) async fn spawn(router: Router) -> (SocketAddr, tokio::task::JoinHandle<()>) {
@@ -1130,6 +1775,7 @@ async fn typing_receipt_is_queued_until_ack_then_reader_read_for_omp_and_pi() {
             .post(format!("http://{addr}/v1/inbox/ack"))
             .bearer_auth("key")
             .json(&InboxAckRequest {
+                delivery_outcome: None,
                 seat: message.to.clone(),
                 job_id: claims[0].job_id,
                 native: crate::delivery::NativeInboxIdentity {
@@ -2811,7 +3457,7 @@ async fn inbox_claims_without_evidence_then_ack_records_machine_graded_reader_re
     );
 
     let acknowledgement = InboxAckRequest {
-        // Deliberately forged: bearer auth is machine-grade and cannot name the
+        delivery_outcome: None, // Deliberately forged: bearer auth is machine-grade and cannot name the
         // seat. Attribution must come from the queue authority's claimed job.
         seat: "pij-forged-reader".into(),
         job_id: claims[0].job_id,
@@ -2855,6 +3501,7 @@ async fn inbox_claims_without_evidence_then_ack_records_machine_graded_reader_re
         .post(format!("http://{addr}/v1/inbox/ack"))
         .bearer_auth("local-key")
         .json(&InboxAckRequest {
+            delivery_outcome: None,
             seat: "pij-forged-reader".into(),
             job_id: pij_core::model::JobId(999_999),
             native: Default::default(),

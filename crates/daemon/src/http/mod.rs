@@ -111,6 +111,7 @@ enum Endpoint {
     Inbox,
     InboxTyping,
     InboxAck,
+    InboxRelease,
     Hold,
     Release,
     Seats,
@@ -175,7 +176,7 @@ enum Endpoint {
 }
 
 impl Endpoint {
-    const ALL: [Self; 43] = [
+    const ALL: [Self; 44] = [
         Self::Health,
         Self::Register,
         Self::Spawn,
@@ -187,6 +188,7 @@ impl Endpoint {
         Self::Inbox,
         Self::InboxTyping,
         Self::InboxAck,
+        Self::InboxRelease,
         Self::Hold,
         Self::Release,
         Self::Seats,
@@ -234,6 +236,7 @@ impl Endpoint {
             Self::Inbox => "/v1/inbox",
             Self::InboxTyping => "/v1/inbox/typing",
             Self::InboxAck => "/v1/inbox/ack",
+            Self::InboxRelease => "/v1/inbox/release",
             Self::Hold => "/v1/hold",
             Self::Release => "/v1/release",
             Self::Seats => "/v1/seats",
@@ -283,6 +286,7 @@ impl Endpoint {
             | Self::Background
             | Self::BackgroundKill
             | Self::InboxAck
+            | Self::InboxRelease
             | Self::Hold
             | Self::Release
             | Self::Sidecar
@@ -414,6 +418,7 @@ fn router_with_optional_federation(
                     | Endpoint::Background
                     | Endpoint::BackgroundKill
                     | Endpoint::InboxAck
+                    | Endpoint::InboxRelease
                     | Endpoint::Hold
                     | Endpoint::Release
                     | Endpoint::Sidecar
@@ -464,6 +469,7 @@ fn router_with_optional_federation(
             Endpoint::Inbox => router.route(endpoint.path(), get(inbox)),
             Endpoint::InboxTyping => router.route(endpoint.path(), get(inbox_typing)),
             Endpoint::InboxAck => router.route(endpoint.path(), post(ack_inbox)),
+            Endpoint::InboxRelease => router.route(endpoint.path(), post(operator_release_inbox)),
             Endpoint::Hold => router.route(endpoint.path(), post(hold_inbox)),
             Endpoint::Release => router.route(endpoint.path(), post(release_inbox)),
             Endpoint::Seats => router.route(endpoint.path(), get(seats).post(seats_post)),
@@ -1669,6 +1675,14 @@ fn native_inbox_response(page: crate::delivery::NativeInboxPage) -> Response {
 
 fn inbox_failure(error: PijError) -> Response {
     match &error {
+        PijError::GovernanceRefused { code, record } if code == "E-RS-INBOX-AUTHORITY-SPLIT" => {
+            let mut answer: Envelope<serde_json::Value> =
+                Envelope::refused("pij inbox", ErrorKind::Refused, error.to_string());
+            answer.details = Some(serde_json::json!({
+                "code":code, "authority":serde_json::from_str::<serde_json::Value>(record).ok(),
+            }));
+            envelope(StatusCode::CONFLICT, &answer)
+        }
         PijError::Adapter { adapter, .. } if adapter == "daemon/native-inbox" => {
             refused("pij inbox", error)
         }
@@ -1885,6 +1899,94 @@ async fn release_inbox(
     envelope(StatusCode::OK, &Envelope::ok("pij release", data))
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InboxReleaseRequest {
+    seat: SeatId,
+    job_id: pij_core::model::JobId,
+    evidence: String,
+    #[serde(default)]
+    caller: CallerContext,
+}
+
+async fn operator_release_inbox(
+    State(state): State<AppState>,
+    request: std::result::Result<
+        Json<InboxReleaseRequest>,
+        axum::extract::rejection::JsonRejection,
+    >,
+) -> Response {
+    const COMMAND: &str = "pij inbox release";
+    let Json(request) = match request {
+        Ok(request) => request,
+        Err(error) => return refused(COMMAND, error.to_string()),
+    };
+    if request.evidence.trim().is_empty() {
+        return refused(COMMAND, "release requires nonempty evidence");
+    }
+    let actor = match identity::resolve_seat(
+        &state,
+        COMMAND,
+        request.caller.session_id,
+        request.caller.pane,
+    )
+    .await
+    {
+        identity::Resolved::Seat(actor, _) => actor,
+        identity::Resolved::Refusal(response) => return response,
+    };
+    let target = match state.services.registry.get(&request.seat).await {
+        Ok(Some(target)) if target.tombstoned_at.is_none() => target,
+        Ok(_) => return refused(COMMAND, "release requires a current recipient"),
+        Err(error) => return internal(COMMAND, error),
+    };
+    if let Err(error) = state
+        .services
+        .delivery
+        .release_inbox_head(
+            &target.id,
+            request.job_id,
+            &format!("{}: {}", actor.id, request.evidence),
+            actor.id.clone(),
+            state.services.roles.clone(),
+        )
+        .await
+    {
+        let mut answer: Envelope<serde_json::Value> =
+            Envelope::refused(COMMAND, ErrorKind::Refused, error.to_string());
+        let code = match &error {
+            PijError::GovernanceRefused { code, .. }
+                if matches!(
+                    code.as_str(),
+                    "E-RS-INBOX-AUTHORITY-SPLIT" | "E-RS-OWNERSHIP"
+                ) =>
+            {
+                code.as_str()
+            }
+            _ => "E-RS-INBOX-NOT-RUNNING-HEAD",
+        };
+        answer.details = Some(serde_json::json!({"code":code}));
+        return envelope(
+            if code == "E-RS-OWNERSHIP" {
+                StatusCode::FORBIDDEN
+            } else {
+                StatusCode::CONFLICT
+            },
+            &answer,
+        );
+    }
+    envelope(
+        StatusCode::OK,
+        &Envelope::ok(
+            COMMAND,
+            serde_json::json!({
+                "job_id":request.job_id, "seat":target.id,
+                "state":"failed", "outcome":"undelivered:operator-released",
+            }),
+        ),
+    )
+}
+
 #[derive(serde::Serialize)]
 struct InboxAckAudit {
     job_id: pij_core::model::JobId,
@@ -1903,6 +2005,23 @@ async fn ack_inbox(
     Extension(authenticated): Extension<auth::AuthenticatedMachine>,
     Json(request): Json<InboxAckRequest>,
 ) -> Response {
+    if let Some(outcome) = request.delivery_outcome.as_deref() {
+        if outcome != "undelivered:harness-swallowed" || request.control_outcome.is_some() {
+            return refused(
+                "pij inbox",
+                "delivery_outcome must be undelivered:harness-swallowed for a body claim",
+            );
+        }
+        return match state
+            .services
+            .delivery
+            .fail_inbox(&request.seat, request.job_id)
+            .await
+        {
+            Ok(()) => envelope(StatusCode::OK, &Envelope::ok("pij inbox", request.job_id)),
+            Err(error) => inbox_failure(error),
+        };
+    }
     let acknowledged = match state
         .services
         .delivery

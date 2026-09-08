@@ -360,13 +360,16 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
 
     let orchestration = Arc::new(OrchestrationService::new());
 
-    let delivery = Arc::new(delivery::DeliveryService::new(
-        Arc::clone(&registry),
-        Arc::clone(&queue),
-        Arc::clone(&transport),
-        Arc::clone(&interaction),
-        Arc::clone(&event_bus),
-    )?);
+    let delivery = Arc::new(
+        delivery::DeliveryService::new(
+            Arc::clone(&registry),
+            Arc::clone(&queue),
+            Arc::clone(&transport),
+            Arc::clone(&interaction),
+            Arc::clone(&event_bus),
+        )?
+        .with_recovery_backends(config.adapters.queue, config.adapters.spine),
+    );
     let roles = Arc::new(http::role::RoleService::new(
         Arc::clone(&registry),
         pij_store::SqliteOrchestration::new(spine_pool.clone()),

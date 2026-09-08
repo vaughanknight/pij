@@ -1,0 +1,33 @@
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-redeliver/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 16.14s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-043514ab0ddb16b1)
+
+running 3 tests
+
+thread 'http::tests::redelivery_operator_release_requires_parent_or_authoritative_prime_and_running_head' (1184095144) panicked at crates/daemon/src/http/tests.rs:226:23:
+machine-decodable inbox envelope: reqwest::Error { kind: Decode, source: Error("EOF while parsing a value", line: 1, column: 0) }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test http::tests::redelivery_operator_release_requires_parent_or_authoritative_prime_and_running_head ... FAILED
+
+thread 'http::tests::redelivery_extension_three_expired_leases_park_and_unblock_serial_head' (1184095143) panicked at crates/daemon/src/http/tests.rs:241:9:
+assertion `left == right` failed
+  left: Null
+ right: "lost-body"
+
+thread 'http::tests::redelivery_swallowed_ack_is_failure_not_reader_read_and_rejects_wrong_recipient' (1184095145) panicked at crates/daemon/src/http/tests.rs:274:9:
+assertion `left == right` failed: {"command":"pij inbox","data":1,"ok":true,"v":2}
+  left: Bool(true)
+ right: false
+test http::tests::redelivery_extension_three_expired_leases_park_and_unblock_serial_head ... FAILED
+test http::tests::redelivery_swallowed_ack_is_failure_not_reader_read_and_rejects_wrong_recipient ... FAILED
+
+failures:
+
+failures:
+    http::tests::redelivery_extension_three_expired_leases_park_and_unblock_serial_head
+    http::tests::redelivery_operator_release_requires_parent_or_authoritative_prime_and_running_head
+    http::tests::redelivery_swallowed_ack_is_failure_not_reader_read_and_rejects_wrong_recipient
+
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 352 filtered out; finished in 0.23s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

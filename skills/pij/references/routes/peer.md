@@ -70,6 +70,19 @@ Expired claims terminate with unknown-outcome/missing-ack, never replay; refused
 
 `compact-self` takes no legacy instruction/pane override; it remains a shipped structured daemon operation. `pij bg create/list/tail/kill` remains shipped unchanged in semantics (§ C7): detached runner, completion injected from `pij-bg`, bounded output and owner/recorded-parent recovery. Neither introduces answer queue withdrawal.
 
+**OMP/Pi body recovery** ([wire contract](../../../../docs/how/pij-rs-api.md#extension-inbox-recovery)):
+unconsumed delivery idle for `PIJ_REDELIVER_IDLE_MS` (default 10s) resends through
+the prompt path, marked `[pij resend n]`; reclaim resends rather than silently
+holding the head. Three resends or three expired extension leases (default 60s,
+`PIJ_RS_EXT_CLAIM_LEASE_SECS`) park with a sender-visible failure receipt and
+`delivery.parked` event. Controls retain their non-replay contract above.
+`pij-rs inbox --seat <seat> --peek --json` distinguishes parked rows.
+`pij-rs inbox release --seat <seat> --job <id> --evidence '<observed blockage>'`
+parks the running body head; only its recorded parent or authoritative prime
+may do this. It neither sends keys nor kills a seat. The pending badge excludes
+recent resends and clears parked ids with a visible notice; pending forever is
+delivery failure, not successful queuing.
+
 ## Transcript versus events
 
 `pij tail <seat>` refuses `E-RS-UNPORTED`: native `pij-rs tail` follows **daemon event frames**, not a peer transcript. Never substitute one for the other. For runtime/footer evidence use the actual host's supported transcript or an owner-scoped tmux capture, not an invented rs transcript API.

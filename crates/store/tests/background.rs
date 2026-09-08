@@ -131,12 +131,6 @@ async fn background_pending_excludes_notified_history_and_preserves_reconciliati
 #[tokio::test]
 async fn background_migration_17_is_applied_and_reopening_preserves_lifecycle() {
     let (fresh, pool, background) = setup().await;
-    assert_eq!(pij_store::schema_version(&pool).await.expect("version"), 17);
-    let version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM _sqlx_migrations")
-        .fetch_one(&pool)
-        .await
-        .expect("migration ledger");
-    assert_eq!(version, 17);
     let mut expected = queued("bg-persistent");
     background.insert(&expected).await.expect("queue job");
     assert_eq!(

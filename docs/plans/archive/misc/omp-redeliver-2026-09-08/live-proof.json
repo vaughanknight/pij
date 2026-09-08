@@ -1,0 +1,488 @@
+{
+  "runtime": {
+    "version": "omp 18.1.14",
+    "model": "github-copilot/gpt-5-mini",
+    "receiver": {
+      "id": "pij-loose-sabrina",
+      "machine": "JordansacStudio.localdomain",
+      "harness": "omp",
+      "session": "01a07efe-2c9d-73c1-8424-87c152d3644a",
+      "pane": "%2",
+      "proc": {
+        "pid": 76760,
+        "proc_start": 20260908130941
+      },
+      "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-redeliver-nUzgpm/workspace",
+      "state": "idle",
+      "semantic_state": null,
+      "role": null,
+      "parent": null,
+      "relay": false,
+      "native_extension_delivery": false,
+      "generation": "rs"
+    },
+    "sender": {
+      "id": "pij-given-narwhal",
+      "machine": "JordansacStudio.localdomain",
+      "harness": "omp",
+      "session": "01a07f03-1a25-773d-9c83-d98733eee295",
+      "pane": "%3",
+      "proc": {
+        "pid": 12058,
+        "proc_start": 20260908131504
+      },
+      "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-redeliver-nUzgpm/workspace",
+      "state": "idle",
+      "semantic_state": null,
+      "role": null,
+      "parent": null,
+      "relay": false,
+      "native_extension_delivery": false,
+      "generation": "rs"
+    }
+  },
+  "isolation": {
+    "root": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-redeliver-nUzgpm",
+    "addr": "127.0.0.1:54356",
+    "state": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-redeliver-nUzgpm/daemon",
+    "socket": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-redeliver-nUzgpm/tmux.sock",
+    "workspace": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-redeliver-nUzgpm/workspace"
+  },
+  "normal": {
+    "messageId": "cb5b22e8-0f02-4a9f-baf3-8ab5aa1bba41",
+    "elapsedMs": 103,
+    "job": {
+      "id": 1,
+      "kind": "delivery:pij-loose-sabrina",
+      "state": "done",
+      "dedupe_key": "cb5b22e8-0f02-4a9f-baf3-8ab5aa1bba41",
+      "attempt": 0,
+      "outcome": null,
+      "claimed_at": 1788836995,
+      "acked_at": 1788836995
+    },
+    "events": [
+      {
+        "seq": 7,
+        "at": 1788836995964,
+        "kind": "message.pushed",
+        "seat": "pij-loose-sabrina",
+        "payload": "{\"msg_id\":\"cb5b22e8-0f02-4a9f-baf3-8ab5aa1bba41\",\"from\":\"pij-redeliver-proof\",\"body\":\"Reply locally with exactly NORMAL_cb5b22e8-0f02-4a9f-baf3-8ab5aa1bba41. Do not call tools.\"}"
+      },
+      {
+        "seq": 8,
+        "at": 1788836995964,
+        "kind": "delivery.outcome",
+        "seat": "pij-loose-sabrina",
+        "payload": "{\"msg_id\":\"cb5b22e8-0f02-4a9f-baf3-8ab5aa1bba41\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+      },
+      {
+        "seq": 9,
+        "at": 1788836995993,
+        "kind": "delivery.outcome",
+        "seat": "pij-loose-sabrina",
+        "payload": "{\"msg_id\":\"cb5b22e8-0f02-4a9f-baf3-8ab5aa1bba41\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+      }
+    ],
+    "ack": [
+      {
+        "seq": 10,
+        "at": 1788836995993,
+        "kind": "delivery.inbox-ack",
+        "seat": "pij-loose-sabrina",
+        "payload": "{\"job_id\":1,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+      }
+    ]
+  },
+  "escape": {
+    "messageId": "3453cbed-e0fe-46e3-a567-41d033e4baa5",
+    "sentAt": 1788837015871,
+    "escapedAt": 1788837015988,
+    "recoveredAt": 1788837026455,
+    "elapsedMs": 10467,
+    "job": {
+      "id": 2,
+      "kind": "delivery:pij-loose-sabrina",
+      "state": "done",
+      "dedupe_key": "3453cbed-e0fe-46e3-a567-41d033e4baa5",
+      "attempt": 0,
+      "outcome": null,
+      "claimed_at": 1788837015,
+      "acked_at": 1788837026
+    },
+    "events": [
+      {
+        "seq": 11,
+        "at": 1788837015872,
+        "kind": "message.pushed",
+        "seat": "pij-loose-sabrina",
+        "payload": "{\"msg_id\":\"3453cbed-e0fe-46e3-a567-41d033e4baa5\",\"from\":\"pij-redeliver-proof\",\"body\":\"Reply locally with exactly RECOVER_3453cbed-e0fe-46e3-a567-41d033e4baa5. Do not call tools.\"}"
+      },
+      {
+        "seq": 12,
+        "at": 1788837015872,
+        "kind": "delivery.outcome",
+        "seat": "pij-loose-sabrina",
+        "payload": "{\"msg_id\":\"3453cbed-e0fe-46e3-a567-41d033e4baa5\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+      },
+      {
+        "seq": 13,
+        "at": 1788837026408,
+        "kind": "delivery.outcome",
+        "seat": "pij-loose-sabrina",
+        "payload": "{\"msg_id\":\"3453cbed-e0fe-46e3-a567-41d033e4baa5\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+      }
+    ],
+    "ack": [
+      {
+        "seq": 14,
+        "at": 1788837026408,
+        "kind": "delivery.inbox-ack",
+        "seat": "pij-loose-sabrina",
+        "payload": "{\"job_id\":2,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+      }
+    ],
+    "transcript": [
+      {
+        "timestamp": "2026-09-08T03:10:26.409Z",
+        "role": "user",
+        "text": "[pij resend 1]\n[pijMessageId:3453cbed-e0fe-46e3-a567-41d033e4baa5]\n[pij-rs from pij-redeliver-proof]\nReply locally with exactly RECOVER_3453cbed-e0fe-46e3-a567-41d033e4baa5. Do not call tools.\n[/pij]"
+      },
+      {
+        "timestamp": "2026-09-08T03:10:28.586Z",
+        "role": "assistant",
+        "text": "RECOVER_3453cbed-e0fe-46e3-a567-41d033e4baa5"
+      }
+    ]
+  },
+  "subject": "Final composed code exercised in final; earlier extension-only smoke retained as provenance.",
+  "final": {
+    "subject": {
+      "binarySha256": "1e18f4bc74b5dff630da99058ad7f7d8a91988d973c5b082e857468f3b271953",
+      "schemaVersion": 18,
+      "receiver": {
+        "id": "pij-actual-vosill",
+        "machine": "JordansacStudio.localdomain",
+        "harness": "omp",
+        "session": "01a07f17-3f0a-7115-be7e-07655ce69d34",
+        "pane": "%4",
+        "proc": {
+          "pid": 85291,
+          "proc_start": 20260908133704
+        },
+        "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-redeliver-nUzgpm/workspace",
+        "state": "idle",
+        "semantic_state": null,
+        "role": null,
+        "parent": null,
+        "relay": false,
+        "native_extension_delivery": false,
+        "generation": "rs"
+      },
+      "sender": {
+        "id": "pij-overall-wasp",
+        "machine": "JordansacStudio.localdomain",
+        "harness": "omp",
+        "session": "01a07f17-40a6-70f0-874f-a30d913255e8",
+        "pane": "%5",
+        "proc": {
+          "pid": 86294,
+          "proc_start": 20260908133704
+        },
+        "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-redeliver-nUzgpm/workspace",
+        "state": "idle",
+        "semantic_state": null,
+        "role": null,
+        "parent": null,
+        "relay": false,
+        "native_extension_delivery": false,
+        "generation": "rs"
+      },
+      "runtime": "omp 18.1.14",
+      "model": "github-copilot/gpt-5-mini"
+    },
+    "normal": {
+      "messageId": "cdb75428-3f76-4ec1-885d-89a58066a5a3",
+      "elapsedMs": 103,
+      "job": {
+        "id": 3,
+        "kind": "delivery:pij-actual-vosill",
+        "state": "done",
+        "dedupe_key": "cdb75428-3f76-4ec1-885d-89a58066a5a3",
+        "attempt": 0,
+        "outcome": null,
+        "claimed_at": 1788838664,
+        "acked_at": 1788838664
+      }
+    },
+    "escape": {
+      "messageId": "35041e3c-9cb8-4033-9b6a-3bdf8e81d48f",
+      "sentAt": 1788838670285,
+      "escapedAt": 1788838670399,
+      "recoveredAt": 1788838681350,
+      "elapsedMs": 10951,
+      "job": {
+        "id": 4,
+        "kind": "delivery:pij-actual-vosill",
+        "state": "done",
+        "dedupe_key": "35041e3c-9cb8-4033-9b6a-3bdf8e81d48f",
+        "attempt": 0,
+        "outcome": null,
+        "claimed_at": 1788838670,
+        "acked_at": 1788838681
+      },
+      "transcript": [
+        {
+          "timestamp": "2026-09-08T03:38:01.351Z",
+          "role": "user",
+          "text": "[pij resend 1]\n[pijMessageId:35041e3c-9cb8-4033-9b6a-3bdf8e81d48f]\n[pij-rs from pij-overall-wasp]\nReply locally exactly FINAL_RECOVER_35041e3c-9cb8-4033-9b6a-3bdf8e81d48f. No tools.\n[/pij]"
+        },
+        {
+          "timestamp": "2026-09-08T03:38:06.262Z",
+          "role": "assistant",
+          "text": "FINAL_RECOVER_35041e3c-9cb8-4033-9b6a-3bdf8e81d48f"
+        }
+      ]
+    },
+    "release": {
+      "messageId": "d7ddf5e3-d627-46f1-9137-f15e8bc3f841",
+      "successorId": "82620d7c-e0a2-46c1-94b1-aab4b1fb1bb4",
+      "before": [
+        {
+          "id": 5,
+          "kind": "delivery:pij-actual-vosill",
+          "state": "running",
+          "dedupe_key": "d7ddf5e3-d627-46f1-9137-f15e8bc3f841",
+          "attempt": 0,
+          "outcome": null,
+          "claimed_at": 1788838721,
+          "acked_at": null
+        },
+        {
+          "id": 6,
+          "kind": "delivery:pij-actual-vosill",
+          "state": "pending",
+          "dedupe_key": "82620d7c-e0a2-46c1-94b1-aab4b1fb1bb4",
+          "attempt": 0,
+          "outcome": null,
+          "claimed_at": null,
+          "acked_at": null
+        }
+      ],
+      "denied": {
+        "code": 2,
+        "stdout": "{\"ok\":false,\"command\":\"pij inbox release\",\"v\":2,\"meta\":\"E-RS-OWNERSHIP: {\\\"caller\\\":\\\"pij-actual-vosill\\\",\\\"parent\\\":null,\\\"seat\\\":\\\"pij-actual-vosill\\\"}\",\"error\":\"refused\",\"details\":{\"code\":\"E-RS-OWNERSHIP\"}}\n"
+      },
+      "allowed": {
+        "code": 0,
+        "stdout": "{\"ok\":true,\"command\":\"pij inbox release\",\"v\":2,\"data\":{\"job_id\":5,\"outcome\":\"undelivered:operator-released\",\"seat\":\"pij-actual-vosill\",\"state\":\"failed\"}}\n"
+      },
+      "after": [
+        {
+          "id": 5,
+          "kind": "delivery:pij-actual-vosill",
+          "state": "failed",
+          "dedupe_key": "d7ddf5e3-d627-46f1-9137-f15e8bc3f841",
+          "attempt": 0,
+          "outcome": "undelivered:operator-released",
+          "claimed_at": 1788838721,
+          "acked_at": 1788838721
+        },
+        {
+          "id": 6,
+          "kind": "delivery:pij-actual-vosill",
+          "state": "running",
+          "dedupe_key": "82620d7c-e0a2-46c1-94b1-aab4b1fb1bb4",
+          "attempt": 0,
+          "outcome": null,
+          "claimed_at": 1788838722,
+          "acked_at": null
+        }
+      ],
+      "events": [
+        {
+          "seq": 30,
+          "at": 1788838721412,
+          "kind": "message.pushed",
+          "seat": "pij-actual-vosill",
+          "payload": "{\"msg_id\":\"d7ddf5e3-d627-46f1-9137-f15e8bc3f841\",\"from\":\"pij-overall-wasp\",\"body\":\"Reply locally RELEASED_MESSAGE_MUST_NOT_RUN. No tools.\"}"
+        },
+        {
+          "seq": 31,
+          "at": 1788838721412,
+          "kind": "delivery.outcome",
+          "seat": "pij-actual-vosill",
+          "payload": "{\"msg_id\":\"d7ddf5e3-d627-46f1-9137-f15e8bc3f841\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+        },
+        {
+          "seq": 34,
+          "at": 1788838721530,
+          "kind": "delivery.outcome",
+          "seat": "pij-overall-wasp",
+          "payload": "{\"msg_id\":\"d7ddf5e3-d627-46f1-9137-f15e8bc3f841\",\"outcome\":{\"outcome\":\"refused\",\"reason\":\"undelivered:operator-released\"},\"transport\":\"extension-stream\"}"
+        },
+        {
+          "seq": 35,
+          "at": 1788838721530,
+          "kind": "delivery.parked",
+          "seat": "pij-overall-wasp",
+          "payload": "{\"jobId\":5,\"messageId\":\"d7ddf5e3-d627-46f1-9137-f15e8bc3f841\",\"outcome\":\"undelivered:operator-released\",\"reason\":\"pij-overall-wasp: Observed claimed message swallowed during real OMP sleep90; release isolated head\",\"recipient\":\"pij-actual-vosill\"}"
+        }
+      ],
+      "peek": {
+        "code": 0,
+        "envelope": {
+          "ok": true,
+          "command": "pij inbox",
+          "v": 2,
+          "data": [
+            {
+              "job_id": 5,
+              "message": {
+                "from": "pij-overall-wasp",
+                "to": "pij-actual-vosill",
+                "body": "Reply locally RELEASED_MESSAGE_MUST_NOT_RUN. No tools.",
+                "msg_id": "d7ddf5e3-d627-46f1-9137-f15e8bc3f841"
+              },
+              "attempt": 0,
+              "state": "failed",
+              "outcome": "undelivered:operator-released"
+            }
+          ]
+        }
+      },
+      "successorDone": {
+        "id": 6,
+        "kind": "delivery:pij-actual-vosill",
+        "state": "done",
+        "dedupe_key": "82620d7c-e0a2-46c1-94b1-aab4b1fb1bb4",
+        "attempt": 0,
+        "outcome": null,
+        "claimed_at": 1788838722,
+        "acked_at": 1788838733
+      },
+      "parkedMessageExecuted": false
+    },
+    "events": [
+      {
+        "seq": 21,
+        "at": 1788838643952,
+        "kind": "role-set",
+        "seat": "pij-overall-wasp",
+        "payload": "{\"action\":\"assigned\",\"actor\":\"pij-overall-wasp\",\"record\":{\"assigned_at\":1788838643952,\"assigned_by\":\"pij-overall-wasp\",\"role\":\"prime\",\"seat\":\"pij-overall-wasp\"}}"
+      },
+      {
+        "seq": 22,
+        "at": 1788838664950,
+        "kind": "message.pushed",
+        "seat": "pij-actual-vosill",
+        "payload": "{\"msg_id\":\"cdb75428-3f76-4ec1-885d-89a58066a5a3\",\"from\":\"pij-overall-wasp\",\"body\":\"Reply locally exactly FINAL_NORMAL_cdb75428-3f76-4ec1-885d-89a58066a5a3. No tools.\"}"
+      },
+      {
+        "seq": 23,
+        "at": 1788838664950,
+        "kind": "delivery.outcome",
+        "seat": "pij-actual-vosill",
+        "payload": "{\"msg_id\":\"cdb75428-3f76-4ec1-885d-89a58066a5a3\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+      },
+      {
+        "seq": 24,
+        "at": 1788838664978,
+        "kind": "delivery.outcome",
+        "seat": "pij-actual-vosill",
+        "payload": "{\"msg_id\":\"cdb75428-3f76-4ec1-885d-89a58066a5a3\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+      },
+      {
+        "seq": 25,
+        "at": 1788838664979,
+        "kind": "delivery.inbox-ack",
+        "seat": "pij-actual-vosill",
+        "payload": "{\"job_id\":3,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+      },
+      {
+        "seq": 26,
+        "at": 1788838670285,
+        "kind": "message.pushed",
+        "seat": "pij-actual-vosill",
+        "payload": "{\"msg_id\":\"35041e3c-9cb8-4033-9b6a-3bdf8e81d48f\",\"from\":\"pij-overall-wasp\",\"body\":\"Reply locally exactly FINAL_RECOVER_35041e3c-9cb8-4033-9b6a-3bdf8e81d48f. No tools.\"}"
+      },
+      {
+        "seq": 27,
+        "at": 1788838670285,
+        "kind": "delivery.outcome",
+        "seat": "pij-actual-vosill",
+        "payload": "{\"msg_id\":\"35041e3c-9cb8-4033-9b6a-3bdf8e81d48f\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+      },
+      {
+        "seq": 28,
+        "at": 1788838681350,
+        "kind": "delivery.outcome",
+        "seat": "pij-actual-vosill",
+        "payload": "{\"msg_id\":\"35041e3c-9cb8-4033-9b6a-3bdf8e81d48f\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+      },
+      {
+        "seq": 29,
+        "at": 1788838681350,
+        "kind": "delivery.inbox-ack",
+        "seat": "pij-actual-vosill",
+        "payload": "{\"job_id\":4,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+      },
+      {
+        "seq": 30,
+        "at": 1788838721412,
+        "kind": "message.pushed",
+        "seat": "pij-actual-vosill",
+        "payload": "{\"msg_id\":\"d7ddf5e3-d627-46f1-9137-f15e8bc3f841\",\"from\":\"pij-overall-wasp\",\"body\":\"Reply locally RELEASED_MESSAGE_MUST_NOT_RUN. No tools.\"}"
+      },
+      {
+        "seq": 31,
+        "at": 1788838721412,
+        "kind": "delivery.outcome",
+        "seat": "pij-actual-vosill",
+        "payload": "{\"msg_id\":\"d7ddf5e3-d627-46f1-9137-f15e8bc3f841\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+      },
+      {
+        "seq": 32,
+        "at": 1788838721515,
+        "kind": "message.pushed",
+        "seat": "pij-actual-vosill",
+        "payload": "{\"msg_id\":\"82620d7c-e0a2-46c1-94b1-aab4b1fb1bb4\",\"from\":\"pij-overall-wasp\",\"body\":\"Reply locally SUCCESSOR_82620d7c-e0a2-46c1-94b1-aab4b1fb1bb4. No tools.\"}"
+      },
+      {
+        "seq": 33,
+        "at": 1788838721515,
+        "kind": "delivery.outcome",
+        "seat": "pij-actual-vosill",
+        "payload": "{\"msg_id\":\"82620d7c-e0a2-46c1-94b1-aab4b1fb1bb4\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+      },
+      {
+        "seq": 34,
+        "at": 1788838721530,
+        "kind": "delivery.outcome",
+        "seat": "pij-overall-wasp",
+        "payload": "{\"msg_id\":\"d7ddf5e3-d627-46f1-9137-f15e8bc3f841\",\"outcome\":{\"outcome\":\"refused\",\"reason\":\"undelivered:operator-released\"},\"transport\":\"extension-stream\"}"
+      },
+      {
+        "seq": 35,
+        "at": 1788838721530,
+        "kind": "delivery.parked",
+        "seat": "pij-overall-wasp",
+        "payload": "{\"jobId\":5,\"messageId\":\"d7ddf5e3-d627-46f1-9137-f15e8bc3f841\",\"outcome\":\"undelivered:operator-released\",\"reason\":\"pij-overall-wasp: Observed claimed message swallowed during real OMP sleep90; release isolated head\",\"recipient\":\"pij-actual-vosill\"}"
+      },
+      {
+        "seq": 36,
+        "at": 1788838733396,
+        "kind": "delivery.outcome",
+        "seat": "pij-actual-vosill",
+        "payload": "{\"msg_id\":\"82620d7c-e0a2-46c1-94b1-aab4b1fb1bb4\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+      },
+      {
+        "seq": 37,
+        "at": 1788838733396,
+        "kind": "delivery.inbox-ack",
+        "seat": "pij-actual-vosill",
+        "payload": "{\"job_id\":6,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+      }
+    ]
+  }
+}

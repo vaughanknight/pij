@@ -155,8 +155,13 @@ export interface InboxPort {
 export interface PiRuntimePort {
 	/** Is the session currently idle (not streaming a turn)? */
 	isIdle(): boolean;
-	/** Inject peer input; messageId correlates native consumption with its durable claim. */
-	inject(text: string, mode: "immediate" | "steer", messageId?: string): void;
+	/** messageId correlates native consumption; resendAttempt forces the prompt recovery path. */
+	inject(
+		text: string,
+		mode: "immediate" | "steer",
+		messageId?: string,
+		resendAttempt?: number,
+	): void;
 	/** Trigger a context compaction (remote command: compact). Always available
 	 *  — compact() lives on the long-lived ExtensionContext. */
 	compact(): void | Promise<void>;

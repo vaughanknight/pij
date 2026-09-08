@@ -109,6 +109,37 @@ impl Queue for FailFirstClaim {
     async fn release_deferred(&self, job: JobId) -> Result<pij_core::ports::ReleaseOutcome> {
         self.inner.release_deferred(job).await
     }
+    async fn claim_extension(
+        &self,
+        kinds: &[String],
+        worker: &str,
+        lease_secs: u64,
+        at: u64,
+        spine: &dyn pij_core::ports::Spine,
+        recovery_allowed: bool,
+    ) -> pij_core::error::Result<pij_core::ports::ExtensionClaim> {
+        self.inner
+            .claim_extension(kinds, worker, lease_secs, at, spine, recovery_allowed)
+            .await
+    }
+    async fn peek_parked(
+        &self,
+        kinds: &[String],
+    ) -> pij_core::error::Result<Vec<pij_core::ports::ParkedDelivery>> {
+        self.inner.peek_parked(kinds).await
+    }
+    async fn park_delivery(
+        &self,
+        job: JobId,
+        recipient: &SeatId,
+        attempt: u32,
+        evidence: &pij_core::ports::ParkingEvidence<'_>,
+        spine: &dyn pij_core::ports::Spine,
+    ) -> pij_core::error::Result<(Option<Job>, Vec<pij_core::model::Event>)> {
+        self.inner
+            .park_delivery(job, recipient, attempt, evidence, spine)
+            .await
+    }
 }
 
 #[tokio::test]
@@ -581,6 +612,37 @@ impl Queue for RefuseFirstDelivery {
     }
     async fn release_deferred(&self, job: JobId) -> Result<pij_core::ports::ReleaseOutcome> {
         self.inner.release_deferred(job).await
+    }
+    async fn claim_extension(
+        &self,
+        kinds: &[String],
+        worker: &str,
+        lease_secs: u64,
+        at: u64,
+        spine: &dyn pij_core::ports::Spine,
+        recovery_allowed: bool,
+    ) -> pij_core::error::Result<pij_core::ports::ExtensionClaim> {
+        self.inner
+            .claim_extension(kinds, worker, lease_secs, at, spine, recovery_allowed)
+            .await
+    }
+    async fn peek_parked(
+        &self,
+        kinds: &[String],
+    ) -> pij_core::error::Result<Vec<pij_core::ports::ParkedDelivery>> {
+        self.inner.peek_parked(kinds).await
+    }
+    async fn park_delivery(
+        &self,
+        job: JobId,
+        recipient: &SeatId,
+        attempt: u32,
+        evidence: &pij_core::ports::ParkingEvidence<'_>,
+        spine: &dyn pij_core::ports::Spine,
+    ) -> pij_core::error::Result<(Option<Job>, Vec<pij_core::model::Event>)> {
+        self.inner
+            .park_delivery(job, recipient, attempt, evidence, spine)
+            .await
     }
 }
 

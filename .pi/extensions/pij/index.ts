@@ -569,14 +569,15 @@ export default function (pi: ExtensionAPI): void {
 	});
 	pi.on("tool_result", (event) => session?.capture("tool_result", event));
 	pi.on("message_end", (event) => session?.capture("message", event));
+	// Forward the full envelope: prompt recovery carries its id in user content.
 	pi.on("message_start", (event) => rustRuntime?.onMessageStart(event.message));
 	pi.on("agent_end", (event) => {
 		const willContinue = "willContinue" in event && event.willContinue === true;
 		rustRuntime?.onAgentEnd(willContinue);
 	});
 
-	// turn_start resolves any queued (steered) delivery receipt -> delivered
-	// (finding 08). timestamp is epoch ms; the coordinator speaks ISO.
+	// Turn activity resets the Rust idle-loss detector, never its consumption proof.
+	// Legacy queued receipts retain their turn-start handling.
 	pi.on("turn_start", (event) => {
 		const publication = ompSessionNamePublication;
 		if (publication && !publication.state.took && !publication.state.reasserted) {

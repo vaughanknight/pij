@@ -97,28 +97,62 @@ impl EventBus {
     /// task retains the ordering guard through commit and broadcast even if the
     /// requesting future is dropped. Stop and join producers, then [`Self::flush`]
     /// before shutting down the runtime; runtime termination cannot be shielded.
+    ///
+    /// # Errors
+    /// Transaction failure, missing committed sequence, or publication task failure.
     pub async fn publish_committed<T, F>(&self, commit: F) -> Result<(Seq, T)>
     where
         T: Send + 'static,
         F: Future<Output = Result<(Event, T)>> + Send + 'static,
     {
+        self.publish_committed_batch(async move {
+            let (event, result) = commit.await?;
+            let seq = event.seq.ok_or_else(|| PijError::Adapter {
+                adapter: "daemon/events".into(),
+                message: "publication callback committed without its event sequence".into(),
+            })?;
+            Ok(([event], (seq, result)))
+        })
+        .await
+    }
+
+    /// Commit zero or more events with one mutation and publish them in order.
+    /// Empty event batches allow a serial inbox claim that parked no rows.
+    ///
+    /// # Errors
+    /// Transaction failure, missing committed sequences, or publication task failure.
+    pub async fn publish_committed_batch<T, F, I>(&self, commit: F) -> Result<T>
+    where
+        T: Send + 'static,
+        F: Future<Output = Result<(I, T)>> + Send + 'static,
+        I: AsRef<[Event]> + IntoIterator<Item = Event> + Send + 'static,
+    {
         let guard = self.publish_lock.clone().lock_owned().await;
         let live = self.live.clone();
         tokio::spawn(async move {
             let _guard = guard;
-            let (event, result) = commit.await?;
-            let seq = event.seq.ok_or_else(|| PijError::Adapter {
-                adapter: "daemon/events".to_string(),
-                message: "publication callback committed without its event sequence".to_string(),
-            })?;
-            let _ = live.send(event);
-            Ok((seq, result))
+            let (events, result) = commit.await?;
+            if events.as_ref().iter().any(|event| event.seq.is_none()) {
+                return Err(PijError::Adapter {
+                    adapter: "daemon/events".into(),
+                    message: "publication callback committed without its event sequence".into(),
+                });
+            }
+            for event in events {
+                let _ = live.send(event);
+            }
+            Ok(result)
         })
         .await
         .map_err(|error| PijError::Adapter {
             adapter: "daemon/events".to_string(),
             message: format!("admitted publication task failed: {error}"),
         })?
+    }
+
+    /// Raw persistence for an in-memory adapter's append-before-mutate bridge.
+    pub(crate) fn raw_spine(&self) -> Arc<dyn Spine> {
+        self.spine.clone()
     }
 
     /// Wait for previously admitted writes to finish committing and publishing.

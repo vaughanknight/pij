@@ -45,7 +45,7 @@ Governance families accept `{ "argv": ["project", "list"], "caller": { "TMUX_PAN
 
 `RoleService` is authoritative: asserted roles live in `seat_roles`, joined into whoami, `/v1/seats`, StateCard and phonehome. A descriptor's stale role does not win. The projected role is optional (`Option<String>`): a string is an assertion; JSON `null` means no asserted role, never an inferred `worker` or empty string. Consumers must preserve null versus omission and must not reinterpret an omitted role as a request to clear it. Adoption/registration with role omitted preserves an existing assertion; a fresh unstamped seat remains null. Explicit null on adopt/register is not an unset operation. Use `pij role <seat> --unset` or typed `/v1/role` with `"role": null`; omitting role from that typed mutation is invalid.
 
-Self or the target's **current recorded parent** may assert/unset its role; an unrelated seat gets `E-RS-OWNERSHIP`. Protocol may require governors to designate roles, but the service's self-or-parent contract is explicit. An asserted display role, even `prime`, confers no general governance or remote-control authority. The narrowly scoped exception is [assume-dead revive of a parentless seat](#revive), which accepts an authoritative `prime` role. Prime designation is a separate orchestration record.
+Self or the target's **current recorded parent** may assert/unset its role; an unrelated seat gets `E-RS-OWNERSHIP`. Protocol may require governors to designate roles, but the service's self-or-parent contract is explicit. An asserted display role, even `prime`, confers no general governance or remote-control authority. Narrow exceptions are [assume-dead revive of a parentless seat](#revive) and [parking a blocked extension inbox head](#extension-inbox-recovery), which accept an authoritative `prime` role. Prime designation is a separate orchestration record.
 
 Sources: [`identity.rs`](../../crates/daemon/src/http/identity.rs), [`role.rs`](../../crates/daemon/src/http/role.rs), [`types.rs`](../../crates/daemon/src/http/types.rs), [`governance.rs`](../../crates/daemon/src/http/governance.rs).
 
@@ -93,6 +93,53 @@ Bare native clients still need the explicit registered identity their API takes.
 Sources: [`registration.rs`](../../crates/daemon/src/registration.rs),
 [`shim.rs`](../../crates/daemon/src/http/shim.rs),
 [`generation-router.ts`](../../.pi/extensions/pij/adapters/generation-router.ts).
+
+## Extension inbox recovery
+
+OMP/Pi body delivery is acknowledged only when the harness emits the matching
+`message_start`; injection returning or a turn starting is not consumption proof.
+The ordinary route stays unchanged. An unconsumed message idle for
+`PIJ_REDELIVER_IDLE_MS` (default `10000`) is resent through `sendUserMessage`,
+not the custom-message queue, with a one-line `[pij resend n]` prefix and message-id
+correlation. Starting another turn resets the idle window. The local extension
+capture `delivery.resend` records `messageId`, `attempt`, and the recovery reason;
+it is not a daemon spine event.
+
+A reclaimed unconsumed message is resent immediately: prompt path while idle,
+steering while busy. Consumption remains deduplicated by message id. Three
+resends are the limit; after the last resend gets its idle consumption window,
+`POST /v1/inbox/ack` with
+`"delivery_outcome":"undelivered:harness-swallowed"` terminally fails the claim
+instead of recording successful delivery.
+
+Extension body claims use `PIJ_RS_EXT_CLAIM_LEASE_SECS` (default `60`).
+Three expired leases park the job as `state:"failed"` with
+`outcome:"undelivered:lease-exhausted"`, unblocking the serial queue. Parking is
+a **policy**, not a one-directional safety interlock: expiry changes the delivery
+outcome. Neither short leases nor resends replay remote controls or change
+Claude/Copilot delivery.
+
+```bash
+pij-rs inbox --seat <seat> --peek --json
+pij-rs inbox release --seat <seat> --job <job-id> --evidence 'Observed blocked head' --json
+```
+
+Peek distinguishes parked rows from the live head and does not acknowledge them.
+Release requires the target's recorded parent or an authoritative `prime` role,
+nonempty evidence, and the running extension body head; refusal is decodable.
+It parks with `undelivered:operator-released`. This is not the existing
+typing-grace release operation, and does not terminate any harness process.
+
+Every park publishes `delivery.parked` addressed to the sender, carrying
+`messageId`, `jobId`, `recipient`, `outcome`, and `reason`, plus the failure receipt.
+The failed row and both sender events commit together before live publication.
+A real queue paired with a fake spine refuses terminal recovery with
+`E-RS-INBOX-AUTHORITY-SPLIT`, rather than emitting cursors from another store;
+ordinary reads and successful acknowledgements remain supported.
+The sender sees a warning naming the undelivered id and recipient. The recipient
+clears that message from its pending badge and visibly names the parked id once.
+The badge counts only unconsumed messages not recently resent; it is not a count
+of successful delivery or model completion.
 
 ## Seat roster rows and absence
 

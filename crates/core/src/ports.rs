@@ -194,6 +194,38 @@ pub enum ReleaseOutcome {
     },
 }
 
+/// A terminally parked queue row, retained for inbox inspection and receipts.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ParkedDelivery {
+    /// Durable queue identity.
+    pub job_id: JobId,
+    /// Preserved message and attempt.
+    pub job: Job,
+    /// Terminal recovery reason.
+    pub outcome: crate::model::DeliveryFailure,
+}
+
+/// Evidence committed with a parked row, not a post-commit logging request.
+pub struct ParkingEvidence<'a> {
+    /// Exact terminal recovery vocabulary.
+    pub outcome: crate::model::DeliveryFailure,
+    /// Operator evidence or the bounded recovery reason.
+    pub reason: &'a str,
+    /// Unix milliseconds of the transition.
+    pub at: u64,
+}
+
+/// Atomic extension lease recovery followed by the ordinary serial claim.
+#[derive(Default)]
+pub struct ExtensionClaim {
+    /// Zero or one next runnable delivery.
+    pub claimed: Option<(JobId, Job)>,
+    /// Rows whose third expired lease parked them in the same transaction.
+    pub parked: Vec<ParkedDelivery>,
+    /// Already persisted events for ordered live publication, possibly empty.
+    pub events: Vec<Event>,
+}
+
 /// The job queue every delivery and sidecar rides on (R4).
 #[async_trait]
 pub trait Queue: Send + Sync {
@@ -212,6 +244,34 @@ pub trait Queue: Send + Sync {
     /// job per `serial_key` is claimed at a time, so two workers never act on
     /// one entity concurrently.
     async fn claim(&self, kinds: &[String], worker: &str) -> Result<Option<(JobId, Job)>>;
+
+    /// Claim an OMP/Pi extension inbox, using a short lease for body rows only.
+    /// Controls retain the ordinary lease and unknown-execution terminal semantics.
+    /// Real queue and spine must share one store. The in-memory fake appends
+    /// through `spine` before its infallible mutation under the publisher lock.
+    async fn claim_extension(
+        &self,
+        kinds: &[String],
+        worker: &str,
+        lease_secs: u64,
+        at: u64,
+        spine: &dyn Spine,
+        recovery_allowed: bool,
+    ) -> Result<ExtensionClaim>;
+
+    /// Inspect terminal recovery rows; these are never claimable.
+    async fn peek_parked(&self, kinds: &[String]) -> Result<Vec<ParkedDelivery>>;
+
+    /// Park only the named running live head at the observed attempt.
+    /// A completion, reclaim, or successor race returns None without mutation.
+    async fn park_delivery(
+        &self,
+        job: JobId,
+        recipient: &SeatId,
+        attempt: u32,
+        evidence: &ParkingEvidence<'_>,
+        spine: &dyn Spine,
+    ) -> Result<(Option<Job>, Vec<Event>)>;
 
     /// Inspect the oldest live job of any of `kinds` without claiming or
     /// otherwise mutating it. Pending and already-claimed rows remain visible;

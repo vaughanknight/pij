@@ -1,0 +1,26 @@
+{
+  "method": "DESIGNED recovery contract; daemon HTTP regressions exercise each terminal transition against SQLite",
+  "outcomes": {
+    "lease": "undelivered:lease-exhausted",
+    "swallowed": "undelivered:harness-swallowed",
+    "operator": "undelivered:operator-released"
+  },
+  "parked_state": "failed",
+  "lease_parked_event": {
+    "messageId": "lost-body",
+    "jobId": 1,
+    "recipient": "pij-reader",
+    "outcome": "undelivered:lease-exhausted",
+    "reason": "three extension claim leases expired"
+  },
+  "operator_release": {
+    "method": "POST",
+    "path": "/v1/inbox/release",
+    "request": {
+      "seat": "pij-reader",
+      "job_id": 1,
+      "evidence": "observed silent injection",
+      "caller": { "PIJ_SESSION_ID": "pij-parent" }
+    }
+  }
+}

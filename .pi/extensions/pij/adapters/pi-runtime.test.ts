@@ -125,6 +125,21 @@ describe("draft-safe extension submission", () => {
 		expect(sendUserMessage).not.toHaveBeenCalled();
 	});
 
+	it("uses a recognizable prompt with encoded identity when a custom delivery needs recovery", () => {
+		const sendMessage = vi.fn();
+		const sendUserMessage = vi.fn();
+		const adapter = new PiRuntimeAdapter(
+			{ sendMessage, sendUserMessage },
+			{ isIdle: () => true, compact: () => {}, ui: { setStatus: () => {}, notify: () => {} } },
+			"omp",
+		);
+		adapter.inject(frame("pij-sender", "body\npreserved"), "immediate", "id]\n你好", 2);
+		expect(sendMessage).not.toHaveBeenCalled();
+		expect(sendUserMessage).toHaveBeenCalledExactlyOnceWith(
+			`[pij resend 2]\n[pijMessageId:${encodeURIComponent("id]\n你好")}]\n${frame("pij-sender", "body\npreserved")}`,
+		);
+	});
+
 	it.each([
 		"immediate",
 		"steer",

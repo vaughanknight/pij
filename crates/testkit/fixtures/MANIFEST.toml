@@ -422,3 +422,10 @@ sha256 = "42435fadff05fd6f3cf7831b9894a22b3e4c3bd34937d37c3aa91751021a79a9"
 bytes = 122528
 note = "EXECUTED actual native binary and TS CLI captures after main integration: 29 shared mutations and 9 refusals against identical scripted HTTP responses, 18 same-daemon CLI pairs, 4 live HTTP/shim pairs, and 6 shared error-policy pairs. The additive list_here_capture records 4 native/shim byte-equal pairs plus 4 native/HTTP argument refusals against an isolated real-adapter daemon. Each record declares its method; mutation fixtures are client-boundary proof, not domain execution or production acceptance. Native binary and source snapshot hashes are retained."
 answer = "The original 66 shared comparisons preserve original stdout bytes with only the declared final-newline contract and no normalization. The additional list_here_capture proves bare/true cwd scoping and false/unfiltered roster parity, with path-valued CLI and relative/bare-true HTTP scopes refused as E-RS-ARG. Preserve distinct refusal exit policies. Sessions uses its real Rust HTTP baseline; native/HTTP-only register and missing native sessions remain explicit capability probes, never failed comparisons hidden by fallback. Real workflow/fanout/OMP canary receipts separately defend domain effects."
+
+[[fixture]]
+path = "golden/api/inbox-recovery.json"
+sha256 = "c38a2f6a889cb087eeb9078f7069c78c374f7b185939f72bad0fc44bf7d164bf"
+bytes = 769
+note = "DESIGNED OMP/Pi inbox recovery contract, exercised by Rust HTTP regressions against SQLite; not a production capture. Native release remains distinct from extension typing release."
+answer = "Three expired extension body leases or bounded swallowed resends park failed rows without ReaderRead. Peek lists live head before parked rows. delivery.parked is sender-addressed and names its recipient, message, job, outcome and reason. Native operator release requires authoritative prime or recorded parent and explicit evidence."

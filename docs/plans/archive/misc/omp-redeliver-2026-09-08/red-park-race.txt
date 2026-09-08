@@ -1,0 +1,122 @@
+npm run test -- "$@"
+
+> pij@0.1.0 test
+> vitest run .pi/extensions/pij/adapters/rust-runtime.test.ts -t does not resurrect a parked message
+
+(node:890) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-redeliver
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts (71 tests | 1 failed | 70 skipped) 10ms
+     ↓ settles the original new claim after runtime teardown
+     ↓ settles the original reload claim after runtime teardown
+     ↓ executes a claimed compact command and acknowledges its outcome
+     ↓ executes a claimed new command and acknowledges its outcome
+     ↓ executes a claimed reload command and acknowledges its outcome
+     ↓ waits for a claimed command runtime outcome before acknowledging
+     ↓ refuses an unarmed new command without later execution
+     ↓ refuses an unarmed reload command without later execution
+     ↓ acknowledges command runtime errors as refused instead of retrying execution
+     ↓ native control sends carry command and pane caller proof with no scaffold body
+     ↓ does not overwrite a claude seat when omp boots in the same pane
+       ↓ binding=created, pre-existing row=false injects announceText 1 times
+       ↓ binding=rebound, pre-existing row=true injects announceText 1 times
+       ↓ binding=same, pre-existing row=true injects announceText 0 times
+       ↓ binding=same, pre-existing row=false injects announceText 0 times
+       ↓ reports only pane provenance (pane) while announcing rebound once and same never
+       ↓ reports only pane provenance (harness) while announcing rebound once and same never
+       ↓ reports only pane provenance (undefined) while announcing rebound once and same never
+       ↓ reports unbound when pane provenance has no process identity
+       ↓ announces the new session id once on new, not again on reload
+       ↓ announces the new session id once on fork, not again on reload
+       ↓ preserves old-daemon inference with no binding (pre-existing row=false)
+       ↓ preserves old-daemon inference with no binding (pre-existing row=true)
+     ↓ registers structural identity, forwards unknown events, injects a push, and correlates reply
+     ↓ binds startup to the daemon row for the spawned pane
+     ↓ suppresses injection when another worker already owns the queued row
+     ↓ leaves an in-flight claim unacked when a new session replaces its seat
+     ↓ delivers the authority-owned claim when the pushed event names a different message
+     ↓ does not acknowledge when the runtime injection fails
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: false)
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: true)
+     ↓ resends silently swallowed custom mail through the prompt after continuous idle and acknowledges its id once
+     ↓ resets the resend idle window on every turn start without treating a turn as consumption
+     ↓ parks swallowed mail only after three prompt resends each get an idle consumption window
+     ↓ resends a reclaimed unconsumed claim through the prompt with busy=false
+     ↓ resends a reclaimed unconsumed claim through the prompt with busy=true
+     ↓ clears sender-addressed parked ids once and never claims parked peek rows ahead of live mail
+     × does not resurrect a parked message when an earlier claim response arrives late 9ms
+     ↓ visibly reports a parked outbound message once without clearing unrelated inbound mail
+     ↓ shares three resend attempts across idle recovery and lease reclaims
+     ↓ polls an unconsumed claim for lease recovery without a second pushed event
+     ↓ reconciles a parked acknowledgement whose response was lost using failed peek history
+     ↓ correlates an encoded prompt id but ignores unrelated and malformed user markers
+     ↓ rejects malformed attempt metadata without injecting or acknowledging a claim
+     ↓ extension stream delivers while a draft is actively typed (busy=false)
+     ↓ extension stream delivers while a draft is actively typed (busy=true)
+     ↓ delivers through the OMP adapter without clearing or submitting a human draft
+     ↓ delivers immediately after spawn input has left an empty editor
+     ↓ does not acknowledge queued delivery before its own message starts
+     ↓ never treats idle or an unrelated turn as message consumption
+     ↓ recovers interrupted mail through the same bounded prompt path and never repeats consumed mail
+     ↓ counts only the claimed unconsumed envelope while draining three messages in order
+     ↓ retries failed consumption acknowledgements without reinjection
+     ↓ does not requeue during a scheduled continuation or acknowledge after shutdown
+     ↓ reconciles a committed acknowledgement whose response was lost without endless retries
+     ↓ announces busy arrivals and clears pending on consumption while still busy
+     ↓ truncates a long announcement to 80 characters
+     ↓ does not deliver or announce an acknowledged replay twice
+     ↓ preserves claim order during sustained typing regardless of daemon grace
+     ↓ keeps commands and urgent delivery without a typing bypass
+     ↓ does not release or execute an active control peek during reload startup
+     ↓ claims startup controls without a pre-claim release
+     ↓ recovers an older deferred row before newer eligible rows without another send
+     ↓ resumes startup semantic Hold after ready without a second send
+     ↓ resumes an initially held startup backlog in A B C order across deferred rows
+     ↓ resumes a pushed semantic Hold backlog after ready and then stops polling
+     ↓ does not poll an empty inbox
+     ↓ cancels pending semantic recovery on shutdown
+     ↓ queues at most one pending-inbox retry and ignores its stale result
+     ↓ recovers an unconsumed message after the previous runtime claim expires
+     ↓ acknowledges ordinary claims without calling the release endpoint
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > does not resurrect a parked message when an earlier claim response arrives late
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      "[pij resend 1]
+    [pijMessageId:park-before-response]
+    [pij-rs from pij-sender]
+    park-before-response
+    [/pij]",
+    ]
+
+
+Number of calls: 1
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1456:35
+    1454|   await vi.advanceTimersByTimeAsync(20_000);
+    1455|   expect(api.sendMessage).toHaveBeenCalledOnce();
+    1456|   expect(api.sendUserMessage).not.toHaveBeenCalled();
+       |                                   ^
+    1457|   expect(pi.statuses.at(-1)).toBeUndefined();
+    1458|   expect(client.acks).toEqual([]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 70 skipped (71)
+   Start at  13:26:47
+   Duration  263ms (transform 142ms, setup 0ms, import 176ms, tests 10ms, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/fs3-redeliver/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > does not resurrect a parked message when an earlier claim response arrives late,line=1456,column=35::AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times%0A%0AReceived:%0A%0A  1st vi.fn() call:%0A%0A    Array [%0A      "[pij resend 1]%0A    [pijMessageId:park-before-response]%0A    [pij-rs from pij-sender]%0A    park-before-response%0A    [/pij]",%0A    ]%0A%0A%0ANumber of calls: 1%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1456:35%0A%0A
+error: Recipe `test` failed on line 92 with exit code 1

@@ -282,9 +282,8 @@ impl DaemonClient {
             .await
     }
 
-    /// Read at most one inbox message. Normal reads claim then acknowledge only
-    /// after decoding; `peek` asks the daemon for an observation-only snapshot.
-    pub async fn inbox(&self, seat: &SeatId, wait: bool, peek: bool) -> Envelope<Vec<Msg>> {
+    /// Read at most one inbox message and acknowledge only after decoding.
+    pub async fn inbox(&self, seat: &SeatId, wait: bool) -> Envelope<Vec<Msg>> {
         let claimed: Envelope<Vec<InboxClaim>> = self
             .execute(
                 "pij inbox",
@@ -293,7 +292,6 @@ impl DaemonClient {
                     .query(&[
                         ("seat", seat.as_str()),
                         ("wait", if wait { "true" } else { "false" }),
-                        ("peek", if peek { "true" } else { "false" }),
                     ]),
             )
             .await;
@@ -315,13 +313,11 @@ impl DaemonClient {
             );
         }
         let messages: Vec<Msg> = claims.iter().map(|claim| claim.message.clone()).collect();
-        if peek {
-            return Envelope::ok("pij inbox", messages);
-        }
         let Some(claim) = claims.first() else {
             return Envelope::ok("pij inbox", messages);
         };
         let acknowledgement = InboxAckRequest {
+            delivery_outcome: None,
             seat: seat.clone(),
             job_id: claim.job_id,
             native: Default::default(),
@@ -338,6 +334,35 @@ impl DaemonClient {
             ));
         }
         result
+    }
+
+    /// Preserve parked rows and their terminal outcomes without acknowledging.
+    pub async fn peek_inbox(&self, seat: &SeatId) -> Envelope<Vec<InboxClaim>> {
+        self.execute(
+            "pij inbox",
+            self.http
+                .get(format!("{}/v1/inbox", self.base_url))
+                .query(&[("seat", seat.as_str()), ("peek", "true")]),
+        )
+        .await
+    }
+
+    /// Explicit operator recovery; the daemon resolves prime/parent authority.
+    pub async fn release_inbox(
+        &self,
+        seat: &SeatId,
+        job: u64,
+        evidence: &str,
+        caller: &CallerContext,
+    ) -> Envelope<Value> {
+        self.post(
+            "pij inbox release",
+            "/v1/inbox/release",
+            &serde_json::json!({
+                "seat":seat, "job_id":job, "evidence":evidence, "caller":caller,
+            }),
+        )
+        .await
     }
 
     /// Open the federated event stream. `since` is encoded as one URL-encoded

@@ -46,19 +46,30 @@ interface VisibleRuntimePort extends PiRuntimePort {
 
 interface InboxClaim {
 	readonly jobId: number;
+	readonly attempt: number;
 	readonly message: PijMessage & { readonly messageId: string; readonly urgent?: boolean };
 }
 
 interface PendingConsumption {
-	readonly claim: InboxClaim;
+	claim: InboxClaim;
 	readonly seat: string;
 	readonly client: PijDaemonClient;
 	readonly lifecycle: number;
 	consumed: boolean;
 	acknowledging: boolean;
+	resends: number;
+	injectedAt: number;
+	lastResentAt?: number;
 }
 
 const MAIL_STATUS_TICK_MS = 1_000;
+const DEFAULT_REDELIVER_IDLE_MS = 10_000;
+const MAX_RESENDS = 3;
+const PARKED_OUTCOMES = new Set([
+	"undelivered:lease-exhausted",
+	"undelivered:harness-swallowed",
+	"undelivered:operator-released",
+]);
 
 /** How much of an arriving body the announcement shows. */
 const ANNOUNCE_BODY_CHARS = 80;
@@ -95,7 +106,9 @@ export class RustRuntimeSession {
 	private readonly lastInbound = new Map<string, string>();
 	/** Retained until native consumption AND a successful daemon acknowledgement. */
 	private readonly pendingConsumption = new Map<string, PendingConsumption>();
-	private interruptedDelivery = false;
+	private idleSince: number | undefined;
+	private readonly parkedNotifications = new Set<string>();
+	private readonly redeliverIdleMs: number;
 	private mailTicker: ReturnType<typeof setInterval> | undefined;
 	private lifecycle = 0;
 	/** A pushed or startup-discovered backlog, never composer activity. */
@@ -111,6 +124,11 @@ export class RustRuntimeSession {
 		private readonly clock: () => number = () => Date.now(),
 	) {
 		this.client = client;
+		const configuredIdleMs = Number(process.env.PIJ_REDELIVER_IDLE_MS);
+		this.redeliverIdleMs =
+			Number.isSafeInteger(configuredIdleMs) && configuredIdleMs > 0
+				? configuredIdleMs
+				: DEFAULT_REDELIVER_IDLE_MS;
 		this.pi = new MutablePiRuntime();
 		this.session = new PijSession({
 			registry: this.registry,
@@ -169,7 +187,8 @@ export class RustRuntimeSession {
 		const acceptedId = accepted.id;
 		// A replacement runtime has no claim on its predecessor's volatile queue.
 		this.pendingConsumption.clear();
-		this.interruptedDelivery = false;
+		this.idleSince = this.pi.isIdle() ? this.clock() : undefined;
+		this.parkedNotifications.clear();
 		this.inboxPending = false;
 		this.inboxPollQueued = false;
 		this.startupRecovery = true;
@@ -196,8 +215,33 @@ export class RustRuntimeSession {
 		this.stopEvents?.();
 		this.stopEvents = await this.client.watchEvents(
 			(frame) => {
+				if (this.lifecycle !== lifecycle) return;
 				const seat = this.self;
 				const client = this.client;
+				if (frame.event.kind === "delivery.parked") {
+					const payload = JSON.parse(frame.event.payload) as Record<string, unknown>;
+					if (
+						typeof payload.recipient === "string" &&
+						typeof payload.messageId === "string" &&
+						typeof payload.outcome === "string" &&
+						PARKED_OUTCOMES.has(payload.outcome)
+					) {
+						if (payload.recipient === seat) {
+							this.noteParked(payload.messageId, payload.outcome);
+						} else if (
+							frame.event.seat === seat &&
+							!this.parkedNotifications.has(payload.messageId)
+						) {
+							this.parkedNotifications.add(payload.messageId);
+							this.pi.notify(
+								`pij message ${payload.messageId} to ${payload.recipient}: ${payload.outcome}`,
+								"warning",
+							);
+						}
+					}
+					this.session.capture("daemon_event", frame);
+					return;
+				}
 				if (frame.event.kind !== "message.pushed" || frame.event.seat !== seat) {
 					this.session.capture("daemon_event", frame);
 					return;
@@ -225,11 +269,14 @@ export class RustRuntimeSession {
 			},
 		);
 		this.mailTicker = setInterval(() => {
-			this.recoverInterruptedDelivery();
+			this.recoverUnconsumed();
 			for (const pending of this.pendingConsumption.values()) {
 				if (pending.consumed) void this.ackConsumed(pending);
 			}
-			if (!this.inboxPending || this.inboxPollQueued) return;
+			// Lease expiry is claim-driven; an unconsumed head needs polling even
+			// without another message.pushed event.
+			if ((!this.inboxPending && this.pendingConsumption.size === 0) || this.inboxPollQueued)
+				return;
 			this.inboxPollQueued = true;
 			const seat = this.self;
 			const client = this.client;
@@ -296,12 +343,14 @@ export class RustRuntimeSession {
 	}
 
 	onTurnStart(iso: string): void {
+		this.idleSince = undefined;
 		this.session.onTurnStart(iso);
 		void this.flush();
 	}
 
 	onTurnEnd(): void {
 		this.session.onTurnEnd();
+		if (this.pi.isIdle()) this.idleSince ??= this.clock();
 	}
 
 	/** message_start is correlated per envelope; neither turn_start nor idle proves consumption. */
@@ -309,12 +358,11 @@ export class RustRuntimeSession {
 		role: string;
 		customType?: string;
 		details?: unknown;
+		content?: unknown;
 	}): Promise<void> {
-		if (message.role !== "custom" || message.customType !== "pij") return;
-		const details = message.details;
-		if (!details || typeof details !== "object" || !("pijMessageId" in details)) return;
-		if (typeof details.pijMessageId !== "string") return;
-		const pending = this.pendingConsumption.get(details.pijMessageId);
+		const id = consumedMessageId(message);
+		if (id === undefined) return;
+		const pending = this.pendingConsumption.get(id);
 		if (!pending || pending.lifecycle !== this.lifecycle || pending.seat !== this.self) return;
 		if (!pending.consumed) {
 			pending.consumed = true;
@@ -324,15 +372,9 @@ export class RustRuntimeSession {
 		await this.ackConsumed(pending);
 	}
 
-	/** A terminal run cannot leave a steered message behind; Escape discarded it. */
+	/** Interrupted and silently swallowed delivery share the same bounded idle recovery. */
 	onAgentEnd(willContinue = false): void {
-		if (willContinue) return;
-		for (const pending of this.pendingConsumption.values()) {
-			if (!pending.consumed) {
-				this.interruptedDelivery = true;
-				return;
-			}
-		}
+		if (!willContinue && this.pi.isIdle()) this.idleSince ??= this.clock();
 	}
 
 	shutdown(reason: SessionShutdownReason): void {
@@ -343,7 +385,8 @@ export class RustRuntimeSession {
 		this.inboxPollQueued = false;
 		this.startupRecovery = false;
 		this.releasedStartupHead = undefined;
-		this.interruptedDelivery = false;
+		this.idleSince = undefined;
+		this.parkedNotifications.clear();
 		this.pendingConsumption.clear();
 		this.pi.setStatus(undefined);
 		this.stopEvents?.();
@@ -389,7 +432,7 @@ export class RustRuntimeSession {
 			if (this.startupRecovery) {
 				const pending = await client.peekInbox(seat);
 				if (this.self !== seat || this.lifecycle !== lifecycle) return;
-				const oldest = pushedInboxClaim(pending, seat);
+				const oldest = this.readInbox(pending, seat);
 				this.inboxPending = oldest !== undefined;
 				if (!oldest) {
 					this.startupRecovery = false;
@@ -409,12 +452,12 @@ export class RustRuntimeSession {
 			}
 			const response = await client.claimInbox(seat);
 			if (this.self !== seat || this.lifecycle !== lifecycle) return;
-			const claim = pushedInboxClaim(response, seat);
+			const claim = this.readInbox(response, seat);
 			if (!claim) {
 				if (this.startupRecovery) return; // Preserve oldest-first recovery across semantic Hold.
 				const pending = await client.peekInbox(seat);
 				if (this.self === seat && this.lifecycle === lifecycle) {
-					this.inboxPending = pushedInboxClaim(pending, seat) !== undefined;
+					this.inboxPending = this.readInbox(pending, seat) !== undefined;
 				}
 				return;
 			}
@@ -452,7 +495,7 @@ export class RustRuntimeSession {
 			});
 			return;
 		}
-		const claim = pushedInboxClaim(response, seat);
+		const claim = this.readInbox(response, seat);
 		if (claim === undefined) {
 			this.inboxPending = true;
 			this.session.capture("daemon_event_claim_unavailable", {
@@ -477,6 +520,8 @@ export class RustRuntimeSession {
 		lifecycle: number,
 	): Promise<void> {
 		if (this.self !== seat || this.lifecycle !== lifecycle) return;
+		// Parking can overtake an in-flight claim response; terminal mail stays terminal.
+		if (this.parkedNotifications.has(claim.message.messageId)) return;
 		// Announce before a busy runtime queues the message at its next boundary.
 		if (!this.pendingConsumption.has(claim.message.messageId)) this.announceArrival(claim);
 		await this.injectAndAck(claim, seat, client, lifecycle);
@@ -504,8 +549,10 @@ export class RustRuntimeSession {
 		const id = claim.message.messageId;
 		const existing = this.pendingConsumption.get(id);
 		if (existing) {
-			// A lease can expire while a tool runs. Reclaiming is not permission to inject twice.
+			const reclaimed = claim.attempt > existing.claim.attempt;
+			existing.claim = claim;
 			if (existing.consumed) await this.ackConsumed(existing);
+			else if (reclaimed) this.resendPending(existing, "lease-reclaim");
 			return;
 		}
 		const pending: PendingConsumption = {
@@ -515,8 +562,14 @@ export class RustRuntimeSession {
 			lifecycle,
 			consumed: false,
 			acknowledging: false,
+			resends: 0,
+			injectedAt: this.clock(),
 		};
 		this.pendingConsumption.set(id, pending);
+		if (claim.attempt > 0) {
+			this.resendPending(pending, "lease-reclaim");
+			return;
+		}
 		this.showMailStatus();
 		try {
 			this.session.onInbound(claim.message, id, true);
@@ -554,9 +607,10 @@ export class RustRuntimeSession {
 		seat: string,
 		client: PijDaemonClient,
 		outcome?: ControlOutcome,
+		deliveryOutcome?: "undelivered:harness-swallowed",
 	): Promise<boolean> {
 		try {
-			await client.ackInbox(seat, claim.jobId, outcome);
+			await client.ackInbox(seat, claim.jobId, outcome, deliveryOutcome);
 			return true;
 		} catch (error) {
 			this.session.capture("daemon_event_ack_error", {
@@ -577,24 +631,39 @@ export class RustRuntimeSession {
 
 	private showMailStatus(): void {
 		let count = 0;
-		for (const pending of this.pendingConsumption.values()) if (!pending.consumed) count++;
+		const now = this.clock();
+		for (const pending of this.pendingConsumption.values()) {
+			if (
+				!pending.consumed &&
+				(pending.lastResentAt === undefined || now - pending.lastResentAt >= this.redeliverIdleMs)
+			)
+				count++;
+		}
 		this.pi.setStatus(count > 0 ? `📨 ${count} pending` : undefined);
 	}
 
-	private async ackConsumed(pending: PendingConsumption): Promise<void> {
+	private async ackConsumed(
+		pending: PendingConsumption,
+		deliveryOutcome?: "undelivered:harness-swallowed",
+	): Promise<void> {
 		if (pending.acknowledging || this.self !== pending.seat || this.lifecycle !== pending.lifecycle)
 			return;
 		pending.acknowledging = true;
-		let acked = await this.ackClaim(pending.claim, pending.seat, pending.client);
+		let acked = await this.ackClaim(
+			pending.claim,
+			pending.seat,
+			pending.client,
+			undefined,
+			deliveryOutcome,
+		);
 		if (!acked && this.self === pending.seat && this.lifecycle === pending.lifecycle) {
 			try {
 				const response = await pending.client.peekInbox(pending.seat);
-				const oldest = pushedInboxClaim(response, pending.seat);
-				// Peek includes pending AND running rows in job order. A later head or
-				// empty inbox proves this consumed job is terminal, even if its ACK response was lost.
-				acked =
-					(Array.isArray(response) && response.length === 0) ||
-					(oldest !== undefined && oldest.jobId > pending.claim.jobId);
+				if (this.self !== pending.seat || this.lifecycle !== pending.lifecycle) return;
+				const oldest = this.readInbox(response, pending.seat);
+				// A later live head, or no live head, proves this job is terminal;
+				// parked history is not an outstanding acknowledgement.
+				acked = oldest === undefined || oldest.jobId > pending.claim.jobId;
 			} catch {
 				// The ACK error is already recorded; retain consumption proof until reconciliation succeeds.
 			}
@@ -604,19 +673,78 @@ export class RustRuntimeSession {
 		this.inboxPending = true; // An expired claim may need reclaiming before ACK can succeed.
 		if (!acked) return;
 		this.pendingConsumption.delete(pending.claim.message.messageId);
+		if (deliveryOutcome !== undefined) {
+			this.noteParked(pending.claim.message.messageId, deliveryOutcome);
+		}
+		this.showMailStatus();
 	}
 
-	private recoverInterruptedDelivery(): void {
-		if (!this.interruptedDelivery || !this.pi.isIdle()) return;
-		this.interruptedDelivery = false;
-		let count = 0;
-		for (const pending of this.pendingConsumption.values()) {
-			if (pending.consumed) continue;
-			const message = pending.claim.message;
-			this.pi.inject(frame(message.from, message.body), "immediate", message.messageId);
-			count++;
+	private recoverUnconsumed(): void {
+		const now = this.clock();
+		if (!this.pi.isIdle()) {
+			this.idleSince = undefined;
+		} else {
+			this.idleSince ??= now;
+			for (const pending of this.pendingConsumption.values()) {
+				if (pending.consumed || pending.acknowledging) continue;
+				if (now - Math.max(this.idleSince, pending.injectedAt) < this.redeliverIdleMs) continue;
+				if (pending.resends >= MAX_RESENDS) {
+					void this.ackConsumed(pending, "undelivered:harness-swallowed");
+				} else {
+					this.resendPending(pending, "idle-unconsumed");
+				}
+			}
 		}
-		if (count > 0) this.pi.notify(`📨 re-queued ${count} pij messages after interrupt`, "info");
+		this.showMailStatus();
+	}
+
+	private resendPending(
+		pending: PendingConsumption,
+		reason: "idle-unconsumed" | "lease-reclaim",
+	): void {
+		if (
+			pending.consumed ||
+			pending.acknowledging ||
+			pending.resends >= MAX_RESENDS ||
+			this.self !== pending.seat ||
+			this.lifecycle !== pending.lifecycle
+		)
+			return;
+		const attempt = ++pending.resends;
+		pending.injectedAt = this.clock();
+		pending.lastResentAt = pending.injectedAt;
+		const message = pending.claim.message;
+		this.session.capture("delivery.resend", { messageId: message.messageId, attempt, reason });
+		this.showMailStatus();
+		try {
+			this.pi.inject(
+				frame(message.from, message.body),
+				this.pi.isIdle() ? "immediate" : "steer",
+				message.messageId,
+				attempt,
+			);
+		} catch (error) {
+			this.session.capture("daemon_event_error", {
+				message: error instanceof Error ? error.message : String(error),
+				stage: "delivery-resend",
+				messageId: message.messageId,
+			});
+		}
+	}
+
+	private noteParked(messageId: string, outcome: string): void {
+		this.pendingConsumption.delete(messageId);
+		this.inboxPending = true;
+		this.showMailStatus();
+		if (this.parkedNotifications.has(messageId)) return;
+		this.parkedNotifications.add(messageId);
+		this.pi.notify(`pij parked message ${messageId}: ${outcome}`, "warning");
+	}
+
+	private readInbox(value: unknown, seat: string): InboxClaim | undefined {
+		return pushedInboxClaim(value, seat, (messageId, outcome) =>
+			this.noteParked(messageId, outcome),
+		);
 	}
 
 	private chooseIdentity(
@@ -739,27 +867,81 @@ function pushedMessage(payload: string, to: string): InboxClaim["message"] {
 	return pushedMessageValue(JSON.parse(payload) as unknown, to, "message.pushed payload");
 }
 
-function pushedInboxClaim(value: unknown, to: string): InboxClaim | undefined {
-	if (!Array.isArray(value) || value.length > 1) {
-		throw new Error("pij inbox response must be an array with at most one claim");
+function pushedInboxClaim(
+	value: unknown,
+	to: string,
+	onParked: (messageId: string, outcome: string) => void,
+): InboxClaim | undefined {
+	if (!Array.isArray(value)) throw new Error("pij inbox response must be an array");
+	let live: InboxClaim | undefined;
+	for (const row of value) {
+		if (typeof row !== "object" || row === null || Array.isArray(row)) {
+			throw new Error("pij inbox claim must be an object");
+		}
+		const record = row as Record<string, unknown>;
+		if (
+			typeof record.job_id !== "number" ||
+			!Number.isSafeInteger(record.job_id) ||
+			record.job_id <= 0
+		)
+			throw new Error("pij inbox claim job_id must be a positive safe integer");
+		const attempt = record.attempt === undefined ? 0 : record.attempt;
+		if (typeof attempt !== "number" || !Number.isSafeInteger(attempt) || attempt < 0) {
+			throw new Error("pij inbox claim attempt must be a non-negative safe integer");
+		}
+		const message = pushedMessageValue(record.message, to, "pij inbox claim message");
+		if (record.state === "failed") {
+			if (typeof record.outcome !== "string" || !PARKED_OUTCOMES.has(record.outcome)) {
+				throw new Error("pij parked inbox claim needs a recognized outcome");
+			}
+			onParked(message.messageId, record.outcome);
+			continue;
+		}
+		if (record.state !== undefined && record.state !== "pending" && record.state !== "running") {
+			throw new Error("pij inbox claim has an unrecognized state");
+		}
+		if (live !== undefined)
+			throw new Error("pij inbox response must contain at most one live claim");
+		live = { jobId: record.job_id, attempt, message };
 	}
-	if (value.length === 0) return undefined;
-	const claim: unknown = value[0];
-	if (typeof claim !== "object" || claim === null || Array.isArray(claim)) {
-		throw new Error("pij inbox claim must be an object");
+	return live;
+}
+
+function consumedMessageId(message: {
+	role: string;
+	customType?: string;
+	details?: unknown;
+	content?: unknown;
+}): string | undefined {
+	if (message.role === "custom" && message.customType === "pij") {
+		const details = message.details;
+		if (details && typeof details === "object" && "pijMessageId" in details) {
+			return typeof details.pijMessageId === "string" ? details.pijMessageId : undefined;
+		}
 	}
-	const record = claim as Record<string, unknown>;
-	if (
-		typeof record.job_id !== "number" ||
-		!Number.isSafeInteger(record.job_id) ||
-		record.job_id <= 0
-	) {
-		throw new Error("pij inbox claim job_id must be a positive safe integer");
+	if (message.role !== "user") return undefined;
+	const content = message.content;
+	const text =
+		typeof content === "string"
+			? content
+			: Array.isArray(content)
+				? content.find(
+						(part: unknown) =>
+							part !== null &&
+							typeof part === "object" &&
+							"type" in part &&
+							part.type === "text" &&
+							"text" in part,
+					)?.text
+				: undefined;
+	if (typeof text !== "string") return undefined;
+	const marker = /^\[pij resend [1-3]\]\n\[pijMessageId:([^\]\r\n]+)\]\n/.exec(text);
+	if (!marker?.[1]) return undefined;
+	try {
+		return decodeURIComponent(marker[1]);
+	} catch {
+		return undefined;
 	}
-	return {
-		jobId: record.job_id,
-		message: pushedMessageValue(record.message, to, "pij inbox claim message"),
-	};
 }
 
 function pushedMessageValue(value: unknown, to: string, label: string): InboxClaim["message"] {
@@ -805,8 +987,13 @@ class MutablePiRuntime implements PiRuntimePort {
 		return this.need().isIdle();
 	}
 
-	inject(text: string, mode: "immediate" | "steer", messageId?: string): void {
-		this.need().inject(text, mode, messageId);
+	inject(
+		text: string,
+		mode: "immediate" | "steer",
+		messageId?: string,
+		resendAttempt?: number,
+	): void {
+		this.need().inject(text, mode, messageId, resendAttempt);
 	}
 
 	compact(): void | Promise<void> {

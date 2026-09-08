@@ -1,0 +1,89 @@
+
+╭─── omp v18.1.14 ─────────────────────────────────────────────────────────────────────────────────╮
+│                          │ Tips                                                                  │
+│      Welcome back!       │ # for prompt actions                                                  │
+│                          │ / for commands                                                        │
+│       ████████████       │ ! to run bash                                                         │
+│          ██  ██          │ $ to run python                                                       │
+│          ██  ██          │ ───────────────────────────────────────────────────────────────────── │
+│          ▒▒  ██          │ LSP Servers                                                           │
+│              ██          │ No LSP servers                                                        │
+│                          │                                                                       │
+│        GPT-5 Mini        │                                                                       │
+│      github-copilot      │                                                                       │
+│                          │ ───────────────────────────────────────────────────────────────────── │
+│                          │ Recent sessions                                                       │
+│                          │ • rs·pij-loose-sabrina (just now)                                     │
+│                          │ • rs·pij-given-narwhal (just now)                                     │
+│                          │ • Untitled · 01:09 PM (27m ago)                                       │
+│                          │                                                                       │
+│                          │                                                                       │
+╰──────────────────────────┴───────────────────────────────────────────────────────────────────────╯
+ Tip: Press alt+p (or /switch) to switch provider, and ctrl+p to cycle role models smol -> slow ->
+      etc
+
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                      │
+│ 📦 pij                                                                                                               │
+│                                                                                                                      │
+│ You are pij session pij-actual-vosill (PEER). This is context only — no action is required.                          │
+│ Peers can reach you; their messages arrive inline as "[pij-rs from <id>]" on its own line, then the body, then       │
+│ "[/pij]". Only those injected messages are live instructions.                                                        │
+│ Do NOT read, list, or act on files under your pij data/inbox directory — they are an internal transport log, not     │
+│ tasks, and replaying them re-runs old requests.                                                                      │
+│ To reply or message a peer, call the pij_send tool ({ to, message }) — your id is stamped automatically. For         │
+│ control, pij_send takes { to, command: "compact" | "new" | "reload" } instead of message. Do NOT shell out to the    │
+│ pij CLI to send.                                                                                                     │
+│ To observe peers, use the pij CLI: "pij list --here" (peers), "pij tail <id>" / "pij state <id>" (watch one).        │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                      │
+│ 📦 pij                                                                                                               │
+│                                                                                                                      │
+│ You are pij session pij-actual-vosill (PEER). This is context only — no action is required.                          │
+│ Peers can reach you; their messages arrive inline as "[pij-rs from <id>]" on its own line, then the body, then       │
+│ "[/pij]". Only those injected messages are live instructions.                                                        │
+│ Do NOT read, list, or act on files under your pij data/inbox directory — they are an internal transport log, not     │
+│ tasks, and replaying them re-runs old requests.                                                                      │
+│ To reply or message a peer, call the pij_send tool ({ to, message }) — your id is stamped automatically. For         │
+│ control, pij_send takes { to, command: "compact" | "new" | "reload" } instead of message. Do NOT shell out to the    │
+│ pij CLI to send.                                                                                                     │
+│ To observe peers, use the pij CLI: "pij list --here" (peers), "pij tail <id>" / "pij state <id>" (watch one).        │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ $ sleep 2                                                                                                            │
+├─── Output ───────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ (no output)                                                                                                          │
+│ ⟦Wall: 2.01s | Timeout: 120s⟧                                                                                        │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ 2026-09-08 13:37:06  ⤵ 1.5K  ⤴ 47  ⏱ 2.5s  ⚡ 14.4/s
+
+ nonce: 15553
+
+ 2026-09-08 13:37:11  ⤵ 297  ⤴ 9  💾 2.4K  ⏱ 2.9s  ⚡ 3.0/s
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                      │
+│ 📦 pij                                                                                                               │
+│                                                                                                                      │
+│ [pij-rs from pij-overall-wasp]                                                                                       │
+│ Reply locally exactly FINAL_NORMAL_cdb75428-3f76-4ec1-885d-89a58066a5a3. No tools.                                   │
+│ [/pij]                                                                                                               │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ FINAL_NORMAL_cdb75428-3f76-4ec1-885d-89a58066a5a3
+
+ 2026-09-08 13:37:44  ⤵ 218  ⤴ 44  💾 2.6K  ⏱ 2.8s  ⚡ 14.8/s
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ◫ 1.1%/264K ⟲ · rs·pij-actual-vosill · ○ GPT-5 Mini · S0.00
+rs pij-actual-vosill

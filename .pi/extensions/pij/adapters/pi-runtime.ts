@@ -47,8 +47,19 @@ export class PiRuntimeAdapter implements PiRuntimePort {
 		this.ctx.ui.setStatus("pij-mail", text);
 	}
 
-	inject(text: string, mode: "immediate" | "steer", messageId?: string): void {
-		if (this.runtimeBin === "omp" || messageId !== undefined) {
+	inject(
+		text: string,
+		mode: "immediate" | "steer",
+		messageId?: string,
+		resendAttempt?: number,
+	): void {
+		if (resendAttempt !== undefined && messageId !== undefined) {
+			// A swallowed custom steer has no native receipt. The prompt path is
+			// deliberately distinct, with an id that survives user message_start.
+			const prompt = `[pij resend ${resendAttempt}]\n[pijMessageId:${encodeURIComponent(messageId)}]\n${text}`;
+			if (mode === "steer") this.pi.sendUserMessage(prompt, { deliverAs: "steer" });
+			else this.pi.sendUserMessage(prompt);
+		} else if (this.runtimeBin === "omp" || messageId !== undefined) {
 			// Peer messages carry native consumption identity, never user attribution:
 			// OMP must not restore them into the human's draft on Escape.
 			this.pi.sendMessage(

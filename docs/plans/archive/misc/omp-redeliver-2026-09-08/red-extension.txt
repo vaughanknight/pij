@@ -1,0 +1,213 @@
+npm run test -- "$@"
+
+> pij@0.1.0 test
+> vitest run .pi/extensions/pij/adapters/rust-runtime.test.ts -t resends silently swallowed|resets the resend idle|parks swallowed mail|resends a reclaimed unconsumed|clears sender-addressed parked
+
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-redeliver
+
+(node:93421) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts (65 tests | 6 failed | 59 skipped) 16ms
+     ↓ settles the original new claim after runtime teardown
+     ↓ settles the original reload claim after runtime teardown
+     ↓ executes a claimed compact command and acknowledges its outcome
+     ↓ executes a claimed new command and acknowledges its outcome
+     ↓ executes a claimed reload command and acknowledges its outcome
+     ↓ waits for a claimed command runtime outcome before acknowledging
+     ↓ refuses an unarmed new command without later execution
+     ↓ refuses an unarmed reload command without later execution
+     ↓ acknowledges command runtime errors as refused instead of retrying execution
+     ↓ native control sends carry command and pane caller proof with no scaffold body
+     ↓ does not overwrite a claude seat when omp boots in the same pane
+       ↓ binding=created, pre-existing row=false injects announceText 1 times
+       ↓ binding=rebound, pre-existing row=true injects announceText 1 times
+       ↓ binding=same, pre-existing row=true injects announceText 0 times
+       ↓ binding=same, pre-existing row=false injects announceText 0 times
+       ↓ reports only pane provenance (pane) while announcing rebound once and same never
+       ↓ reports only pane provenance (harness) while announcing rebound once and same never
+       ↓ reports only pane provenance (undefined) while announcing rebound once and same never
+       ↓ reports unbound when pane provenance has no process identity
+       ↓ announces the new session id once on new, not again on reload
+       ↓ announces the new session id once on fork, not again on reload
+       ↓ preserves old-daemon inference with no binding (pre-existing row=false)
+       ↓ preserves old-daemon inference with no binding (pre-existing row=true)
+     ↓ registers structural identity, forwards unknown events, injects a push, and correlates reply
+     ↓ binds startup to the daemon row for the spawned pane
+     ↓ suppresses injection when another worker already owns the queued row
+     ↓ leaves an in-flight claim unacked when a new session replaces its seat
+     ↓ delivers the authority-owned claim when the pushed event names a different message
+     ↓ does not acknowledge when the runtime injection fails
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: false)
+     ↓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: true)
+     × resends silently swallowed custom mail through the prompt after continuous idle and acknowledges its id once 9ms
+     × resets the resend idle window on every turn start without treating a turn as consumption 1ms
+     × parks swallowed mail only after three prompt resends each get an idle consumption window 1ms
+     × resends a reclaimed unconsumed claim through the prompt with busy=false 2ms
+     × resends a reclaimed unconsumed claim through the prompt with busy=true 1ms
+     × clears sender-addressed parked ids once and never claims parked peek rows ahead of live mail 1ms
+     ↓ extension stream delivers while a draft is actively typed (busy=false)
+     ↓ extension stream delivers while a draft is actively typed (busy=true)
+     ↓ delivers through the OMP adapter without clearing or submitting a human draft
+     ↓ delivers immediately after spawn input has left an empty editor
+     ↓ does not acknowledge queued delivery before its own message starts
+     ↓ never treats idle or an unrelated turn as message consumption
+     ↓ reinjects interrupted unconsumed mail once and never repeats consumed mail
+     ↓ counts only the claimed unconsumed envelope while draining three messages in order
+     ↓ reclaims an expired lease without injecting the queued envelope twice
+     ↓ retries failed consumption acknowledgements without reinjection
+     ↓ does not requeue during a scheduled continuation or acknowledge after shutdown
+     ↓ reconciles a committed acknowledgement whose response was lost without endless retries
+     ↓ announces busy arrivals and clears pending on consumption while still busy
+     ↓ truncates a long announcement to 80 characters
+     ↓ does not deliver or announce an acknowledged replay twice
+     ↓ preserves claim order during sustained typing regardless of daemon grace
+     ↓ keeps commands and urgent delivery without a typing bypass
+     ↓ does not release or execute an active control peek during reload startup
+     ↓ claims startup controls without a pre-claim release
+     ↓ recovers an older deferred row before newer eligible rows without another send
+     ↓ resumes startup semantic Hold after ready without a second send
+     ↓ resumes an initially held startup backlog in A B C order across deferred rows
+     ↓ resumes a pushed semantic Hold backlog after ready and then stops polling
+     ↓ does not poll an empty inbox
+     ↓ cancels pending semantic recovery on shutdown
+     ↓ queues at most one pending-inbox retry and ignores its stale result
+     ↓ recovers an unconsumed message after the previous runtime claim expires
+     ↓ acknowledges ordinary claims without calling the release endpoint
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > resends silently swallowed custom mail through the prompt after continuous idle and acknowledges its id once
+AssertionError: expected "vi.fn()" to be called once with arguments: [ Array(1) ]
+
+Number of calls: 0
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1329:31
+    1327|   expect(pi.statuses.at(-1)).toBe("📨 1 pending");
+    1328|   await vi.advanceTimersByTimeAsync(1_000);
+    1329|   expect(api.sendUserMessage).toHaveBeenCalledExactlyOnceWith(
+       |                               ^
+    1330|    `[pij resend 1]\n[pijMessageId:swallowed]\n${frame("pij-sender", "k…
+    1331|   );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > resets the resend idle window on every turn start without treating a turn as consumption
+AssertionError: expected "vi.fn()" to be called once, but got 0 times
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1360:31
+    1358|   expect(api.sendUserMessage).not.toHaveBeenCalled();
+    1359|   await vi.advanceTimersByTimeAsync(1_000);
+    1360|   expect(api.sendUserMessage).toHaveBeenCalledOnce();
+       |                               ^
+    1361|   expect(client.acks).toEqual([]);
+    1362|  });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > parks swallowed mail only after three prompt resends each get an idle consumption window
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1369:32
+    1367|   for (let attempt = 1; attempt <= 3; attempt++) {
+    1368|    await vi.advanceTimersByTimeAsync(10_000);
+    1369|    expect(api.sendUserMessage).toHaveBeenCalledTimes(attempt);
+       |                                ^
+    1370|    expect(api.sendUserMessage.mock.calls.at(-1)?.[0]).toContain(`[pij …
+    1371|    expect(client.parks).toEqual([]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > resends a reclaimed unconsumed claim through the prompt with busy=false
+AssertionError: expected [] to deeply equal [ Array(1) ]
+
+- Expected
++ Received
+
+- [
+-   [
+-     "[pij resend 1]
+- [pijMessageId:reclaimed]
+- [pij-rs from pij-sender]
+- reclaimed
+- [/pij]",
+-   ],
+- ]
++ []
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1395:42
+    1393|   await client.repeat("reclaimed");
+    1394|   expect(api.sendMessage).toHaveBeenCalledOnce();
+    1395|   expect(api.sendUserMessage.mock.calls).toEqual([[
+       |                                          ^
+    1396|    `[pij resend 1]\n[pijMessageId:reclaimed]\n${frame("pij-sender", "r…
+    1397|    ...(busy ? [{ deliverAs: "steer" }] : []),
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > resends a reclaimed unconsumed claim through the prompt with busy=true
+AssertionError: expected [] to deeply equal [ [ …(2) ] ]
+
+- Expected
++ Received
+
+- [
+-   [
+-     "[pij resend 1]
+- [pijMessageId:reclaimed]
+- [pij-rs from pij-sender]
+- reclaimed
+- [/pij]",
+-     {
+-       "deliverAs": "steer",
+-     },
+-   ],
+- ]
++ []
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1395:42
+    1393|   await client.repeat("reclaimed");
+    1394|   expect(api.sendMessage).toHaveBeenCalledOnce();
+    1395|   expect(api.sendUserMessage.mock.calls).toEqual([[
+       |                                          ^
+    1396|    `[pij resend 1]\n[pijMessageId:reclaimed]\n${frame("pij-sender", "r…
+    1397|    ...(busy ? [{ deliverAs: "steer" }] : []),
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  .pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > clears sender-addressed parked ids once and never claims parked peek rows ahead of live mail
+AssertionError: expected '📨 1 pending' to be undefined
+
+- Expected:
+undefined
+
++ Received:
+"📨 1 pending"
+
+ ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1411:30
+    1409|   await client.park(1, "undelivered:lease-exhausted");
+    1410|   await client.park(1, "undelivered:lease-exhausted");
+    1411|   expect(pi.statuses.at(-1)).toBeUndefined();
+       |                              ^
+    1412|   expect(pi.notices.filter((notice) => notice.level === "warning").map…
+    1413|    expect.stringContaining("parked-id"),
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  6 failed | 59 skipped (65)
+   Start at  13:05:16
+   Duration  246ms (transform 117ms, setup 0ms, import 148ms, tests 16ms, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/fs3-redeliver/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > resends silently swallowed custom mail through the prompt after continuous idle and acknowledges its id once,line=1329,column=31::AssertionError: expected "vi.fn()" to be called once with arguments: [ Array(1) ]%0A%0ANumber of calls: 0%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1329:31%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-redeliver/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > resets the resend idle window on every turn start without treating a turn as consumption,line=1360,column=31::AssertionError: expected "vi.fn()" to be called once, but got 0 times%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1360:31%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-redeliver/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > parks swallowed mail only after three prompt resends each get an idle consumption window,line=1369,column=32::AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1369:32%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-redeliver/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > resends a reclaimed unconsumed claim through the prompt with busy=false,line=1395,column=42::AssertionError: expected [] to deeply equal [ Array(1) ]%0A%0A- Expected%0A+ Received%0A%0A- [%0A-   [%0A-     "[pij resend 1]%0A- [pijMessageId:reclaimed]%0A- [pij-rs from pij-sender]%0A- reclaimed%0A- [/pij]",%0A-   ],%0A- ]%0A+ []%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1395:42%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-redeliver/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > resends a reclaimed unconsumed claim through the prompt with busy=true,line=1395,column=42::AssertionError: expected [] to deeply equal [ [ …(2) ] ]%0A%0A- Expected%0A+ Received%0A%0A- [%0A-   [%0A-     "[pij resend 1]%0A- [pijMessageId:reclaimed]%0A- [pij-rs from pij-sender]%0A- reclaimed%0A- [/pij]",%0A-     {%0A-       "deliverAs": "steer",%0A-     },%0A-   ],%0A- ]%0A+ []%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1395:42%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-redeliver/.pi/extensions/pij/adapters/rust-runtime.test.ts,title=.pi/extensions/pij/adapters/rust-runtime.test.ts > extension-stream delivery > clears sender-addressed parked ids once and never claims parked peek rows ahead of live mail,line=1411,column=30::AssertionError: expected '📨 1 pending' to be undefined%0A%0A- Expected:%0Aundefined%0A%0A+ Received:%0A"📨 1 pending"%0A%0A ❯ .pi/extensions/pij/adapters/rust-runtime.test.ts:1411:30%0A%0A
+error: Recipe `test` failed on line 92 with exit code 1

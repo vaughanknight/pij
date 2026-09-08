@@ -36,6 +36,61 @@ pub struct ReleasedEvent {
     pub seat: SeatId,
 }
 
+/// Refuse terminal recovery when queue events would cross persistence authorities.
+///
+/// # Errors
+/// `E-RS-INBOX-AUTHORITY-SPLIT` for a real queue paired with a fake spine.
+pub fn require_recovery_authority(shared: bool) -> Result<()> {
+    if !shared {
+        return Err(PijError::GovernanceRefused {
+            code: "E-RS-INBOX-AUTHORITY-SPLIT".into(),
+            record: r#"{"queue_backend":"real","spine_backend":"fake"}"#.into(),
+        });
+    }
+    Ok(())
+}
+
+/// Build the canonical sender receipt and recipient-observable parking fact.
+/// The queue commits these events in the same transaction as terminal state.
+///
+/// # Errors
+/// A stored delivery payload cannot be decoded as a message.
+pub fn parked_events(
+    job_id: crate::model::JobId,
+    job: &crate::model::Job,
+    evidence: &crate::ports::ParkingEvidence<'_>,
+) -> Result<Vec<crate::model::Event>> {
+    let message: Msg = serde_json::from_str(&job.payload).map_err(|error| PijError::Adapter {
+        adapter: "delivery/parking".into(),
+        message: format!("invalid parked delivery payload: {error}"),
+    })?;
+    let event = |kind: &str, payload: serde_json::Value| crate::model::Event {
+        seq: None,
+        v: 1,
+        at: evidence.at,
+        kind: kind.into(),
+        seat: Some(message.from.clone()),
+        payload: payload.to_string(),
+    };
+    Ok(vec![
+        event(
+            "delivery.outcome",
+            serde_json::json!({
+                "msg_id":message.msg_id,
+                "outcome":{"outcome":"refused","reason":evidence.outcome.as_str()},
+                "transport":"extension-stream",
+            }),
+        ),
+        event(
+            "delivery.parked",
+            serde_json::json!({
+                "messageId":message.msg_id, "jobId":job_id, "recipient":job.serial_key,
+                "outcome":evidence.outcome, "reason":evidence.reason,
+            }),
+        ),
+    ])
+}
+
 /// Maximum complete framed message accepted by pane typing.
 ///
 /// Socket transports remain unrestricted; an oversized socketless frame stays

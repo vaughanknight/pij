@@ -13,8 +13,8 @@ use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
 use pij_core::framing::frame_message;
 use pij_core::model::{
-    DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome, Receipt,
-    SeatDescriptor, SeatId, SemanticState,
+    DeliveryFailure, DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome,
+    Receipt, SeatDescriptor, SeatId, SemanticState,
 };
 use pij_core::ports::{DeliveryAck, DeliveryEnqueue, LivenessPort, Queue, Registry, Transport};
 use pij_harnesses::{InteractionGate, StagedSubmission};
@@ -41,6 +41,15 @@ pub struct InboxClaim {
     pub job_id: JobId,
     /// Message body claimed for the recipient.
     pub message: Msg,
+    /// Queue retry count; initial delivery is attempt zero.
+    #[serde(default)]
+    pub attempt: u32,
+    /// Present only for terminal rows returned by non-destructive peek.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    /// A parked row's exact terminal recovery outcome.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<DeliveryFailure>,
     /// Echo of the native incarnation validated at handoff; absent on legacy/peek rows.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_consumer: Option<NativeInboxIdentity>,
@@ -158,6 +167,8 @@ pub struct DeliveryService {
     next_id: AtomicU64,
     clock: Arc<Clock>,
     native_lock: Arc<tokio::sync::Mutex<()>>,
+    extension_claim_lease_secs: u64,
+    recovery_authority_shared: bool,
 }
 
 impl DeliveryService {
@@ -190,6 +201,15 @@ impl DeliveryService {
         ))
     }
 
+    pub(crate) fn with_recovery_backends(
+        mut self,
+        queue: pij_core::config::AdapterChoice,
+        spine: pij_core::config::AdapterChoice,
+    ) -> Self {
+        self.recovery_authority_shared = !queue.is_real() || spine.is_real();
+        self
+    }
+
     fn with_sources(
         registry: Arc<dyn Registry>,
         queue: Arc<dyn Queue>,
@@ -208,6 +228,12 @@ impl DeliveryService {
             next_id: AtomicU64::new(0),
             clock: sources.clock,
             native_lock: Arc::new(tokio::sync::Mutex::new(())),
+            extension_claim_lease_secs: std::env::var("PIJ_RS_EXT_CLAIM_LEASE_SECS")
+                .ok()
+                .and_then(|value| value.parse::<u64>().ok())
+                .filter(|value| *value > 0 && *value <= i64::MAX as u64)
+                .unwrap_or(60),
+            recovery_authority_shared: true,
         }
     }
 
@@ -857,7 +883,7 @@ impl DeliveryService {
             // Native claims are queue ownership, not permission to inject. The
             // receiver owns native consent; typing is never a native gate.
             // Keep mutation excluded through handoff; no pane IO occurs here.
-            let native_guard = self.native_lock.lock().await;
+            let native_guard = self.native_lock.clone().lock_owned().await;
             let observed = self.inbox_recipient(seat, identity).await?;
             if let Some(liveness) = pull_liveness {
                 let recipient = observed.as_ref().filter(|seat| paneless_pull(seat))
@@ -887,7 +913,39 @@ impl DeliveryService {
                     held_reason: Some(reason),
                 });
             }
-            if let Some((job_id, job)) = self.queue.claim(&kinds, seat.as_str()).await? {
+            let (claimed, native_guard) = if observed
+                .as_ref()
+                .is_some_and(|recipient| matches!(recipient.harness, Harness::Omp | Harness::Pi))
+            {
+                let queue = self.queue.clone();
+                let spine = self.event_bus.raw_spine();
+                let claim_kinds = kinds.clone();
+                let worker = seat.to_string();
+                let lease = self.extension_claim_lease_secs;
+                let at = (self.clock)()?;
+                let recovery_allowed = self.recovery_authority_shared;
+                let (result, native_guard) = self
+                    .event_bus
+                    .publish_committed_batch(async move {
+                        let mut result = queue
+                            .claim_extension(
+                                &claim_kinds,
+                                &worker,
+                                lease,
+                                at,
+                                spine.as_ref(),
+                                recovery_allowed,
+                            )
+                            .await?;
+                        let events = std::mem::take(&mut result.events);
+                        Ok((events, (result, native_guard)))
+                    })
+                    .await?;
+                (result.claimed, native_guard)
+            } else {
+                (self.queue.claim(&kinds, seat.as_str()).await?, native_guard)
+            };
+            if let Some((job_id, job)) = claimed {
                 if let Some(recipient) = observed.as_ref().filter(|_| tuple_bound) {
                     // Lease expiry may invalidate a running attempt independently
                     // of registration. Never hand out or retry its successor.
@@ -979,6 +1037,9 @@ impl DeliveryService {
                     claims: vec![InboxClaim {
                         job_id,
                         message,
+                        attempt: job.attempt,
+                        state: None,
+                        outcome: None,
                         native_consumer: tuple_bound.then(|| identity.clone()),
                     }],
                     held_reason: None,
@@ -998,32 +1059,167 @@ impl DeliveryService {
         }
     }
 
-    /// Inspect at most one currently claimable message without changing queue
-    /// state, pointer cadence, or delivery evidence.
+    /// Inspect the live head first, followed by terminal recovery rows.
+    /// Parked bodies never become claims or consumption evidence.
+    ///
+    /// # Errors
+    /// Queue read failures or a corrupt/misdirected persisted delivery payload.
     pub async fn peek_inbox(&self, seat: &SeatId) -> Result<Vec<InboxClaim>> {
         let kinds = [delivery_kind(seat)];
-        let Some((job_id, job)) = self.queue.peek(&kinds).await? else {
-            return Ok(Vec::new());
-        };
-        let message: Msg =
-            serde_json::from_str(&job.payload).map_err(|error| PijError::Adapter {
-                adapter: "daemon/delivery".to_string(),
-                message: format!("invalid delivery payload: {error}"),
-            })?;
-        if &message.to != seat {
-            return Err(PijError::Adapter {
-                adapter: "daemon/delivery".to_string(),
-                message: format!(
-                    "delivery kind {} contained message for {}",
-                    kinds[0], message.to
-                ),
-            });
+        let mut rows = Vec::new();
+        if let Some((job_id, job)) = self.queue.peek(&kinds).await? {
+            rows.push(inbox_snapshot(seat, job_id, job, None)?);
         }
-        Ok(vec![InboxClaim {
+        for parked in self.queue.peek_parked(&kinds).await? {
+            rows.push(inbox_snapshot(
+                seat,
+                parked.job_id,
+                parked.job,
+                Some(parked.outcome),
+            )?);
+        }
+        Ok(rows)
+    }
+
+    /// Fail an extension body that the runtime never consumed, without ReaderRead.
+    ///
+    /// # Errors
+    /// Non-extension/control/stale claims, queue mutation failures, or event commit failures.
+    pub async fn fail_inbox(&self, seat: &SeatId, job_id: JobId) -> Result<()> {
+        let guard = self.native_lock.clone().lock_owned().await;
+        let job = self.extension_body_claim(seat, job_id).await?;
+        self.park_running_head(
+            seat,
             job_id,
-            message,
-            native_consumer: None,
-        }])
+            job.attempt,
+            pij_core::ports::ParkingEvidence {
+                outcome: DeliveryFailure::HarnessSwallowed,
+                reason: "three resend attempts were not consumed by the harness",
+                at: (self.clock)()?,
+            },
+            guard,
+            None,
+        )
+        .await
+    }
+
+    /// Operator recovery; authority is re-read only after ordered admission.
+    pub(crate) async fn release_inbox_head(
+        &self,
+        seat: &SeatId,
+        job_id: JobId,
+        evidence: &str,
+        actor: SeatId,
+        roles: Arc<crate::http::role::RoleService>,
+    ) -> Result<()> {
+        let guard = self.native_lock.clone().lock_owned().await;
+        let job = self.extension_body_claim(seat, job_id).await?;
+        self.park_running_head(
+            seat,
+            job_id,
+            job.attempt,
+            pij_core::ports::ParkingEvidence {
+                outcome: DeliveryFailure::OperatorReleased,
+                reason: evidence,
+                at: (self.clock)()?,
+            },
+            guard,
+            Some((actor, roles)),
+        )
+        .await
+    }
+
+    async fn extension_body_claim(&self, seat: &SeatId, job_id: JobId) -> Result<Job> {
+        let recipient = self
+            .registry
+            .get(seat)
+            .await?
+            .filter(|recipient| {
+                recipient.tombstoned_at.is_none()
+                    && matches!(recipient.harness, Harness::Omp | Harness::Pi)
+            })
+            .ok_or_else(|| {
+                native_refusal("failure acknowledgement requires an extension-stream recipient")
+            })?;
+        let job = self.queue.claimed_delivery(job_id).await?.ok_or_else(|| {
+            native_refusal("failure acknowledgement requires a running delivery claim")
+        })?;
+        let message: Msg = serde_json::from_str(&job.payload)
+            .map_err(|error| native_refusal(format!("invalid delivery payload: {error}")))?;
+        if job.serial_key != recipient.id.as_str()
+            || message.to != recipient.id
+            || message.command.is_some()
+        {
+            return Err(native_refusal(
+                "failure acknowledgement must name its extension-stream body recipient",
+            ));
+        }
+        Ok(job)
+    }
+
+    async fn park_running_head(
+        &self,
+        seat: &SeatId,
+        job_id: JobId,
+        attempt: u32,
+        parking: pij_core::ports::ParkingEvidence<'_>,
+        guard: tokio::sync::OwnedMutexGuard<()>,
+        operator: Option<(SeatId, Arc<crate::http::role::RoleService>)>,
+    ) -> Result<()> {
+        pij_core::delivery::require_recovery_authority(self.recovery_authority_shared)?;
+        let queue = self.queue.clone();
+        let spine = self.event_bus.raw_spine();
+        let seat = seat.clone();
+        let reason = parking.reason.to_string();
+        let outcome = parking.outcome;
+        let at = parking.at;
+        let registry = self.registry.clone();
+        self.event_bus
+            .publish_committed_batch(async move {
+                let _native_guard = guard;
+                if let Some((actor, roles)) = operator {
+                    let caller_live = registry
+                        .get(&actor)
+                        .await?
+                        .is_some_and(|caller| caller.tombstoned_at.is_none());
+                    let current = registry
+                        .get(&seat)
+                        .await?
+                        .ok_or_else(|| native_refusal("operator recipient no longer exists"))?;
+                    let prime = roles.read_role(&actor).await?.as_deref() == Some("prime");
+                    if !caller_live
+                        || current.tombstoned_at.is_some()
+                        || (!prime && current.parent.as_ref() != Some(&actor))
+                    {
+                        return Err(PijError::GovernanceRefused {
+                            code: "E-RS-OWNERSHIP".into(),
+                            record: serde_json::json!({
+                                "caller":actor,"seat":seat,"parent":current.parent,
+                            })
+                            .to_string(),
+                        });
+                    }
+                    if !matches!(current.harness, Harness::Omp | Harness::Pi) {
+                        return Err(native_refusal(
+                            "operator release requires an extension-stream body recipient",
+                        ));
+                    }
+                }
+                let evidence = pij_core::ports::ParkingEvidence {
+                    outcome,
+                    reason: &reason,
+                    at,
+                };
+                let (job, events) = queue
+                    .park_delivery(job_id, &seat, attempt, &evidence, spine.as_ref())
+                    .await?;
+                job.ok_or_else(|| {
+                    native_refusal("job is not the named running head or its claim changed")
+                })?;
+                Ok((events, ()))
+            })
+            .await?;
+        Ok(())
     }
 
     /// Record `ReaderRead` and return the authority-owned job identity committed.
@@ -1222,6 +1418,30 @@ impl DeliveryService {
     async fn publish_outcome(&self, seat: &SeatId, receipt: &Receipt) -> Result<()> {
         publish_delivery_outcome(&self.event_bus, seat, receipt, self.transport.name()).await
     }
+}
+
+fn inbox_snapshot(
+    seat: &SeatId,
+    job_id: JobId,
+    job: Job,
+    outcome: Option<DeliveryFailure>,
+) -> Result<InboxClaim> {
+    let message: Msg = serde_json::from_str(&job.payload)
+        .map_err(|error| native_refusal(format!("invalid delivery payload: {error}")))?;
+    if &message.to != seat || job.serial_key != seat.as_str() {
+        return Err(native_refusal(format!(
+            "inbox row for {} (serial {}) does not belong to {seat}",
+            message.to, job.serial_key,
+        )));
+    }
+    Ok(InboxClaim {
+        job_id,
+        message,
+        attempt: job.attempt,
+        state: outcome.map(|_| "failed".into()),
+        outcome,
+        native_consumer: None,
+    })
 }
 
 pub(crate) async fn publish_delivery_outcome(
