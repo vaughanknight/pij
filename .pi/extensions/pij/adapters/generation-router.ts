@@ -288,6 +288,7 @@ async function runNative(args: readonly string[], deps: GenerationRouterDeps): P
 function readQuery(
 	row: RsHttpRoute,
 	argv: readonly string[],
+	cwd: (() => string) | undefined,
 ):
 	| { readonly ok: true; readonly query: URLSearchParams }
 	| { readonly ok: false; readonly reason: string } {
@@ -303,7 +304,7 @@ function readQuery(
 			return { ok: false, reason: `unsupported read argument ${token}` };
 		}
 		const inline = matched?.[2];
-		const value = inline ?? argv[++index];
+		const value = inline ?? (name === "here" ? "true" : argv[++index]);
 		if (value === undefined || value === "" || (inline === undefined && value.startsWith("--"))) {
 			return { ok: false, reason: `--${name} requires a value` };
 		}
@@ -313,6 +314,14 @@ function readQuery(
 			return { ok: false, reason: `unsupported --${name} value ${value}` };
 		}
 		query.set(name, value);
+	}
+	if (query.has("here")) {
+		if (query.get("here") === "false") query.delete("here");
+		else {
+			const folder = cwd?.();
+			if (!folder) return { ok: false, reason: "--here requires caller cwd" };
+			query.set("here", folder);
+		}
 	}
 	return { ok: true, query };
 }
@@ -346,7 +355,7 @@ export async function routeVerb(
 	}
 	let query: URLSearchParams | undefined;
 	if (row.method === "GET") {
-		const parsed = readQuery(row, argv);
+		const parsed = readQuery(row, argv, deps.cwd);
 		if (!parsed.ok) return refused(unported(verb, location.addr, parsed.reason), row);
 		query = parsed.query;
 	}

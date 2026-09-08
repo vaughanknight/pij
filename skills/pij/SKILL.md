@@ -39,7 +39,7 @@ Module missing at its path → say so and stop. Never improvise a route from mem
 |---|---|
 | `spawn` `revive` | peer route — shim refuses `E-RS-UNPORTED`; use explicit native rs grammar, never legacy flags |
 | `send` `compact-self` `adopt` `whoami` `state` `inbox` | peer route — rs; verified external inbox register/wait supported, extension-owned receivers unchanged |
-| `list` `sessions` | peer route — rs-only; list forwards exact harness/folder/parent/scope=local filters; sessions has no filters or legacy union; native CLI List remains bare |
+| `list` `sessions` | peer route — rs-only; list supports boolean --here plus exact harness/folder/parent/scope=local shim filters; sessions has no filters or legacy union |
 | `tail` `tree` `link` | peer route — `E-RS-UNPORTED`; native tail is daemon events, not a transcript |
 | `agent` (`list/run/spawn/show/new/check/eject/report`) | agent route — `E-RS-UNPORTED` |
 | `daemon` `path` `telegram` | ops route — shim `E-RS-UNPORTED`; use documented native daemon lifecycle |

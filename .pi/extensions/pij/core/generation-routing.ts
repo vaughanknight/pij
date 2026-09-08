@@ -166,7 +166,7 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 		verb: "list",
 		rsPath: "/v1/seats",
 		method: "GET",
-		query: { harness: null, folder: null, parent: null, scope: ["local"] },
+		query: { harness: null, folder: null, parent: null, scope: ["local"], here: ["true", "false"] },
 		why: "Read rs seats using the existing server query filters",
 	},
 	{

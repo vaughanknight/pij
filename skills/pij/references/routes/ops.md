@@ -26,7 +26,7 @@ pij phonehome --json               # from that seat's own context
 pij anomalies --json
 ```
 
-Shim `pij list` forwards exact `--harness <h>`, `--folder <path>`, `--parent <seat>` and `--scope local` to `/v1/seats`. Sessions and native `pij-rs list` remain bare/`--json` only. Legacy `--here`, `--role`, `--prime` and `--archived` filters refuse rather than disappear. `~/.pij/<id>.json`, archive directories and filesystem ledgers are **not rs authority**. Absence from the active roster does not prove a seat never existed: inspect tombstone evidence through supported rs views. Never restore, delete or patch legacy descriptors to repair rs identity.
+Shim `pij list` forwards exact `--harness <h>`, `--folder <path>`, `--parent <seat>` and `--scope local` to `/v1/seats`. Both shim and native `pij-rs list --here` select the caller's canonical cwd; `--here` is boolean, not a path argument. Sessions remains bare/`--json` only. Legacy `--role`, `--prime` and `--archived` filters refuse rather than disappear. `~/.pij/<id>.json`, archive directories and filesystem ledgers are **not rs authority**. Absence from the active roster does not prove a seat never existed: inspect tombstone evidence through supported rs views. Never restore, delete or patch legacy descriptors to repair rs identity.
 
 Phonehome re-observes process identity; `bound` is not merely presence of a pid. The optional role is joined through RoleService like whoami/seats/StateCard: string assertion or null, never an inferred default. A tombstoned seat cannot authenticate as a live identity even if its old process still exists.
 

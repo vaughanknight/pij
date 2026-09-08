@@ -271,7 +271,8 @@ for marker in \
   'recorded `parent`, not a spawnedBy fallback' \
   'Close requires self or the current recorded parent.' \
   '`--scope local`' \
-  'Legacy `--here`, `--role`, `--prime` and `--archived` remain refused.' \
+  'Legacy `--role`, `--prime` and `--archived` remain refused.' \
+  'Both shim and native `pij-rs list --here` select the caller' \
   'pij inbox register --json' \
   'pij inbox --wait' \
   'matching long-lived host incarnation'; do
@@ -282,7 +283,7 @@ done
 for marker in \
   '`pij list --json` is the unfiltered active rs roster' \
   '`pij node show <id> --json` is its governed subtree' \
-  'List `--prime`/`--here`/`--archived`, tree and link are unported, not alternative probes.' \
+  'List `--prime`/`--archived`, tree and link are unported, not alternative probes.' \
   '**not prime designation**' \
   'There is no dedicated rs prime-list/getter projection in this cutover' \
   'A missing local directory or empty active roster never proves no prime exists.' \

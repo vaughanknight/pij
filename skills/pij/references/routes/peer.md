@@ -18,7 +18,7 @@ pij state <seat> --json
 pij node show <seat> --json
 ```
 
-`--json` forwards the complete original v2 envelope; ids live in its real `data`, not a legacy rewrapped object. Shim list forwards exact `--harness <h>`, `--folder <path>`, `--parent <seat>` and `--scope local`; sessions and native `pij-rs list` have no filters, and sessions never unions TS telemetry. Legacy `--here`, `--role`, `--prime` and `--archived` remain refused. Node show supplies the rs subtree and linked records. RoleService supplies string or null; omitted role preserves existing assertion, explicit unset uses `pij role <seat> --unset`.
+`--json` forwards the complete original v2 envelope; ids live in its real `data`, not a legacy rewrapped object. Shim list forwards exact `--harness <h>`, `--folder <path>`, `--parent <seat>` and `--scope local`. Both shim and native `pij-rs list --here` select the caller's canonical cwd; `--here` is boolean, not a path argument. Sessions has no filters and never unions TS telemetry. Legacy `--role`, `--prime` and `--archived` remain refused. Node show supplies the rs subtree and linked records. RoleService supplies string or null; omitted role preserves existing assertion, explicit unset uses `pij role <seat> --unset`.
 
 Parent is the rs descriptor's recorded `parent`, not a spawnedBy fallback. Supply `--parent` when creating/adopting within its supported admission contract. `pij link`/`tree` refuse: no existing-seat reparent/root-placement port exists, and a role change cannot stand in for a structural link.
 

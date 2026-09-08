@@ -19,7 +19,7 @@ Documents still follow [Governance branch — the rules](./bootstrap.md#governan
 every later state-set/state-verified event inherits it — omit it and the
 claim/verify lifecycle is silently orphaned from the project's filtered spine.
 | verification of done | the current recorded parent runs `pij report verify <id>`; receipt binds the latest done sequence, never self-verification |
-| seat/liveness truth | `pij list --json` · `pij node show <id> --json` · `pij anomalies --json` (rs only; list supports exact harness/folder/parent/scope=local forwarding, not legacy role/here/prime/archive filters; tree/link are unported) |
+| seat/liveness truth | `pij list --json` · `pij node show <id> --json` · `pij anomalies --json` (rs only; list supports boolean `--here` and exact harness/folder/parent/scope=local forwarding, not legacy role/prime/archive filters; tree/link are unported) |
 | human-readable spine | `pij spine render` returns `{text,cursor}`; it never writes a legacy spine file |
 
 Read-back: `pij spine events [--since <seq>] [--project <slug>] [--peer <id>]`,

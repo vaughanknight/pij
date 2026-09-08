@@ -1,6 +1,7 @@
 //! One bulk rs snapshot projected by the existing pure anomaly detectors.
 use super::decisions::{
-    DecisionError, ReadRequest, parse_filters, project_parents, query_argv, respond,
+    DecisionError, ReadRequest, here_from_flag, here_path, parse_filters, project_parents,
+    query_argv, respond,
 };
 use super::identity::{Resolved, resolve_seat};
 use super::{AppState, system_time_ms};
@@ -247,21 +248,21 @@ pub(crate) async fn list_post(
         Ok(filters) => filters,
         Err(error) => return error.anomaly_scope().response("pij anomalies"),
     };
-    let here = match filters.get("here").map(String::as_str) {
-        None | Some("false") => None,
-        Some("true") => Some(request.caller.cwd.as_deref().unwrap_or(&actor.folder)),
-        _ => {
-            return DecisionError::argument("--here is a boolean; scope comes from caller cwd")
-                .anomaly_scope()
-                .response("pij anomalies");
-        }
+    let here = match here_from_flag(
+        filters.get("here").map(String::as_str),
+        Some(request.caller.cwd.as_deref().unwrap_or(&actor.folder)),
+    )
+    .and_then(here_path)
+    {
+        Ok(here) => here,
+        Err(error) => return error.anomaly_scope().response("pij anomalies"),
     };
     respond(
         "pij anomalies",
         state
             .services
             .anomalies
-            .list(&filters, here)
+            .list(&filters, here.as_deref())
             .await
             .map_err(DecisionError::from),
     )
@@ -276,23 +277,16 @@ pub(crate) async fn list_get(
         Ok(filters) => filters,
         Err(error) => return error.anomaly_scope().response("pij anomalies"),
     };
-    let here = match filters.get("here").map(String::as_str) {
-        None => None,
-        Some(path) if std::path::Path::new(path).is_absolute() => Some(path),
-        _ => {
-            return DecisionError::argument(
-                "GET here requires an absolute path, never bare true or daemon cwd",
-            )
-            .anomaly_scope()
-            .response("pij anomalies");
-        }
+    let here = match here_path(filters.get("here").map(String::as_str)) {
+        Ok(here) => here,
+        Err(error) => return error.anomaly_scope().response("pij anomalies"),
     };
     respond(
         "pij anomalies",
         state
             .services
             .anomalies
-            .list(&filters, here)
+            .list(&filters, here.as_deref())
             .await
             .map_err(DecisionError::from),
     )

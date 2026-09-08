@@ -1,7 +1,7 @@
 # Bootstrap — stand up an o-prime
 
 **Store-native is the ruled default**: load [`store-native.md`](./store-native.md) first. It replaces prose portfolio/roster facts, NOT §3's document branch; existing prose stays live until its prime self-migrates.
-Use the seating ritual only after authoritative rs designation/event receipts and government/human evidence establish no current prime for this repo, and `pij project list --json` names no project here. `pij list --json` is unfiltered; `--prime`/`--here`/`--archived` refuse, and display role is not designation. The absence of a dedicated prime getter is a named gap: never infer permission from it. A missing local `.harness/government/` proves nothing. Existing primes may use §3 without reseating.
+Use the seating ritual only after authoritative rs designation/event receipts and government/human evidence establish no current prime for this repo, and `pij project list --json` names no project here. `pij list --json` is unfiltered; `--prime`/`--archived` refuse, and display role is not designation. List `--here` scopes to caller cwd and can hide stream worktrees. The absence of a dedicated prime getter is a named gap: never infer permission from it. A missing local `.harness/government/` proves nothing. Existing primes may use §3 without reseating.
 Preconditions: git repo, tmux, `pij`, ambient `harness`, one o-prime session, and human-named work; never invent portfolio items.
 
 ## 1. Seat and prove the o-prime

@@ -108,6 +108,110 @@ async fn get(addr: SocketAddr, path: &str) -> reqwest::Response {
         .expect("get")
 }
 
+#[tokio::test]
+async fn list_here_scopes_get_and_post_to_the_callers_canonical_folder() {
+    let root = pij_testkit::fresh_dir("pij-list-here");
+    let folder = root.canonicalize().expect("canonical folder");
+    let folder = folder.to_str().expect("UTF-8 folder");
+    let nested = root.join("nested");
+    std::fs::create_dir(&nested).expect("nested folder");
+    let spelling = nested.join("..").display().to_string();
+    let (addr, server, _store) = daemon_with_seats(vec![
+        SeatDescriptor::new("pij-here", Harness::Omp, folder),
+        SeatDescriptor::new("pij-elsewhere", Harness::Omp, "/elsewhere"),
+    ])
+    .await;
+    let client = reqwest::Client::new();
+    let get = client
+        .get(format!("http://{addr}/v1/seats"))
+        .bearer_auth(KEY)
+        .query(&[("here", spelling.as_str())])
+        .send()
+        .await
+        .expect("GET list here");
+    let post = post(
+        addr,
+        "/v1/seats",
+        serde_json::json!({
+            "argv": ["list", "--here"], "caller": {"cwd": spelling}
+        }),
+    )
+    .await;
+    let post_query = client
+        .post(format!("http://{addr}/v1/seats"))
+        .bearer_auth(KEY)
+        .query(&[("here", spelling.as_str())])
+        .json(&serde_json::json!({"argv":["list"]}))
+        .send()
+        .await
+        .expect("POST query scope");
+    for response in [get, post, post_query] {
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let payload: serde_json::Value = response.json().await.expect("list envelope");
+        let ids: Vec<_> = payload["data"]["seats"]
+            .as_array()
+            .expect("seats")
+            .iter()
+            .map(|seat| seat["id"].as_str().expect("seat id"))
+            .collect();
+        assert_eq!(ids, ["pij-here"]);
+    }
+    let excluded: serde_json::Value = client
+        .get(format!("http://{addr}/v1/seats"))
+        .bearer_auth(KEY)
+        .query(&[("here", folder), ("folder", "/elsewhere")])
+        .send()
+        .await
+        .expect("intersect filters")
+        .json()
+        .await
+        .expect("envelope");
+    assert_eq!(excluded["data"]["seats"], serde_json::json!([]));
+    server.abort();
+    std::fs::remove_dir_all(root).expect("remove fixture");
+}
+
+#[tokio::test]
+async fn list_here_invalid_scopes_are_decodable_argument_errors() {
+    let (addr, server, _store) = daemon().await;
+    for path in ["/v1/seats?here=relative", "/v1/seats?here=true"] {
+        let response = get(addr, path).await;
+        assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+        let payload: serde_json::Value = response.json().await.expect("GET refusal");
+        assert_eq!(payload["details"]["code"], "E-RS-ARG");
+    }
+    for (argv, cwd) in [
+        (serde_json::json!(["list", "--here=/abs/tree"]), "/abs/tree"),
+        (
+            serde_json::json!(["list", "--here", "/abs/tree"]),
+            "/abs/tree",
+        ),
+        (serde_json::json!(["list", "--here"]), "relative"),
+    ] {
+        let response = post(
+            addr,
+            "/v1/seats",
+            serde_json::json!({
+                "argv": argv, "caller": {"cwd": cwd}
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+        let payload: serde_json::Value = response.json().await.expect("POST refusal");
+        assert_eq!(payload["details"]["code"], "E-RS-ARG");
+    }
+    let missing = post(
+        addr,
+        "/v1/seats",
+        serde_json::json!({"argv":["list","--here"]}),
+    )
+    .await;
+    assert_eq!(missing.status(), reqwest::StatusCode::BAD_REQUEST);
+    let missing: serde_json::Value = missing.json().await.expect("missing cwd refusal");
+    assert_eq!(missing["details"]["code"], "E-RS-ARG");
+    server.abort();
+}
+
 /// THE CLAIM THE UNIT EXISTS FOR: a seat that registered into rs can speak,
 /// with the sender DERIVED from its pane and no session id anywhere.
 ///

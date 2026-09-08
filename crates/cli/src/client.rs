@@ -247,6 +247,23 @@ impl DaemonClient {
         self.get("pij list", "/v1/seats").await
     }
 
+    /// Forward list scope arguments to the daemon's shared boolean/cwd parser.
+    pub async fn list_scoped(
+        &self,
+        args: &[String],
+        caller: &CallerContext,
+    ) -> Envelope<FederatedRoster> {
+        let argv: Vec<&str> = std::iter::once("list")
+            .chain(args.iter().map(String::as_str))
+            .collect();
+        self.post(
+            "pij list",
+            "/v1/seats",
+            &serde_json::json!({"argv":argv,"caller":caller}),
+        )
+        .await
+    }
+
     /// List only this daemon's authoritative registry, excluding retained remote seats.
     pub async fn local_seats(&self) -> Envelope<FederatedRoster> {
         self.get("pij list", "/v1/seats?scope=local").await

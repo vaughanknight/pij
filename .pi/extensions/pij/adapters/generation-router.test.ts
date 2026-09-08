@@ -412,8 +412,32 @@ describe("routeVerb end to end", () => {
 		}
 	});
 
+	it("list --here forwards the caller folder instead of refusing", async () => {
+		const calls: Call[] = [];
+		const folder = "/work/project with spaces";
+		const result = await routeVerb(
+			"list",
+			undefined,
+			["list", "--here", "--json"],
+			deps(
+				answering(
+					JSON.stringify({
+						ok: true,
+						command: "pij seats",
+						v: 2,
+						data: { seats: [], unavailable: [] },
+					}),
+				),
+				{ cwd: () => folder },
+				calls,
+			),
+		);
+		expect(result.outcome.kind).toBe("rs");
+		expect(new URL(calls[1]?.url ?? "").searchParams.get("here")).toBe(folder);
+	});
+
 	it.each([
-		{ verb: "list", rejected: [["--here"], ["--role", "coder"], ["--all"], ["pij-other"]] },
+		{ verb: "list", rejected: [["--role", "coder"], ["--all"], ["pij-other"]] },
 		{
 			verb: "sessions",
 			rejected: [

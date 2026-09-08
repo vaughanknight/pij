@@ -498,6 +498,43 @@ pub(crate) fn parse_filters(
     Ok(filters)
 }
 
+/// Boolean argv scope uses the caller's folder, never a supplied flag value.
+pub(crate) fn here_from_flag<'a>(
+    value: Option<&str>,
+    cwd: Option<&'a str>,
+) -> std::result::Result<Option<&'a str>, DecisionError> {
+    match value {
+        None | Some("false") => Ok(None),
+        Some("true") => cwd
+            .map(Some)
+            .ok_or_else(|| DecisionError::argument("--here requires caller cwd")),
+        _ => Err(DecisionError::argument(
+            "--here is a boolean; scope comes from caller cwd",
+        )),
+    }
+}
+
+/// HTTP scope is absolute. Canonicalise available paths without requiring
+/// remote or retained registry folders to exist on this daemon's filesystem.
+pub(crate) fn here_path(
+    value: Option<&str>,
+) -> std::result::Result<Option<std::borrow::Cow<'_, str>>, DecisionError> {
+    value
+        .map(|value| {
+            let path = std::path::Path::new(value);
+            if !path.is_absolute() {
+                return Err(DecisionError::argument(
+                    "here requires an absolute path, never bare true or daemon cwd",
+                ));
+            }
+            Ok(match path.canonicalize() {
+                Ok(path) => std::borrow::Cow::Owned(path.to_string_lossy().into_owned()),
+                Err(_) => std::borrow::Cow::Borrowed(value),
+            })
+        })
+        .transpose()
+}
+
 pub(crate) fn query_argv(family: &str, query: BTreeMap<String, String>) -> Vec<String> {
     std::iter::once(family.to_string())
         .chain(
