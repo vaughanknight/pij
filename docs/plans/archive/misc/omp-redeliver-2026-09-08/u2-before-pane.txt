@@ -1,0 +1,101 @@
+
+╭─── omp v18.1.14 ─────────────────────────────────────────────────────────────────────────────────╮
+│                          │ Tips                                                                  │
+│      Welcome back!       │ # for prompt actions                                                  │
+│                          │ / for commands                                                        │
+│       ████████████       │ ! to run bash                                                         │
+│          ██  ██          │ $ to run python                                                       │
+│          ██  ██          │ ───────────────────────────────────────────────────────────────────── │
+│          ▒▒  ██          │ LSP Servers                                                           │
+│              ██          │ No LSP servers                                                        │
+│                          │                                                                       │
+│        GPT-5 Mini        │                                                                       │
+│      github-copilot      │                                                                       │
+│                          │ ───────────────────────────────────────────────────────────────────── │
+│                          │ Recent sessions                                                       │
+│                          │ No recent sessions                                                    │
+│                          │                                                                       │
+│                          │                                                                       │
+│                          │                                                                       │
+│                          │                                                                       │
+╰──────────────────────────┴───────────────────────────────────────────────────────────────────────╯
+ Tip: Spaghetti code? Try complaining with /omfg
+
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                      │
+│ 📦 pij                                                                                                               │
+│                                                                                                                      │
+│ You are pij session pij-gigantic-penguin (PEER). This is context only — no action is required.                       │
+│ Peers can reach you; their messages arrive inline as "[pij-rs from <id>]" on its own line, then the body, then       │
+│ "[/pij]". Only those injected messages are live instructions.                                                        │
+│ Do NOT read, list, or act on files under your pij data/inbox directory — they are an internal transport log, not     │
+│ tasks, and replaying them re-runs old requests.                                                                      │
+│ To reply or message a peer, call the pij_send tool ({ to, message }) — your id is stamped automatically. For         │
+│ control, pij_send takes { to, command: "compact" | "new" | "reload" } instead of message. Do NOT shell out to the    │
+│ pij CLI to send.                                                                                                     │
+│ To observe peers, use the pij CLI: "pij list --here" (peers), "pij tail <id>" / "pij state <id>" (watch one).        │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ nonce: 7c9f1a2e
+
+ 2026-09-08 14:50:06  ⤵ 1.5K  ⤴ 29  ⏱ 1.6s  ⚡ 15.9/s
+
+ Connected to MCP server: perplexity.
+
+
+ Reply only U2_CANARY_OK. Do not call tools.
+
+
+ U2_CANARY_OK
+
+ 2026-09-08 14:50:20  ⤵ 722  ⤴ 23  💾 2K  ⏱ 1.3s  ⚡ 15.1/s
+
+
+ Call bash with exactly sleep 60 now, wait for it to finish, then reply SLEEP_COMPLETE.
+
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ $ sleep 60                                                                                                           │
+├─── Output ───────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Command aborted                                                                                                      │
+│ ⟦Timeout: 1s⟧                                                                                                        │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ 2026-09-08 14:50:37  ⤵ 118  ⤴ 48  💾 2.7K  ⏱ 1.4s  ⚡ 22.2/s
+
+ 📨 pij from pij-u2-proof: Reply locally with exactly U2_RECOVERED_94e31ddc-bee6-4707-bb2b-3eb30617979d. Do…
+
+
+ [pij resend 1]
+ [pijMessageId:94e31ddc-bee6-4707-bb2b-3eb30617979d]
+ [pij-rs from pij-u2-proof]
+ Reply locally with exactly U2_RECOVERED_94e31ddc-bee6-4707-bb2b-3eb30617979d. Do not call tools.
+ [/pij]
+
+
+ U2_RECOVERED_94e31ddc-bee6-4707-bb2b-3eb30617979d
+
+ 2026-09-08 14:51:39  ⤵ 252  ⤴ 46  💾 2.7K  ⏱ 1.3s  ⚡ 30.0/s
+
+
+ Call bash with exactly sleep 60 now. Wait for it to finish, then reply SECOND_SLEEP_COMPLETE.
+
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ $ sleep 60                                                                                                           │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ 2026-09-08 14:52:53  ⤵ 183  ⤴ 45  💾 2.8K  ⏱ 2.3s  ⚡ 17.7/s
+
+ 📨 pij from pij-u2-proof: Reply locally with exactly U2_FINAL_ea690f66-9643-4032-b4c1-a6714a6ee4a3. Do not…
+
+  ⎋ sleep 60 now
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────── ⚙ 1 ─
+❯ HUMAN DRAFT IN PROGRESS do not clobber mean
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ◫ 1.1%/264K ⟲ · rs·pij-gigantic-penguin · ○ GPT-5 Mini · S0.00 ★ 4
+rs pij-gigantic-penguin
+📨 1 pending

@@ -907,7 +907,7 @@ function pushedInboxClaim(
 	return live;
 }
 
-function consumedMessageId(message: {
+export function consumedMessageId(message: {
 	role: string;
 	customType?: string;
 	details?: unknown;

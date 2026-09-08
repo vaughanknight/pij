@@ -105,6 +105,13 @@ correlation. Starting another turn resets the idle window. The local extension
 capture `delivery.resend` records `messageId`, `attempt`, and the recovery reason;
 it is not a daemon spine event.
 
+OMP recovery preserves the current human draft without delaying delivery.
+After the resend's correlated `message_start` ACK handler, the extension snapshots
+the editor and restores it on the next tick, after OMP's user-message clear.
+Restoration requires an empty editor and no intervening terminal input; human
+typing, submission, or clearing wins. Restored text places the cursor at its end
+and is never submitted as part of the resend.
+
 A reclaimed unconsumed message is resent immediately: prompt path while idle,
 steering while busy. Consumption remains deduplicated by message id. Three
 resends are the limit; after the last resend gets its idle consumption window,

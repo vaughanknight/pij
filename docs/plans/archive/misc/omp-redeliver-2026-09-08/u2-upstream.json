@@ -1,0 +1,116 @@
+[
+  {
+    "file": "packages/coding-agent/src/modes/controllers/event-controller.ts",
+    "url": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.1.14/packages/coding-agent/src/modes/controllers/event-controller.ts",
+    "matches": [
+      {
+        "line": 960,
+        "text": "this.ctx.editor.setText(\"\");"
+      }
+    ]
+  },
+  {
+    "file": "packages/coding-agent/src/session/agent-session.ts",
+    "url": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.1.14/packages/coding-agent/src/session/agent-session.ts",
+    "matches": [
+      {
+        "line": 2353,
+        "text": "this.#emit(event);"
+      },
+      {
+        "line": 2373,
+        "text": "await extensionEmit;"
+      },
+      {
+        "line": 2388,
+        "text": "this.#emit(event);"
+      },
+      {
+        "line": 5574,
+        "text": "async sendPlanModeContext(options?: { deliverAs?: \"steer\" | \"followUp\" | \"nextTurn\" | \"aside\" }): Promise<void> {"
+      },
+      {
+        "line": 5588,
+        "text": "async sendGoalModeContext(options?: { deliverAs?: \"steer\" | \"followUp\" | \"nextTurn\" | \"aside\" }): Promise<void> {"
+      },
+      {
+        "line": 5603,
+        "text": "async sendVibeModeContext(options?: { deliverAs?: \"steer\" | \"followUp\" | \"nextTurn\" | \"aside\" }): Promise<void> {"
+      },
+      {
+        "line": 7142,
+        "text": "async sendUserMessage("
+      },
+      {
+        "line": 7144,
+        "text": "options?: { deliverAs?: \"steer\" | \"followUp\" | \"aside\" },"
+      }
+    ]
+  },
+  {
+    "file": "packages/coding-agent/src/extensibility/extensions/types.ts",
+    "url": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.1.14/packages/coding-agent/src/extensibility/extensions/types.ts",
+    "matches": [
+      {
+        "line": 850,
+        "text": "* via `pi.sendMessage(..., { deliverAs })` or `pi.sendUserMessage(...)`."
+      },
+      {
+        "line": 1438,
+        "text": "sendUserMessage("
+      },
+      {
+        "line": 1440,
+        "text": "options?: { deliverAs?: \"steer\" | \"followUp\" | \"aside\" },"
+      },
+      {
+        "line": 1662,
+        "text": "options?: { deliverAs?: \"steer\" | \"followUp\" | \"aside\" },"
+      }
+    ]
+  },
+  {
+    "file": "packages/coding-agent/src/modes/controllers/extension-ui-controller.ts",
+    "url": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.1.14/packages/coding-agent/src/modes/controllers/extension-ui-controller.ts",
+    "matches": [
+      {
+        "line": 116,
+        "text": "setEditorText: text => {"
+      },
+      {
+        "line": 1199,
+        "text": "this.ctx.session.sendUserMessage(content, options).catch((err: unknown) => {"
+      }
+    ]
+  },
+  {
+    "file": "packages/tui/src/components/editor.ts",
+    "url": "https://raw.githubusercontent.com/can1357/oh-my-pi/v18.1.14/packages/tui/src/components/editor.ts",
+    "matches": [
+      {
+        "line": 821,
+        "text": "const cursorAnchor: HistoryCursorAnchor = direction === -1 ? \"start\" : \"end\";"
+      },
+      {
+        "line": 826,
+        "text": "#setTextInternal(text: string, cursorAnchor: HistoryCursorAnchor = \"end\"): void {"
+      },
+      {
+        "line": 834,
+        "text": "this.#state.cursorLine = this.#state.lines.length - 1;"
+      },
+      {
+        "line": 2057,
+        "text": "setText(text: string): void {"
+      },
+      {
+        "line": 2070,
+        "text": "this.#state.cursorLine = this.#state.lines.length - 1;"
+      },
+      {
+        "line": 2702,
+        "text": "this.#state.cursorLine = this.#state.lines.length - 1;"
+      }
+    ]
+  }
+]

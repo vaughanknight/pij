@@ -1,0 +1,101 @@
+{
+  "base": "809616c6ea37364b482f7fd5ac7ee46171bc956a",
+  "runtime": {
+    "version": "OMP 18.1.14",
+    "model": "github-copilot/gpt-5-mini",
+    "seat": {
+      "id": "pij-gigantic-penguin",
+      "machine": "JordansacStudio.localdomain",
+      "harness": "omp",
+      "session": "01a07f5a-1887-745e-a1ef-ada282eacec4",
+      "pane": "%2",
+      "proc": {
+        "pid": 39702,
+        "proc_start": 20260908145005
+      },
+      "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-draft-u2-viCavj/workspace",
+      "state": "idle",
+      "semantic_state": null,
+      "role": null,
+      "parent": null,
+      "relay": false,
+      "native_extension_delivery": false,
+      "generation": "rs"
+    }
+  },
+  "isolation": {
+    "root": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-draft-u2-viCavj",
+    "addr": "127.0.0.1:52695",
+    "socket": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-draft-u2-viCavj/tmux.sock"
+  },
+  "draft": {
+    "expected": "HUMAN DRAFT IN PROGRESS do not clobber me",
+    "utf8Bytes": 41,
+    "beforeAnsi": "\u001b[39m❯ \u001b[38;2;229;229;231mHUMAN DRAFT IN PROGRESS do not clobber me\u001b[38;2;107;114;128man\u001b[39m",
+    "afterAnsi": "\u001b[39m❯ \u001b[38;2;229;229;231mHUMAN DRAFT IN PROGRESS do not clobber me\u001b[38;2;107;114;128man\u001b[39m",
+    "cursorBefore": "43,34",
+    "cursorAfter": "43,35",
+    "afterAppend": "HUMAN DRAFT IN PROGRESS do not clobber me!",
+    "cursorAfterAppend": "44,35",
+    "ghostTextNote": "Gray autocomplete suggestion an is not draft content; actual caret is after me, and ! inserts as me!."
+  },
+  "delivery": {
+    "messageId": "ea690f66-9643-4032-b4c1-a6714a6ee4a3",
+    "job": {
+      "id": 2,
+      "state": "done",
+      "dedupe_key": "ea690f66-9643-4032-b4c1-a6714a6ee4a3",
+      "attempt": 0,
+      "claimed_at": 1788843176,
+      "acked_at": 1788843187
+    },
+    "escapeAt": 1788843176570,
+    "ackCount": 1,
+    "elapsedEscapeToAckMs": 10636,
+    "events": [
+      {
+        "seq": 6,
+        "at": 1788843176453,
+        "kind": "message.pushed",
+        "seat": "pij-gigantic-penguin",
+        "payload": "{\"msg_id\":\"ea690f66-9643-4032-b4c1-a6714a6ee4a3\",\"from\":\"pij-u2-proof\",\"body\":\"Reply locally with exactly U2_FINAL_ea690f66-9643-4032-b4c1-a6714a6ee4a3. Do not call tools.\"}"
+      },
+      {
+        "seq": 7,
+        "at": 1788843176453,
+        "kind": "delivery.outcome",
+        "seat": "pij-gigantic-penguin",
+        "payload": "{\"msg_id\":\"ea690f66-9643-4032-b4c1-a6714a6ee4a3\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+      },
+      {
+        "seq": 8,
+        "at": 1788843187206,
+        "kind": "delivery.outcome",
+        "seat": "pij-gigantic-penguin",
+        "payload": "{\"msg_id\":\"ea690f66-9643-4032-b4c1-a6714a6ee4a3\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+      },
+      {
+        "seq": 9,
+        "at": 1788843187206,
+        "kind": "delivery.inbox-ack",
+        "seat": "pij-gigantic-penguin",
+        "payload": "{\"job_id\":2,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+      }
+    ]
+  },
+  "transcript": {
+    "humanDraftSubmitted": false,
+    "matchingMessages": [
+      {
+        "timestamp": "2026-09-08T04:53:07.207Z",
+        "role": "user",
+        "text": "[pij resend 1]\n[pijMessageId:ea690f66-9643-4032-b4c1-a6714a6ee4a3]\n[pij-rs from pij-u2-proof]\nReply locally with exactly U2_FINAL_ea690f66-9643-4032-b4c1-a6714a6ee4a3. Do not call tools.\n[/pij]"
+      },
+      {
+        "timestamp": "2026-09-08T04:53:08.888Z",
+        "role": "assistant",
+        "text": "U2_FINAL_ea690f66-9643-4032-b4c1-a6714a6ee4a3"
+      }
+    ]
+  }
+}
