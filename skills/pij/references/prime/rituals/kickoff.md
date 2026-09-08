@@ -19,7 +19,7 @@ Run steps in order. Artifacts make the process reconstructable; conversation doe
    Check the peer's actual `process.cwd()` and native tool root against the chosen worktree; a cwd flag or spawn receipt is not that observation.
 8. **Observe the actual native binding result / pushed turn.** Native spawn waits by default; `--no-wait` is explicit admission, not readiness. Never poll a booting peer as a substitute for delivery.
 9. **Verify placement.**
-   Read `pij list --json`, `pij node show <id> --json`, the actual branch and tmux panes; folder, recorded parent, model and window must match the brief. No list `--here` or tree/link port exists.
+   Read `pij list --json`, `pij node show <id> --json`, the actual branch and tmux panes; folder, recorded parent, model and window must match the brief. List `--here` scopes to caller cwd, not every stream worktree; tree/link remain unported.
 10. **Canary legs (a) and (b).** Run `pij canary <id> --expect-model <m>`;
     Complete canary leg (a) round-trip and leg (b) identity proof;
     record nonce-dispatch + defensive runtime evidence at pass time; (c) remains pending.

@@ -1834,5 +1834,152 @@
     "previous_capture_commit": "78531a0ba2f22469ab72289ba9ff6c1635e863e7",
     "previous_corpus_sha256": "acc298253130983221f5995a459ec8406cef0e9c50fe9d635aad873be6469370",
     "refreshed_for": "Verified paneless admission and required honest keeper notice behavior, including current baton-request notice field"
+  },
+  "list_here_capture": {
+    "captured_at": "2026-09-08T12:07:58.113202+10:00",
+    "method": "same-private-real-daemon-native-vs-shim",
+    "daemon": "http://127.0.0.1:62902",
+    "cwd": "/private/tmp/pij-list-here-smoke.uIGZo2/here",
+    "adapters": "real; isolated HOME and SQLite; only owned observed process registrations",
+    "production_touched": false,
+    "binary_sha256": "4041804e87fab0c366ad8b6aedf675dac286ef61d600511780095d34ec1cb7e2",
+    "pairs": [
+      {
+        "argv": [
+          "list",
+          "--here",
+          "--json"
+        ],
+        "native": {
+          "exit": 0,
+          "stdout": "{\"ok\":true,\"command\":\"pij seats\",\"v\":2,\"data\":{\"seats\":[{\"id\":\"pij-smoke-here\",\"machine\":\"JordansacStudio.localdomain\",\"harness\":\"omp\",\"session\":null,\"pane\":null,\"proc\":{\"pid\":57666,\"proc_start\":20260908120535},\"folder\":\"/private/tmp/pij-list-here-smoke.uIGZo2/here\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":null,\"relay\":false,\"native_extension_delivery\":false,\"generation\":\"rs\"}],\"unavailable\":[]}}\n",
+          "stderr": "",
+          "stdout_sha256": "7527e508d1ddb5e642bafa6f802d340f5e96a1a3095e7ba891bd817c95d57f45"
+        },
+        "shim": {
+          "exit": 0,
+          "stdout": "{\"ok\":true,\"command\":\"pij seats\",\"v\":2,\"data\":{\"seats\":[{\"id\":\"pij-smoke-here\",\"machine\":\"JordansacStudio.localdomain\",\"harness\":\"omp\",\"session\":null,\"pane\":null,\"proc\":{\"pid\":57666,\"proc_start\":20260908120535},\"folder\":\"/private/tmp/pij-list-here-smoke.uIGZo2/here\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":null,\"relay\":false,\"native_extension_delivery\":false,\"generation\":\"rs\"}],\"unavailable\":[]}}\n",
+          "stderr": "",
+          "stdout_sha256": "7527e508d1ddb5e642bafa6f802d340f5e96a1a3095e7ba891bd817c95d57f45"
+        },
+        "byte_equal": true,
+        "ids": [
+          "pij-smoke-here"
+        ]
+      },
+      {
+        "argv": [
+          "list",
+          "--here=true",
+          "--json"
+        ],
+        "native": {
+          "exit": 0,
+          "stdout": "{\"ok\":true,\"command\":\"pij seats\",\"v\":2,\"data\":{\"seats\":[{\"id\":\"pij-smoke-here\",\"machine\":\"JordansacStudio.localdomain\",\"harness\":\"omp\",\"session\":null,\"pane\":null,\"proc\":{\"pid\":57666,\"proc_start\":20260908120535},\"folder\":\"/private/tmp/pij-list-here-smoke.uIGZo2/here\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":null,\"relay\":false,\"native_extension_delivery\":false,\"generation\":\"rs\"}],\"unavailable\":[]}}\n",
+          "stderr": "",
+          "stdout_sha256": "7527e508d1ddb5e642bafa6f802d340f5e96a1a3095e7ba891bd817c95d57f45"
+        },
+        "shim": {
+          "exit": 0,
+          "stdout": "{\"ok\":true,\"command\":\"pij seats\",\"v\":2,\"data\":{\"seats\":[{\"id\":\"pij-smoke-here\",\"machine\":\"JordansacStudio.localdomain\",\"harness\":\"omp\",\"session\":null,\"pane\":null,\"proc\":{\"pid\":57666,\"proc_start\":20260908120535},\"folder\":\"/private/tmp/pij-list-here-smoke.uIGZo2/here\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":null,\"relay\":false,\"native_extension_delivery\":false,\"generation\":\"rs\"}],\"unavailable\":[]}}\n",
+          "stderr": "",
+          "stdout_sha256": "7527e508d1ddb5e642bafa6f802d340f5e96a1a3095e7ba891bd817c95d57f45"
+        },
+        "byte_equal": true,
+        "ids": [
+          "pij-smoke-here"
+        ]
+      },
+      {
+        "argv": [
+          "list",
+          "--here=false",
+          "--json"
+        ],
+        "native": {
+          "exit": 0,
+          "stdout": "{\"ok\":true,\"command\":\"pij seats\",\"v\":2,\"data\":{\"seats\":[{\"id\":\"pij-smoke-away\",\"machine\":\"JordansacStudio.localdomain\",\"harness\":\"omp\",\"session\":null,\"pane\":null,\"proc\":{\"pid\":15646,\"proc_start\":20260908120647},\"folder\":\"/private/tmp/pij-list-here-smoke.uIGZo2/away\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":null,\"relay\":false,\"native_extension_delivery\":false,\"generation\":\"rs\"},{\"id\":\"pij-smoke-here\",\"machine\":\"JordansacStudio.localdomain\",\"harness\":\"omp\",\"session\":null,\"pane\":null,\"proc\":{\"pid\":57666,\"proc_start\":20260908120535},\"folder\":\"/private/tmp/pij-list-here-smoke.uIGZo2/here\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":null,\"relay\":false,\"native_extension_delivery\":false,\"generation\":\"rs\"}],\"unavailable\":[]}}\n",
+          "stderr": "",
+          "stdout_sha256": "c039e5ecc4ef931f7d0f0b523f2250d21263470bebf5341a9e9f853392a80d72"
+        },
+        "shim": {
+          "exit": 0,
+          "stdout": "{\"ok\":true,\"command\":\"pij seats\",\"v\":2,\"data\":{\"seats\":[{\"id\":\"pij-smoke-away\",\"machine\":\"JordansacStudio.localdomain\",\"harness\":\"omp\",\"session\":null,\"pane\":null,\"proc\":{\"pid\":15646,\"proc_start\":20260908120647},\"folder\":\"/private/tmp/pij-list-here-smoke.uIGZo2/away\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":null,\"relay\":false,\"native_extension_delivery\":false,\"generation\":\"rs\"},{\"id\":\"pij-smoke-here\",\"machine\":\"JordansacStudio.localdomain\",\"harness\":\"omp\",\"session\":null,\"pane\":null,\"proc\":{\"pid\":57666,\"proc_start\":20260908120535},\"folder\":\"/private/tmp/pij-list-here-smoke.uIGZo2/here\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":null,\"relay\":false,\"native_extension_delivery\":false,\"generation\":\"rs\"}],\"unavailable\":[]}}\n",
+          "stderr": "",
+          "stdout_sha256": "c039e5ecc4ef931f7d0f0b523f2250d21263470bebf5341a9e9f853392a80d72"
+        },
+        "byte_equal": true,
+        "ids": [
+          "pij-smoke-away",
+          "pij-smoke-here"
+        ]
+      },
+      {
+        "argv": [
+          "list",
+          "--json"
+        ],
+        "native": {
+          "exit": 0,
+          "stdout": "{\"ok\":true,\"command\":\"pij seats\",\"v\":2,\"data\":{\"seats\":[{\"id\":\"pij-smoke-away\",\"machine\":\"JordansacStudio.localdomain\",\"harness\":\"omp\",\"session\":null,\"pane\":null,\"proc\":{\"pid\":15646,\"proc_start\":20260908120647},\"folder\":\"/private/tmp/pij-list-here-smoke.uIGZo2/away\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":null,\"relay\":false,\"native_extension_delivery\":false,\"generation\":\"rs\"},{\"id\":\"pij-smoke-here\",\"machine\":\"JordansacStudio.localdomain\",\"harness\":\"omp\",\"session\":null,\"pane\":null,\"proc\":{\"pid\":57666,\"proc_start\":20260908120535},\"folder\":\"/private/tmp/pij-list-here-smoke.uIGZo2/here\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":null,\"relay\":false,\"native_extension_delivery\":false,\"generation\":\"rs\"}],\"unavailable\":[]}}\n",
+          "stderr": "",
+          "stdout_sha256": "c039e5ecc4ef931f7d0f0b523f2250d21263470bebf5341a9e9f853392a80d72"
+        },
+        "shim": {
+          "exit": 0,
+          "stdout": "{\"ok\":true,\"command\":\"pij seats\",\"v\":2,\"data\":{\"seats\":[{\"id\":\"pij-smoke-away\",\"machine\":\"JordansacStudio.localdomain\",\"harness\":\"omp\",\"session\":null,\"pane\":null,\"proc\":{\"pid\":15646,\"proc_start\":20260908120647},\"folder\":\"/private/tmp/pij-list-here-smoke.uIGZo2/away\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":null,\"relay\":false,\"native_extension_delivery\":false,\"generation\":\"rs\"},{\"id\":\"pij-smoke-here\",\"machine\":\"JordansacStudio.localdomain\",\"harness\":\"omp\",\"session\":null,\"pane\":null,\"proc\":{\"pid\":57666,\"proc_start\":20260908120535},\"folder\":\"/private/tmp/pij-list-here-smoke.uIGZo2/here\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":null,\"relay\":false,\"native_extension_delivery\":false,\"generation\":\"rs\"}],\"unavailable\":[]}}\n",
+          "stderr": "",
+          "stdout_sha256": "c039e5ecc4ef931f7d0f0b523f2250d21263470bebf5341a9e9f853392a80d72"
+        },
+        "byte_equal": true,
+        "ids": [
+          "pij-smoke-away",
+          "pij-smoke-here"
+        ]
+      }
+    ],
+    "refusals": [
+      {
+        "argv": [
+          "list",
+          "--here=/elsewhere",
+          "--json"
+        ],
+        "native": {
+          "exit": 2,
+          "stdout": "{\"ok\":false,\"command\":\"pij seats\",\"v\":2,\"meta\":\"E-RS-ARG --here is a boolean; scope comes from caller cwd\",\"error\":\"refused\",\"details\":{\"code\":\"E-RS-ARG\"}}\n",
+          "stderr": "",
+          "stdout_sha256": "21554f6a3bcfbd65abb4b2de1247364ba546bd7736f9f221c1333c57929f1c38"
+        }
+      },
+      {
+        "argv": [
+          "list",
+          "--here",
+          "relative",
+          "--json"
+        ],
+        "native": {
+          "exit": 2,
+          "stdout": "{\"ok\":false,\"command\":\"pij seats\",\"v\":2,\"meta\":\"E-RS-ARG unexpected argument relative\",\"error\":\"refused\",\"details\":{\"code\":\"E-RS-ARG\"}}\n",
+          "stderr": "",
+          "stdout_sha256": "4fdede9b5d1907bb3abe6826fddedb65f98f6596cf65c24c0c017ebef39d3484"
+        }
+      },
+      {
+        "path": "/v1/seats?here=relative",
+        "http": {
+          "status": 400,
+          "body": "{\"ok\":false,\"command\":\"pij seats\",\"v\":2,\"meta\":\"E-RS-ARG here requires an absolute path, never bare true or daemon cwd\",\"error\":\"refused\",\"details\":{\"code\":\"E-RS-ARG\"}}"
+        }
+      },
+      {
+        "path": "/v1/seats?here=true",
+        "http": {
+          "status": 400,
+          "body": "{\"ok\":false,\"command\":\"pij seats\",\"v\":2,\"meta\":\"E-RS-ARG here requires an absolute path, never bare true or daemon cwd\",\"error\":\"refused\",\"details\":{\"code\":\"E-RS-ARG\"}}"
+        }
+      }
+    ]
   }
 }

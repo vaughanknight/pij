@@ -386,18 +386,7 @@ describe("closed rs-only CLI", () => {
 		expect(legacySnapshot()).toBe(before);
 	});
 
-	it("shows supported list query grammar on its own help surface without a request", async () => {
-		const result = await launch(["list", "--help"]);
-		expect(result).toMatchObject({ code: 0, stderr: "" });
-		for (const flag of ["--harness <h>", "--folder <path>", "--parent <id>", "--scope local"])
-			expect(result.stdout).toContain(flag);
-		expect(result.stdout).toContain("--role and --here are unsupported and refused");
-		expect(result.stdout).toContain("Native pij-rs list accepts no filters");
-		expect(requests).toEqual([]);
-	});
-
 	it.each([
-		["list", "--here"],
 		["list", "--role", "worker"],
 		["sessions", "--here"],
 		["sessions", "--harness", "claude"],

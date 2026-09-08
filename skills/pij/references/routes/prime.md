@@ -9,7 +9,7 @@ below it, platform-store facts, and single-writer government documents.
 ## Role triage
 
 Use the first matching deterministic probe. Do not choose by persona or intent.
-Resolve the current id with `pij whoami --json`; read the complete v2 envelope and compare rs seat ids mechanically. `pij list --json` is the unfiltered active rs roster and `pij node show <id> --json` is its governed subtree. List `--prime`/`--here`/`--archived`, tree and link are unported, not alternative probes.
+Resolve the current id with `pij whoami --json`; read the complete v2 envelope and compare rs seat ids mechanically. `pij list --json` is the unfiltered active rs roster and `pij node show <id> --json` is its governed subtree. List `--prime`/`--archived`, tree and link are unported, not alternative probes. List `--here` scopes to caller cwd, so it can hide stream worktrees and cannot prove no prime exists.
 
 RoleService's `role` is an assertion, **not prime designation**. Inspect current designation receipts and `pij spine events --json` (decode each event's JSON-string payload), project records and authoritative government/human rulings. There is no dedicated rs prime-list/getter projection in this cutover; if those sources cannot establish absence, refuse to bootstrap by inference and ask the owning prime/human. A missing local directory or empty active roster never proves no prime exists. See [Unsupported status](../../../../docs/how/pij-rs-api.md#unsupported-status).
 

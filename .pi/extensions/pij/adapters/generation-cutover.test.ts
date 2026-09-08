@@ -227,7 +227,6 @@ describe("rs cutover has no legacy escape", () => {
 	});
 
 	it.each([
-		["list", ["--here"]],
 		["list", ["--role", "reviewer"]],
 		["sessions", ["--here"]],
 		["sessions", ["--parent", "pij-parent"]],

@@ -2,7 +2,7 @@
 
 Loaded by the dispatch (`../SKILL.md`) in **guided mode**, together with the chosen route module only. Direct jumps don't load this up front — a route module may cite a `§ Shared conventions` block below and pull it lazily; that is still progressive disclosure.
 
-**rs serve-or-refuse is the machine contract.** Read [Unsupported status](../../../docs/how/pij-rs-api.md#unsupported-status) for named shim/native gaps. Explicit `PIJ_DAEMON_GENERATION=legacy`, missing credentials and daemon absence never enable fallback. Raw `--json` preserves the complete original v2 envelope. Shim list forwards exact `--harness`, `--folder`, `--parent`, `--scope local` query values; sessions has no filters or legacy union, and native `pij-rs list` remains bare/`--json`. Canonical fixtures live in `crates/testkit/fixtures/golden/api/`, not new live captures or production acceptance.
+**rs serve-or-refuse is the machine contract.** Read [Unsupported status](../../../docs/how/pij-rs-api.md#unsupported-status) for named shim/native gaps. Explicit `PIJ_DAEMON_GENERATION=legacy`, missing credentials and daemon absence never enable fallback. Raw `--json` preserves the complete original v2 envelope. Shim list forwards exact `--harness`, `--folder`, `--parent`, `--scope local` query values; shim and native `pij-rs list --here` scope to caller cwd. Sessions has no filters or legacy union. Canonical fixtures live in `crates/testkit/fixtures/golden/api/`, not new live captures or production acceptance.
 
 ## Detection signals (guided `/pij`, re-derived every call — survives /compact)
 

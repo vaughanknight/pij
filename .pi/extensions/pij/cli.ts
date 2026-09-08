@@ -23,10 +23,11 @@ const SEND_USAGE = `pij send <id> <text> [--json]
   --file <path> (file attachment) is unsupported and refused; use --body-file for literal text.
   The daemon validates targets, flags, body conflicts and controls.`;
 
-const LIST_USAGE = `pij list [--harness <h>] [--folder <path>] [--parent <id>] [--scope local] [--json]
+const LIST_USAGE = `pij list [--here] [--harness <h>] [--folder <path>] [--parent <id>] [--scope local] [--json]
   Forwards declared filters to GET /v1/seats without client-side projection.
-  --role and --here are unsupported and refused.
-  Native pij-rs list accepts no filters; this query mapping belongs to the shim.`;
+  --here scopes to caller cwd; it is boolean, not a path argument.
+  Native pij-rs list supports --here; the other query flags belong to the shim.
+  --role, --prime and --archived remain unsupported and refused.`;
 
 const INBOX_USAGE = `pij inbox register [--json]
   Register a verified external Claude/Copilot/Codex host through rs; existing panes are read back.

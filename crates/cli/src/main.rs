@@ -399,8 +399,11 @@ enum Command {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
-    /// List registered seats.
-    List,
+    /// List registered seats; --here scopes to this process's cwd.
+    List {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
     /// Read one seat's state card back.
     State {
         /// The seat to read.
@@ -1039,7 +1042,13 @@ async fn run(cli: Cli) -> ExitCode {
                 as_json,
             )
         }
-        Command::List => emit(&client.list().await, cli.json),
+        Command::List { args } => {
+            let as_json = cli.json || args.iter().any(|arg| arg == "--json");
+            if args.iter().all(|arg| arg == "--json") {
+                return emit(&client.list().await, as_json);
+            }
+            emit(&client.list_scoped(&args, &caller_context()).await, as_json)
+        }
         Command::State { id } => {
             let response = client.state(&id).await;
             if cli.json {
@@ -1985,7 +1994,7 @@ impl Command {
             Command::Node { .. } => "pij node",
             Command::Orchestration { .. } => "pij orchestration",
             Command::Spine { .. } => "pij spine",
-            Command::List => "pij list",
+            Command::List { .. } => "pij list",
             Command::State { .. } => "pij state",
             Command::Tail { .. } => "pij tail",
         }

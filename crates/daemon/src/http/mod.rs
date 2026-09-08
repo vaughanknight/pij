@@ -466,7 +466,7 @@ fn router_with_optional_federation(
             Endpoint::InboxAck => router.route(endpoint.path(), post(ack_inbox)),
             Endpoint::Hold => router.route(endpoint.path(), post(hold_inbox)),
             Endpoint::Release => router.route(endpoint.path(), post(release_inbox)),
-            Endpoint::Seats => router.route(endpoint.path(), get(seats)),
+            Endpoint::Seats => router.route(endpoint.path(), get(seats).post(seats_post)),
             Endpoint::Events => router.route(endpoint.path(), get(events)),
             Endpoint::Sidecar => router.route(endpoint.path(), post(sidecar)),
             Endpoint::Report => router.route(endpoint.path(), post(report)),
@@ -2189,6 +2189,7 @@ struct SeatQuery {
     folder: Option<String>,
     parent: Option<SeatId>,
     scope: Option<String>,
+    here: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -2204,7 +2205,37 @@ struct FederatedRosterProjection<'a> {
     unavailable: &'a [UnavailablePeer],
 }
 
+async fn seats_post(
+    State(state): State<AppState>,
+    Query(mut query): Query<SeatQuery>,
+    Json(request): Json<decisions::ReadRequest>,
+) -> Response {
+    let filters = match decisions::parse_filters(&request.argv, "list", &["here"], &["here"]) {
+        Ok(filters) => filters,
+        Err(error) => return error.response("pij seats"),
+    };
+    let here = match decisions::here_from_flag(
+        filters.get("here").map(String::as_str),
+        request.caller.cwd.as_deref(),
+    ) {
+        Ok(here) => here,
+        Err(error) => return error.response("pij seats"),
+    };
+    if let Some(here) = here {
+        if query.here.is_some() {
+            return decisions::DecisionError::argument("duplicate here scope")
+                .response("pij seats");
+        }
+        query.here = Some(here.to_string());
+    }
+    seats(State(state), Query(query)).await
+}
+
 async fn seats(State(state): State<AppState>, Query(query): Query<SeatQuery>) -> Response {
+    let here = match decisions::here_path(query.here.as_deref()) {
+        Ok(here) => here,
+        Err(error) => return error.response("pij seats"),
+    };
     if query.scope.as_deref().is_some_and(|scope| scope != "local") {
         return refused("pij seats", "scope must be `local` when supplied");
     }
@@ -2234,6 +2265,7 @@ async fn seats(State(state): State<AppState>, Query(query): Query<SeatQuery>) ->
     };
     roster.seats.retain(|seat| {
         seat.tombstoned_at.is_none()
+            && here.as_deref().is_none_or(|folder| seat.folder == folder)
             && query.harness.is_none_or(|harness| seat.harness == harness)
             && query
                 .folder
