@@ -132,7 +132,7 @@ function fixture(overrides = {}) {
 		},
 		async send(input) {
 			trace.push("send");
-			assert.equal(input.mode, "enqueue");
+			assert.equal(input.mode, "immediate");
 			history.push({
 				type: "user.message",
 				id: "user-native-message-137",
@@ -1003,6 +1003,53 @@ test("acceptance is persisted before tuple-bound acknowledgement, not model comp
 			(e) => e.kind === "inbox-acknowledged" && e.grade === "native-consumed-not-model-complete",
 		),
 	);
+});
+
+test("busy native turn consumes immediate steering and journals its returned message ID", async (t) => {
+	const f = fixture({ delay: () => flush() });
+	t.after(() => f.bridge.stop());
+	f.history.push(
+		{ type: "user.message", id: "human-user", data: { messageId: "human-prompt" } },
+		{ type: "assistant.turn_start", id: "human-turn", parentId: "human-user", data: {} },
+	);
+	f.native.send = async ({ mode }) => {
+		const nativeId = "busy-steering-message";
+		// Model the native busy-turn contract: enqueue accepts without consuming yet.
+		if (mode === "immediate") {
+			f.history.push({
+				type: "user.message",
+				id: "steering-user",
+				parentId: "human-turn",
+				data: { messageId: nativeId, delivery: "steering" },
+			});
+		}
+		return nativeId;
+	};
+	const run = f.bridge.run();
+	await flush();
+	assert.equal(f.history.at(-1).data.delivery, "steering");
+	assert.equal(f.records.get(claim.message.msg_id).nativeId, "busy-steering-message");
+	assert.ok(
+		f.reports.some(
+			(event) =>
+				event.kind === "inbox-acknowledged" &&
+				event.nativeMessageId === "busy-steering-message" &&
+				event.grade === "native-consumed-not-model-complete",
+		),
+	);
+	assert.equal(
+		f.reports.some((event) => event.kind === "native-completed"),
+		false,
+	);
+	assert.equal(f.trace.filter((step) => step === "claim").length, 1);
+	nativeTerminal(f, "human-turn");
+	await flush();
+	assert.equal(f.trace.filter((step) => step === "claim").length, 1);
+	nativeTerminal(f, "steering-user");
+	await flush();
+	assert.equal(f.trace.filter((step) => step === "claim").length, 2);
+	f.bridge.stop();
+	await run;
 });
 
 test("accepted duplicate after restart only acknowledges, never reinjects", async () => {
@@ -3013,7 +3060,7 @@ test("new native send waits for semantic consent before creating durable intent"
 	assert.equal(f.trace.filter((step) => step === "send").length, 1);
 });
 
-// Plan 136/137: native enqueue does not touch the composer, so typing never defers delivery.
+// Native session sends do not touch the composer, so typing never defers delivery.
 for (const [label, snapshot] of [
 	["recent human typing", observedTyping({ retry_after_ms: 60000 })],
 	["unavailable typing sensor", unavailableTyping()],
@@ -3028,7 +3075,7 @@ for (const [label, snapshot] of [
 		f.native.send = async (input) => {
 			assert.deepEqual(input, {
 				prompt: `[pij from ${JSON.stringify(claim.message.from)}; msg_id=${JSON.stringify(claim.message.msg_id)}]\n${claim.message.body}`,
-				mode: "enqueue",
+				mode: "immediate",
 			});
 			assert.equal(input.prompt.includes(draft), false);
 			assert.equal(composer.text, draft);
