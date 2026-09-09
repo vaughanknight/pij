@@ -14,6 +14,8 @@ export function computeExtensionBuildIdentity(extensionDirectory: string): Exten
 		const options: ExecFileSyncOptionsWithStringEncoding = {
 			encoding: "utf8",
 			stdio: ["ignore", "pipe", "pipe"],
+			// Review F5: load-path spawn; a wedged git must not block extension boot.
+			timeout: 2_000,
 		};
 		const sha = execFileSync(
 			"git",
