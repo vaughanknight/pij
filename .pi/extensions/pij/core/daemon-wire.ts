@@ -36,6 +36,8 @@ export interface Registration {
 	readonly id: string;
 	readonly harness: "pi" | "omp" | "claude" | "copilot" | "codex";
 	readonly harness_session?: string;
+	readonly extension_build?: string;
+	readonly extension_path?: string;
 	readonly folder: string;
 	readonly pane?: string;
 	readonly pid?: number;
@@ -53,6 +55,8 @@ export interface Registration {
 export interface RustSeatDescriptor {
 	readonly id: string;
 	readonly harness: string;
+	readonly extension_build?: string | null;
+	readonly extension_path?: string | null;
 	readonly pane?: string;
 	readonly proc?: { readonly pid: number; readonly proc_start: number };
 	readonly proc_source?: "harness" | "pane";

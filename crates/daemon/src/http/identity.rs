@@ -161,6 +161,12 @@ pub struct IdentityRequest {
     /// Explicit pane, for the read verbs.
     #[serde(default)]
     pub pane: Option<String>,
+    /// Loaded pij extension build supplied when adopting this runtime.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension_build: Option<String>,
+    /// Real directory this runtime loaded its pij extension from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension_path: Option<String>,
     /// A caller trying to NAME the seat. Refused — see `ac-1147`.
     #[serde(default)]
     pub id: Option<String>,
@@ -577,6 +583,8 @@ pub(crate) async fn adopt(
         id: seat_id.0.clone(),
         harness,
         folder,
+        extension_build: request.extension_build,
+        extension_path: request.extension_path,
         pane: pane.clone(),
         pid: proc.map(|proc| proc.pid),
         proc_start: proc.map(|proc| proc.proc_start),

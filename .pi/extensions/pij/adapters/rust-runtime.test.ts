@@ -146,6 +146,8 @@ async function bootPushedEvent(
 	);
 	bindRuntime(runtime, pi);
 	await runtime.boot({
+		extension_build: "0123456789",
+		extension_path: "/abs/extension",
 		folder: "/abs/tree",
 		dataDir: "",
 		eventsPath: "",
@@ -192,6 +194,8 @@ function announceRuntime(
 	const pi = new FakePiRuntime();
 	bindRuntime(runtime, pi);
 	const input = {
+		extension_build: "0123456789",
+		extension_path: "/abs/extension",
 		folder: "/abs/tree",
 		dataDir: "",
 		eventsPath: "",
@@ -401,6 +405,8 @@ describe("RustRuntimeSession", () => {
 		bindRuntime(runtime, new FakePiRuntime());
 		try {
 			const boot = await runtime.boot({
+				extension_build: "0123456789",
+				extension_path: "/abs/extension",
 				folder: "/abs/tree",
 				dataDir: "",
 				eventsPath: "",
@@ -637,6 +643,8 @@ describe("RustRuntimeSession", () => {
 		bindRuntime(runtime, pi);
 
 		const boot = await runtime.boot({
+			extension_build: "0123456789",
+			extension_path: "/abs/extension",
 			folder: "/abs/tree",
 			dataDir: "",
 			eventsPath: "",
@@ -679,6 +687,8 @@ describe("RustRuntimeSession", () => {
 
 		const predecessor = boot.id;
 		const successor = await runtime.boot({
+			extension_build: "0123456789",
+			extension_path: "/abs/extension",
 			folder: "/abs/tree",
 			dataDir: "",
 			eventsPath: "",
@@ -756,6 +766,8 @@ describe("RustRuntimeSession", () => {
 		bindRuntime(runtime, new FakePiRuntime());
 
 		const boot = await runtime.boot({
+			extension_build: "0123456789",
+			extension_path: "/abs/extension",
 			folder: "/abs/tree",
 			dataDir: "",
 			eventsPath: "",
@@ -814,6 +826,8 @@ describe("RustRuntimeSession", () => {
 		const previous = runtime.readSelf()?.id;
 
 		const successor = await runtime.boot({
+			extension_build: "0123456789",
+			extension_path: "/abs/extension",
 			folder: "/abs/tree",
 			dataDir: "",
 			eventsPath: "",
@@ -959,6 +973,8 @@ describe("RustRuntimeSession", () => {
 		const pi = new FakePiRuntime();
 		bindRuntime(runtime, pi);
 		const boot = await runtime.boot({
+			extension_build: "0123456789",
+			extension_path: "/abs/extension",
 			folder: "/abs/tree",
 			dataDir: "",
 			eventsPath: "",
@@ -1306,6 +1322,8 @@ describe("extension-stream delivery", () => {
 		if (autoConsume) bindRuntime(runtime, port);
 		else runtime.setPi(port);
 		await runtime.boot({
+			extension_build: "0123456789",
+			extension_path: "/abs/extension",
 			folder: "/abs/tree",
 			dataDir: "",
 			eventsPath: "",

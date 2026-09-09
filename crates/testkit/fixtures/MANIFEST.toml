@@ -313,10 +313,10 @@ answer = "type=control with action=peer_message_status and status=held maps to H
 
 [[fixture]]
 path = "golden/cli/register-envelope.json"
-sha256 = "7df6bf7fa263b535b6a459438a1a6cf312e6da98fd10564106bade28c405d5a6"
-bytes = 405
+sha256 = "bdb5562e942196ea644bd780eabd9888359d6832a2cf9c280a85c4342fe4a391"
+bytes = 490
 note = "Computed pij register success envelope rendered by u-cli from the accepted SeatDescriptor; editorial text is deliberately absent."
-answer = "Must match render(Envelope::ok(\"pij register\", descriptor), true) byte-for-byte, including envelope v2, explicit session:null when unknown, native_extension_delivery:false for a non-native consumer, absent optional fields staying absent, and error staying absent on success."
+answer = "Must match render(Envelope::ok(\"pij register\", descriptor), true) byte-for-byte, including reported extension_build/path, envelope v2, explicit session:null when unknown, native_extension_delivery:false for a non-native consumer, absent optional fields staying absent, and error staying absent on success."
 
 [[fixture]]
 path = "golden/cli/send-envelope.json"
@@ -327,10 +327,10 @@ answer = "Must emit envelope v2 and preserve msg_id, the tagged queued outcome, 
 
 [[fixture]]
 path = "golden/cli/list-envelope.json"
-sha256 = "45d4e6594a9561315586611ebb081b825b56527a51aa2bd099f06e1013f96458"
-bytes = 619
+sha256 = "e8e1d5ee869c456970c74f3ce544d2a4a86cb4c9b41f1d396e48016b4c0552ff"
+bytes = 749
 note = "Computed pij list success envelope rendered by u-cli from two daemon-owned SeatDescriptors."
-answer = "Must emit envelope v2, preserve registry order, carry explicit session:null and native_extension_delivery:false when not attested, and preserve absent fields including a paneless relay; the CLI relays descriptors rather than recomputing liveness or state."
+answer = "Must emit envelope v2, preserve registry order, retain reported extension_build/path and explicit nulls for a pre-144 row, carry explicit session:null and native_extension_delivery:false when not attested, and preserve absent fields including a paneless relay; the CLI relays descriptors rather than recomputing liveness or state."
 
 [[fixture]]
 path = "uds/status-denied.ndjson"
@@ -404,9 +404,9 @@ answer = "Permanent readers consume this stable contract rather than the active 
 
 [[fixture]]
 path = "golden/api/governance-events.json"
-sha256 = "15b95759b8297a84a9667bd8c3e4bb6e8a3ac163911139188376449319bacb8f"
-bytes = 34010
-note = "Byte-exact merged governance event contract promoted from docs/plans/139-rs-governance-port/assets/contracts/governance-events.json at e22833b0d0caf00d95346008dab1587005d0173d. The historical original remains unchanged. This is a designed contract with retained positive-control evidence, not a new runtime capture; permanent readers use this stable path so plan archival cannot break them."
+sha256 = "170ccfb43ad2821b95820c2f9485d3d27d82d70e4a68b95853880daf970a3ea3"
+bytes = 34124
+note = "Merged governance event contract promoted from docs/plans/139-rs-governance-port/assets/contracts/governance-events.json at e22833b0d0caf00d95346008dab1587005d0173d; plan 144 adds explicit unknown extension_build/path to the current seat.put descriptor. The historical original remains unchanged. This is a designed contract with retained positive-control evidence, not a new runtime capture; permanent readers use this stable path so plan archival cannot break them."
 answer = "Consume the shared Hello and event cases without restating them: NDJSON begins with Hello, StreamFrame::Event retains a JSON-string payload and machine-scoped cursor, and since is an exclusive per-machine cursor map. Commit state and governance events through the shared publication seam; replay/live handoff must not skip or duplicate its boundary. Preserve the decision.answer-superseded payload including the old answer under superseded."
 
 [[fixture]]

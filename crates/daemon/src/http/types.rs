@@ -25,6 +25,12 @@ pub struct Registration {
     pub harness: String,
     /// Claimed absolute working folder.
     pub folder: String,
+    /// Loaded pij extension build; omission clears any previously reported build.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension_build: Option<String>,
+    /// Real directory the registering runtime loaded its pij extension from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension_path: Option<String>,
     /// Claimed tmux pane, when the seat has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pane: Option<String>,
@@ -415,6 +421,12 @@ pub struct StateCard {
     pub cwd: String,
     /// TS `harness` (cli.ts:3644).
     pub harness: Harness,
+    /// Loaded pij extension build, explicitly unknown for pre-144 registrations.
+    #[serde(default, rename = "extension_build")]
+    pub extension_build: Option<String>,
+    /// Real loaded extension directory, or an explicit unknown.
+    #[serde(default, rename = "extension_path")]
+    pub extension_path: Option<String>,
     /// TS `orchestrationRole` (cli.ts:3662), which rs stores as `role`.
     pub role: Option<String>,
     /// TS `parent` (cli.ts:3663).

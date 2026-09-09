@@ -31,6 +31,8 @@
         "id": "pij-worker",
         "harness": "omp",
         "session": null,
+        "extension_build": null,
+        "extension_path": null,
         "pane": "%11",
         "proc": {
           "pid": 12345,
@@ -53,7 +55,7 @@
           "at": 1788739200000,
           "kind": "seat.put",
           "seat": "pij-worker",
-          "payload": "{\"id\":\"pij-worker\",\"harness\":\"omp\",\"session\":null,\"pane\":\"%11\",\"proc\":{\"pid\":12345,\"proc_start\":20260907090000},\"folder\":\"/work/rs-governance-port\",\"state\":\"idle\",\"semantic_state\":null,\"role\":\"reviewer\",\"parent\":\"pij-parent\",\"relay\":false,\"native_extension_delivery\":false}"
+          "payload": "{\"id\":\"pij-worker\",\"harness\":\"omp\",\"session\":null,\"extension_build\":null,\"extension_path\":null,\"pane\":\"%11\",\"proc\":{\"pid\":12345,\"proc_start\":20260907090000},\"folder\":\"/work/rs-governance-port\",\"state\":\"idle\",\"semantic_state\":null,\"role\":\"reviewer\",\"parent\":\"pij-parent\",\"relay\":false,\"native_extension_delivery\":false}"
         }
       }
     },

@@ -65,6 +65,7 @@ function renderWhoami(payload: unknown): string {
 		`folder:      ${text(payload, "folder") ?? "?"}`,
 		`state:       ${text(payload, "state") ?? "idle"}`,
 		`role:        ${text(payload, "role") ?? "—"}`,
+		`extension: ${text(payload, "extension_build") ?? "unknown"} (${text(payload, "extension_path") ?? "unknown"})`,
 	].join("\n");
 }
 

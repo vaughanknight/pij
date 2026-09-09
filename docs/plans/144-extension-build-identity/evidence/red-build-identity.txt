@@ -1,0 +1,29 @@
+(node:15189) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-extension-build
+
+ ❯ .pi/extensions/pij/adapters/extension-build.test.ts (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/adapters/extension-build.test.ts [ .pi/extensions/pij/adapters/extension-build.test.ts ]
+Error: Cannot find module './extension-build.js' imported from /Users/jordanknight/pi-hacking/fs3-extension-build/.pi/extensions/pij/adapters/extension-build.test.ts
+ ❯ .pi/extensions/pij/adapters/extension-build.test.ts:14:1
+     12| import { afterEach, describe, expect, it } from "vitest";
+     13| import { removeTemporaryTree } from "../../../../harness/test-utils.js…
+     14| import { computeExtensionBuildIdentity } from "./extension-build.js";
+       | ^
+     15|
+     16| const roots: string[] = [];
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  no tests
+   Start at  13:53:18
+   Duration  137ms (transform 36ms, setup 0ms, import 0ms, tests 0ms, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/fs3-extension-build/.pi/extensions/pij/adapters/extension-build.test.ts,title=.pi/extensions/pij/adapters/extension-build.test.ts,line=14,column=1::Error: Cannot find module './extension-build.js' imported from /Users/jordanknight/pi-hacking/fs3-extension-build/.pi/extensions/pij/adapters/extension-build.test.ts%0A ❯ .pi/extensions/pij/adapters/extension-build.test.ts:14:1%0A%0A⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯%0ASerialized Error: { code: 'ERR_MODULE_NOT_FOUND' }%0A

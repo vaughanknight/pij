@@ -1,0 +1,41 @@
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-extension-build
+
+(node:9834) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ .pi/extensions/pij/core/session-name.test.ts (8 tests | 1 failed) 5ms
+     ✓ retries until readback matches, then stops 1ms
+     ✓ still performs one publication when readback already matches 0ms
+     ✓ sets fallback status and emits one honest notice after bounded failure 0ms
+     ✓ treats a resolved blind publication as successful without a false notice 0ms
+     ✓ continues native publication when the fallback status surface throws 0ms
+     ✓ stops instead of collapsing the schedule when the retry timer fails 0ms
+     × keeps the dirty extension build visible in the native name and fallback status 2ms
+     ✓ renders the legacy generation honestly 0ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/core/session-name.test.ts > publishSeatName > keeps the dirty extension build visible in the native name and fallback status
+AssertionError: expected 'rs·pij-exceptional-planarian' to be 'rs·pij-exceptional-planarian · ext 01…' // Object.is equality
+
+Expected: "rs·pij-exceptional-planarian · ext 0123456789+dirty"
+Received: "rs·pij-exceptional-planarian"
+
+ ❯ .pi/extensions/pij/core/session-name.test.ts:180:19
+    178|   );
+    179|
+    180|   expect(current).toBe(`rs·${SELF} · ext 0123456789+dirty`);
+       |                   ^
+    181|   expect(statuses).toEqual([
+    182|    ["pij", `\u001b[33mrs\u001b[0m ${SELF} · ext 0123456789+dirty`],
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 7 passed (8)
+   Start at  13:53:11
+   Duration  207ms (transform 37ms, setup 0ms, import 49ms, tests 5ms, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/fs3-extension-build/.pi/extensions/pij/core/session-name.test.ts,title=.pi/extensions/pij/core/session-name.test.ts > publishSeatName > keeps the dirty extension build visible in the native name and fallback status,line=180,column=19::AssertionError: expected 'rs·pij-exceptional-planarian' to be 'rs·pij-exceptional-planarian · ext 01…' // Object.is equality%0A%0AExpected: "rs·pij-exceptional-planarian · ext 0123456789+dirty"%0AReceived: "rs·pij-exceptional-planarian"%0A%0A ❯ .pi/extensions/pij/core/session-name.test.ts:180:19%0A%0A

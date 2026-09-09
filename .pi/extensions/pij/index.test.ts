@@ -381,7 +381,7 @@ describe("pij index — footer status bar", () => {
 		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
 
 		expect(statuses.find((status) => status.key === "pij")?.value).toMatch(
-			/^pij-[a-z]+(-[a-z]+)* · rs-v1$/,
+			/^pij-[a-z]+(-[a-z]+)* · rs-v1 · ext (?:[0-9a-f]{10}(?:\+dirty)?|hash:[0-9a-f]{12})$/,
 		);
 		expect(notices).toContainEqual(expect.stringContaining("detected rs daemon at"));
 		expect(notices.every((notice) => !notice.includes("Rust daemon v1"))).toBe(true);
@@ -399,7 +399,9 @@ describe("pij index — footer status bar", () => {
 		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
 
 		const sessionName = sessionNames.at(-1);
-		expect(sessionName).toMatch(/^rs·pij-[a-z]+(-[a-z]+)*$/);
+		expect(sessionName).toMatch(
+			/^rs·pij-[a-z]+(-[a-z]+)* · ext (?:[0-9a-f]{10}(?:\+dirty)?|hash:[0-9a-f]{12})$/,
+		);
 		expect(statuses.find((status) => status.key === "pij")?.value).toBe(
 			`\u001b[33mrs\u001b[0m ${sessionName?.slice(3)}`,
 		);

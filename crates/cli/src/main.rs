@@ -105,6 +105,12 @@ enum Command {
         /// Absolute working folder.
         #[arg(long, value_parser = parse_absolute_path)]
         folder: String,
+        /// Loaded pij extension build reported by the registering runtime.
+        #[arg(long)]
+        extension_build: Option<String>,
+        /// Real directory the runtime loaded its pij extension from.
+        #[arg(long)]
+        extension_path: Option<String>,
         /// Tmux pane, when one exists.
         #[arg(long)]
         pane: Option<String>,
@@ -153,6 +159,12 @@ enum Command {
         /// Explicit role assertion; omission preserves the assignment.
         #[arg(long)]
         role: Option<String>,
+        /// Loaded pij extension build reported by the adopting runtime.
+        #[arg(long)]
+        extension_build: Option<String>,
+        /// Real directory the runtime loaded its pij extension from.
+        #[arg(long)]
+        extension_path: Option<String>,
     },
     /// Name the seat this caller is, from the store it registered into.
     Whoami {
@@ -769,6 +781,8 @@ async fn run(cli: Cli) -> ExitCode {
             id,
             harness,
             folder,
+            extension_build,
+            extension_path,
             pane,
             pid,
             proc_start,
@@ -785,6 +799,8 @@ async fn run(cli: Cli) -> ExitCode {
                 id: id.into(),
                 harness,
                 folder,
+                extension_build,
+                extension_path,
                 pane,
                 pid,
                 proc_start,
@@ -809,6 +825,8 @@ async fn run(cli: Cli) -> ExitCode {
             harness,
             parent,
             role,
+            extension_build,
+            extension_path,
         } => {
             warn_caller_claude_home(&harness);
             let argv = adopt_argv(
@@ -822,14 +840,21 @@ async fn run(cli: Cli) -> ExitCode {
                 argv,
                 caller: Some(caller_context()),
                 role,
+                extension_build,
+                extension_path,
                 ..IdentityRequest::default()
             };
             emit(&client.adopt(&request).await, cli.json)
         }
-        Command::Whoami { seat, pane } => emit(
-            &client.whoami(&identity_request(seat, pane)).await,
-            cli.json,
-        ),
+        Command::Whoami { seat, pane } => {
+            let response = client.whoami(&identity_request(seat, pane)).await;
+            if cli.json {
+                emit(&response, true)
+            } else {
+                println!("{}", render_whoami(&response));
+                ExitCode::from(exit_code(&response))
+            }
+        }
         Command::CommitTrailers => {
             commit_trailers::run(&client, &identity_request(None, None)).await
         }
@@ -1683,6 +1708,21 @@ fn emit<T: serde::Serialize>(envelope: &Envelope<T>, json: bool) -> ExitCode {
         println!("{}", render(envelope, json));
     }
     ExitCode::from(exit_code(envelope))
+}
+
+fn render_whoami(envelope: &Envelope<pij_core::model::SeatDescriptor>) -> String {
+    let mut output = render(envelope, false);
+    if envelope.ok
+        && let Some(seat) = &envelope.data
+    {
+        let _ = write!(
+            output,
+            "\nextension: {} ({})",
+            seat.extension_build.as_deref().unwrap_or("unknown"),
+            seat.extension_path.as_deref().unwrap_or("unknown")
+        );
+    }
+    output
 }
 
 fn render_state(envelope: &Envelope<pij_daemon::http::StateCard>, json: bool) -> String {

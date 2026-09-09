@@ -2261,6 +2261,8 @@ fn state_card(
             proc_start: seat.proc.map(|proc| proc.proc_start),
             cwd: seat.folder,
             harness: seat.harness,
+            extension_build: seat.extension_build,
+            extension_path: seat.extension_path,
             role: seat.role,
             parent: seat.parent,
             bound_model: seat.model,

@@ -30,6 +30,12 @@ pub struct Registration {
     pub harness: Harness,
     /// Absolute working folder.
     pub folder: String,
+    /// Loaded pij extension build, when the registering runtime reports one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extension_build: Option<String>,
+    /// Real directory the runtime loaded its pij extension from.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extension_path: Option<String>,
     /// Tmux pane, when one exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pane: Option<String>,
@@ -690,6 +696,8 @@ mod tests {
             id: "seat".into(),
             harness: Harness::Omp,
             folder: "/tmp".to_string(),
+            extension_build: None,
+            extension_path: None,
             pane: None,
             pid: None,
             proc_start: None,

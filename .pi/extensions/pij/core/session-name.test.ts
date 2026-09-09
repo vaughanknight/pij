@@ -157,7 +157,7 @@ describe("publishSeatName", () => {
 		expect(attempts).toBe(1);
 		expect(notices).toHaveLength(1);
 	});
-	it("prefixes the native name and colors the generation status", async () => {
+	it("keeps the dirty extension build visible in the native name and fallback status", async () => {
 		let current: string | undefined;
 		const statuses: Array<[string, string]> = [];
 
@@ -174,10 +174,11 @@ describe("publishSeatName", () => {
 			SELF,
 			"rs",
 			[0],
+			"0123456789+dirty",
 		);
 
-		expect(current).toBe(`rs·${SELF}`);
-		expect(statuses).toEqual([["pij", `\u001b[33mrs\u001b[0m ${SELF}`]]);
+		expect(current).toBe(`rs·${SELF} · ext 0123456789+dirty`);
+		expect(statuses).toEqual([["pij", `\u001b[33mrs\u001b[0m ${SELF} · ext 0123456789+dirty`]]);
 	});
 	it("renders the legacy generation honestly", async () => {
 		let current: string | undefined;

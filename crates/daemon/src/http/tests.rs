@@ -2180,6 +2180,127 @@ async fn auth_ring_covers_every_declared_route_and_accepts_peer_keys() {
 }
 
 #[tokio::test]
+async fn extension_identity_survives_sqlite_registration_readbacks_and_legacy_refresh_clears_it() {
+    let pool = pij_store::open("").await.expect("isolated SQLite");
+    let bus = Arc::new(
+        crate::events::EventBus::new(Arc::new(pij_store::SqliteSpine::new(pool.clone())), 16)
+            .expect("shared SQL event bus"),
+    );
+    let registry = Arc::new(pij_store::SqliteRegistry::new(pool.clone(), bus.clone()));
+    let mut services = test_services(
+        Arc::new(FakeRegistry::new()),
+        Arc::new(FakeQueue::new(1_024).expect("queue")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.registry = registry.clone();
+    services.spine = bus.clone();
+    services.event_bus = bus.clone();
+    services.roles = Arc::new(super::role::RoleService::new(
+        registry.clone(),
+        pij_store::SqliteOrchestration::new(pool.clone()),
+        bus.clone(),
+    ));
+    services.governance = Arc::new(super::governance::GovernanceService::new(
+        pij_store::SqliteOrchestration::new(pool.clone()),
+        bus,
+        pij_testkit::fresh_dir("pij-extension-identity"),
+    ));
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(ProcIdentity {
+        pid: 144,
+        proc_start: 20260909090000,
+    }));
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+
+    // The same process may refresh from an older extension. Absence must clear
+    // its prior attestation, not accidentally inherit a build from the registry.
+    for identity in [
+        Some(("0123456789+dirty", "/work/144/.pi/extensions/pij")),
+        Some(("hash:abcdef123456", "/installed/pij")),
+        None,
+    ] {
+        let mut claim = serde_json::json!({
+            "id": "pij-extension-identity",
+            "harness": "omp",
+            "folder": "/abs/tree",
+            "pane": "%144",
+            "pid": 144,
+            "proc_start": 20260909090000_u64,
+        });
+        if let Some((build, path)) = identity {
+            claim["extension_build"] = serde_json::json!(build);
+            claim["extension_path"] = serde_json::json!(path);
+        }
+        let expected_build = serde_json::json!(identity.map(|(build, _)| build));
+        let expected_path = serde_json::json!(identity.map(|(_, path)| path));
+        let assert_identity = |seat: &serde_json::Value| {
+            assert_eq!(seat.get("extension_build"), Some(&expected_build));
+            assert_eq!(seat.get("extension_path"), Some(&expected_path));
+        };
+
+        let response = client
+            .post(format!("http://{addr}/v1/register"))
+            .bearer_auth("key")
+            .json(&claim)
+            .send()
+            .await
+            .expect("register");
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let registered: Envelope<serde_json::Value> = response.json().await.expect("registration");
+        assert_identity(&registered.data.expect("registered seat"));
+
+        let stored = registry
+            .get(&SeatId::from("pij-extension-identity"))
+            .await
+            .expect("SQLite read")
+            .expect("persisted seat");
+        assert_identity(&serde_json::to_value(stored).expect("stored descriptor"));
+
+        let response = client
+            .post(format!("http://{addr}/v1/whoami"))
+            .bearer_auth("key")
+            .json(&serde_json::json!({ "seat": "pij-extension-identity" }))
+            .send()
+            .await
+            .expect("whoami");
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let whoami: Envelope<serde_json::Value> = response.json().await.expect("whoami envelope");
+        assert_identity(&whoami.data.expect("whoami seat"));
+
+        let response = client
+            .get(format!("http://{addr}/v1/seats"))
+            .bearer_auth("key")
+            .send()
+            .await
+            .expect("list");
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let listed: Envelope<serde_json::Value> = response.json().await.expect("list envelope");
+        let roster = listed.data.expect("listed roster");
+        let seats = roster["seats"].as_array().expect("listed seats");
+        assert_identity(
+            seats
+                .iter()
+                .find(|seat| seat["id"] == "pij-extension-identity")
+                .expect("registered seat in list"),
+        );
+
+        let response = client
+            .post(format!("http://{addr}/v1/state"))
+            .bearer_auth("key")
+            .json(&serde_json::json!({ "argv": ["state", "pij-extension-identity"] }))
+            .send()
+            .await
+            .expect("state");
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let state: Envelope<serde_json::Value> = response.json().await.expect("state envelope");
+        assert_identity(&state.data.expect("state data"));
+    }
+    server.abort();
+    pool.close().await;
+}
+
+#[tokio::test]
 async fn registration_corroborates_process_and_refuses_shared_process_aliases() {
     let identity = ProcIdentity {
         pid: 42,
@@ -2200,6 +2321,8 @@ async fn registration_corroborates_process_and_refuses_shared_process_aliases() 
         id: "pij-parent".to_string(),
         harness: "omp".to_string(),
         folder: "/abs/tree".to_string(),
+        extension_build: None,
+        extension_path: None,
         pane: Some("%42".to_string()),
         pid: Some(identity.pid),
         proc_start: Some(identity.proc_start),
@@ -2310,6 +2433,8 @@ async fn paneless_registration_returns_the_identity_export_it_requires() {
             id: "pij-paneless".to_string(),
             harness: "omp".to_string(),
             folder: "/abs/tree".to_string(),
+            extension_build: None,
+            extension_path: None,
             pane: None,
             pid: Some(identity.pid),
             proc_start: Some(identity.proc_start),
@@ -2402,7 +2527,7 @@ async fn assert_registration_binding_fixture(expected_key: &str, previous_key: O
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let accepted: Envelope<serde_json::Value> = response.json().await.expect("register envelope");
     server.abort();
-    // Captured135 fields stay exact;136 and137 add these documented wire fields.
+    // Captured135 fields stay exact; later plans add documented wire fields.
     let observed = accepted.data.as_ref().expect("register response body");
     let expected_object = expected.as_object().expect("fixture object");
     let observed_object = observed.as_object().expect("response object");
@@ -2419,7 +2544,10 @@ async fn assert_registration_binding_fixture(expected_key: &str, previous_key: O
             !expected_object.contains_key(*key)
                 && !matches!(
                     key.as_str(),
-                    "typing_grace_ms" | "native_extension_delivery"
+                    "typing_grace_ms"
+                        | "native_extension_delivery"
+                        | "extension_build"
+                        | "extension_path"
                 )
         })
         .collect();
@@ -2557,6 +2685,8 @@ async fn spawned_registration_adopts_prebind_row_and_preserves_port() {
             id: "pij-runtime-name".to_string(),
             harness: "copilot".to_string(),
             folder: "/abs/tree".to_string(),
+            extension_build: None,
+            extension_path: None,
             pane: Some(launched_pane.id.clone()),
             pid: Some(identity.pid),
             proc_start: Some(identity.proc_start),
@@ -2760,6 +2890,8 @@ async fn spawn_wait_returns_bound_process_and_publishes_event() {
                 id: "runtime-candidate".to_string(),
                 harness: "omp".to_string(),
                 folder: "/abs/tree".to_string(),
+                extension_build: None,
+                extension_path: None,
                 pane: spawned.pane,
                 pid: Some(identity.pid),
                 proc_start: Some(identity.proc_start),
@@ -2867,6 +2999,8 @@ async fn spawn_reports_model_mismatch_without_killing_registered_seat() {
                 id: "pij-model-mismatch".to_string(),
                 harness: "omp".to_string(),
                 folder: "/abs/tree".to_string(),
+                extension_build: None,
+                extension_path: None,
                 pane: spawned.pane,
                 pid: Some(identity.pid),
                 proc_start: Some(identity.proc_start),
@@ -2960,6 +3094,8 @@ async fn reregistration_prefers_exact_id_over_spawn_match_without_fresh_allocati
             id: "pij-z-existing".to_string(),
             harness: "copilot".to_string(),
             folder: "/abs/tree".to_string(),
+            extension_build: None,
+            extension_path: None,
             pane: Some("%44".to_string()),
             pid: Some(identity.pid),
             proc_start: Some(identity.proc_start),
@@ -3034,6 +3170,8 @@ async fn registration_does_not_inherit_native_capability_from_another_incarnatio
             id: "pij-ported".to_string(),
             harness: "copilot".to_string(),
             folder: "/abs/tree".to_string(),
+            extension_build: None,
+            extension_path: None,
             pane: Some("%47".to_string()),
             pid: Some(identity.pid),
             proc_start: Some(identity.proc_start),
@@ -3102,6 +3240,8 @@ async fn registration_cannot_adopt_a_spawn_match_that_is_already_bound() {
             id: "pij-runtime-squatter".to_string(),
             harness: "copilot".to_string(),
             folder: "/abs/tree".to_string(),
+            extension_build: None,
+            extension_path: None,
             pane: Some("%46".to_string()),
             pid: Some(squatter.pid),
             proc_start: Some(squatter.proc_start),
@@ -3174,6 +3314,8 @@ async fn registration_cannot_adopt_a_spawn_match_from_another_pane() {
             id: "pij-runtime-other-pane".to_string(),
             harness: "copilot".to_string(),
             folder: "/abs/tree".to_string(),
+            extension_build: None,
+            extension_path: None,
             pane: Some("%45".to_string()),
             pid: Some(identity.pid),
             proc_start: Some(identity.proc_start),
@@ -3269,6 +3411,8 @@ async fn ordinary_registration_preserves_native_attestation_and_claude_consent()
                 id: id.to_string(),
                 harness: harness.to_string(),
                 folder: "/abs/tree".to_string(),
+                extension_build: None,
+                extension_path: None,
                 pane: Some(pane.to_string()),
                 pid: Some(identity.pid),
                 proc_start: Some(identity.proc_start),
@@ -3325,6 +3469,8 @@ async fn registration_refuses_uncorroborated_or_half_process_identity() {
         id: "pij-claim".to_string(),
         harness: "omp".to_string(),
         folder: "/abs/tree".to_string(),
+        extension_build: None,
+        extension_path: None,
         pane: None,
         pid: Some(7),
         proc_start: Some(11),
