@@ -447,6 +447,76 @@ test("native discard recovery: successful retry notice uses native timeline with
 	assert.equal(captured.filter((event) => event.kind === "native-requeued").length, 1);
 });
 
+test("terminal registration failure replaces retry advice without exposing raw diagnostics", async () => {
+	const logs = [];
+	const report = createNativeReporter({
+		log: async (message) => logs.push(message),
+		capture: () => undefined,
+	});
+	await report({ kind: "registration-wait", diagnostic: "SECRET_SERVER_BODY" });
+	assert.match(logs[0], /retrying when available/);
+	await report({
+		kind: "extension-unavailable",
+		diagnostic: "SECRET_SERVER_BODY",
+		safeDiagnostic: "Native host incarnation changed during observation",
+	});
+	assert.equal(logs.length, 2);
+	assert.match(
+		logs[1],
+		/native registration failed: Native host incarnation changed during observation/,
+	);
+	assert.match(logs[1], /no retry is scheduled.*restart the Copilot CLI \(\/restart or relaunch\)/);
+	assert.match(logs[1], /ordinary Copilot remains usable/);
+	assert.doesNotMatch(logs[1], /retrying when available|SECRET_SERVER_BODY/);
+});
+
+test("terminal registration failure without safe identity detail never projects an arbitrary error", async () => {
+	const logs = [];
+	const report = createNativeReporter({
+		log: async (message) => logs.push(message),
+		capture: () => undefined,
+	});
+	await report({ kind: "extension-unavailable", diagnostic: "SECRET_KEY ENV_VALUE MESSAGE_BODY" });
+	assert.match(logs[0], /native registration failed: native initialization failed/);
+	assert.doesNotMatch(logs[0], /SECRET_KEY|ENV_VALUE|MESSAGE_BODY|retrying when available/);
+});
+
+test("terminal banner projects only structured host refusal and redacts the daemon key", async () => {
+	const logs = [];
+	const report = createNativeReporter({
+		log: async (message) => logs.push(message),
+		capture: () => undefined,
+	});
+	const client = new DaemonClient({
+		addr: "127.0.0.1:1",
+		stateDir: "/isolated",
+		readKey: async () => "fixture-key",
+		fetch: async () =>
+			new Response(
+				JSON.stringify({
+					ok: false,
+					v: 2,
+					command: "pij register",
+					error: "refused",
+					meta: 'native Copilot registration refused: claimed pid is not an actual Copilot host executable; observed basename="fixture-key", replaced=true',
+					data: { body: "SECRET_MESSAGE_BODY", env: "SECRET_ENV_VALUE" },
+				}),
+				{ status: 400 },
+			),
+	});
+	await client.request("/v1/register", registration).then(
+		() => assert.fail("host refusal must fail registration"),
+		(error) =>
+			report({
+				kind: "extension-unavailable",
+				diagnostic: error.message,
+				safeDiagnostic: error.safeDiagnostic,
+			}),
+	);
+	assert.match(logs[0], /observed basename="\[redacted\]", replaced=true/);
+	assert.doesNotMatch(logs[0], /fixture-key|SECRET_MESSAGE_BODY|SECRET_ENV_VALUE/);
+});
+
 test("native discard recovery: a substring in another queued item does not claim ownership", async (t) => {
 	const f = discardedQueueFixture();
 	t.after(() => f.bridge.stop());

@@ -356,6 +356,17 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		assert.equal(f.requests.length, 0);
 	});
 
+	test("Linux replaced host reaches native registration and message acknowledgement", {
+		skip: process.platform !== "linux",
+	}, async (t) => {
+		const f = await launch(t, {
+			processCommand: "MainThread",
+			kernelExecutable: "/opt/copilot (deleted)",
+		});
+		await f.waitFor("inbox-acknowledged");
+		assert.equal(f.requests.find((r) => r.path === "/v1/register").body.pid, process.pid);
+	});
+
 	test("actual shell discovers local seats without remote pane collisions", async (t) => {
 		const local = {
 			id: "pij-local-native",
@@ -666,6 +677,26 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		f.child.stdin.end();
 		assert.equal((await exited)[0], 0);
 		assert.equal(f.stdout(), "");
+	});
+
+	test("terminal bootstrap refusal names safe failure and restart without exposing remote text", async (t) => {
+		const f = await launch(t, {
+			registerRefusal: {
+				ok: false,
+				v: 2,
+				command: "pij register",
+				error: "refused",
+				meta: "SECRET_REMOTE_TEXT",
+			},
+		});
+		const notice = await f.waitFor("native-log");
+		assert.match(
+			notice.message,
+			/extension-unavailable; native registration failed: Pij HTTP 400; no retry is scheduled/,
+		);
+		assert.match(notice.message, /restart the Copilot CLI/);
+		assert.doesNotMatch(notice.message, /retrying when available|SECRET_REMOTE_TEXT/);
+		assert.equal(f.requests.filter((r) => r.path.startsWith("/v1/inbox?")).length, 0);
 	});
 
 	for (const refused of [false, true]) {

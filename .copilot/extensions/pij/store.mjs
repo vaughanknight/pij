@@ -21,11 +21,20 @@ const nativeAttested = (seat) =>
 	positiveInteger(seat.proc?.proc_start);
 
 export class NativeError extends Error {
-	constructor(message, retryable = false) {
+	constructor(message, retryable = false, safeDiagnostic = message) {
 		super(message);
 		this.name = "NativeError";
 		this.retryable = retryable;
+		// Local NativeError text is authored here; remote/OS text must supply a safe projection.
+		this.safeDiagnostic = safeDiagnostic;
 	}
+}
+
+/** Normalize the Linux kernel's unlinked executable marker before identity matching. */
+export function normalizeExecutable(command) {
+	const suffix = " (deleted)";
+	const replaced = command.endsWith(suffix);
+	return { command: replaced ? command.slice(0, -suffix.length) : command, replaced };
 }
 
 /** The daemon packs C-locale, local-time ps lstart as YYYYMMDDhhmmss. */
@@ -261,6 +270,7 @@ export class DaemonClient {
 			throw new NativeError(
 				`Pij transport unavailable (${error?.name ?? "network error"}); retrying with refreshed credentials`,
 				true,
+				"Pij transport unavailable",
 			);
 		}
 		let envelope;
@@ -282,12 +292,25 @@ export class DaemonClient {
 				envelope.error === "refused" &&
 				envelope.meta ===
 					"daemon/native-inbox: native-extension-unavailable: Copilot requires current native registration";
+			// Only this typed registration refusal may project remote fields into the timeline.
+			// Everything else retains its bounded raw diagnostic outside the native banner.
+			const hostRefusal =
+				path === "/v1/register" &&
+				envelope?.ok === false &&
+				envelope.v === 2 &&
+				envelope.command === "pij register" &&
+				envelope.error === "refused" &&
+				typeof envelope.meta === "string" &&
+				/^native Copilot registration refused: claimed pid is not an actual Copilot host executable; observed basename="[^"\\/\r\n]{1,255}", replaced=(?:true|false)$/.test(
+					envelope.meta,
+				);
 			throw new NativeError(
 				`Pij HTTP ${response.status}: ${diagnostic}`,
 				nativeUnavailable ||
 					response.status === 401 ||
 					response.status === 429 ||
 					response.status >= 500,
+				hostRefusal ? envelope.meta.replaceAll(key, "[redacted]") : `Pij HTTP ${response.status}`,
 			);
 		}
 		return envelope;
@@ -1066,15 +1089,17 @@ export function createNativeReporter({ log, capture }) {
 				event.kind,
 			)
 		) {
-			if (unavailable && event.kind !== "receive-held") return;
+			if (unavailable && !["receive-held", "extension-unavailable"].includes(event.kind)) return;
 			unavailable = true;
 			const advice =
 				event.kind === "receive-held"
 					? event.holdKind === "native-target"
 						? "queued work targets another native session; resume that native session or use a new seat and intentionally reissue the message; receiving stopped without acknowledgement; outgoing pij_send remains available"
 						: "receiving held; inspect native history and acceptance before recovery, do not blindly resend or acknowledge"
-					: "check the Pij daemon and PIJ_RS_ADDR/PIJ_RS_STATE_DIR; retrying when available; ordinary Copilot remains usable";
-			// Never project a remote error body (or credential) into the native timeline.
+					: event.kind === "extension-unavailable"
+						? `native registration failed: ${event.safeDiagnostic ?? "native initialization failed"}; no retry is scheduled — restart the Copilot CLI (/restart or relaunch) to recover; ordinary Copilot remains usable`
+						: "check the Pij daemon and PIJ_RS_ADDR/PIJ_RS_STATE_DIR; retrying when available; ordinary Copilot remains usable";
+			// Never project the raw diagnostic: HTTP/OS errors may carry bodies or credentials.
 			return Promise.resolve()
 				.then(() => log(`[pij native] unavailable: ${event.kind}; ${advice}`, { level: "info" }))
 				.catch(() => capture({ kind: "native-diagnostic-unavailable", failureKind: event.kind }));
