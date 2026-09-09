@@ -61,6 +61,9 @@ On Linux, replacing the installed Copilot executable can leave a live host's
 for safe same-session reattachment, retaining the replacement fact while checking
 the executable basename, argv, ancestry, exact pane and process incarnation.
 The existing seat and native session are retained; messages are not replayed.
+A binary literally named `copilot (deleted)` normalizes to `copilot` and reports
+`replaced=true`; it is accepted under the same basename rule as any other `copilot`
+executable, with argv and entrypoint checks unchanged, so the collision widens nothing.
 
 `extensions_reload` reloads the extension, never re-execs the Copilot host.
 Loader readiness therefore does not prove Pij registration succeeded. A terminal

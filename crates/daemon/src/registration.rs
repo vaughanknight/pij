@@ -1144,6 +1144,12 @@ async fn observe_native_process(
         .map_err(|error| native_refusal(format!("process observer failed: {error}")))?
 }
 
+// Kernel convention: a running executable whose file was unlinked or replaced
+// reads as `<path> (deleted)`. Strip it once, here, so every matcher sees the
+// same basename. A binary literally named `copilot (deleted)` therefore
+// normalizes to `copilot` with replaced=true; that is the SAME trust class as
+// any binary named `copilot` (basename is already the accept rule, argv0 and
+// entrypoint checks still apply), so no control widens.
 #[cfg(any(target_os = "linux", test))]
 fn normalize_kernel_exe(mut executable: String) -> (String, bool) {
     let replaced = executable.ends_with(" (deleted)");
