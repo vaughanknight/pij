@@ -243,3 +243,133 @@ too. Worth one sentence in the how-doc if it is intended.
   makes the single-counter guarantee in §2 hold under concurrency.
 - Docs (AC6) match the implemented behaviour line for line, including the 20s-and-before-resend
   heartbeat cadence and the now-corrected peer-route rule.
+
+---
+
+# Re-review — fix commit `3fbd0a83` (F1–F4 only)
+
+Reviewer: pij-awake-xerinae. Scope: `git diff d0c92d9a..3fbd0a83` — 16 files, +2330/-47; production surface is
+`rust-runtime.ts` (+109/-31), `daemon-http.ts` (+23/-3), plus 114 lines of new regressions and the
+`fix-*` receipts. No Rust changed. `docs/how/pij-rs-api.md` and `skills/pij/references/routes/peer.md` updated.
+
+## Verdict: APPROVE
+
+All four findings are closed, each by a control that this reviewer independently killed by reverting
+it. The two that mattered — F1 (permanent latch) and F3 (fail-closed resend) — are now proven not
+just in vitest but on a real seat with a real daemon stopped mid-flight. Nothing below blocks merge;
+§R records three bounded residual risks the fix consciously accepts, and one thing the coder did not
+check that I did.
+
+**Baseline** (throwaway detached worktree `git worktree add --detach /tmp/p143-probe2 3fbd0a83`,
+`npx vitest run rust-runtime.test.ts daemon-http.test.ts`): `118 passed` — matches the coder's
+`fix-focused.txt` (98 runtime + 20 daemon-http). Canonical gate re-run by me on the branch worktree:
+`harness checks --quick --json` → `"ok": true`, nine sensors pass, smoke skipped.
+
+## Proof by revert
+
+| # | Mutation applied to `3fbd0a83` | Result |
+|---|---|---|
+| F1a | `repollAfterCompaction` `:409` → `if (boundary !== "session_compact") return;` (restores the old success-only gate) | **4 RED** — `aborted compaction releases mail at {turn_start,agent_end,message_start,ceiling} without session_compact` |
+| F1b | ticker ceiling call `:303` → `void 0;` (leaves the three event edges intact) | **1 RED** — the `ceiling` case only |
+| F2 | `heartbeatInbox` `:194-204` → `return value as InboxHeartbeat` (no validation) | **3 RED** — `unknown heartbeat 123 / {job_id:1} / {job_id:999,state:"done"} retains idle resends and parking` |
+| F3a | throttle `:750` → `!force &&` (drops the `heartbeatUncertain` term) | **1 RED** — `unreachable heartbeat preserves idle recovery without forced one-Hz retries`: *"expected heartbeatInbox to be called once, but got 4 times"* |
+| F3b | `recoverPending` `:867` → `if (state === "unknown") return;` (fail closed) | **5 RED** — all three legacy-shape cases, the unreachable case, and `stream reconnect owns transport retries while local idle delivery stays available` |
+| F4 | `BOUNDARY_RESEND_GRACE_MS` `2_000` → `1_000` | **2 RED** — `a healthy steer draining within the calibrated 2000ms grace is never resent`, and the interrupted-mail recovery test |
+
+Every mutation was reverted with `git checkout` and the worktree left clean; the probe worktree is
+removed. F1a and F1b are deliberately separate: F1a alone kills all four, so without F1b the ceiling
+would have no independent witness.
+
+## Per-finding assessment
+
+**F1 — closed, and the release edges are safe.** `compacting` now has five exits: `session_compact`
+(`:410` — still unconditional, so AC1's callback-less re-poll is unchanged), `turn_start` (`:382`),
+`agent_end` (`:446`), `message_start` (`:430`), and a wall-clock ceiling checked by the 1s ticker
+(`:302-304`, `PIJ_COMPACTION_LATCH_MAX_MS`, default 120s). `pushDuringCompaction` is deleted, which
+is what makes the event edges work: the old gate required a push to have arrived.
+
+The obvious hazard in that design is the opposite of F1 — an event edge firing *inside a healthy*
+bracket would re-open AC1's injection hole. **It cannot, and the fix commit does not say why, so I
+checked.** In pi 0.83.0 (`~/.npm-global/lib/node_modules/@earendil-works/pi-coding-agent`), extension
+`turn_start`/`message_start`/`agent_end` are emitted only from `_handleAgentEvent` →
+`_emitExtensionEvent` (`dist/core/agent-session.js:410-445`), i.e. only while the agent loop streams.
+Both auto-compaction entry points run when it is not streaming: `:776` decides continuation *after*
+`agent_end` has already been emitted, and `:862` runs inside `prompt()` *before* the user message is
+sent. Manual compaction is likewise outside a stream. So no release edge can land between
+`session_before_compact` and `session_compact` on the success path — the existing
+`compaction starting during a startup peek…` and successful-compaction controls stay green, which
+corroborates it. The `boundary` label is carried into `delivery.compaction-repoll`, so a ceiling
+release is distinguishable in the spine after the fact.
+
+Report's abort-path citations (`:1392`, `:1401`, `:1431`, `:1442`, `:1470`, `:1635`, `:1672`) verified
+line-for-line against 0.83.0. They differ from my original review's numbers only because I read the
+copy bundled under `pi-smart-fetch`; both installs have the identical shape.
+
+**F2 — closed.** `heartbeatInbox` (`daemon-http.ts:194-204`) now parses `unknown` and accepts only an
+object whose `job_id` equals the requested id and whose `state` is `running|done|failed`; anything
+else is `undefined` → `"unknown"` → `daemon_event_heartbeat_unknown` capture → the ordinary idle
+resend and parking path. The `{job_id: 999, state: "done"}` case is the sharpest of the three: without
+validation that foreign row reaches `dropTerminal` and the message is silently lost, not merely
+un-resent. Legacy `data: 123` now costs a slower resend, not a stuck seat.
+
+**F3 — closed, and better than what I asked for.** Rather than inventing a second retry policy, the
+fix delegates transport recovery to the stream reconnect loop that already exists (250ms base, 5s cap,
+existing jitter) and gates inbox polling (`:504`), pushes (`:558`), heartbeat (`:747`) and ACK (`:798`,
+`:809`) on `isReconnecting()`. `reconnecting` is set on stream loss (`daemon-http.ts:279`) and cleared
+at all three successful attach points (`:222`, `:292`, `:304`); the loop is `while (!signal.aborted)`
+and unbounded, so the flag tracks reality and cannot latch the way `compacting` could — abort only
+happens at teardown. The 1 Hz spin is closed by `(!force || pending.heartbeatUncertain) && now -
+lastHeartbeatAt < CLAIM_HEARTBEAT_MS` (`:749-753`), which still returns `"unknown"` rather than
+`"skip"` so the throttled tick keeps recovery available. `recoverPending` (`:860-874`) now demotes
+`unknown` to the full 10s idle window instead of vetoing — only *validated* terminal authority drops
+tracking. Parking is deferred while offline, not lost.
+
+**F4 — closed on the evidence available.** Grace `1_000` → `2_000` with `PIJ_BOUNDARY_GRACE_MS`.
+I re-derived the calibration from `fix-live-drain.json` rather than trusting the summary: five samples,
+each `custom.at − boundary.at` = `65, 27, 25, 30, 139`ms, every one with `idle:false` (genuinely busy
+seat, no swallow flag). Nearest-rank p50 = 30, p95 = 139 — both as reported. The healthy-drain control
+now consumes at 1999ms, one millisecond inside the margin.
+
+**Live outage proof (`fix-live-outage.json`) — the strongest artefact in the plan.** Message
+`f284054a…` sent at `1788928740689`; the private daemon was stopped at `1788928740694`, **5ms later**;
+the prompt resend reached native `message_start` at `1788928750929` — **+10.235s, with the daemon
+down, no human turn, no daemon response**. On restart the job settled `done` with `attempt: 0` and
+`lease_expirations: 0`, and spine seq 36 records `origin: "reader-read"` — so recovery happened and
+produced no duplicate and no lease churn. Under the pre-fix code this message could not have been
+delivered at all. The receipt names its two discarded setup probes and why.
+
+## R — residual risks (accepted, none blocking)
+
+**R1 — the ceiling can release into a live compaction.** A compaction that outruns
+`PIJ_COMPACTION_LATCH_MAX_MS` (120s) releases the latch while pi is still compacting, which is
+precisely the AC1 injection the plan set out to prevent. This is the correct trade — indefinite
+stranding is strictly worse and the window is now bounded and labelled `boundary:"ceiling"` in the
+spine — but it is a real behaviour change, not a pure interlock relaxation, and report.md says so.
+If `ceiling` ever shows up in a real spine, that is the signal to raise the default rather than to
+debug delivery.
+
+**R2 — the grace is a 2s floor, not a measured bound.** `max(2×139ms, 2000ms)` is decided by the
+floor; the measurement's real content is "139ms was the worst of five, on one machine, one model
+(`github-copilot/gpt-5-mini`), one OMP build (18.1.14)". n=5 makes p95 identical to the max. The 14×
+headroom and the env override make this fine in practice; it is not a universal latency claim, and
+the report does not make one.
+
+**R3 — F7 from the first round still stands, unchanged and still out of scope.** The boundary rule is
+harness-agnostic (`pi-runtime.ts:62`, `rust-runtime.ts:415-419`), so Pi seats inherit the 2s grace and
+the abort-release edges too. One sentence in the how-doc would close it.
+
+## Honesty check on the fix round
+
+- The abort regressions are explicitly *not* presented as a live aborted-compaction run
+  ("they are not represented as a live aborted-compaction run") — correct, and the modelled sequence
+  matches the pi source I read independently.
+- The interlock language is updated rather than reused: the report now says the latch is bounded and
+  names what the ceiling trades away. That is the right correction to my F1 note that report.md:70's
+  "no new timeout" was being sold as a property.
+- "Rust production/fixtures did not change in this round; the original workspace/clippy/fmt evidence
+  remains historical, not a newly run Rust gate" — accurate; the diff touches no `crates/`.
+- The `harness boot --full` E108 refusal and the outstanding attribution advisory for `70556f6e` are
+  both disclosed rather than papered over.
+- Original-round §6 caveat still applies to the *first* round's live seqs: that daemon's state dir is
+  gone. The fix round's authority is retained at a named local path, so its claims remain re-verifiable
+  until that tmp tree is reaped.
