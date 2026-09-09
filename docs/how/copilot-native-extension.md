@@ -54,6 +54,25 @@ old attested process is dead. A live old owner, changed native session, or
 unrelated bootstrap process/pane still refuses the handoff. The saved address,
 parent, operator state, and queued messages are retained.
 
+## In-place CLI upgrade
+
+On Linux, replacing the installed Copilot executable can leave a live host's
+`/proc/<pid>/exe` link ending in ` (deleted)`. Pij accepts that replaced executable
+for safe same-session reattachment, retaining the replacement fact while checking
+the executable basename, argv, ancestry, exact pane and process incarnation.
+The existing seat and native session are retained; messages are not replayed.
+A binary literally named `copilot (deleted)` normalizes to `copilot` and reports
+`replaced=true`; it is accepted under the same basename rule as any other `copilot`
+executable, with argv and entrypoint checks unchanged, so the collision widens nothing.
+
+`extensions_reload` reloads the extension, never re-execs the Copilot host.
+Loader readiness therefore does not prove Pij registration succeeded. A terminal
+`extension-unavailable` banner says **no retry is scheduled**, includes a safe
+registration diagnostic, and directs you to restart the Copilot CLI (`/restart`
+or relaunch). Do that when the banner requests it; restarting the Pij daemon does
+not change the host executable. Ordinary Copilot remains usable. Transient
+`registration-wait` notices still say **retrying when available**.
+
 ## Receipt grades and failures
 
 A daemon `reader-read` receipt means the native harness **consumed** the matching

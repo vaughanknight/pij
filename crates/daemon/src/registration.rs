@@ -382,9 +382,14 @@ impl RegistrationService {
                 .await?
                 .ok_or_else(|| native_refusal("a host/ancestor process disappeared"))?;
             if current == identity && !process.is_copilot_host() {
-                return Err(native_refusal(
-                    "claimed pid is not an actual Copilot host executable",
-                ));
+                let basename = Path::new(&process.executable)
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("<unknown>");
+                return Err(native_refusal(format!(
+                    "claimed pid is not an actual Copilot host executable; observed basename={basename:?}, replaced={}",
+                    process.executable_replaced
+                )));
             }
             ancestry.push(current);
             if pane_identity.is_none_or(|pane| pane == current) {
@@ -1036,6 +1041,7 @@ fn check_native_roster(
 struct NativeProcess {
     parent: u32,
     executable: String,
+    executable_replaced: bool,
     argv: Vec<String>,
 }
 
@@ -1138,6 +1144,21 @@ async fn observe_native_process(
         .map_err(|error| native_refusal(format!("process observer failed: {error}")))?
 }
 
+// Kernel convention: a running executable whose file was unlinked or replaced
+// reads as `<path> (deleted)`. Strip it once, here, so every matcher sees the
+// same basename. A binary literally named `copilot (deleted)` therefore
+// normalizes to `copilot` with replaced=true; that is the SAME trust class as
+// any binary named `copilot` (basename is already the accept rule, argv0 and
+// entrypoint checks still apply), so no control widens.
+#[cfg(any(target_os = "linux", test))]
+fn normalize_kernel_exe(mut executable: String) -> (String, bool) {
+    let replaced = executable.ends_with(" (deleted)");
+    if replaced {
+        executable.truncate(executable.len() - " (deleted)".len());
+    }
+    (executable, replaced)
+}
+
 #[cfg(target_os = "linux")]
 fn read_native_process(pid: u32) -> std::result::Result<Option<NativeProcess>, RegistrationError> {
     // Linux comm is a mutable task name, NOT an executable witness. Use the
@@ -1155,6 +1176,7 @@ fn read_native_process(pid: u32) -> std::result::Result<Option<NativeProcess>, R
             )));
         }
     };
+    let (executable, executable_replaced) = normalize_kernel_exe(executable);
     let Some(stat) = read_native_proc_file(&root.join("stat"))? else {
         return Ok(None);
     };
@@ -1180,6 +1202,7 @@ fn read_native_process(pid: u32) -> std::result::Result<Option<NativeProcess>, R
     Ok(Some(NativeProcess {
         parent,
         executable,
+        executable_replaced,
         argv,
     }))
 }
@@ -1298,6 +1321,7 @@ fn parse_native_process(output: &[u8]) -> std::result::Result<NativeProcess, Reg
     Ok(NativeProcess {
         parent,
         executable,
+        executable_replaced: false,
         argv,
     })
 }
@@ -1623,6 +1647,86 @@ mod tests {
                 .expect("roster")
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn kernel_executable_normalization_strips_only_the_exact_trailing_marker() {
+        for (raw, normalized, replaced) in [
+            ("/a/copilot (deleted)", "/a/copilot", true),
+            ("/a/copilot", "/a/copilot", false),
+            ("/a/copilot (deleted) ", "/a/copilot (deleted) ", false),
+            ("(deleted)", "(deleted)", false),
+        ] {
+            assert_eq!(
+                super::normalize_kernel_exe(raw.to_string()),
+                (normalized.to_string(), replaced)
+            );
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn replaced_executable_accepts_only_the_actual_copilot_host() {
+        use std::io::BufRead;
+
+        let root = std::env::temp_dir().join(format!("pij-replaced-exe-{}", std::process::id()));
+        for (name, argv0, accepted) in [
+            ("copilot", "copilot", true),
+            ("copilot-evil", "copilot", false),
+            ("copilot", "sh", false),
+        ] {
+            std::fs::create_dir(&root).expect("private executable directory");
+            let executable = root.join(name);
+            std::fs::copy("/bin/sh", &executable).expect("copy executable witness");
+            let mut shell = Command::new(&executable)
+                .arg0(argv0)
+                .args(["-c", "echo ready; read line"])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+                .expect("private replaced executable witness");
+            let mut ready = String::new();
+            let readiness = std::io::BufReader::new(shell.stdout.take().expect("witness stdout"))
+                .read_line(&mut ready);
+            let unlink = std::fs::remove_file(&executable);
+            let observed = super::read_native_process(shell.id());
+            let _ = shell.kill();
+            shell.wait().expect("reap private executable witness");
+            std::fs::remove_dir(&root).expect("remove private directory");
+            readiness.expect("witness readiness line");
+            assert_eq!(ready.trim(), "ready");
+            unlink.expect("unlink running executable");
+            let observed = observed.expect("kernel observation").expect("live host");
+            assert_eq!(
+                observed.is_copilot_host(),
+                accepted,
+                "{name}, argv0={argv0}"
+            );
+            assert!(observed.executable_replaced, "{name}, argv0={argv0}");
+        }
+    }
+
+    #[tokio::test]
+    async fn native_host_refusal_names_observed_basename_and_replacement() {
+        let (service, _) = native_service(Vec::new(), native_liveness()).await;
+        for replaced in [false, true] {
+            let error = service
+                .verify_native_host(HOST, None, &FakeTmux::new(), &mut |_| {
+                    let mut process = parse_native_process(b"41 /opt/copilot-evil copilot\n")
+                        .expect("lookalike fixture");
+                    process.executable_replaced = replaced;
+                    ready(Ok(Some(process)))
+                })
+                .await
+                .expect_err("lookalike host refused");
+            assert!(
+                error.to_string().contains(&format!(
+                    "observed basename=\"copilot-evil\", replaced={replaced}"
+                )),
+                "{error}"
+            );
+        }
     }
 
     #[tokio::test]
@@ -2480,6 +2584,7 @@ mod tests {
                     ready(Ok(Some(NativeProcess {
                         parent: pid - 1,
                         executable: "/opt/copilot/copilot".to_string(),
+                        executable_replaced: false,
                         argv: vec!["copilot".to_string()],
                     })))
                 },
@@ -2761,6 +2866,7 @@ mod tests {
             return Some(NativeProcess {
                 parent: PANELLESS_SHELL.pid,
                 executable: "/opt/pij/pij".into(),
+                executable_replaced: false,
                 argv: vec!["/opt/pij/pij".into(), "inbox".into()],
             });
         }
@@ -2768,6 +2874,7 @@ mod tests {
             return Some(NativeProcess {
                 parent: HOST.pid,
                 executable: "/bin/sh".into(),
+                executable_replaced: false,
                 argv: vec!["sh".into(), "-c".into(), "copilot claude codex".into()],
             });
         }
@@ -2794,6 +2901,7 @@ mod tests {
         Some(NativeProcess {
             parent: 0,
             executable,
+            executable_replaced: false,
             argv,
         })
     }
@@ -3286,6 +3394,7 @@ mod tests {
                     ready(Ok(Some(NativeProcess {
                         parent: pid + 1,
                         executable: "/bin/sh".into(),
+                        executable_replaced: false,
                         argv: vec!["sh".into()],
                     })))
                 })

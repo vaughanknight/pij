@@ -14,6 +14,7 @@ import {
 	MAX_RETRY_MS,
 	NativeBridge,
 	NativeError,
+	normalizeExecutable,
 	parseProcessStart,
 	resolveNativeHost,
 	resolveRegistration,
@@ -29,11 +30,15 @@ async function inspectProcess(pid) {
 	]);
 	const row = /^\s*(\d+)\s+(\d+)\s+(.+?)\s*$/.exec(identity.stdout);
 	if (!row) throw new NativeError("Cannot inspect Copilot ancestor process");
+	const executable =
+		process.platform === "linux"
+			? normalizeExecutable(await readlink(`/proc/${pid}/exe`))
+			: { command: row[3], replaced: false };
 	return {
 		pid: Number(row[1]),
 		ppid: Number(row[2]),
 		// Linux comm is a mutable task name (Copilot reports MainThread), not its executable.
-		command: process.platform === "linux" ? await readlink(`/proc/${pid}/exe`) : row[3],
+		...executable,
 		proc_start: parseProcessStart(started.stdout),
 	};
 }
@@ -157,7 +162,11 @@ async function startExtension() {
 		}
 	} catch (error) {
 		if (signal.aborted) return;
-		if (session) await nativeReport({ kind: "extension-unavailable", diagnostic: error.message });
+		if (session)
+			await nativeReport({
+				kind: "extension-unavailable",
+				safeDiagnostic: error instanceof NativeError ? error.safeDiagnostic : undefined,
+			});
 		else
 			console.error(
 				"[pij native] unavailable: native-join; check Copilot native extension support. Ordinary Copilot remains usable; no fallback transport is enabled.",
