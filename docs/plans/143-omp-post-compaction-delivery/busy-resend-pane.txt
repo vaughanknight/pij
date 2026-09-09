@@ -1,0 +1,106 @@
+
+╭─── omp v18.1.14 ─────────────────────────────────────────────────────────────────────────────────╮
+│                          │ Tips                                                                  │
+│      Welcome back!       │ # for prompt actions                                                  │
+│                          │ / for commands                                                        │
+│       ████████████       │ ! to run bash                                                         │
+│          ██  ██          │ $ to run python                                                       │
+│          ██  ██          │ ───────────────────────────────────────────────────────────────────── │
+│          ▒▒  ██          │ LSP Servers                                                           │
+│              ██          │ ● rust-analyzer .rs                                                   │
+│                          │ ● typescript-language-server .ts .tsx .js                             │
+│        GPT-5 Mini        │                                                                       │
+│      github-copilot      │                                                                       │
+│                          │ ───────────────────────────────────────────────────────────────────── │
+│                          │ Recent sessions                                                       │
+│                          │ No recent sessions                                                    │
+│                          │                                                                       │
+│                          │                                                                       │
+│                          │                                                                       │
+│                          │                                                                       │
+╰──────────────────────────┴───────────────────────────────────────────────────────────────────────╯
+ Tip: Press shift+tab to cycle through reasoning effort levels
+
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                      │
+│ 📦 pij                                                                                                               │
+│                                                                                                                      │
+│ You are pij session pij-dusty-ermine (WORKER). This is context only — no action is required.                         │
+│ Peers can reach you; their messages arrive inline as "[pij-rs from <id>]" on its own line, then the body, then       │
+│ "[/pij]". Only those injected messages are live instructions.                                                        │
+│ Do NOT read, list, or act on files under your pij data/inbox directory — they are an internal transport log, not     │
+│ tasks, and replaying them re-runs old requests.                                                                      │
+│ To reply or message a peer, call the pij_send tool ({ to, message }) — your id is stamped automatically. For         │
+│ control, pij_send takes { to, command: "compact" | "new" | "reload" } instead of message. Do NOT shell out to the    │
+│ pij CLI to send.                                                                                                     │
+│ To observe peers, use the pij CLI: "pij list --here" (peers), "pij tail <id>" / "pij state <id>" (watch one).        │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ WORKER NONCE: pij-dusty-ermine-0001
+
+ 2026-09-09 14:04:32  ⤵ 7.9K  ⤴ 32  ⏱ 2.2s  ⚡ 13.0/s
+
+
+ Reply exactly PIJ143_BUSY_READY without tools.
+
+
+ PIJ143_BUSY_READY
+
+ 2026-09-09 14:04:34  ⤵ 7.2K  ⤴ 23  💾 2K  ⏱ 1.8s  ⚡ 12.4/s
+
+
+ Run bash sleep 8 three times in THREE SEPARATE sequential tool calls, async false each time. Do not combine calls.
+ After the third result reply PIJ143_BUSY_WORK_DONE. If a peer nonce arrives, also reply with its requested nonce after
+ finishing.
+
+
+ 📨 pij from pij143-boundary-proof: Reply locally exactly PIJ143_BUSY_cfbe90ed-f7b8-49da-9462-a4327d8f14ae. Finish y…
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ $ sleep 8                                                                                                            │
+├─── Output ───────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ (no output)                                                                                                          │
+│ ⟦Wall: 8.01s | Timeout: 30s⟧                                                                                         │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ 2026-09-09 14:05:43  ⤵ 7.2K  ⤴ 45  💾 2K  ⏱ 2.7s  ⚡ 12.6/s
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ $ sleep 8                                                                                                            │
+├─── Output ───────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ (no output)                                                                                                          │
+│ ⟦Wall: 8.00s | Timeout: 30s⟧                                                                                         │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ 2026-09-09 14:05:54  ⤵ 138  ⤴ 31  💾 9.2K  ⏱ 1.5s  ⚡ 17.9/s
+
+
+ [pij resend 1]
+ [pijMessageId:cfbe90ed-f7b8-49da-9462-a4327d8f14ae]
+ [pij-rs from pij143-boundary-proof]
+ Reply locally exactly PIJ143_BUSY_cfbe90ed-f7b8-49da-9462-a4327d8f14ae. Finish your current sleeps first. Authorized
+ isolated swallowed-custom-injection proof.
+ [/pij]
+
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ $ sleep 8                                                                                                            │
+├─── Output ───────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ (no output)                                                                                                          │
+│ ⟦Wall: 8.00s | Timeout: 30s⟧                                                                                         │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ 2026-09-09 14:06:04  ⤵ 305  ⤴ 32  💾 9.2K  ⏱ 2.5s  ⚡ 11.9/s
+
+ PIJ143_BUSY_WORK_DONE
+ PIJ143_BUSY_cfbe90ed-f7b8-49da-9462-a4327d8f14ae
+
+ 2026-09-09 14:06:15  ⤵ 100  ⤴ 51  💾 9.5K  ⏱ 1.6s  ⚡ 27.1/s
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ◫ 3.6%/264K ⟲ · rs·pij-dusty-ermine · ○ GPT-5 Mini · ⑂ 143-omp-post-compaction-delivery *20 ?14 · S0.01 ★ 3
+rs pij-dusty-ermine

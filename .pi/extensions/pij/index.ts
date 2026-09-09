@@ -567,7 +567,12 @@ export default function (pi: ExtensionAPI): void {
 			event.toolName,
 		);
 	});
-	pi.on("tool_result", (event) => session?.capture("tool_result", event));
+	pi.on("tool_result", (event) => {
+		session?.capture("tool_result", event);
+		rustRuntime?.onToolResult();
+	});
+	pi.on("session_before_compact", () => rustRuntime?.onBeforeCompact());
+	pi.on("session_compact", () => rustRuntime?.onCompact());
 	pi.on("message_end", (event) => session?.capture("message", event));
 	// Forward the full envelope: prompt recovery carries its id in user content.
 	pi.on("message_start", async (event, ctx) => {

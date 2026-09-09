@@ -62,10 +62,13 @@ interface PendingConsumption {
 	resends: number;
 	injectedAt: number;
 	lastResentAt?: number;
+	boundaryDueAt?: number;
 }
 
 const MAIL_STATUS_TICK_MS = 1_000;
 const CLAIM_HEARTBEAT_MS = 20_000;
+/** Let a healthy native steer drain emit message_start after its boundary. */
+const BOUNDARY_RESEND_GRACE_MS = 1_000;
 const DEFAULT_REDELIVER_IDLE_MS = 10_000;
 const MAX_RESENDS = 3;
 const PARKED_OUTCOMES = new Set([
@@ -121,6 +124,8 @@ export class RustRuntimeSession {
 	private inboxPollQueued = false;
 	private startupRecovery = false;
 	private releasedStartupHead: number | undefined;
+	private compacting = false;
+	private pushDuringCompaction = false;
 
 	constructor(
 		client: PijDaemonClient,
@@ -197,6 +202,8 @@ export class RustRuntimeSession {
 		this.parkedNotifications.clear();
 		this.inboxPending = false;
 		this.inboxPollQueued = false;
+		this.compacting = false;
+		this.pushDuringCompaction = false;
 		this.startupRecovery = true;
 		this.releasedStartupHead = undefined;
 		this.pi.setStatus(undefined);
@@ -252,6 +259,11 @@ export class RustRuntimeSession {
 					this.session.capture("daemon_event", frame);
 					return;
 				}
+				if (this.compacting) {
+					this.pushDuringCompaction = true;
+					this.inboxPending = true;
+					return;
+				}
 				const consumed = this.pushedChain.then(() =>
 					this.consumePushed(frame.event.payload, seat, client, lifecycle),
 				);
@@ -280,6 +292,7 @@ export class RustRuntimeSession {
 				if (pending.consumed) void this.ackConsumed(pending);
 				else void this.heartbeatPending(pending);
 			}
+			if (this.compacting) return;
 			// Lease expiry is claim-driven; an unconsumed head needs polling even
 			// without another message.pushed event.
 			if ((!this.inboxPending && this.pendingConsumption.size === 0) || this.inboxPollQueued)
@@ -351,6 +364,7 @@ export class RustRuntimeSession {
 
 	onTurnStart(iso: string): void {
 		this.idleSince = undefined;
+		this.repollAfterCompaction("turn_start");
 		this.session.onTurnStart(iso);
 		void this.flush();
 	}
@@ -358,6 +372,35 @@ export class RustRuntimeSession {
 	onTurnEnd(): void {
 		this.session.onTurnEnd();
 		if (this.pi.isIdle()) this.idleSince ??= this.clock();
+		this.queueBoundaryResend();
+	}
+
+	onToolResult(): void {
+		this.queueBoundaryResend();
+	}
+
+	onBeforeCompact(): void {
+		this.compacting = true;
+	}
+
+	onCompact(): void {
+		this.compacting = false;
+		this.inboxPending = true;
+		this.session.capture("delivery.compaction-repoll", { boundary: "session_compact" });
+	}
+
+	private repollAfterCompaction(boundary: "turn_start" | "agent_end"): void {
+		if (this.compacting || this.inboxPending || !this.pushDuringCompaction) return;
+		this.inboxPending = true;
+		this.session.capture("delivery.compaction-repoll", { boundary });
+	}
+
+	private queueBoundaryResend(): void {
+		for (const pending of this.pendingConsumption.values()) {
+			if (!pending.consumed && pending.resends === 0) {
+				pending.boundaryDueAt ??= this.clock() + BOUNDARY_RESEND_GRACE_MS;
+			}
+		}
 	}
 
 	/** message_start is correlated per envelope; neither turn_start nor idle proves consumption. */
@@ -379,9 +422,11 @@ export class RustRuntimeSession {
 		await this.ackConsumed(pending);
 	}
 
-	/** Interrupted and silently swallowed delivery share the same bounded idle recovery. */
+	/** Boundaries grant one grace-delayed resend; later retries still require idle. */
 	onAgentEnd(willContinue = false): void {
 		if (!willContinue && this.pi.isIdle()) this.idleSince ??= this.clock();
+		this.repollAfterCompaction("agent_end");
+		this.queueBoundaryResend();
 	}
 
 	shutdown(reason: SessionShutdownReason): void {
@@ -390,6 +435,8 @@ export class RustRuntimeSession {
 		this.mailTicker = undefined;
 		this.inboxPending = false;
 		this.inboxPollQueued = false;
+		this.compacting = false;
+		this.pushDuringCompaction = false;
 		this.startupRecovery = false;
 		this.releasedStartupHead = undefined;
 		this.idleSince = undefined;
@@ -436,7 +483,7 @@ export class RustRuntimeSession {
 		client: PijDaemonClient,
 		lifecycle: number,
 	): Promise<void> {
-		while (this.self === seat && this.lifecycle === lifecycle) {
+		while (this.self === seat && this.lifecycle === lifecycle && !this.compacting) {
 			if (this.startupRecovery) {
 				const pending = await client.peekInbox(seat);
 				if (this.self !== seat || this.lifecycle !== lifecycle) return;
@@ -458,6 +505,8 @@ export class RustRuntimeSession {
 					this.releasedStartupHead = oldest.jobId;
 				}
 			}
+			if (this.compacting) return; // Startup peek/release can cross compaction start.
+			this.pushDuringCompaction = false;
 			const response = await client.claimInbox(seat);
 			if (this.self !== seat || this.lifecycle !== lifecycle) return;
 			const claim = this.readInbox(response, seat);
@@ -487,6 +536,11 @@ export class RustRuntimeSession {
 				seat,
 				stage: "before-claim",
 			});
+			return;
+		}
+		if (this.compacting) {
+			this.pushDuringCompaction = true;
+			this.inboxPending = true;
 			return;
 		}
 		if (this.startupRecovery) {
@@ -580,10 +634,14 @@ export class RustRuntimeSession {
 			injectedAt: this.clock(),
 		};
 		this.pendingConsumption.set(id, pending);
-		// A reclaimed row may already be queued in the harness. Only idle
-		// non-consumption authorizes another injection, even after a restart.
+		// Reclaimed bodies may already be queued; await a boundary or idle proof.
 		this.showMailStatus();
 		if (claim.attempt > 0) return;
+		if (this.compacting) {
+			// A claim response can cross compaction start. Keep it, but do not inject.
+			pending.boundaryDueAt = this.clock() + BOUNDARY_RESEND_GRACE_MS;
+			return;
+		}
 		try {
 			this.session.onInbound(claim.message, id, true);
 		} catch (error) {
@@ -655,7 +713,7 @@ export class RustRuntimeSession {
 		this.pi.setStatus(count > 0 ? `📨 ${count} pending` : undefined);
 	}
 
-	private async heartbeatPending(pending: PendingConsumption): Promise<void> {
+	private async heartbeatPending(pending: PendingConsumption, force = false): Promise<boolean> {
 		const now = this.clock();
 		if (
 			pending.consumed ||
@@ -664,13 +722,24 @@ export class RustRuntimeSession {
 			this.self !== pending.seat ||
 			this.lifecycle !== pending.lifecycle ||
 			this.pendingConsumption.get(pending.claim.message.messageId) !== pending ||
-			now - pending.lastHeartbeatAt < CLAIM_HEARTBEAT_MS
+			(!force && now - pending.lastHeartbeatAt < CLAIM_HEARTBEAT_MS)
 		)
-			return;
+			return false;
 		pending.heartbeating = true;
 		pending.lastHeartbeatAt = now;
 		try {
-			await pending.client.heartbeatInbox(pending.seat, pending.claim.jobId);
+			const response = await pending.client.heartbeatInbox(pending.seat, pending.claim.jobId);
+			if (
+				this.lifecycle !== pending.lifecycle ||
+				this.self !== pending.seat ||
+				this.pendingConsumption.get(pending.claim.message.messageId) !== pending
+			)
+				return false;
+			if (response.state === "done" || response.state === "failed") {
+				this.dropTerminal(pending.claim.jobId, pending.claim.message.messageId);
+				return false;
+			}
+			return response.state === "running";
 		} catch (error) {
 			if (
 				!pending.consumed &&
@@ -684,6 +753,7 @@ export class RustRuntimeSession {
 					message: error instanceof Error ? error.message : String(error),
 				});
 			}
+			return false;
 		} finally {
 			pending.heartbeating = false;
 		}
@@ -728,32 +798,45 @@ export class RustRuntimeSession {
 	}
 
 	private recoverUnconsumed(): void {
+		if (this.compacting) return;
 		const now = this.clock();
-		if (!this.pi.isIdle()) {
-			this.idleSince = undefined;
-		} else {
-			this.idleSince ??= now;
-			for (const pending of this.pendingConsumption.values()) {
-				if (pending.consumed || pending.acknowledging) continue;
-				if (now - Math.max(this.idleSince, pending.injectedAt) < this.redeliverIdleMs) continue;
-				if (pending.resends >= MAX_RESENDS) {
-					void this.ackConsumed(pending, "undelivered:harness-swallowed");
-				} else {
-					this.resendPending(pending);
-				}
-			}
+		if (!this.pi.isIdle()) this.idleSince = undefined;
+		else this.idleSince ??= now;
+		for (const pending of this.pendingConsumption.values()) {
+			if (pending.consumed || pending.acknowledging || pending.heartbeating) continue;
+			const boundary =
+				pending.resends === 0 &&
+				pending.boundaryDueAt !== undefined &&
+				now >= pending.boundaryDueAt;
+			const idle =
+				this.idleSince !== undefined &&
+				now - Math.max(this.idleSince, pending.injectedAt) >= this.redeliverIdleMs;
+			if (boundary || idle) void this.recoverPending(pending, boundary);
 		}
 		this.showMailStatus();
 	}
 
-	private resendPending(pending: PendingConsumption): void {
+	private async recoverPending(pending: PendingConsumption, boundary: boolean): Promise<void> {
+		// Re-check daemon authority before a resend: a CLI reader may have settled it.
+		if (!(await this.heartbeatPending(pending, true)) || this.compacting || pending.consumed)
+			return;
+		if (!boundary && !this.pi.isIdle()) return;
+		if (pending.resends >= MAX_RESENDS) {
+			await this.ackConsumed(pending, "undelivered:harness-swallowed");
+		} else {
+			this.resendPending(pending, boundary ? "boundary-unconsumed" : "idle-unconsumed");
+		}
+	}
+
+	private resendPending(pending: PendingConsumption, reason: string): void {
 		if (
 			pending.consumed ||
 			pending.acknowledging ||
-			!this.pi.isIdle() ||
+			this.compacting ||
 			pending.resends >= MAX_RESENDS ||
 			this.self !== pending.seat ||
-			this.lifecycle !== pending.lifecycle
+			this.lifecycle !== pending.lifecycle ||
+			this.pendingConsumption.get(pending.claim.message.messageId) !== pending
 		)
 			return;
 		const attempt = ++pending.resends;
@@ -763,7 +846,7 @@ export class RustRuntimeSession {
 		this.session.capture("delivery.resend", {
 			messageId: message.messageId,
 			attempt,
-			reason: "idle-unconsumed",
+			reason,
 		});
 		this.showMailStatus();
 		try {
@@ -786,9 +869,19 @@ export class RustRuntimeSession {
 		this.pi.notify(`pij parked message ${messageId}: ${outcome}`, "warning");
 	}
 
+	private dropTerminal(jobId: number, messageId: string): void {
+		this.lastAcknowledgedJobId = jobId;
+		this.pendingConsumption.delete(messageId);
+		this.inboxPending = true;
+		this.showMailStatus();
+	}
+
 	private readInbox(value: unknown, seat: string): InboxClaim | undefined {
-		return pushedInboxClaim(value, seat, (messageId, outcome) =>
-			this.noteParked(messageId, outcome),
+		return pushedInboxClaim(
+			value,
+			seat,
+			(messageId, outcome) => this.noteParked(messageId, outcome),
+			(jobId, messageId) => this.dropTerminal(jobId, messageId),
 		);
 	}
 
@@ -916,6 +1009,7 @@ function pushedInboxClaim(
 	value: unknown,
 	to: string,
 	onParked: (messageId: string, outcome: string) => void,
+	onDone: (jobId: number, messageId: string) => void,
 ): InboxClaim | undefined {
 	if (!Array.isArray(value)) throw new Error("pij inbox response must be an array");
 	let live: InboxClaim | undefined;
@@ -935,6 +1029,10 @@ function pushedInboxClaim(
 			throw new Error("pij inbox claim attempt must be a non-negative safe integer");
 		}
 		const message = pushedMessageValue(record.message, to, "pij inbox claim message");
+		if (record.state === "done") {
+			onDone(record.job_id, message.messageId);
+			continue;
+		}
 		if (record.state === "failed") {
 			if (typeof record.outcome !== "string" || !PARKED_OUTCOMES.has(record.outcome)) {
 				throw new Error("pij parked inbox claim needs a recognized outcome");

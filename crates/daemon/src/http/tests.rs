@@ -83,6 +83,17 @@ impl Queue for CountingQueue {
         Ok(None)
     }
 
+    async fn terminal_delivery_state(
+        &self,
+        _job: JobId,
+        _recipient: &SeatId,
+    ) -> Result<Option<&'static str>> {
+        Err(PijError::Adapter {
+            adapter: "test/counting-queue".into(),
+            message: "enqueue-only fixture cannot inspect terminal deliveries".into(),
+        })
+    }
+
     async fn heartbeat_delivery(
         &self,
         _job: JobId,
@@ -325,7 +336,10 @@ async fn redelivery_heartbeat_renews_only_claim_age_until_consumption() {
     )
     .await;
     assert_eq!(heartbeat["ok"], true, "{heartbeat}");
-    assert_eq!(heartbeat["data"], id);
+    assert_eq!(
+        heartbeat["data"],
+        serde_json::json!({"job_id":id,"state":"running"})
+    );
     let golden: serde_json::Value = serde_json::from_str(&pij_testkit::fixtures::read(
         "golden/api/inbox-recovery.json",
     ))
@@ -372,11 +386,72 @@ async fn redelivery_heartbeat_renews_only_claim_age_until_consumption() {
 }
 
 #[tokio::test]
-async fn redelivery_heartbeat_rejects_wrong_recipient_control_terminal_and_native_claims() {
+async fn redelivery_heartbeat_reports_terminal_state_without_renewing_or_acknowledging() {
+    for state in ["done", "failed"] {
+        let (pool, services, _, spine) = redelivery_fixture().await;
+        let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+        let client = reqwest::Client::new();
+        let first =
+            redelivery_request(client.get(format!("http://{addr}/v1/inbox?seat=pij-reader"))).await;
+        let id = first["data"][0]["job_id"].as_u64().unwrap();
+        let mut ack = serde_json::json!({"seat":"pij-reader","job_id":id});
+        if state == "failed" {
+            ack["delivery_outcome"] = "undelivered:harness-swallowed".into();
+        }
+        assert_eq!(
+            redelivery_request(
+                client
+                    .post(format!("http://{addr}/v1/inbox/ack"))
+                    .json(&ack),
+            )
+            .await["ok"],
+            true
+        );
+        let before = spine.tail(None, pij_core::model::Seq(0)).await.unwrap();
+        let before_row: (String, Option<i64>, Option<i64>) =
+            sqlx::query_as("SELECT state,claimed_at,acked_at FROM jobs WHERE id=?")
+                .bind(id as i64)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        let heartbeat = redelivery_request(
+            client
+                .post(format!("http://{addr}/v1/inbox/heartbeat"))
+                .json(&serde_json::json!({"seat":"pij-reader","job_id":id})),
+        )
+        .await;
+        assert_eq!(heartbeat["ok"], true, "{heartbeat}");
+        assert_eq!(
+            heartbeat["data"],
+            serde_json::json!({"job_id":id,"state":state})
+        );
+        assert_eq!(
+            spine.tail(None, pij_core::model::Seq(0)).await.unwrap(),
+            before
+        );
+        let after_row: (String, Option<i64>, Option<i64>) =
+            sqlx::query_as("SELECT state,claimed_at,acked_at FROM jobs WHERE id=?")
+                .bind(id as i64)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(after_row, before_row);
+        let wrong_recipient = redelivery_request(
+            client
+                .post(format!("http://{addr}/v1/inbox/heartbeat"))
+                .json(&serde_json::json!({"seat":"pij-stranger","job_id":id})),
+        )
+        .await;
+        assert_eq!(wrong_recipient["ok"], false);
+        server.abort();
+    }
+}
+
+#[tokio::test]
+async fn redelivery_heartbeat_rejects_wrong_recipient_control_pending_and_native_claims() {
     for case in [
         "wrong-recipient",
         "control",
-        "terminal",
         "pending",
         "native",
         "tombstoned",
@@ -396,15 +471,6 @@ async fn redelivery_heartbeat_rejects_wrong_recipient_control_terminal_and_nativ
                 .execute(&pool)
                 .await
                 .unwrap();
-            }
-            "terminal" => {
-                let ack = redelivery_request(
-                    client
-                        .post(format!("http://{addr}/v1/inbox/ack"))
-                        .json(&serde_json::json!({"seat":"pij-reader","job_id":id})),
-                )
-                .await;
-                assert_eq!(ack["ok"], true, "{ack}");
             }
             "pending" => {
                 id = sqlx::query_scalar::<_, i64>("SELECT id FROM jobs WHERE state='pending'")

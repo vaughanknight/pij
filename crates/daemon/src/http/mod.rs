@@ -2012,7 +2012,13 @@ async fn heartbeat_inbox(
         .heartbeat_inbox(&request.seat, request.job_id)
         .await
     {
-        Ok(()) => envelope(StatusCode::OK, &Envelope::ok("pij inbox", request.job_id)),
+        Ok(job_state) => envelope(
+            StatusCode::OK,
+            &Envelope::ok(
+                "pij inbox",
+                serde_json::json!({"job_id": request.job_id, "state": job_state}),
+            ),
+        ),
         Err(error) => inbox_failure(error),
     }
 }

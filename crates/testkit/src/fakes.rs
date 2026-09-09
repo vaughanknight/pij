@@ -431,6 +431,7 @@ struct QueueState {
     lease_expirations: HashMap<u64, u32>,
     parked: Vec<pij_core::ports::ParkedDelivery>,
     acked: Vec<(JobId, Outcome)>,
+    completed: HashMap<u64, (Job, &'static str)>,
     retried: Vec<(JobId, Duration)>,
     attempts: HashMap<u64, u32>,
     not_before: HashMap<u64, Duration>,
@@ -763,6 +764,37 @@ impl Queue for FakeQueue {
             .map(|(claimed, _)| claimed.clone()))
     }
 
+    async fn terminal_delivery_state(
+        &self,
+        job: JobId,
+        recipient: &SeatId,
+    ) -> Result<Option<&'static str>> {
+        let state = self.state.lock().expect("fake queue mutex");
+        let terminal = state
+            .completed
+            .get(&job.0)
+            .map(|(job, status)| (job, *status))
+            .or_else(|| {
+                state
+                    .parked
+                    .iter()
+                    .find(|row| row.job_id == job)
+                    .map(|row| (&row.job, "failed"))
+            });
+        let Some((body, status)) = terminal else {
+            return Ok(None);
+        };
+        let valid = body.kind.strip_prefix("delivery:") == Some(recipient.as_str())
+            && body.serial_key == recipient.as_str()
+            && serde_json::from_str::<serde_json::Value>(&body.payload)
+                .ok()
+                .is_some_and(|value| {
+                    value.get("to").and_then(serde_json::Value::as_str) == Some(recipient.as_str())
+                        && value.get("command").is_none_or(serde_json::Value::is_null)
+                });
+        Ok(valid.then_some(status))
+    }
+
     async fn heartbeat_delivery(
         &self,
         job: JobId,
@@ -796,12 +828,17 @@ impl Queue for FakeQueue {
         // `ack` did not, so the fake accepted a call the real adapter rejects and
         // no instrument compared them (review F6). A fake is a claim about the
         // real adapter, and this one was false in the direction that hides bugs.
-        if state.claimed.remove(&job.0).is_none() {
+        let Some((completed, _)) = state.claimed.remove(&job.0) else {
             return Err(PijError::Adapter {
                 adapter: "testkit/fake-queue".to_string(),
                 message: format!("job {} is not running, so it cannot be acked", job.0),
             });
-        }
+        };
+        let status = match &outcome {
+            Outcome::Done => "done",
+            Outcome::Failed { .. } => "failed",
+        };
+        state.completed.insert(job.0, (completed, status));
         state.acked.push((job, outcome));
         Ok(())
     }
@@ -889,11 +926,13 @@ impl Queue for FakeQueue {
             }
         });
         state.acked.push((job, Outcome::Done));
-        Ok(DeliveryAck {
-            recipient: SeatId(claimed.serial_key),
-            msg_id: claimed.dedupe_key,
+        let ack = DeliveryAck {
+            recipient: SeatId(claimed.serial_key.clone()),
+            msg_id: claimed.dedupe_key.clone(),
             origin,
-        })
+        };
+        state.completed.insert(job.0, (claimed, "done"));
+        Ok(ack)
     }
 
     /// R4-AMEND-1. The fake counts attempts too, because a caller that reads

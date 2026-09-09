@@ -112,21 +112,20 @@ Restoration requires an empty editor and no intervening terminal input; human
 typing, submission, or clearing wins. Restored text places the cursor at its end
 and is never submitted as part of the resend.
 
-A reclaimed unconsumed message refreshes claim tracking, never triggers a resend.
-Only the idle-unconsumed detector can resend: a steer queued behind a running turn
-is not lost. Consumption remains deduplicated by message id. Three resends are
-the limit; after the last resend gets its idle consumption window,
-`POST /v1/inbox/ack` with
+A reclaimed unconsumed message refreshes claim tracking, never directly resends.
+Consumption remains deduplicated by message id. The boundary recovery below and
+idle fallback share a three-resend limit; after the last resend gets its idle
+consumption window, `POST /v1/inbox/ack` with
 `"delivery_outcome":"undelivered:harness-swallowed"` terminally fails the claim
-instead of recording successful delivery. Escape retains this idle recovery path.
+instead of recording successful delivery. Escape can trigger the boundary recovery.
 
 Extension body claims use `PIJ_RS_EXT_CLAIM_LEASE_SECS` (default `60`).
 While holding an unconsumed claim, the extension sends
 `POST /v1/inbox/heartbeat` with `{"seat":"<seat>","job_id":123}` every 20s.
-The successful v2 envelope has `data:123`; renewal resets `claimed_at` without
-incrementing `lease_expirations`, acknowledging consumption, or recording
-`ReaderRead`. Only the recipient's running OMP/Pi body claim can renew; wrong
-recipients, controls, and terminal claims refuse.
+The successful v2 envelope has `data:{"job_id":123,"state":"running"}`; renewal
+resets `claimed_at` without incrementing `lease_expirations`, acknowledging
+consumption, or recording `ReaderRead`. A recipient-owned terminal body returns
+`state:"done"` or `"failed"` without mutation; wrong recipients and controls refuse.
 
 At expiry, a live seat persisted as `working` renews rather than spending a lease.
 This working-state check is a **one-directional safety interlock (brake)**:
@@ -136,6 +135,14 @@ expirations park the job as `state:"failed"` with
 turns do not count as extension failure. Parking remains a **policy**: it changes
 the delivery outcome. Neither leases nor resends replay remote controls or change
 Claude/Copilot delivery.
+
+### Compaction and resend
+
+- `session_before_compact` suspends claims/resends; `session_compact` re-polls on the next 1s tick, even without a push callback.
+- The first observed `tool_result`, `turn_end`, or `agent_end` grants one prompt resend after `BOUNDARY_RESEND_GRACE_MS` (1000ms), even while busy; matching `message_start` cancels it.
+- Compaction defers that resend until the bracket closes; later retries retain the 10s idle fallback and the shared three-resend limit.
+- Heartbeat runs every 20s and before resend; daemon `done`/`failed` state drops pending tracking without reinjection and clears its badge.
+- Test-only `PIJ_TEST_SWALLOW_INJECT=1` drops OMP custom peer injections for isolated-daemon proof; it does not drop prompt resends.
 
 ```bash
 pij-rs inbox --seat <seat> --peek --json

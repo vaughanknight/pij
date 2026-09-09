@@ -1,0 +1,11 @@
+Command: VITEST_MAX_WORKERS=4 VITEST_MAX_THREADS=4 harness checks --json
+CWD: /Users/jordanknight/pi-hacking/fs3-omp-post-compaction
+Completion: exit 0; tool job bg_18 completed, wall 155.91 seconds.
+Observed final response fields:
+  command: checks
+  status: ok
+  timestamp: 2026-09-09T04:12:40.891Z
+  data.ok: true
+  data.ran: local-paths, typecheck, lint, test, copilot-native, windows-compat, smoke, pkg-audit, snapshots, pij-commit-trailers
+  data.skipped: []
+The tool display truncated the long one-line per-sensor JSON. These are extracted observed fields, not a fabricated full envelope. harness-gate.json retains the preceding complete successful envelope (before the final startup-peek guard/regression), with nine pass results and the pre-existing commit-attribution advisory warning.

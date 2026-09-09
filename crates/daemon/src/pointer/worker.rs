@@ -1957,6 +1957,14 @@ mod tests {
             self.inner.claimed_delivery(job).await
         }
 
+        async fn terminal_delivery_state(
+            &self,
+            job: JobId,
+            recipient: &SeatId,
+        ) -> pij_core::error::Result<Option<&'static str>> {
+            self.inner.terminal_delivery_state(job, recipient).await
+        }
+
         async fn ack(&self, job: JobId, outcome: Outcome) -> pij_core::error::Result<()> {
             self.inner.ack(job, outcome).await
         }

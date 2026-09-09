@@ -62,6 +62,13 @@ export class PiRuntimeAdapter implements PiRuntimePort {
 		} else if (this.runtimeBin === "omp" || messageId !== undefined) {
 			// Peer messages carry native consumption identity, never user attribution:
 			// OMP must not restore them into the human's draft on Escape.
+			// Test-only fault injection for isolated-daemon swallowed-custom-mail proofs.
+			if (
+				this.runtimeBin === "omp" &&
+				messageId !== undefined &&
+				process.env.PIJ_TEST_SWALLOW_INJECT === "1"
+			)
+				return;
 			this.pi.sendMessage(
 				{
 					customType: "pij",

@@ -618,6 +618,13 @@ pub async fn queue_contract(queue: &dyn Queue) {
             .await
             .expect("pending heartbeat")
     );
+    assert_eq!(
+        queue
+            .terminal_delivery_state(held_id, &holder)
+            .await
+            .expect("pending state"),
+        None
+    );
     queue
         .claim(&held_kinds, holder.as_str())
         .await
@@ -674,6 +681,13 @@ pub async fn queue_contract(queue: &dyn Queue) {
             .await
             .expect("new attempt heartbeat")
     );
+    assert_eq!(
+        queue
+            .terminal_delivery_state(held_id, &holder)
+            .await
+            .expect("running state"),
+        None
+    );
     queue
         .ack_delivery(held_id, DeliveryOrigin::ReaderRead)
         .await
@@ -683,6 +697,20 @@ pub async fn queue_contract(queue: &dyn Queue) {
             .heartbeat_delivery(held_id, &holder, 1)
             .await
             .expect("terminal heartbeat")
+    );
+    assert_eq!(
+        queue
+            .terminal_delivery_state(held_id, &holder)
+            .await
+            .expect("done state"),
+        Some("done")
+    );
+    assert_eq!(
+        queue
+            .terminal_delivery_state(held_id, &SeatId::from("pij-wrong"))
+            .await
+            .expect("foreign state"),
+        None
     );
     for (dedupe, payload) in [
         (
@@ -720,6 +748,13 @@ pub async fn queue_contract(queue: &dyn Queue) {
             .ack(rejected_id, Outcome::Done)
             .await
             .expect("finish excluded claim");
+        assert_eq!(
+            queue
+                .terminal_delivery_state(rejected_id, &holder)
+                .await
+                .expect("excluded terminal state"),
+            None
+        );
     }
 }
 

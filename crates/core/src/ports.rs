@@ -294,6 +294,14 @@ pub trait Queue: Send + Sync {
     /// acknowledgement must still validate the running claim.
     async fn claimed_delivery(&self, job: JobId) -> Result<Option<Job>>;
 
+    /// Inspect the terminal state of this recipient's body delivery without mutation.
+    /// Unknown, live, foreign and control jobs return `None`.
+    async fn terminal_delivery_state(
+        &self,
+        job: JobId,
+        recipient: &SeatId,
+    ) -> Result<Option<&'static str>>;
+
     /// Refresh only the named recipient's running body claim at this attempt.
     /// False means the claim changed, is not a body, or belongs to another seat.
     /// No acknowledgement, delivered-id evidence, attempt, or expiry is recorded.

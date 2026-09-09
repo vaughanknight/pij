@@ -28,6 +28,11 @@ export interface DaemonLocation {
 	readonly stateDir: string;
 }
 
+export interface InboxHeartbeat {
+	readonly job_id: number;
+	readonly state: "running" | "done" | "failed";
+}
+
 interface FederatedRoster {
 	readonly seats: readonly RustSeatDescriptor[];
 	readonly unavailable: readonly { readonly machine: string; readonly reason: string }[];
@@ -178,9 +183,9 @@ export class PijDaemonClient {
 		});
 	}
 
-	/** Keep a running body claim alive without acknowledging native consumption. */
-	heartbeatInbox(seat: string, jobId: number): Promise<number> {
-		return this.post<number>("/v1/inbox/heartbeat", { seat, job_id: jobId });
+	/** Renew a running body claim, or observe that another consumer already settled it. */
+	heartbeatInbox(seat: string, jobId: number): Promise<InboxHeartbeat> {
+		return this.post<InboxHeartbeat>("/v1/inbox/heartbeat", { seat, job_id: jobId });
 	}
 
 	hold(request: HoldRequest): Promise<HoldResponse> {
