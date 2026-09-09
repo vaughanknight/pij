@@ -693,6 +693,9 @@ impl RegistrationService {
             descriptor.cross_session_inbound_accept = Some(true);
         }
         descriptor.folder = claim.folder;
+        // Build identity describes this registration, never a prior incarnation.
+        descriptor.extension_build = claim.extension_build;
+        descriptor.extension_path = claim.extension_path;
         descriptor.pane = claim.pane;
         descriptor.proc = proc;
         if descriptor.spawn_id.is_none() {
@@ -1414,6 +1417,8 @@ mod tests {
             id: id.to_string(),
             harness: "copilot".to_string(),
             folder: "/isolated/native-registration".to_string(),
+            extension_build: None,
+            extension_path: None,
             pane: Some("%137".to_string()),
             pid: Some(HOST.pid),
             proc_start: Some(HOST.proc_start),
@@ -2794,6 +2799,8 @@ mod tests {
             id: "pij-claude-config".to_string(),
             harness: Harness::Claude.as_str().to_string(),
             folder: root.display().to_string(),
+            extension_build: None,
+            extension_path: None,
             pane: None,
             pid: Some(4242),
             proc_start: Some(126),

@@ -100,6 +100,8 @@ impl ClaudeBinder {
             id: seat.id.to_string(),
             harness: Harness::Claude.as_str().to_string(),
             folder: seat.folder.clone(),
+            extension_build: None,
+            extension_path: None,
             pane: seat.pane.clone(),
             pid: Some(record.pid),
             proc_start: Some(observed_start),

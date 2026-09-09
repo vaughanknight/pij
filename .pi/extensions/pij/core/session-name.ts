@@ -15,10 +15,14 @@ export async function publishSeatName(
 	self: string,
 	generation: "rs" | "legacy",
 	schedule: readonly number[] = DEFAULT_SESSION_NAME_SCHEDULE_MS,
+	extensionBuild?: string,
 ): Promise<{ took: boolean; attempts: number }> {
-	const nativeName = `${generation}·${self}`;
+	const extension = generation === "rs" && extensionBuild ? ` · ext ${extensionBuild}` : "";
+	const nativeName = `${generation}·${self}${extension}`;
 	const statusText =
-		generation === "rs" ? `\u001b[33mrs\u001b[0m ${self}` : `\u001b[2mlegacy\u001b[0m ${self}`;
+		generation === "rs"
+			? `\u001b[33mrs\u001b[0m ${self}${extension}`
+			: `\u001b[2mlegacy\u001b[0m ${self}`;
 	try {
 		deps.setStatus(PIJ_STATUS_KEY, statusText);
 	} catch {

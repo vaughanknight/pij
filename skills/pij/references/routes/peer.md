@@ -20,6 +20,8 @@ pij node show <seat> --json
 
 `--json` forwards the complete original v2 envelope; ids live in its real `data`, not a legacy rewrapped object. Shim list forwards exact `--harness <h>`, `--folder <path>`, `--parent <seat>` and `--scope local`. Both shim and native `pij-rs list --here` select the caller's canonical cwd; `--here` is boolean, not a path argument. Sessions has no filters and never unions TS telemetry. Legacy `--role`, `--prime` and `--archived` remain refused. Node show supplies the rs subtree and linked records. RoleService supplies string or null; omitted role preserves existing assertion, explicit unset uses `pij role <seat> --unset`.
 
+`pij whoami` shows the loaded Pi/OMP `extension_build` and real `extension_path`; current-daemon null means a pre-144/unreported build (older daemons omit the keys), never infer it from the seat cwd or today's HEAD. Use `pij list --json` for roster build identity.
+
 Parent is the rs descriptor's recorded `parent`, not a spawnedBy fallback. Supply `--parent` when creating/adopting within its supported admission contract. `pij link`/`tree` refuse: no existing-seat reparent/root-placement port exists, and a role change cannot stand in for a structural link.
 
 Verified external/paneless seats use `pij inbox register --json`, then `pij inbox --wait` from the same native host/session (C1). Native admission derives the matching long-lived host incarnation, never the short-lived CLI's pid; missing/conflicting evidence refuses. Paneless adopt remains unported. Never guess/discover a pane or start a competing extension receiver.

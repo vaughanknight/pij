@@ -1,0 +1,4 @@
+    Checking pij-store v0.1.0 (/Users/jordanknight/pi-hacking/fs3-extension-build/crates/store)
+    Checking pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-extension-build/crates/daemon)
+    Checking pij-cli v0.1.0 (/Users/jordanknight/pi-hacking/fs3-extension-build/crates/cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 10.67s

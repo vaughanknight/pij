@@ -1,0 +1,19 @@
+(node:82899) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-extension-build
+
+ ✓ .pi/extensions/pij/core/session-name.test.ts (8 tests) 3ms
+ ✓ .pi/extensions/pij/adapters/extension-build.test.ts (13 tests) 913ms
+ ✓ .pi/extensions/pij/index.test.ts (24 tests) 1003ms
+     ✓ reasserts immediately on the first turn when startup publication missed  318ms
+     ✓ cancels a stale retry window on session shutdown  318ms
+ ✓ .pi/extensions/pij/adapters/rust-runtime.test.ts (78 tests) 1567ms
+     ✓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: false)  305ms
+     ✓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: true)  306ms
+
+ Test Files  4 passed (4)
+      Tests  123 passed (123)
+   Start at  13:54:47
+   Duration  1.91s (transform 623ms, setup 0ms, import 1.07s, tests 3.49s, environment 0ms)
+

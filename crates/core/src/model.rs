@@ -266,6 +266,12 @@ pub struct SeatDescriptor {
     /// unknown, not a generated identity.
     #[serde(default, rename = "session")]
     pub harness_session: Option<String>,
+    /// Loaded pij extension build; `None` means no build identity was reported.
+    #[serde(default)]
+    pub extension_build: Option<String>,
+    /// Real directory the registering runtime loaded its pij extension from.
+    #[serde(default)]
+    pub extension_path: Option<String>,
     /// tmux pane, when it has one. `None` means paneless (external pull mode) —
     /// distinct from "we have not looked", which is the absence of the seat.
     pub pane: Option<String>,
@@ -405,6 +411,8 @@ impl SeatDescriptor {
             machine: None,
             harness,
             harness_session: None,
+            extension_build: None,
+            extension_path: None,
             pane: None,
             proc: None,
             folder: folder.into(),

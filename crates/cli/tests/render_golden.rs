@@ -8,6 +8,8 @@ use pij_testkit::golden;
 
 fn registered_seat() -> SeatDescriptor {
     let mut seat = SeatDescriptor::new("pij-cli-golden", Harness::Omp, "/work/pij");
+    seat.extension_build = Some("0123456789+dirty".to_string());
+    seat.extension_path = Some("/work/pij/.pi/extensions/pij".to_string());
     seat.pane = Some("%42".to_string());
     seat.proc = Some(ProcIdentity {
         pid: 4242,

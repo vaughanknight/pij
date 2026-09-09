@@ -1,0 +1,5 @@
+pij session: pij-cloudy-carl
+folder:      /Users/jordanknight/pi-hacking/fs3-extension-build
+state:       idle
+role:        —
+extension: a654d9afb8+dirty (/Users/jordanknight/pi-hacking/fs3-extension-build/.pi/extensions/pij)

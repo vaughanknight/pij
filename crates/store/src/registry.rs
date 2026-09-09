@@ -213,6 +213,8 @@ fn row_to_descriptor(row: &sqlx::sqlite::SqliteRow) -> Result<SeatDescriptor> {
         machine: None,
         harness,
         harness_session,
+        extension_build: row.try_get("extension_build").map_err(adapter_error)?,
+        extension_path: row.try_get("extension_path").map_err(adapter_error)?,
         pane: row.try_get("pane").map_err(adapter_error)?,
         proc,
         folder: row.try_get("folder").map_err(adapter_error)?,
@@ -352,9 +354,10 @@ impl Registry for SqliteRegistry {
         sqlx::query(
             "INSERT INTO seats (id, harness, harness_session, pane, pid, proc_start, folder, state, \
              semantic_state, role, parent, relay, tombstoned_at, tombstone_reason, seq, \
-             spawn_id, model, provider, effort, cross_session_inbound_accept, native_extension_delivery) \
+             spawn_id, model, provider, effort, cross_session_inbound_accept, native_extension_delivery, \
+             extension_build, extension_path) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
-             ?17, ?18, ?19, ?20, ?21) \
+             ?17, ?18, ?19, ?20, ?21, ?22, ?23) \
              ON CONFLICT(id) DO UPDATE SET \
              harness=excluded.harness, harness_session=excluded.harness_session, \
              pane=excluded.pane, pid=excluded.pid, proc_start=excluded.proc_start, \
@@ -366,7 +369,8 @@ impl Registry for SqliteRegistry {
              spawn_id=excluded.spawn_id, model=excluded.model, \
              provider=excluded.provider, effort=excluded.effort, \
              cross_session_inbound_accept=excluded.cross_session_inbound_accept, \
-             native_extension_delivery=excluded.native_extension_delivery",
+             native_extension_delivery=excluded.native_extension_delivery, \
+             extension_build=excluded.extension_build, extension_path=excluded.extension_path",
         )
         .bind(descriptor.id.as_str())
         .bind(descriptor.harness.as_str())
@@ -389,6 +393,8 @@ impl Registry for SqliteRegistry {
         .bind(descriptor.effort.as_deref())
         .bind(descriptor.cross_session_inbound_accept.map(i64::from))
         .bind(i64::from(descriptor.native_extension_delivery))
+        .bind(descriptor.extension_build.as_deref())
+        .bind(descriptor.extension_path.as_deref())
         .execute(&mut *tx)
         .await
         .map_err(adapter_error)?;

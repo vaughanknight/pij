@@ -146,6 +146,8 @@ async function bootPushedEvent(
 	);
 	bindRuntime(runtime, pi);
 	await runtime.boot({
+		extension_build: "0123456789",
+		extension_path: "/abs/extension",
 		folder: "/abs/tree",
 		dataDir: "",
 		eventsPath: "",
@@ -192,6 +194,8 @@ function announceRuntime(
 	const pi = new FakePiRuntime();
 	bindRuntime(runtime, pi);
 	const input = {
+		extension_build: "0123456789",
+		extension_path: "/abs/extension",
 		folder: "/abs/tree",
 		dataDir: "",
 		eventsPath: "",
@@ -401,6 +405,8 @@ describe("RustRuntimeSession", () => {
 		bindRuntime(runtime, new FakePiRuntime());
 		try {
 			const boot = await runtime.boot({
+				extension_build: "0123456789",
+				extension_path: "/abs/extension",
 				folder: "/abs/tree",
 				dataDir: "",
 				eventsPath: "",
@@ -637,6 +643,8 @@ describe("RustRuntimeSession", () => {
 		bindRuntime(runtime, pi);
 
 		const boot = await runtime.boot({
+			extension_build: "0123456789",
+			extension_path: "/abs/extension",
 			folder: "/abs/tree",
 			dataDir: "",
 			eventsPath: "",
@@ -679,6 +687,8 @@ describe("RustRuntimeSession", () => {
 
 		const predecessor = boot.id;
 		const successor = await runtime.boot({
+			extension_build: "0123456789",
+			extension_path: "/abs/extension",
 			folder: "/abs/tree",
 			dataDir: "",
 			eventsPath: "",
@@ -756,6 +766,8 @@ describe("RustRuntimeSession", () => {
 		bindRuntime(runtime, new FakePiRuntime());
 
 		const boot = await runtime.boot({
+			extension_build: "0123456789",
+			extension_path: "/abs/extension",
 			folder: "/abs/tree",
 			dataDir: "",
 			eventsPath: "",
@@ -814,6 +826,8 @@ describe("RustRuntimeSession", () => {
 		const previous = runtime.readSelf()?.id;
 
 		const successor = await runtime.boot({
+			extension_build: "0123456789",
+			extension_path: "/abs/extension",
 			folder: "/abs/tree",
 			dataDir: "",
 			eventsPath: "",
@@ -959,6 +973,8 @@ describe("RustRuntimeSession", () => {
 		const pi = new FakePiRuntime();
 		bindRuntime(runtime, pi);
 		const boot = await runtime.boot({
+			extension_build: "0123456789",
+			extension_path: "/abs/extension",
 			folder: "/abs/tree",
 			dataDir: "",
 			eventsPath: "",
@@ -980,6 +996,13 @@ describe("RustRuntimeSession", () => {
 		expect(new Set(acceptedIds)).toEqual(new Set([boot.id]));
 		expect(registrations.every((claim) => claim.pane === "%42")).toBe(true);
 		expect(registrations.every((claim) => claim.harness_session === "native-session")).toBe(true);
+		// Plan 144 review F1: the register wire is the ONLY producer of build identity;
+		// without this line its loss is indistinguishable from the documented pre-144 null.
+		expect(
+			registrations.every(
+				(claim) => claim.extension_build === "0123456789" && claim.extension_path === "/abs/extension",
+			),
+		).toBe(true);
 		expect(seatReads).toBeGreaterThanOrEqual(2);
 		expect(JSON.parse(eventUrls[1]?.searchParams.get("since") ?? "null")).toEqual({ test: 1 });
 		expect(eventAuthorizations).toEqual(["Bearer old-key", "Bearer new-key"]);
@@ -1306,6 +1329,8 @@ describe("extension-stream delivery", () => {
 		if (autoConsume) bindRuntime(runtime, port);
 		else runtime.setPi(port);
 		await runtime.boot({
+			extension_build: "0123456789",
+			extension_path: "/abs/extension",
 			folder: "/abs/tree",
 			dataDir: "",
 			eventsPath: "",

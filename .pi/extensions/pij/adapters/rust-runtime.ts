@@ -30,8 +30,9 @@ import {
 	type SessionId,
 } from "../core/types.js";
 import type { PijDaemonClient } from "./daemon-http.js";
+import type { ExtensionBuildIdentity } from "./extension-build.js";
 
-interface RustBootInput extends Omit<BootInput, "id"> {
+interface RustBootInput extends Omit<BootInput, "id">, ExtensionBuildIdentity {
 	readonly runtimeBin: "pi" | "omp";
 	readonly piSessionId?: string;
 	readonly actualModel?: string | null;
@@ -868,6 +869,8 @@ function registrationFor(
 		...(supersedes === undefined ? {} : { supersedes }),
 		id,
 		harness: input.runtimeBin,
+		extension_build: input.extension_build,
+		extension_path: input.extension_path,
 		...(input.piSessionId === undefined ? {} : { harness_session: input.piSessionId }),
 		folder: input.folder,
 		...(input.paneId === undefined ? {} : { pane: input.paneId }),

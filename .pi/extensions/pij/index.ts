@@ -10,6 +10,7 @@ import { Type } from "typebox";
 import { FsChannel, pollPrimaryWatchOpts } from "./adapters/channel.js";
 import { type DaemonGeneration, detectDaemonGeneration } from "./adapters/daemon-http.js";
 import { FsEventLog } from "./adapters/event-log.js";
+import { computeExtensionBuildIdentity } from "./adapters/extension-build.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { GitRepositoryAdapter } from "./adapters/git-repository.js";
 import type { CommandControl } from "./adapters/pi-runtime.js";
@@ -42,6 +43,9 @@ import {
 	type SessionNamePublisherDeps,
 } from "./core/session-name.js";
 import type { Role, SessionDescriptor } from "./core/types.js";
+
+// Capture the loaded source once; later HEAD/disk changes must not relabel this runtime.
+const extensionIdentity = computeExtensionBuildIdentity(import.meta.dirname);
 
 // pij — peer session messaging + observability.
 //
@@ -244,7 +248,13 @@ export default function (pi: ExtensionAPI): void {
 			},
 		};
 		ompSessionNamePublication = publication;
-		void publishSeatName(deps, name, daemonGeneration).then((result) => {
+		void publishSeatName(
+			deps,
+			name,
+			daemonGeneration,
+			undefined,
+			extensionIdentity.extension_build,
+		).then((result) => {
 			if (ompSessionNamePublication === publication && result.took) state.took = true;
 		});
 	};
@@ -390,6 +400,7 @@ export default function (pi: ExtensionAPI): void {
 			}
 			rustRuntime.setPi(new PiRuntimeAdapter(pi, ctx, runtimeBin, () => commandControl));
 			const boot = await rustRuntime.boot({
+				...extensionIdentity,
 				role,
 				folder,
 				dataDir: "",
@@ -412,7 +423,11 @@ export default function (pi: ExtensionAPI): void {
 			role = boot.role === "parent" || boot.role === "worker" ? boot.role : undefined;
 			if (runtimeBin === "omp")
 				startOmpSessionNamePublication(ctx, self, "rs", sessionNameGeneration);
-			else ctx.ui.setStatus(PIJ_STATUS_KEY, `${self} · rs-v1`);
+			else
+				ctx.ui.setStatus(
+					PIJ_STATUS_KEY,
+					`${self} · rs-v1 · ext ${extensionIdentity.extension_build}`,
+				);
 			ctx.ui.notify(
 				`pij: detected rs daemon at ${generation.location.addr}; registered ${self}`,
 				"info",
@@ -621,6 +636,7 @@ export default function (pi: ExtensionAPI): void {
 				publication.self,
 				publication.daemonGeneration,
 				[0],
+				extensionIdentity.extension_build,
 			).then((result) => {
 				if (ompSessionNamePublication !== publication || !result.took) return;
 				publication.state.took = true;
