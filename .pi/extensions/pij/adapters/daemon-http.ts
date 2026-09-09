@@ -130,6 +130,13 @@ export async function detectDaemonGeneration(
 }
 
 export class PijDaemonClient {
+	private reconnecting = false;
+
+	/** Inbox recovery defers transport work to the existing stream reconnect loop. */
+	isReconnecting(): boolean {
+		return this.reconnecting;
+	}
+
 	constructor(
 		readonly location: DaemonLocation,
 		private key: string,
@@ -184,8 +191,16 @@ export class PijDaemonClient {
 	}
 
 	/** Renew a running body claim, or observe that another consumer already settled it. */
-	heartbeatInbox(seat: string, jobId: number): Promise<InboxHeartbeat> {
-		return this.post<InboxHeartbeat>("/v1/inbox/heartbeat", { seat, job_id: jobId });
+	async heartbeatInbox(seat: string, jobId: number): Promise<InboxHeartbeat | undefined> {
+		const value = await this.post<unknown>("/v1/inbox/heartbeat", { seat, job_id: jobId });
+		if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+		const row = value as Record<string, unknown>;
+		if (
+			row.job_id !== jobId ||
+			(row.state !== "running" && row.state !== "done" && row.state !== "failed")
+		)
+			return undefined;
+		return { job_id: jobId, state: row.state };
 	}
 
 	hold(request: HoldRequest): Promise<HoldResponse> {
@@ -204,6 +219,7 @@ export class PijDaemonClient {
 		const controller = new AbortController();
 		const cursors = new Map<string, number>();
 		const initial = await this.attachEvents(cursors, controller.signal);
+		this.reconnecting = false;
 		void this.superviseEvents(
 			initial,
 			cursors,
@@ -260,6 +276,7 @@ export class PijDaemonClient {
 			if (signal.aborted) return;
 			if (sawFrame) attempt = 0;
 
+			this.reconnecting = true;
 			onNotice?.("pij: daemon stream lost, reconnecting…");
 			while (!signal.aborted) {
 				const base = Math.min(INITIAL_RECONNECT_MS * 2 ** Math.min(attempt, 5), MAX_RECONNECT_MS);
@@ -272,6 +289,7 @@ export class PijDaemonClient {
 				if (signal.aborted) return;
 				try {
 					stream = await this.attachEvents(cursors, signal);
+					this.reconnecting = false;
 					let cursor = 0;
 					for (const value of cursors.values()) cursor = Math.max(cursor, value);
 					onNotice?.(`pij: re-attached at cursor ${cursor}`);
@@ -283,6 +301,7 @@ export class PijDaemonClient {
 						cursors.clear();
 						try {
 							stream = await this.attachEvents(cursors, signal);
+							this.reconnecting = false;
 							onNotice?.("pij: re-attached live-only");
 							attempt += 1;
 							break;

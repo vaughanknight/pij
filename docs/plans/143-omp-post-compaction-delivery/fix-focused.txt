@@ -1,0 +1,5 @@
+Command: just test .pi/extensions/pij/adapters/rust-runtime.test.ts .pi/extensions/pij/adapters/daemon-http.test.ts
+CWD: /Users/jordanknight/pi-hacking/fs3-omp-post-compaction
+Exit: 0
+Observed Vitest result: 2 files passed; 118 tests passed (rust-runtime 98, daemon-http 20).
+Start: 2026-09-09 14:36:26 local; duration 1.86s; command wall 2.27s.

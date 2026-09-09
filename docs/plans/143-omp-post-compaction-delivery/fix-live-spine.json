@@ -1,0 +1,338 @@
+{
+  "query": "SELECT seq,at,kind,seat,payload FROM spine_events ORDER BY seq",
+  "events": [
+    {
+      "seq": 1,
+      "at": 1788928168267,
+      "kind": "config.claude-inbound-ensured",
+      "seat": null,
+      "payload": "{\"after\":\"accept\",\"before\":null,\"home\":\"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij143-fix-a6tNrF/claude\"}"
+    },
+    {
+      "seq": 2,
+      "at": 1788928168268,
+      "kind": "config.claude-hook-ensured",
+      "seat": null,
+      "payload": "{\"after\":\"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij143-fix-a6tNrF/home/.pij-rs/claude-session-start-pij.sh\",\"before\":null,\"home\":\"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij143-fix-a6tNrF/claude\"}"
+    },
+    {
+      "seq": 3,
+      "at": 1788928168269,
+      "kind": "config.claude-statusline-ensured",
+      "seat": null,
+      "payload": "{\"after\":\"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij143-fix-a6tNrF/home/.pij-rs/claude-statusline-pij.sh\",\"before\":null,\"home\":\"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij143-fix-a6tNrF/claude\"}"
+    },
+    {
+      "seq": 4,
+      "at": 1788928333678,
+      "kind": "seat.put",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"id\":\"pij-reasonable-excuse\",\"harness\":\"omp\",\"session\":\"01a08470-1284-766f-9a6d-70399c1903af\",\"pane\":\"%0\",\"proc\":{\"pid\":39174,\"proc_start\":20260909143211},\"folder\":\"/Users/jordanknight/pi-hacking/fs3-omp-post-compaction\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":\"pij-eastern-guppy\",\"relay\":false,\"native_extension_delivery\":false}"
+    },
+    {
+      "seq": 5,
+      "at": 1788928399150,
+      "kind": "message.pushed",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"c7a9ec26-629f-49c6-8ff6-567de4f3d34e\",\"from\":\"test:pij143-drain\",\"body\":\"Acknowledge PIJ143_HEALTHY_1_c7a9ec26-629f-49c6-8ff6-567de4f3d34e after finishing the requested sleep sequence. Do not alter that sequence.\"}"
+    },
+    {
+      "seq": 6,
+      "at": 1788928399150,
+      "kind": "delivery.outcome",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"c7a9ec26-629f-49c6-8ff6-567de4f3d34e\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+    },
+    {
+      "seq": 7,
+      "at": 1788928405203,
+      "kind": "delivery.outcome",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"c7a9ec26-629f-49c6-8ff6-567de4f3d34e\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+    },
+    {
+      "seq": 8,
+      "at": 1788928405203,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"job_id\":1,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 9,
+      "at": 1788928407881,
+      "kind": "message.pushed",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"2e505ff6-8043-4b01-8d2e-eb9a66de837b\",\"from\":\"test:pij143-drain\",\"body\":\"Acknowledge PIJ143_HEALTHY_2_2e505ff6-8043-4b01-8d2e-eb9a66de837b after finishing the requested sleep sequence. Do not alter that sequence.\"}"
+    },
+    {
+      "seq": 10,
+      "at": 1788928407881,
+      "kind": "delivery.outcome",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"2e505ff6-8043-4b01-8d2e-eb9a66de837b\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+    },
+    {
+      "seq": 11,
+      "at": 1788928413889,
+      "kind": "delivery.outcome",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"2e505ff6-8043-4b01-8d2e-eb9a66de837b\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+    },
+    {
+      "seq": 12,
+      "at": 1788928413889,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"job_id\":2,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 13,
+      "at": 1788928415866,
+      "kind": "message.pushed",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"1f3b64be-e3ce-43ca-8e71-deca9315e3bb\",\"from\":\"test:pij143-drain\",\"body\":\"Acknowledge PIJ143_HEALTHY_3_1f3b64be-e3ce-43ca-8e71-deca9315e3bb after finishing the requested sleep sequence. Do not alter that sequence.\"}"
+    },
+    {
+      "seq": 14,
+      "at": 1788928415866,
+      "kind": "delivery.outcome",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"1f3b64be-e3ce-43ca-8e71-deca9315e3bb\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+    },
+    {
+      "seq": 15,
+      "at": 1788928421870,
+      "kind": "delivery.outcome",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"1f3b64be-e3ce-43ca-8e71-deca9315e3bb\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+    },
+    {
+      "seq": 16,
+      "at": 1788928421871,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"job_id\":3,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 17,
+      "at": 1788928424085,
+      "kind": "message.pushed",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"73c066cf-5332-40d2-88aa-e31110b164e4\",\"from\":\"test:pij143-drain\",\"body\":\"Acknowledge PIJ143_HEALTHY_4_73c066cf-5332-40d2-88aa-e31110b164e4 after finishing the requested sleep sequence. Do not alter that sequence.\"}"
+    },
+    {
+      "seq": 18,
+      "at": 1788928424085,
+      "kind": "delivery.outcome",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"73c066cf-5332-40d2-88aa-e31110b164e4\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+    },
+    {
+      "seq": 19,
+      "at": 1788928430100,
+      "kind": "delivery.outcome",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"73c066cf-5332-40d2-88aa-e31110b164e4\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+    },
+    {
+      "seq": 20,
+      "at": 1788928430101,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"job_id\":4,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 21,
+      "at": 1788928431663,
+      "kind": "message.pushed",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"5f835477-7abd-439d-96d8-a5b3652f12b6\",\"from\":\"test:pij143-drain\",\"body\":\"Acknowledge PIJ143_HEALTHY_5_5f835477-7abd-439d-96d8-a5b3652f12b6 after finishing the requested sleep sequence. Do not alter that sequence.\"}"
+    },
+    {
+      "seq": 22,
+      "at": 1788928431663,
+      "kind": "delivery.outcome",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"5f835477-7abd-439d-96d8-a5b3652f12b6\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+    },
+    {
+      "seq": 23,
+      "at": 1788928437780,
+      "kind": "delivery.outcome",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"5f835477-7abd-439d-96d8-a5b3652f12b6\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+    },
+    {
+      "seq": 24,
+      "at": 1788928437785,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"job_id\":5,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 25,
+      "at": 1788928625796,
+      "kind": "seat.put",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"id\":\"pij-reasonable-excuse\",\"harness\":\"omp\",\"session\":\"01a08474-87de-7795-95f2-5c5d8fead139\",\"pane\":\"%0\",\"proc\":{\"pid\":12904,\"proc_start\":20260909143704},\"folder\":\"/Users/jordanknight/pi-hacking/fs3-omp-post-compaction\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":\"pij-eastern-guppy\",\"relay\":false,\"native_extension_delivery\":false}"
+    },
+    {
+      "seq": 26,
+      "at": 1788928660473,
+      "kind": "message.pushed",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"848bd447-4717-4469-8501-9ffb7d05650b\",\"from\":\"test:pij143-offline\",\"body\":\"Reply with PIJ143_OFFLINE_RECOVERED. No tools.\"}"
+    },
+    {
+      "seq": 27,
+      "at": 1788928660473,
+      "kind": "delivery.outcome",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"848bd447-4717-4469-8501-9ffb7d05650b\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+    },
+    {
+      "seq": 28,
+      "at": 1788928670873,
+      "kind": "delivery.outcome",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"848bd447-4717-4469-8501-9ffb7d05650b\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+    },
+    {
+      "seq": 29,
+      "at": 1788928670874,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"job_id\":6,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 30,
+      "at": 1788928706395,
+      "kind": "message.pushed",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"a3041991-12ef-47d9-b598-ed84fd63b37b\",\"from\":\"test:pij143-offline\",\"body\":\"Reply with PIJ143_OFFLINE_RETRY_RECOVERED. No tools.\"}"
+    },
+    {
+      "seq": 31,
+      "at": 1788928706395,
+      "kind": "delivery.outcome",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"a3041991-12ef-47d9-b598-ed84fd63b37b\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+    },
+    {
+      "seq": 32,
+      "at": 1788928716906,
+      "kind": "delivery.outcome",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"a3041991-12ef-47d9-b598-ed84fd63b37b\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+    },
+    {
+      "seq": 33,
+      "at": 1788928716907,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"job_id\":7,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 34,
+      "at": 1788928740690,
+      "kind": "message.pushed",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"f284054a-e7f8-471b-80bf-6cd330169074\",\"from\":\"test:pij143-offline\",\"body\":\"Reply with PIJ143_AUTHORITY_OFFLINE_RECOVERED. No tools.\"}"
+    },
+    {
+      "seq": 35,
+      "at": 1788928740690,
+      "kind": "delivery.outcome",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"f284054a-e7f8-471b-80bf-6cd330169074\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+    },
+    {
+      "seq": 36,
+      "at": 1788928769920,
+      "kind": "delivery.outcome",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"f284054a-e7f8-471b-80bf-6cd330169074\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+    },
+    {
+      "seq": 37,
+      "at": 1788928769920,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"job_id\":8,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    }
+  ],
+  "jobs": [
+    {
+      "id": 1,
+      "dedupe_key": "c7a9ec26-629f-49c6-8ff6-567de4f3d34e",
+      "state": "done",
+      "claimed_at": 1788928399,
+      "acked_at": 1788928405,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "id": 2,
+      "dedupe_key": "2e505ff6-8043-4b01-8d2e-eb9a66de837b",
+      "state": "done",
+      "claimed_at": 1788928407,
+      "acked_at": 1788928413,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "id": 3,
+      "dedupe_key": "1f3b64be-e3ce-43ca-8e71-deca9315e3bb",
+      "state": "done",
+      "claimed_at": 1788928415,
+      "acked_at": 1788928421,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "id": 4,
+      "dedupe_key": "73c066cf-5332-40d2-88aa-e31110b164e4",
+      "state": "done",
+      "claimed_at": 1788928424,
+      "acked_at": 1788928430,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "id": 5,
+      "dedupe_key": "5f835477-7abd-439d-96d8-a5b3652f12b6",
+      "state": "done",
+      "claimed_at": 1788928431,
+      "acked_at": 1788928437,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "id": 6,
+      "dedupe_key": "848bd447-4717-4469-8501-9ffb7d05650b",
+      "state": "done",
+      "claimed_at": 1788928670,
+      "acked_at": 1788928670,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "id": 7,
+      "dedupe_key": "a3041991-12ef-47d9-b598-ed84fd63b37b",
+      "state": "done",
+      "claimed_at": 1788928716,
+      "acked_at": 1788928716,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "id": 8,
+      "dedupe_key": "f284054a-e7f8-471b-80bf-6cd330169074",
+      "state": "done",
+      "claimed_at": 1788928740,
+      "acked_at": 1788928769,
+      "attempt": 0,
+      "lease_expirations": 0
+    }
+  ]
+}

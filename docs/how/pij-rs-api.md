@@ -138,10 +138,10 @@ Claude/Copilot delivery.
 
 ### Compaction and resend
 
-- `session_before_compact` suspends claims/resends; `session_compact` re-polls on the next 1s tick, even without a push callback.
-- The first observed `tool_result`, `turn_end`, or `agent_end` grants one prompt resend after `BOUNDARY_RESEND_GRACE_MS` (1000ms), even while busy; matching `message_start` cancels it.
-- Compaction defers that resend until the bracket closes; later retries retain the 10s idle fallback and the shared three-resend limit.
-- Heartbeat runs every 20s and before resend; daemon `done`/`failed` state drops pending tracking without reinjection and clears its badge.
+- `session_before_compact` suspends claims/resends. The first `session_compact`, `turn_start`, `agent_end`, or `message_start` releases the latch and re-polls on the next 1s tick, even without a push callback. Aborted compaction need not emit `session_compact`; a wall-clock ceiling (`PIJ_COMPACTION_LATCH_MAX_MS`, default 120000ms) also releases it and captures `delivery.compaction-repoll` with boundary `ceiling`.
+- The first observed `tool_result`, `turn_end`, or `agent_end` grants one prompt resend after `PIJ_BOUNDARY_GRACE_MS` (default 2000ms), even while busy; matching `message_start` cancels it. The default is max(2× measured OMP drain p95, 2s): five healthy busy-seat samples gave p95=139ms. This rule applies to both OMP and Pi.
+- Compaction defers that resend until the latch releases; later retries retain the 10s idle fallback and the shared three-resend limit. Both timing overrides accept positive safe-integer milliseconds; invalid values use the default.
+- Heartbeat runs every 20s and before resend; only a validated, matching-job `done`/`failed` response drops pending tracking without reinjection. Legacy/unknown data and heartbeat errors retain the idle resend/parking path, not busy-boundary recovery; failed/unknown forced probes cannot bypass the 20s heartbeat throttle. During stream reconnection, inbox transport work waits for the existing exponential reconnect backoff, while local idle resends remain available.
 - Test-only `PIJ_TEST_SWALLOW_INJECT=1` drops OMP custom peer injections for isolated-daemon proof; it does not drop prompt resends.
 
 ```bash

@@ -73,11 +73,15 @@ Expired claims terminate with unknown-outcome/missing-ack, never replay; refused
 **OMP/Pi body recovery** ([wire contract](../../../../docs/how/pij-rs-api.md#extension-inbox-recovery)):
 unconsumed delivery idle for `PIJ_REDELIVER_IDLE_MS` (default 10s) resends through
 the prompt path, marked `[pij resend n]`; lease reclaim only refreshes tracking.
-The first observed agent boundary grants one grace-delayed prompt resend even
-while busy; native consumption cancels it, compaction defers it, and later retries
-retain the idle rule. Compaction end also re-polls for missed pushes.
-Every 20s and before resend the extension heartbeats (`seat`, `job_id`): running
-claims renew without ACK; `done`/`failed` clears tracking without reinjection.
+The first observed agent boundary grants one prompt resend after `PIJ_BOUNDARY_GRACE_MS`
+(default 2s) even while busy; native consumption cancels it and later retries retain
+the idle rule. Compaction defers delivery until `session_compact`, `turn_start`,
+`agent_end`, `message_start`, or the `PIJ_COMPACTION_LATCH_MAX_MS` ceiling (default 120s);
+release re-polls for missed pushes. Every 20s and before resend the extension heartbeats
+(`seat`, `job_id`): running claims renew without ACK; validated matching-job
+`done`/`failed` clears tracking without reinjection. Unknown/legacy/error responses
+preserve idle recovery with a 20s probe throttle; stream outages defer transport
+work to the existing reconnect backoff, never suppressing local idle resends.
 Live `working` seats also renew at expiry (a one-directional safety interlock).
 Three resends without consumption park as `undelivered:harness-swallowed`; three silent,
 unprotected expired leases (default 60s, `PIJ_RS_EXT_CLAIM_LEASE_SECS`) park as

@@ -1,0 +1,1 @@
+bash harness/scripts/pij-skill-check.sh

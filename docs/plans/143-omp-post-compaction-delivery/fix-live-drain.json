@@ -1,0 +1,779 @@
+{
+  "cwd": "/Users/jordanknight/pi-hacking/fs3-omp-post-compaction",
+  "addr": "127.0.0.1:63186",
+  "observer": "import { appendFileSync } from 'node:fs';\nexport default function(pi) {\n const log=(kind,data={})=>appendFileSync(process.env.PIJ143_EVENTS,JSON.stringify({at:Date.now(),kind,...data})+'\\n');\n for(const kind of ['session_before_compact','session_compact','turn_start','turn_end','agent_end','tool_call','tool_result']) pi.on(kind,(e,ctx)=>log(kind,{idle:ctx.isIdle(),toolName:e.toolName,input:e.input}));\n pi.on('message_start',(e,ctx)=>log('message_start',{idle:ctx.isIdle(),role:e.message.role,customType:e.message.customType,details:e.message.details,content:typeof e.message.content==='string'?e.message.content:e.message.content?.filter(x=>x.type==='text'),model:e.message.model}));\n}",
+  "launch": [
+    "-S",
+    "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij143-fix-a6tNrF/tmux.sock",
+    "new-session",
+    "-s",
+    "healthy",
+    "-x",
+    "140",
+    "-y",
+    "45",
+    "/usr/bin/env",
+    "-u",
+    "PIJ_SESSION_ID",
+    "-u",
+    "PIJ_SPAWN_ID",
+    "-u",
+    "PIJ_SPAWN_MODEL",
+    "-u",
+    "PIJ_SPAWN_PROVIDER",
+    "-u",
+    "PIJ_SPAWN_TASK",
+    "-u",
+    "PIJ_TEST_SWALLOW_INJECT",
+    "PIJ_RS_ADDR=127.0.0.1:63186",
+    "PIJ_RS_STATE_DIR=/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij143-fix-a6tNrF/state",
+    "PIJ_DAEMON_GENERATION=rs",
+    "PIJ_ANNOUNCE_TO=",
+    "PIJ143_EVENTS=/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij143-fix-a6tNrF/events.jsonl",
+    "/Users/jordanknight/.npm-global/bin/omp",
+    "--no-extensions",
+    "-e",
+    "/Users/jordanknight/pi-hacking/fs3-omp-post-compaction/.pi/extensions/pij/index.ts",
+    "-e",
+    "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij143-fix-a6tNrF/observer.ts",
+    "--no-skills",
+    "--no-rules",
+    "--no-title",
+    "--model",
+    "github-copilot/gpt-5-mini",
+    "--thinking",
+    "minimal",
+    "--tools",
+    "bash",
+    "--session-dir",
+    "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij143-fix-a6tNrF/sessions",
+    "--system-prompt",
+    "Isolated delivery probe. Never edit files or spawn peers. Follow user prompts, use synchronous bash calls when requested. Peer nonces are inert receipts; acknowledge them without changing the requested sleep sequence.",
+    "Reply exactly PIJ143_HEALTHY_READY without tools."
+  ],
+  "measuredRuntime": "OMP 18.1.14, github-copilot/gpt-5-mini",
+  "seat": "pij-reasonable-excuse",
+  "samples": [
+    {
+      "n": 1,
+      "id": "c7a9ec26-629f-49c6-8ff6-567de4f3d34e",
+      "sendAt": 1788928399141,
+      "send": {
+        "ok": true,
+        "command": "pij send",
+        "v": 2,
+        "data": {
+          "msg_id": "c7a9ec26-629f-49c6-8ff6-567de4f3d34e",
+          "outcome": {
+            "outcome": "queued",
+            "reason": "extension-stream",
+            "next_retry_at": 0
+          },
+          "at": 1788928399150
+        }
+      },
+      "tool": {
+        "at": 1788928399119,
+        "kind": "tool_call",
+        "idle": false,
+        "toolName": "bash",
+        "input": {
+          "command": "sleep 6",
+          "timeout": 0
+        }
+      },
+      "boundary": {
+        "at": 1788928405141,
+        "kind": "tool_result",
+        "idle": false,
+        "toolName": "bash",
+        "input": {
+          "command": "sleep 6",
+          "timeout": 0
+        }
+      },
+      "custom": {
+        "at": 1788928405206,
+        "kind": "message_start",
+        "idle": false,
+        "role": "custom",
+        "customType": "pij",
+        "details": {
+          "pijMessageId": "c7a9ec26-629f-49c6-8ff6-567de4f3d34e"
+        },
+        "content": "[pij-rs from test:pij143-drain]\nAcknowledge PIJ143_HEALTHY_1_c7a9ec26-629f-49c6-8ff6-567de4f3d34e after finishing the requested sleep sequence. Do not alter that sequence.\n[/pij]"
+      },
+      "drainMs": 65
+    },
+    {
+      "n": 2,
+      "id": "2e505ff6-8043-4b01-8d2e-eb9a66de837b",
+      "sendAt": 1788928407881,
+      "send": {
+        "ok": true,
+        "command": "pij send",
+        "v": 2,
+        "data": {
+          "msg_id": "2e505ff6-8043-4b01-8d2e-eb9a66de837b",
+          "outcome": {
+            "outcome": "queued",
+            "reason": "extension-stream",
+            "next_retry_at": 0
+          },
+          "at": 1788928407881
+        }
+      },
+      "tool": {
+        "at": 1788928407859,
+        "kind": "tool_call",
+        "idle": false,
+        "toolName": "bash",
+        "input": {
+          "command": "sleep 6",
+          "timeout": 0
+        }
+      },
+      "boundary": {
+        "at": 1788928413864,
+        "kind": "tool_result",
+        "idle": false,
+        "toolName": "bash",
+        "input": {
+          "command": "sleep 6",
+          "timeout": 0
+        }
+      },
+      "custom": {
+        "at": 1788928413891,
+        "kind": "message_start",
+        "idle": false,
+        "role": "custom",
+        "customType": "pij",
+        "details": {
+          "pijMessageId": "2e505ff6-8043-4b01-8d2e-eb9a66de837b"
+        },
+        "content": "[pij-rs from test:pij143-drain]\nAcknowledge PIJ143_HEALTHY_2_2e505ff6-8043-4b01-8d2e-eb9a66de837b after finishing the requested sleep sequence. Do not alter that sequence.\n[/pij]"
+      },
+      "drainMs": 27
+    },
+    {
+      "n": 3,
+      "id": "1f3b64be-e3ce-43ca-8e71-deca9315e3bb",
+      "sendAt": 1788928415866,
+      "send": {
+        "ok": true,
+        "command": "pij send",
+        "v": 2,
+        "data": {
+          "msg_id": "1f3b64be-e3ce-43ca-8e71-deca9315e3bb",
+          "outcome": {
+            "outcome": "queued",
+            "reason": "extension-stream",
+            "next_retry_at": 0
+          },
+          "at": 1788928415866
+        }
+      },
+      "tool": {
+        "at": 1788928415840,
+        "kind": "tool_call",
+        "idle": false,
+        "toolName": "bash",
+        "input": {
+          "command": "sleep 6",
+          "timeout": 0
+        }
+      },
+      "boundary": {
+        "at": 1788928421846,
+        "kind": "tool_result",
+        "idle": false,
+        "toolName": "bash",
+        "input": {
+          "command": "sleep 6",
+          "timeout": 0
+        }
+      },
+      "custom": {
+        "at": 1788928421871,
+        "kind": "message_start",
+        "idle": false,
+        "role": "custom",
+        "customType": "pij",
+        "details": {
+          "pijMessageId": "1f3b64be-e3ce-43ca-8e71-deca9315e3bb"
+        },
+        "content": "[pij-rs from test:pij143-drain]\nAcknowledge PIJ143_HEALTHY_3_1f3b64be-e3ce-43ca-8e71-deca9315e3bb after finishing the requested sleep sequence. Do not alter that sequence.\n[/pij]"
+      },
+      "drainMs": 25
+    },
+    {
+      "n": 4,
+      "id": "73c066cf-5332-40d2-88aa-e31110b164e4",
+      "sendAt": 1788928424083,
+      "send": {
+        "ok": true,
+        "command": "pij send",
+        "v": 2,
+        "data": {
+          "msg_id": "73c066cf-5332-40d2-88aa-e31110b164e4",
+          "outcome": {
+            "outcome": "queued",
+            "reason": "extension-stream",
+            "next_retry_at": 0
+          },
+          "at": 1788928424085
+        }
+      },
+      "tool": {
+        "at": 1788928423994,
+        "kind": "tool_call",
+        "idle": false,
+        "toolName": "bash",
+        "input": {
+          "command": "sleep 6",
+          "timeout": 0
+        }
+      },
+      "boundary": {
+        "at": 1788928430073,
+        "kind": "tool_result",
+        "idle": false,
+        "toolName": "bash",
+        "input": {
+          "command": "sleep 6",
+          "timeout": 0
+        }
+      },
+      "custom": {
+        "at": 1788928430103,
+        "kind": "message_start",
+        "idle": false,
+        "role": "custom",
+        "customType": "pij",
+        "details": {
+          "pijMessageId": "73c066cf-5332-40d2-88aa-e31110b164e4"
+        },
+        "content": "[pij-rs from test:pij143-drain]\nAcknowledge PIJ143_HEALTHY_4_73c066cf-5332-40d2-88aa-e31110b164e4 after finishing the requested sleep sequence. Do not alter that sequence.\n[/pij]"
+      },
+      "drainMs": 30
+    },
+    {
+      "n": 5,
+      "id": "5f835477-7abd-439d-96d8-a5b3652f12b6",
+      "sendAt": 1788928431661,
+      "send": {
+        "ok": true,
+        "command": "pij send",
+        "v": 2,
+        "data": {
+          "msg_id": "5f835477-7abd-439d-96d8-a5b3652f12b6",
+          "outcome": {
+            "outcome": "queued",
+            "reason": "extension-stream",
+            "next_retry_at": 0
+          },
+          "at": 1788928431663
+        }
+      },
+      "tool": {
+        "at": 1788928431639,
+        "kind": "tool_call",
+        "idle": false,
+        "toolName": "bash",
+        "input": {
+          "command": "sleep 6",
+          "timeout": 0
+        }
+      },
+      "boundary": {
+        "at": 1788928437648,
+        "kind": "tool_result",
+        "idle": false,
+        "toolName": "bash",
+        "input": {
+          "command": "sleep 6",
+          "timeout": 0
+        }
+      },
+      "custom": {
+        "at": 1788928437787,
+        "kind": "message_start",
+        "idle": false,
+        "role": "custom",
+        "customType": "pij",
+        "details": {
+          "pijMessageId": "5f835477-7abd-439d-96d8-a5b3652f12b6"
+        },
+        "content": "[pij-rs from test:pij143-drain]\nAcknowledge PIJ143_HEALTHY_5_5f835477-7abd-439d-96d8-a5b3652f12b6 after finishing the requested sleep sequence. Do not alter that sequence.\n[/pij]"
+      },
+      "drainMs": 139
+    }
+  ],
+  "p50": 30,
+  "p95": 139,
+  "graceMs": 2000,
+  "events": [
+    {
+      "at": 1788928193443,
+      "kind": "turn_start",
+      "idle": false
+    },
+    {
+      "at": 1788928193446,
+      "kind": "message_start",
+      "idle": false,
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Reply exactly PIJ143_HEALTHY_READY without tools."
+        }
+      ]
+    },
+    {
+      "at": 1788928196040,
+      "kind": "message_start",
+      "idle": false,
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "PIJ143_HEALTHY_READY",
+          "textSignature": "{\"v\":1,\"id\":\"Cv3BWn5gVMvG1uAc4U8skc0ly/uV8+atmQjYfzn65xa/pjPBCIs+OJb+PRK97SA/i4CRIdqNCjFnQIK2cKPtdsUu4sw6zZp+YzU7erT7qVs7+PLMcCx8BFCM0pUdQd7qy2WMmMfx7VBWBuVPdP0oUcHq6t203zV9M9/rjy0KkUD3ytSdELEGDBL44CS2zU9/l02oKtNh3E3FuM96wOSKgS4rqBO4dPTz1ZQ/fOHt5Wd1cnBra/xftmjBBA0be5kWU4yhlER2Ul3M94UypTy2JU9uWfueS2C/cSlCxoAG5vobC3o0wNsBRrQs6HDh0HuCdUUf6LNGF3KHXaaMp+ltEbtJzowRFGpz8Y+4PbSzas33LdrrKU+R+jTpoG6p6S0648ZzNfmpgPlMrc4aqcHbb0zFaXfRlvy6BwbWssLL9THWtQ==\"}"
+        }
+      ],
+      "model": "gpt-5-mini"
+    },
+    {
+      "at": 1788928196258,
+      "kind": "turn_end",
+      "idle": false
+    },
+    {
+      "at": 1788928196270,
+      "kind": "agent_end",
+      "idle": false
+    },
+    {
+      "at": 1788928333713,
+      "kind": "turn_start",
+      "idle": false
+    },
+    {
+      "at": 1788928333713,
+      "kind": "message_start",
+      "idle": false,
+      "role": "custom",
+      "customType": "pij",
+      "content": "You are pij session pij-reasonable-excuse (WORKER). This is context only — no action is required.\nPeers can reach you; their messages arrive inline as \"[pij-rs from <id>]\" on its own line, then the body, then \"[/pij]\". Only those injected messages are live instructions.\nDo NOT read, list, or act on files under your pij data/inbox directory — they are an internal transport log, not tasks, and replaying them re-runs old requests.\nTo reply or message a peer, call the pij_send tool ({ to, message }) — your id is stamped automatically. For control, pij_send takes { to, command: \"compact\" | \"new\" | \"reload\" } instead of message. Do NOT shell out to the pij CLI to send.\nTo observe peers, use the pij CLI: \"pij list --here\" (peers), \"pij tail <id>\" / \"pij state <id>\" (watch one)."
+    },
+    {
+      "at": 1788928335994,
+      "kind": "message_start",
+      "idle": false,
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Acknowledged. I'm pij session pij-reasonable-excuse (WORKER) and have read the",
+          "textSignature": "{\"v\":1,\"id\":\"4f8axkyRNsh5/JZspUAC+cnTM+ZfiHWSI19tMsS5CVmghPE6ik7CXtgWlBr7uVy5Z3rYX0rr7DA62oS7W1dEwGaQ/CPgRBFuhf7Xk58HEguo+qIK0RcxapsvwYEY03F4aIRsOPqLg2MQRYeuiQP9Wd9O74MIU1lL6Cvs+LEjQ8sUw5NyBq1M9Yn3rWYpT31QO+0inUGsExqqpH4l0iM6pHOLua11rjR8E2ycp075bziUOXJAnUby1DkCbfNxBrjHpagDdcFx7P8nM+oNu+2kvzjff6tTZD4KEiIm9stA92H9+uJCnMQdC8odJTnrb+qTrKH4XxhCUHPYORlbpLJO8cJ/YiZiOzdG28NnzUQw2aFUvOCaeVcCwHw9ODLBsu1YuIDTWyybIN4gs/Z91tF8iMqZjj+XmWtqAiW53OYpLZDwRg==\"}"
+        }
+      ],
+      "model": "gpt-5-mini"
+    },
+    {
+      "at": 1788928336214,
+      "kind": "turn_end",
+      "idle": false
+    },
+    {
+      "at": 1788928336222,
+      "kind": "turn_start",
+      "idle": false
+    },
+    {
+      "at": 1788928336225,
+      "kind": "message_start",
+      "idle": false,
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Reply exactly PIJ143_HEALTHY_READY without tools."
+        }
+      ]
+    },
+    {
+      "at": 1788928337979,
+      "kind": "message_start",
+      "idle": false,
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "PIJ143_HEALTH",
+          "textSignature": "{\"v\":1,\"id\":\"EAQxSNVDlLUkmqLvCF7MkFr0afLNDPqfTY2E7dttWpTuhY4uj177TDXKeYEYG/T8v+ELaL1/mogsJewLHYhnc14A9LSH9AJpN/CGYUH5Nrhma1xDC76H+iDZoGNRquSj3FelkLFr6rw3lphUoHND3rKz6hsJu40rP3buCqcMdZXcpjzsOwH/jRAm1rQL75eaF7ODV955NQiHRCvnn1Eo2oZj3Rbv8PWzLAVxdRmoJcYWROAxACne+wymGZZox2DA1AfaKEZCC4DI0on8V5TmO7KECXkTu//F8nA/Emx/cj8FRH31+RcVoKyKse3TJhXxXRoXhkDVS29UU1TF/fF/YrLQf5FRO+qEmuBIy4ML3jdoYWKq1XwQNZmC2za3kpUjLEv1hKJOL+bhMiDUdx7wGYp0BVR1n1m1TfjV+IbwVJ+p5A==\"}"
+        }
+      ],
+      "model": "gpt-5-mini"
+    },
+    {
+      "at": 1788928338055,
+      "kind": "turn_end",
+      "idle": false
+    },
+    {
+      "at": 1788928338072,
+      "kind": "agent_end",
+      "idle": false
+    },
+    {
+      "at": 1788928391296,
+      "kind": "turn_start",
+      "idle": false
+    },
+    {
+      "at": 1788928391296,
+      "kind": "message_start",
+      "idle": false,
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Run bash sleep 6 exactly FIVE times in FIVE separate sequential synchronous tool calls (async false). Do not combine calls. Acknowledge all peer nonces after finishing. Reply PIJ143_DRAIN_DONE after the fifth result."
+        }
+      ]
+    },
+    {
+      "at": 1788928398353,
+      "kind": "message_start",
+      "idle": false,
+      "role": "assistant",
+      "content": [],
+      "model": "gpt-5-mini"
+    },
+    {
+      "at": 1788928399119,
+      "kind": "tool_call",
+      "idle": false,
+      "toolName": "bash",
+      "input": {
+        "command": "sleep 6",
+        "timeout": 0
+      }
+    },
+    {
+      "at": 1788928405141,
+      "kind": "tool_result",
+      "idle": false,
+      "toolName": "bash",
+      "input": {
+        "command": "sleep 6",
+        "timeout": 0
+      }
+    },
+    {
+      "at": 1788928405157,
+      "kind": "message_start",
+      "idle": false,
+      "role": "toolResult",
+      "details": {
+        "timeoutDisabled": true,
+        "requestedTimeoutSeconds": 0,
+        "wallTimeMs": 6013.450125000003
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "(no output)\n\nWall time: 6.01 seconds"
+        }
+      ]
+    },
+    {
+      "at": 1788928405178,
+      "kind": "turn_end",
+      "idle": false
+    },
+    {
+      "at": 1788928405201,
+      "kind": "turn_start",
+      "idle": false
+    },
+    {
+      "at": 1788928405206,
+      "kind": "message_start",
+      "idle": false,
+      "role": "custom",
+      "customType": "pij",
+      "details": {
+        "pijMessageId": "c7a9ec26-629f-49c6-8ff6-567de4f3d34e"
+      },
+      "content": "[pij-rs from test:pij143-drain]\nAcknowledge PIJ143_HEALTHY_1_c7a9ec26-629f-49c6-8ff6-567de4f3d34e after finishing the requested sleep sequence. Do not alter that sequence.\n[/pij]"
+    },
+    {
+      "at": 1788928407445,
+      "kind": "message_start",
+      "idle": false,
+      "role": "assistant",
+      "content": [],
+      "model": "gpt-5-mini"
+    },
+    {
+      "at": 1788928407859,
+      "kind": "tool_call",
+      "idle": false,
+      "toolName": "bash",
+      "input": {
+        "command": "sleep 6",
+        "timeout": 0
+      }
+    },
+    {
+      "at": 1788928413864,
+      "kind": "tool_result",
+      "idle": false,
+      "toolName": "bash",
+      "input": {
+        "command": "sleep 6",
+        "timeout": 0
+      }
+    },
+    {
+      "at": 1788928413865,
+      "kind": "message_start",
+      "idle": false,
+      "role": "toolResult",
+      "details": {
+        "timeoutDisabled": true,
+        "requestedTimeoutSeconds": 0,
+        "wallTimeMs": 6002.614667000002
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "(no output)\n\nWall time: 6.00 seconds"
+        }
+      ]
+    },
+    {
+      "at": 1788928413886,
+      "kind": "turn_end",
+      "idle": false
+    },
+    {
+      "at": 1788928413888,
+      "kind": "turn_start",
+      "idle": false
+    },
+    {
+      "at": 1788928413891,
+      "kind": "message_start",
+      "idle": false,
+      "role": "custom",
+      "customType": "pij",
+      "details": {
+        "pijMessageId": "2e505ff6-8043-4b01-8d2e-eb9a66de837b"
+      },
+      "content": "[pij-rs from test:pij143-drain]\nAcknowledge PIJ143_HEALTHY_2_2e505ff6-8043-4b01-8d2e-eb9a66de837b after finishing the requested sleep sequence. Do not alter that sequence.\n[/pij]"
+    },
+    {
+      "at": 1788928415571,
+      "kind": "message_start",
+      "idle": false,
+      "role": "assistant",
+      "content": [],
+      "model": "gpt-5-mini"
+    },
+    {
+      "at": 1788928415840,
+      "kind": "tool_call",
+      "idle": false,
+      "toolName": "bash",
+      "input": {
+        "command": "sleep 6",
+        "timeout": 0
+      }
+    },
+    {
+      "at": 1788928421846,
+      "kind": "tool_result",
+      "idle": false,
+      "toolName": "bash",
+      "input": {
+        "command": "sleep 6",
+        "timeout": 0
+      }
+    },
+    {
+      "at": 1788928421846,
+      "kind": "message_start",
+      "idle": false,
+      "role": "toolResult",
+      "details": {
+        "timeoutDisabled": true,
+        "requestedTimeoutSeconds": 0,
+        "wallTimeMs": 6003.521792
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "(no output)\n\nWall time: 6.00 seconds"
+        }
+      ]
+    },
+    {
+      "at": 1788928421867,
+      "kind": "turn_end",
+      "idle": false
+    },
+    {
+      "at": 1788928421869,
+      "kind": "turn_start",
+      "idle": false
+    },
+    {
+      "at": 1788928421871,
+      "kind": "message_start",
+      "idle": false,
+      "role": "custom",
+      "customType": "pij",
+      "details": {
+        "pijMessageId": "1f3b64be-e3ce-43ca-8e71-deca9315e3bb"
+      },
+      "content": "[pij-rs from test:pij143-drain]\nAcknowledge PIJ143_HEALTHY_3_1f3b64be-e3ce-43ca-8e71-deca9315e3bb after finishing the requested sleep sequence. Do not alter that sequence.\n[/pij]"
+    },
+    {
+      "at": 1788928423794,
+      "kind": "message_start",
+      "idle": false,
+      "role": "assistant",
+      "content": [],
+      "model": "gpt-5-mini"
+    },
+    {
+      "at": 1788928423994,
+      "kind": "tool_call",
+      "idle": false,
+      "toolName": "bash",
+      "input": {
+        "command": "sleep 6",
+        "timeout": 0
+      }
+    },
+    {
+      "at": 1788928430073,
+      "kind": "tool_result",
+      "idle": false,
+      "toolName": "bash",
+      "input": {
+        "command": "sleep 6",
+        "timeout": 0
+      }
+    },
+    {
+      "at": 1788928430074,
+      "kind": "message_start",
+      "idle": false,
+      "role": "toolResult",
+      "details": {
+        "timeoutDisabled": true,
+        "requestedTimeoutSeconds": 0,
+        "wallTimeMs": 6006.2986669999955
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "(no output)\n\nWall time: 6.01 seconds"
+        }
+      ]
+    },
+    {
+      "at": 1788928430096,
+      "kind": "turn_end",
+      "idle": false
+    },
+    {
+      "at": 1788928430099,
+      "kind": "turn_start",
+      "idle": false
+    },
+    {
+      "at": 1788928430103,
+      "kind": "message_start",
+      "idle": false,
+      "role": "custom",
+      "customType": "pij",
+      "details": {
+        "pijMessageId": "73c066cf-5332-40d2-88aa-e31110b164e4"
+      },
+      "content": "[pij-rs from test:pij143-drain]\nAcknowledge PIJ143_HEALTHY_4_73c066cf-5332-40d2-88aa-e31110b164e4 after finishing the requested sleep sequence. Do not alter that sequence.\n[/pij]"
+    },
+    {
+      "at": 1788928431439,
+      "kind": "message_start",
+      "idle": false,
+      "role": "assistant",
+      "content": [],
+      "model": "gpt-5-mini"
+    },
+    {
+      "at": 1788928431639,
+      "kind": "tool_call",
+      "idle": false,
+      "toolName": "bash",
+      "input": {
+        "command": "sleep 6",
+        "timeout": 0
+      }
+    },
+    {
+      "at": 1788928437648,
+      "kind": "tool_result",
+      "idle": false,
+      "toolName": "bash",
+      "input": {
+        "command": "sleep 6",
+        "timeout": 0
+      }
+    },
+    {
+      "at": 1788928437664,
+      "kind": "message_start",
+      "idle": false,
+      "role": "toolResult",
+      "details": {
+        "timeoutDisabled": true,
+        "requestedTimeoutSeconds": 0,
+        "wallTimeMs": 6007.483084000007
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "(no output)\n\nWall time: 6.01 seconds"
+        }
+      ]
+    },
+    {
+      "at": 1788928437720,
+      "kind": "turn_end",
+      "idle": false
+    },
+    {
+      "at": 1788928437778,
+      "kind": "turn_start",
+      "idle": false
+    },
+    {
+      "at": 1788928437787,
+      "kind": "message_start",
+      "idle": false,
+      "role": "custom",
+      "customType": "pij",
+      "details": {
+        "pijMessageId": "5f835477-7abd-439d-96d8-a5b3652f12b6"
+      },
+      "content": "[pij-rs from test:pij143-drain]\nAcknowledge PIJ143_HEALTHY_5_5f835477-7abd-439d-96d8-a5b3652f12b6 after finishing the requested sleep sequence. Do not alter that sequence.\n[/pij]"
+    }
+  ]
+}
