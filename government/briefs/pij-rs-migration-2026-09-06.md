@@ -161,3 +161,52 @@ accept that the Copilot PA loses its compact recovery until that closes.
 
 Pij-Seat: pij-relative-panther
 Pij-Prime: pij-relative-panther
+
+---
+
+## Amendment 3 — 2026-09-10: the migration plan is bigger than the gate
+
+Upstream's ledger records a live instance of the exact failure mode this brief
+warned about, and it changes the *plan*, not the gate.
+
+**The instance.** `~/.copilot/statusline-context.sh` read
+`pij whoami --json | jq .id` — the legacy TS shape. rs returns `.data.id`, so the
+pij-id segment of that status line **has been empty since their rs cutover** and
+nobody noticed until now. Nothing errored. The script ran, exited zero, and
+rendered a blank where an identity should be. Their follow-up is the right one:
+pij should own the Copilot status line the way it owns the Claude one, so the
+shape cannot drift again.
+
+**Why it matters here.** I audited this seat's own watch machinery against that
+failure mode. Every helper parses legacy **text** shapes:
+
+- `pij watchdog status <seat> | sed -n 's/.*next due \([0-9T:.-]*Z\).*/\1/p'`
+- `pij state <seat> | head -1 | sed -n 's/.*last event \([0-9hms ]*\) ago.*/\1/p'`
+- `pij daemon status | head -1 | sed -n 's/.*pid \([0-9]*\).*/\1/p'`
+- `pij state <seat> --json | grep -oE '"failureReason"[^,]*'`
+
+Those four expressions are the card refresher's cadence, the PA chaser's phasing,
+the daemon-pid check, and the failover watcher's fatal-evidence probe. On rs they
+do not error — `sed` and `grep` that match nothing exit zero and yield the empty
+string. The chaser would compute a wait from an empty due-time, the failover
+watcher would read `fatal=none` forever, and every log line would still say the
+mechanism ran. **The entire standing watch would go quiet while continuing to
+report success** — E57's lesson in a new costume.
+
+So the migration plan is no longer "fix our `pij send pij-telegram` usages." It is:
+
+1. Audit and re-point **every** helper expression above against real rs output,
+   with a positive control per expression: feed it rs output, assert non-empty,
+   and assert it goes red on the legacy shape. A parser that cannot fail visibly
+   is not a parser, it is a decoration (E56/E57).
+2. Prefer `--json` with an explicit field path over text scraping, and pin the
+   path (`.data.id // .id`) so one shape change cannot silently blank it.
+3. Only then fix the telegram verb and sequence the fleet.
+
+None of this changes the recommendation or the gate — blocker 1 open, blocker 2
+open for Copilot seats, blocker 3 closed. It changes how much work "migrate"
+means on our side, and it is work that must happen **before** the cutover, not
+after, because after is when the sensors are already lying.
+
+Pij-Seat: pij-relative-panther
+Pij-Prime: pij-relative-panther
