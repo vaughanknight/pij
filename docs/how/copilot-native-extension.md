@@ -73,10 +73,22 @@ or relaunch). Do that when the banner requests it; restarting the Pij daemon doe
 not change the host executable. Ordinary Copilot remains usable. Transient
 `registration-wait` notices still say **retrying when available**.
 
+## Immediate peer-message delivery
+
+Peer messages use native `session.send({ prompt, mode: "immediate" })`: they
+request steering during an active turn and start normally when idle. This is a
+delivery-semantics change, not proof that every Copilot client queue race is fixed.
+Native message-ID correlation, durable acceptance, consumption/completion grades,
+duplicate suppression, consent protection and the one-in-flight barrier are unchanged.
+
+To activate the change, a recipient must reload its native extension or start a
+fresh Copilot CLI session. No daemon rebuild or restart is required. Already-accepted
+queued items are neither converted nor replayed by this change.
+
 ## Receipt grades and failures
 
 A daemon `reader-read` receipt means the native harness **consumed** the matching
-message, proven by `user.message.data.messageId`; enqueue acceptance alone is not
+message, proven by `user.message.data.messageId`; native acceptance alone is not
 acknowledged. This is **not** model completion. Public native events carry distinct
 event `id` and `data.messageId`. Accepted duplicates recover consumption evidence
 from native history without re-injection. A crash across native acceptance and
@@ -91,7 +103,7 @@ reads recover missing callbacks, backing off from 250ms to 5s only while proof i
 outstanding. Missing or unreadable history holds receiving without an unproven ACK.
 
 If an interrupt removes an accepted envelope before consumption, recovery waits
-for a fresh post-enqueue turn/idle boundary. It requires all three facts: fresh
+for a fresh post-send turn/idle boundary. It requires all three facts: fresh
 history lacks the message, the supported native queue/steering snapshot no longer
 contains it, and no potentially consuming turn is processing. A queued item awaiting
 a later run is a **no-duplicate brake**, never a reason to resend. Recovery retains

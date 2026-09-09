@@ -901,7 +901,7 @@ export class NativeBridge {
 		this.completion = completion;
 		let nativeId;
 		try {
-			nativeId = await abortable(this.native.send({ prompt, mode: "enqueue" }), signal);
+			nativeId = await abortable(this.native.send({ prompt, mode: "immediate" }), signal);
 		} catch (error) {
 			if (signal.aborted) throw error;
 			throw new NativeError(

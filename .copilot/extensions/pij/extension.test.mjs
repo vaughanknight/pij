@@ -439,7 +439,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		assert.equal(f.stdout(), "");
 	});
 
-	// Plan 136/137: native enqueue is independent of typing recency and sensor availability.
+	// Native session sends are independent of typing recency and sensor availability.
 	for (const [label, snapshot] of [
 		["recent human typing", { retry_after_ms: 60000 }],
 		["unavailable typing sensor", { state: "unavailable" }],
@@ -453,7 +453,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			assert.equal(f.requests.filter((request) => request.path === "/v1/inbox/ack").length, 1);
 			const sends = f.events.filter((event) => event.kind === "native-send");
 			assert.equal(sends.length, 1);
-			assert.equal(sends[0].input.mode, "enqueue");
+			assert.equal(sends[0].input.mode, "immediate");
 			assert.match(sends[0].input.prompt, /msg_id="shell-137"/);
 			assert.equal(
 				f.events.some(({ kind }) =>
