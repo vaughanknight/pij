@@ -46,7 +46,7 @@ pub struct InboxClaim {
     /// Queue retry count; initial delivery is attempt zero.
     #[serde(default)]
     pub attempt: u32,
-    /// Present only for terminal rows returned by non-destructive peek.
+    /// Running on extension claims; failed on terminal recovery peek rows.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state: Option<String>,
     /// A parked row's exact terminal recovery outcome.
@@ -1053,7 +1053,12 @@ impl DeliveryService {
                         job_id,
                         message,
                         attempt: job.attempt,
-                        state: None,
+                        state: observed
+                            .as_ref()
+                            .filter(|recipient| {
+                                matches!(recipient.harness, Harness::Omp | Harness::Pi)
+                            })
+                            .map(|_| "running".to_string()),
                         outcome: None,
                         native_consumer: tuple_bound.then(|| identity.clone()),
                     }],
@@ -1100,8 +1105,21 @@ impl DeliveryService {
     ///
     /// # Errors
     /// Non-extension/control/stale claims or queue mutation failures.
-    pub async fn heartbeat_inbox(&self, seat: &SeatId, job_id: JobId) -> Result<()> {
+    pub async fn heartbeat_inbox(&self, seat: &SeatId, job_id: JobId) -> Result<&'static str> {
         let _native_guard = self.native_lock.lock().await;
+        if let Some(state) = self.queue.terminal_delivery_state(job_id, seat).await? {
+            self.registry
+                .get(seat)
+                .await?
+                .filter(|recipient| {
+                    recipient.tombstoned_at.is_none()
+                        && matches!(recipient.harness, Harness::Omp | Harness::Pi)
+                })
+                .ok_or_else(|| {
+                    native_refusal("body claim requires a live extension-stream recipient")
+                })?;
+            return Ok(state);
+        }
         let job = self.extension_body_claim(seat, job_id).await?;
         if !self
             .queue
@@ -1112,7 +1130,7 @@ impl DeliveryService {
                 "heartbeat requires the current running body claim",
             ));
         }
-        Ok(())
+        Ok("running")
     }
 
     /// Fail an extension body that the runtime never consumed, without ReaderRead.

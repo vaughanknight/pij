@@ -263,11 +263,21 @@ describe("pij-rs HTTP client", () => {
 			deps(
 				vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
 					requests.push({ path: new URL(String(url)).pathname, init });
-					return new Response(JSON.stringify({ ok: true, v: 2, command: "pij inbox", data: 17 }));
+					return new Response(
+						JSON.stringify({
+							ok: true,
+							v: 2,
+							command: "pij inbox",
+							data: { job_id: 17, state: "running" },
+						}),
+					);
 				}) as typeof fetch,
 			),
 		);
-		await expect(client.heartbeatInbox("busy seat", 17)).resolves.toBe(17);
+		await expect(client.heartbeatInbox("busy seat", 17)).resolves.toEqual({
+			job_id: 17,
+			state: "running",
+		});
 		expect(requests).toHaveLength(1);
 		expect(requests[0]?.path).toBe("/v1/inbox/heartbeat");
 		expect(requests[0]?.init?.method).toBe("POST");

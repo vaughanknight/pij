@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EventFrame, Registration, RustSeatDescriptor } from "../core/daemon-wire.js";
 import { announceText, frame, parseFrame } from "../core/message.js";
-import { type DaemonHttpDeps, PijDaemonClient } from "./daemon-http.js";
+import { type DaemonHttpDeps, type InboxHeartbeat, PijDaemonClient } from "./daemon-http.js";
 import { FakePiRuntime, FakeTmux } from "./fakes.js";
 import { PiRuntimeAdapter } from "./pi-runtime.js";
 import { RustRuntimeSession } from "./rust-runtime.js";
@@ -1170,13 +1170,14 @@ class GraceClient extends PijDaemonClient {
 				})),
 		];
 	}
-	override async heartbeatInbox(seat: string, jobId: number): Promise<number> {
+	override async heartbeatInbox(seat: string, jobId: number): Promise<InboxHeartbeat | undefined> {
 		const job = this.jobs.find((candidate) => candidate.job_id === jobId);
-		if (seat !== this.id || !job?.claimed || job.acked || job.message.command !== undefined)
-			throw new Error("heartbeat requires this seat's running body claim");
+		if (seat !== this.id || !job?.claimed || job.message.command !== undefined)
+			throw new Error("heartbeat requires this seat's body claim");
+		if (job.acked) return { job_id: jobId, state: job.outcome ? "failed" : "done" };
 		job.claimed_at = Date.now();
 		this.heartbeats.push({ jobId, at: job.claimed_at });
-		return jobId;
+		return { job_id: jobId, state: "running" };
 	}
 	async expireLeases(): Promise<void> {
 		if (this.leaseMs === undefined) return;
@@ -1380,6 +1381,256 @@ describe("extension-stream delivery", () => {
 		return { ...started, api };
 	}
 
+	// Pi manual cancel/throw and auto cancel return without session_compact.
+	it.each([
+		"turn_start",
+		"agent_end",
+		"message_start",
+		"ceiling",
+	] as const)("aborted compaction releases mail at %s without session_compact", async (edge) => {
+		vi.stubEnv("PIJ_COMPACTION_LATCH_MAX_MS", "5000");
+		const { runtime, client, api } = await startSwallowing();
+		runtime.onBeforeCompact();
+		await client.push(message("aborted-compact"));
+		await vi.advanceTimersByTimeAsync(4_000);
+		expect(api.sendMessage).not.toHaveBeenCalled();
+		if (edge === "turn_start") runtime.onTurnStart(new Date().toISOString());
+		if (edge === "agent_end") runtime.onAgentEnd();
+		if (edge === "message_start") await runtime.onMessageStart({ role: "assistant" });
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(api.sendMessage).toHaveBeenCalledOnce();
+		expect(client.jobs[0]?.claimed).toBe(true);
+		expect(client.acks).toEqual([]);
+	});
+
+	it.each([
+		123,
+		{ job_id: 1 },
+		{ job_id: 999, state: "done" },
+	])("unknown heartbeat %j retains idle resends and parking", async (data) => {
+		const { runtime, pi, client, api } = await startSwallowing();
+		const wire = new PijDaemonClient({ addr: "127.0.0.1:1", stateDir: "/unused" }, "fake", {
+			fetch: async () => envelope("pij inbox", data),
+			readFile: async () => "fake",
+			processStart: () => 1,
+		});
+		vi.spyOn(client, "heartbeatInbox").mockImplementation((seat, id) =>
+			wire.heartbeatInbox(seat, id),
+		);
+		pi.setBusy(true);
+		await client.push(message("legacy-heartbeat"));
+		runtime.onToolResult();
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+		pi.setBusy(false);
+		await vi.advanceTimersByTimeAsync(41_000);
+		expect(api.sendUserMessage).toHaveBeenCalledTimes(3);
+		expect(client.parks).toEqual([{ jobId: 1, outcome: "undelivered:harness-swallowed" }]);
+	});
+
+	it("unreachable heartbeat preserves idle recovery without forced one-Hz retries", async () => {
+		const { runtime, pi, client, api } = await startSwallowing();
+		const heartbeats = vi.spyOn(client, "heartbeatInbox").mockRejectedValue(new Error("offline"));
+		pi.setBusy(true);
+		await client.push(message("offline-heartbeat"));
+		runtime.onToolResult();
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+		expect(heartbeats).toHaveBeenCalledOnce();
+		pi.setBusy(false);
+		await vi.advanceTimersByTimeAsync(41_000);
+		expect(api.sendUserMessage).toHaveBeenCalledTimes(3);
+		expect(heartbeats.mock.calls.length).toBeLessThanOrEqual(3);
+		expect(client.parks).toEqual([{ jobId: 1, outcome: "undelivered:harness-swallowed" }]);
+	});
+
+	it("stream reconnect owns transport retries while local idle delivery stays available", async () => {
+		const { runtime, pi, client, api } = await startSwallowing();
+		await client.push(message("reconnect-local"));
+		const reconnecting = vi.spyOn(client, "isReconnecting").mockReturnValue(true);
+		const claims = vi.spyOn(client, "claimInbox");
+		const peeks = vi.spyOn(client, "peekInbox");
+		const heartbeats = vi.spyOn(client, "heartbeatInbox");
+		const acks = vi.spyOn(client, "ackInbox");
+		pi.setBusy(true);
+		runtime.onToolResult();
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+		pi.setBusy(false);
+		await vi.advanceTimersByTimeAsync(41_000);
+		expect(api.sendUserMessage).toHaveBeenCalledTimes(3);
+		expect(claims).not.toHaveBeenCalled();
+		expect(peeks).not.toHaveBeenCalled();
+		expect(heartbeats).not.toHaveBeenCalled();
+		expect(acks).not.toHaveBeenCalled();
+		reconnecting.mockReturnValue(false);
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(client.parks).toEqual([{ jobId: 1, outcome: "undelivered:harness-swallowed" }]);
+	});
+
+	it("compaction starting during a startup peek prevents its later claim until session_compact", async () => {
+		const client = new GraceClient();
+		client.semanticHold = true;
+		await client.push(message("startup-compaction-race"), false);
+		const { runtime } = await start(client);
+		let finishPeek!: (rows: unknown) => void;
+		vi.spyOn(client, "peekInbox").mockReturnValueOnce(
+			new Promise<unknown>((resolve) => {
+				finishPeek = resolve;
+			}),
+		);
+		const claims = vi.spyOn(client, "claimInbox");
+		await vi.advanceTimersByTimeAsync(1_000);
+		runtime.onBeforeCompact();
+		finishPeek([{ job_id: 1, attempt: 0, message: message("startup-compaction-race") }]);
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(claims).not.toHaveBeenCalled();
+		client.semanticHold = false;
+		runtime.onCompact();
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(client.acks).toEqual([1]);
+	});
+
+	it("compaction repoll claims a missed push within two ticks after session_compact, never during compaction", async () => {
+		const { runtime, client, api } = await startSwallowing();
+		const claims = vi.spyOn(client, "claimInbox");
+		runtime.onBeforeCompact();
+		await client.push(message("during-compact"));
+		await vi.advanceTimersByTimeAsync(3_000);
+		expect(claims).not.toHaveBeenCalled();
+		expect(api.sendMessage).not.toHaveBeenCalled();
+		runtime.onCompact();
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(client.jobs[0]?.claimed).toBe(true);
+		expect(api.sendMessage).toHaveBeenCalledOnce();
+		expect(runtime.eventCount("delivery.compaction-repoll")).toBe(1);
+	});
+
+	it("session_compact repolls even when the compaction push callback never ran", async () => {
+		const { runtime, client, api } = await startSwallowing();
+		runtime.onBeforeCompact();
+		await client.push(message("missed-push"), false);
+		await vi.advanceTimersByTimeAsync(3_000);
+		expect(api.sendMessage).not.toHaveBeenCalled();
+		runtime.onCompact();
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(client.jobs[0]?.claimed).toBe(true);
+		expect(api.sendMessage).toHaveBeenCalledOnce();
+	});
+
+	it("tool_result resends an unobserved inject through the prompt while the seat is busy", async () => {
+		const { runtime, pi, client, api } = await startSwallowing();
+		pi.setBusy(true);
+		await client.push(message("boundary-resend"));
+		runtime.onToolResult();
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(pi.isIdle()).toBe(false);
+		expect(api.sendUserMessage).toHaveBeenCalledExactlyOnceWith(
+			`[pij resend 1]\n[pijMessageId:boundary-resend]\n${frame("pij-sender", "boundary-resend")}`,
+		);
+	});
+
+	it("a boundary resend waits for session_compact while compaction is open", async () => {
+		const { runtime, pi, client, api } = await startSwallowing();
+		pi.setBusy(true);
+		await client.push(message("compact-resend"));
+		runtime.onBeforeCompact();
+		runtime.onToolResult();
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+		runtime.onCompact();
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(api.sendUserMessage).toHaveBeenCalledOnce();
+	});
+
+	it("heartbeat done drops an unobserved inject without resend and clears the pending footer", async () => {
+		const { runtime, pi, client, api } = await startSwallowing();
+		pi.setBusy(true);
+		await client.push(message("consumed-elsewhere"));
+		vi.spyOn(client, "heartbeatInbox").mockResolvedValue({ job_id: 1, state: "done" });
+		await vi.advanceTimersByTimeAsync(20_000);
+		expect(pi.statuses.at(-1)).toBeUndefined();
+		runtime.onToolResult();
+		pi.setBusy(false);
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+		expect(client.acks).toEqual([]);
+	});
+
+	it("a done reclaim response drops pending mail without reinjection", async () => {
+		const { pi, client, api } = await startSwallowing();
+		pi.setBusy(true);
+		await client.push(message("done-reclaim"));
+		vi.spyOn(client, "claimInbox").mockResolvedValueOnce([
+			{ job_id: 1, state: "done", message: message("done-reclaim") },
+		]);
+		await client.repeat("done-reclaim");
+		expect(pi.statuses.at(-1)).toBeUndefined();
+		pi.setBusy(false);
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+	});
+
+	it("an observed inject never resends on the next tool_result boundary", async () => {
+		const { runtime, pi, client, api } = await startSwallowing();
+		pi.setBusy(true);
+		await client.push(message("observed-boundary"));
+		await runtime.onMessageStart({
+			role: "custom",
+			customType: "pij",
+			details: { pijMessageId: "observed-boundary" },
+		});
+		runtime.onToolResult();
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+		expect(client.acks).toEqual([1]);
+	});
+
+	it("a healthy steer draining within the calibrated 2000ms grace is never resent", async () => {
+		const { runtime, pi, client, api } = await startSwallowing();
+		pi.setBusy(true);
+		await client.push(message("healthy-boundary"));
+		runtime.onToolResult();
+		// Live p95=139ms; ruled margin max(2*p95, 2000ms). Stress its last millisecond.
+		await vi.advanceTimersByTimeAsync(1_999);
+		await runtime.onMessageStart({
+			role: "custom",
+			customType: "pij",
+			details: { pijMessageId: "healthy-boundary" },
+		});
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+		expect(client.acks).toEqual([1]);
+	});
+
+	it("uses the configured boundary grace before resending busy mail", async () => {
+		vi.stubEnv("PIJ_BOUNDARY_GRACE_MS", "3500");
+		const { runtime, pi, client, api } = await startSwallowing();
+		pi.setBusy(true);
+		await client.push(message("configured-boundary"));
+		runtime.onToolResult();
+		await vi.advanceTimersByTimeAsync(3_000);
+		expect(api.sendUserMessage).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(api.sendUserMessage).toHaveBeenCalledOnce();
+	});
+
+	it("only the first resend uses a busy boundary and later retries retain the idle fallback", async () => {
+		const { runtime, pi, client, api } = await startSwallowing();
+		pi.setBusy(true);
+		await client.push(message("one-boundary"));
+		runtime.onToolResult();
+		await vi.advanceTimersByTimeAsync(2_000);
+		runtime.onToolResult();
+		runtime.onTurnEnd();
+		runtime.onAgentEnd(true);
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(api.sendUserMessage).toHaveBeenCalledOnce();
+		pi.setBusy(false);
+		await vi.advanceTimersByTimeAsync(11_000);
+		expect(api.sendUserMessage).toHaveBeenCalledTimes(2);
+	});
+
 	it("busy-seat heartbeats preserve a steered claim for 200 seconds and acknowledge consumption once", async () => {
 		const { runtime, pi, client, api } = await startSwallowing();
 		client.leaseMs = 60_000;
@@ -1414,9 +1665,9 @@ describe("extension-stream delivery", () => {
 		const { runtime, pi, client } = await startSwallowing();
 		pi.setBusy(true);
 		await client.push(message("slow-heartbeat"));
-		let completeHeartbeat!: (jobId: number) => void;
+		let completeHeartbeat!: (heartbeat: InboxHeartbeat) => void;
 		const requests = vi.spyOn(client, "heartbeatInbox").mockReturnValueOnce(
-			new Promise<number>((resolve) => {
+			new Promise<InboxHeartbeat>((resolve) => {
 				completeHeartbeat = resolve;
 			}),
 		);
@@ -1429,7 +1680,7 @@ describe("extension-stream delivery", () => {
 			customType: "pij",
 			details: { pijMessageId: "slow-heartbeat" },
 		});
-		completeHeartbeat(1);
+		completeHeartbeat({ job_id: 1, state: "running" });
 		await vi.advanceTimersByTimeAsync(80_000);
 		expect(requests).toHaveBeenCalledOnce();
 		expect(client.acks).toEqual([1]);
@@ -1491,10 +1742,9 @@ describe("extension-stream delivery", () => {
 		pi.setBusy(true);
 		await vi.advanceTimersByTimeAsync(5_000);
 		pi.setBusy(false);
-		runtime.onTurnEnd();
 		await vi.advanceTimersByTimeAsync(1_000);
 		expect(api.sendUserMessage).not.toHaveBeenCalled();
-		await vi.advanceTimersByTimeAsync(1_000);
+		await vi.advanceTimersByTimeAsync(2_000);
 		expect(api.sendUserMessage).toHaveBeenCalledOnce();
 		expect(client.acks).toEqual([]);
 	});
@@ -1547,7 +1797,7 @@ describe("extension-stream delivery", () => {
 			await vi.advanceTimersByTimeAsync(70_000);
 			expect(api.sendUserMessage).not.toHaveBeenCalled();
 			pi.setBusy(false);
-			runtime.onAgentEnd();
+			await vi.advanceTimersByTimeAsync(1_000); // First idle observation, no boundary.
 		}
 		await vi.advanceTimersByTimeAsync(busy ? 9_000 : 6_000);
 		expect(api.sendUserMessage).not.toHaveBeenCalled();
@@ -1562,7 +1812,7 @@ describe("extension-stream delivery", () => {
 		false,
 		true,
 	])("busy-seat previously unseen reclaimed mail waits for idle with busy=%s", async (busy) => {
-		const { runtime, pi, client, api } = await startSwallowing();
+		const { pi, client, api } = await startSwallowing();
 		pi.setBusy(busy);
 		await client.push(message("unseen-reclaim"), false);
 		const job = client.jobs[0];
@@ -1575,7 +1825,7 @@ describe("extension-stream delivery", () => {
 			await vi.advanceTimersByTimeAsync(70_000);
 			expect(api.sendUserMessage).not.toHaveBeenCalled();
 			pi.setBusy(false);
-			runtime.onAgentEnd();
+			await vi.advanceTimersByTimeAsync(1_000); // First idle observation, no boundary.
 		}
 		await vi.advanceTimersByTimeAsync(9_000);
 		expect(api.sendUserMessage).not.toHaveBeenCalled();
@@ -1863,9 +2113,9 @@ describe("extension-stream delivery", () => {
 		await client.push(message("survive-interrupt"));
 		pi.setBusy(false);
 		runtime.onAgentEnd();
-		await vi.advanceTimersByTimeAsync(9_000);
+		await vi.advanceTimersByTimeAsync(1_999);
 		expect(api.sendUserMessage).not.toHaveBeenCalled();
-		await vi.advanceTimersByTimeAsync(1_000);
+		await vi.advanceTimersByTimeAsync(1);
 		expect(api.sendUserMessage).toHaveBeenCalledOnce();
 		await runtime.onMessageStart({ role: "user", content: api.sendUserMessage.mock.calls[0]?.[0] });
 		expect(client.acks).toEqual([1]);
@@ -1917,15 +2167,14 @@ describe("extension-stream delivery", () => {
 		expect(pi.injects).toHaveLength(1);
 	});
 
-	it("does not requeue during a scheduled continuation or acknowledge after shutdown", async () => {
+	it("cancels a scheduled boundary resend and refuses consumption after shutdown", async () => {
 		const { runtime, pi, client } = await start();
 		pi.setBusy(true);
 		await client.push(message("continuation"));
 		runtime.onAgentEnd(true);
-		pi.setBusy(false);
-		await vi.advanceTimersByTimeAsync(1_000);
-		expect(pi.injects).toHaveLength(1);
 		runtime.shutdown("quit");
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(pi.injects).toHaveLength(1);
 		await runtime.onMessageStart({
 			role: "custom",
 			customType: "pij",

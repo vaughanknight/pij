@@ -1,0 +1,79 @@
+ proof datum 5949: stable compaction context.
+ proof datum 5950: stable compaction context.
+ proof datum 5951: stable compaction context.
+ proof datum 5952: stable compaction context.
+ proof datum 5953: stable compaction context.
+ proof datum 5954: stable compaction context.
+ proof datum 5955: stable compaction context.
+ proof datum 5956: stable compaction context.
+ proof datum 5957: stable compaction context.
+ proof datum 5958: stable compaction context.
+ proof datum 5959: stable compaction context.
+ proof datum 5960: stable compaction context.
+ proof datum 5961: stable compaction context.
+ proof datum 5962: stable compaction context.
+ proof datum 5963: stable compaction context.
+ proof datum 5964: stable compaction context.
+ proof datum 5965: stable compaction context.
+ proof datum 5966: stable compaction context.
+ proof datum 5967: stable compaction context.
+ proof datum 5968: stable compaction context.
+ proof datum 5969: stable compaction context.
+ proof datum 5970: stable compaction context.
+ proof datum 5971: stable compaction context.
+ proof datum 5972: stable compaction context.
+ proof datum 5973: stable compaction context.
+ proof datum 5974: stable compaction context.
+ proof datum 5975: stable compaction context.
+ proof datum 5976: stable compaction context.
+ proof datum 5977: stable compaction context.
+ proof datum 5978: stable compaction context.
+ proof datum 5979: stable compaction context.
+ proof datum 5980: stable compaction context.
+ proof datum 5981: stable compaction context.
+ proof datum 5982: stable compaction context.
+ proof datum 5983: stable compaction context.
+ proof datum 5984: stable compaction context.
+ proof datum 5985: stable compaction context.
+ proof datum 5986: stable compaction context.
+ proof datum 5987: stable compaction context.
+ proof datum 5988: stable compaction context.
+ proof datum 5989: stable compaction context.
+ proof datum 5990: stable compaction context.
+ proof datum 5991: stable compaction context.
+ proof datum 5992: stable compaction context.
+ proof datum 5993: stable compaction context.
+ proof datum 5994: stable compaction context.
+ proof datum 5995: stable compaction context.
+ proof datum 5996: stable compaction context.
+ proof datum 5997: stable compaction context.
+ proof datum 5998: stable compaction context.
+ proof datum 5999: stable compaction context.
+
+
+ PIJ143_CORPUS_READY
+
+ 2026-09-09 14:01:58  ⤵ 65K  ⤴ 25  💾 9.2K  ⏱ 3.7s  ⚡ 6.5/s
+
+───────────────────────────────────────── 📷 soft-compacted · 74K→78K · ctrl+o ─────────────────────────────────────────
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                      │
+│ 📦 pij                                                                                                               │
+│                                                                                                                      │
+│ [pij-rs from pij143-compaction-proof]                                                                                │
+│ Reply locally exactly PIJ143_COMPACT_134860e2-dbd8-462c-8b36-22e50c039d03. No tools. Authorized isolated compaction  │
+│ delivery proof.                                                                                                      │
+│ [/pij]                                                                                                               │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ PIJ143_COMPACT_134860e2-dbd8-462c-8b36-22e50c039d03
+
+ 2026-09-09 14:02:42  ⤵ 75K  ⤴ 46  ⏱ 3.9s  ⚡ 11.0/s
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ◫ 28.3%/264K ⟲ · rs·pij-detailed-veppers · ○ GPT-5 Mini · ⑂ 143-omp-post-compaction-delivery *20 ?9 · S0.04 ★ 2
+rs pij-detailed-veppers

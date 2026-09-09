@@ -1,0 +1,236 @@
+(node:43609) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/Users/jordanknight/pi-hacking/fs3-omp-post-compaction[39m
+
+ [32m✓[39m .pi/extensions/pij/adapters/daemon-http.test.ts [2m([22m[2m20 tests[22m[2m)[22m[33m 1494[2mms[22m[39m
+     [33m[2m✓[22m[39m reconnects with the complete cursor map and refreshes the daemon key [33m 312[2mms[22m[39m
+     [33m[2m✓[22m[39m caps reconnect backoff after exponential growth [33m 359[2mms[22m[39m
+ [31m❯[39m .pi/extensions/pij/adapters/rust-runtime.test.ts [2m([22m[2m87 tests[22m[2m | [22m[31m5 failed[39m[2m)[22m[33m 1547[2mms[22m[39m
+     [32m✓[39m settles the original new claim after runtime teardown[32m 116[2mms[22m[39m
+     [32m✓[39m settles the original reload claim after runtime teardown[32m 103[2mms[22m[39m
+     [32m✓[39m executes a claimed compact command and acknowledges its outcome[32m 53[2mms[22m[39m
+     [32m✓[39m executes a claimed new command and acknowledges its outcome[32m 50[2mms[22m[39m
+     [32m✓[39m executes a claimed reload command and acknowledges its outcome[32m 52[2mms[22m[39m
+     [32m✓[39m waits for a claimed command runtime outcome before acknowledging[32m 102[2mms[22m[39m
+     [32m✓[39m refuses an unarmed new command without later execution[32m 53[2mms[22m[39m
+     [32m✓[39m refuses an unarmed reload command without later execution[32m 51[2mms[22m[39m
+     [32m✓[39m acknowledges command runtime errors as refused instead of retrying execution[32m 51[2mms[22m[39m
+     [32m✓[39m native control sends carry command and pane caller proof with no scaffold body[32m 3[2mms[22m[39m
+     [32m✓[39m does not overwrite a claude seat when omp boots in the same pane[32m 1[2mms[22m[39m
+       [32m✓[39m binding=created, pre-existing row=false injects announceText 1 times[32m 0[2mms[22m[39m
+       [32m✓[39m binding=rebound, pre-existing row=true injects announceText 1 times[32m 0[2mms[22m[39m
+       [32m✓[39m binding=same, pre-existing row=true injects announceText 0 times[32m 0[2mms[22m[39m
+       [32m✓[39m binding=same, pre-existing row=false injects announceText 0 times[32m 0[2mms[22m[39m
+       [32m✓[39m reports only pane provenance (pane) while announcing rebound once and same never[32m 0[2mms[22m[39m
+       [32m✓[39m reports only pane provenance (harness) while announcing rebound once and same never[32m 0[2mms[22m[39m
+       [32m✓[39m reports only pane provenance (undefined) while announcing rebound once and same never[32m 0[2mms[22m[39m
+       [32m✓[39m reports unbound when pane provenance has no process identity[32m 0[2mms[22m[39m
+       [32m✓[39m announces the new session id once on new, not again on reload[32m 1[2mms[22m[39m
+       [32m✓[39m announces the new session id once on fork, not again on reload[32m 1[2mms[22m[39m
+       [32m✓[39m preserves old-daemon inference with no binding (pre-existing row=false)[32m 0[2mms[22m[39m
+       [32m✓[39m preserves old-daemon inference with no binding (pre-existing row=true)[32m 0[2mms[22m[39m
+     [32m✓[39m registers structural identity, forwards unknown events, injects a push, and correlates reply[32m 52[2mms[22m[39m
+     [32m✓[39m binds startup to the daemon row for the spawned pane[32m 0[2mms[22m[39m
+     [32m✓[39m suppresses injection when another worker already owns the queued row[32m 51[2mms[22m[39m
+     [32m✓[39m leaves an in-flight claim unacked when a new session replaces its seat[32m 52[2mms[22m[39m
+     [32m✓[39m delivers the authority-owned claim when the pushed event names a different message[32m 52[2mms[22m[39m
+     [32m✓[39m does not acknowledge when the runtime injection fails[32m 52[2mms[22m[39m
+     [32m✓[39m re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: false)[32m 257[2mms[22m[39m
+     [33m[2m✓[22m[39m re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: true) [33m 305[2mms[22m[39m
+     [32m✓[39m compaction repoll claims a missed push within two ticks after session_compact, never during compaction[32m 5[2mms[22m[39m
+     [32m✓[39m session_compact repolls even when the compaction push callback never ran[32m 1[2mms[22m[39m
+     [32m✓[39m tool_result resends an unobserved inject through the prompt while the seat is busy[32m 1[2mms[22m[39m
+     [32m✓[39m a boundary resend waits for session_compact while compaction is open[32m 2[2mms[22m[39m
+     [32m✓[39m heartbeat done drops an unobserved inject without resend and clears the pending footer[32m 3[2mms[22m[39m
+     [32m✓[39m a done reclaim response drops pending mail without reinjection[32m 1[2mms[22m[39m
+     [32m✓[39m an observed inject never resends on the next tool_result boundary[32m 0[2mms[22m[39m
+     [32m✓[39m a healthy steer draining just after tool_result is not resent during boundary grace[32m 1[2mms[22m[39m
+     [32m✓[39m only the first resend uses a busy boundary and later retries retain the idle fallback[32m 2[2mms[22m[39m
+     [32m✓[39m busy-seat heartbeats preserve a steered claim for 200 seconds and acknowledge consumption once[32m 10[2mms[22m[39m
+     [32m✓[39m busy-seat heartbeat requests never overlap and a late completion cannot revive consumed mail[32m 8[2mms[22m[39m
+     [32m✓[39m busy-seat heartbeats stop after park without consuming the pending body[32m 6[2mms[22m[39m
+     [32m✓[39m busy-seat heartbeats stop after shutdown without consuming the pending body[32m 1[2mms[22m[39m
+     [32m✓[39m resends silently swallowed custom mail through the prompt after continuous idle and acknowledges its id once[32m 2[2mms[22m[39m
+[31m     [31m×[31m resets the resend idle window on every turn start without treating a turn as consumption[39m[32m 6[2mms[22m[39m
+     [32m✓[39m busy-seat idle swallowing parks only after three prompt resends each get an idle consumption window[32m 5[2mms[22m[39m
+     [32m✓[39m busy-seat reclaim only refreshes tracking before the idle window with busy=false[32m 1[2mms[22m[39m
+[31m     [31m×[31m busy-seat reclaim only refreshes tracking before the idle window with busy=true[39m[32m 3[2mms[22m[39m
+     [32m✓[39m busy-seat previously unseen reclaimed mail waits for idle with busy=false[32m 1[2mms[22m[39m
+[31m     [31m×[31m busy-seat previously unseen reclaimed mail waits for idle with busy=true[39m[32m 2[2mms[22m[39m
+     [32m✓[39m clears sender-addressed parked ids once and never claims parked peek rows ahead of live mail[32m 2[2mms[22m[39m
+     [32m✓[39m does not resurrect a parked message when an earlier claim response arrives late[32m 1[2mms[22m[39m
+     [32m✓[39m busy-seat ignores a reclaim response overtaken by consumption[32m 1[2mms[22m[39m
+     [32m✓[39m visibly reports a parked outbound message once without clearing unrelated inbound mail[32m 0[2mms[22m[39m
+     [32m✓[39m busy-seat lease reclaims never spend the three idle resend attempts[32m 2[2mms[22m[39m
+     [32m✓[39m busy-seat polls an unconsumed claim for tracking recovery without resending[32m 0[2mms[22m[39m
+     [32m✓[39m reconciles a parked acknowledgement whose response was lost using failed peek history[32m 2[2mms[22m[39m
+     [32m✓[39m correlates an encoded prompt id but ignores unrelated and malformed user markers[32m 2[2mms[22m[39m
+     [32m✓[39m rejects malformed attempt metadata without injecting or acknowledging a claim[32m 0[2mms[22m[39m
+     [32m✓[39m extension stream delivers while a draft is actively typed (busy=false)[32m 0[2mms[22m[39m
+     [32m✓[39m extension stream delivers while a draft is actively typed (busy=true)[32m 0[2mms[22m[39m
+     [32m✓[39m delivers through the OMP adapter without clearing or submitting a human draft[32m 0[2mms[22m[39m
+     [32m✓[39m delivers immediately after spawn input has left an empty editor[32m 0[2mms[22m[39m
+     [32m✓[39m does not acknowledge queued delivery before its own message starts[32m 0[2mms[22m[39m
+     [32m✓[39m never treats idle or an unrelated turn as message consumption[32m 1[2mms[22m[39m
+[31m     [31m×[31m recovers interrupted mail through the same bounded prompt path and never repeats consumed mail[39m[32m 1[2mms[22m[39m
+     [32m✓[39m counts only the claimed unconsumed envelope while draining three messages in order[32m 1[2mms[22m[39m
+     [32m✓[39m retries failed consumption acknowledgements without reinjection[32m 1[2mms[22m[39m
+[31m     [31m×[31m does not requeue during a scheduled continuation or acknowledge after shutdown[39m[32m 1[2mms[22m[39m
+     [32m✓[39m reconciles a committed acknowledgement whose response was lost without endless retries[32m 1[2mms[22m[39m
+     [32m✓[39m announces busy arrivals and clears pending on consumption while still busy[32m 0[2mms[22m[39m
+     [32m✓[39m truncates a long announcement to 80 characters[32m 0[2mms[22m[39m
+     [32m✓[39m does not deliver or announce an acknowledged replay twice[32m 2[2mms[22m[39m
+     [32m✓[39m preserves claim order during sustained typing regardless of daemon grace[32m 1[2mms[22m[39m
+     [32m✓[39m keeps commands and urgent delivery without a typing bypass[32m 0[2mms[22m[39m
+     [32m✓[39m does not release or execute an active control peek during reload startup[32m 0[2mms[22m[39m
+     [32m✓[39m claims startup controls without a pre-claim release[32m 0[2mms[22m[39m
+     [32m✓[39m recovers an older deferred row before newer eligible rows without another send[32m 0[2mms[22m[39m
+     [32m✓[39m resumes startup semantic Hold after ready without a second send[32m 0[2mms[22m[39m
+     [32m✓[39m resumes an initially held startup backlog in A B C order across deferred rows[32m 1[2mms[22m[39m
+     [32m✓[39m resumes a pushed semantic Hold backlog after ready and then stops polling[32m 1[2mms[22m[39m
+     [32m✓[39m does not poll an empty inbox[32m 0[2mms[22m[39m
+     [32m✓[39m cancels pending semantic recovery on shutdown[32m 0[2mms[22m[39m
+     [32m✓[39m queues at most one pending-inbox retry and ignores its stale result[32m 0[2mms[22m[39m
+     [32m✓[39m busy-seat recovers an expired previous runtime claim only after the idle window[32m 1[2mms[22m[39m
+     [32m✓[39m acknowledges ordinary claims without calling the release endpoint[32m 0[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 5 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m .pi/extensions/pij/adapters/rust-runtime.test.ts[2m > [22mextension-stream delivery[2m > [22mresets the resend idle window on every turn start without treating a turn as consumption
+[31m[1mAssertionError[22m: expected "vi.fn()" to not be called at all, but actually been called 1 times[90m
+
+Received:
+
+[1m  1st vi.fn() call:
+
+[22m    Array [
+      "[pij resend 1]
+    [pijMessageId:continuous-idle]
+    [pij-rs from pij-sender]
+    continuous-idle
+    [/pij]",
+    ]
+[31m[90m
+
+Number of calls: [1m1[22m
+[31m[39m
+[36m [2m❯[22m .pi/extensions/pij/adapters/rust-runtime.test.ts:[2m1595:35[22m[39m
+    [90m1593|[39m   runtime[33m.[39m[34monTurnEnd[39m()[33m;[39m
+    [90m1594|[39m   [35mawait[39m vi[33m.[39m[34madvanceTimersByTimeAsync[39m([34m1_000[39m)[33m;[39m
+    [90m1595|[39m   [34mexpect[39m(api[33m.[39msendUserMessage)[33m.[39mnot[33m.[39m[34mtoHaveBeenCalled[39m()[33m;[39m
+    [90m   |[39m                                   [31m^[39m
+    [90m1596|[39m   [35mawait[39m vi[33m.[39m[34madvanceTimersByTimeAsync[39m([34m1_000[39m)[33m;[39m
+    [90m1597|[39m   [34mexpect[39m(api[33m.[39msendUserMessage)[33m.[39m[34mtoHaveBeenCalledOnce[39m()[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m .pi/extensions/pij/adapters/rust-runtime.test.ts[2m > [22mextension-stream delivery[2m > [22mbusy-seat reclaim only refreshes tracking before the idle window with busy=true
+[31m[1mAssertionError[22m: expected "vi.fn()" to not be called at all, but actually been called 1 times[90m
+
+Received:
+
+[1m  1st vi.fn() call:
+
+[22m    Array [
+      "[pij resend 1]
+    [pijMessageId:reclaimed]
+    [pij-rs from pij-sender]
+    reclaimed
+    [/pij]",
+    ]
+[31m[90m
+
+Number of calls: [1m1[22m
+[31m[39m
+[36m [2m❯[22m .pi/extensions/pij/adapters/rust-runtime.test.ts:[2m1652:35[22m[39m
+    [90m1650|[39m   }
+    [90m1651|[39m   [35mawait[39m vi[33m.[39m[34madvanceTimersByTimeAsync[39m(busy [33m?[39m [34m9_000[39m [33m:[39m [34m6_000[39m)[33m;[39m
+    [90m1652|[39m   [34mexpect[39m(api[33m.[39msendUserMessage)[33m.[39mnot[33m.[39m[34mtoHaveBeenCalled[39m()[33m;[39m
+    [90m   |[39m                                   [31m^[39m
+    [90m1653|[39m   [35mawait[39m vi[33m.[39m[34madvanceTimersByTimeAsync[39m([34m1_000[39m)[33m;[39m
+    [90m1654|[39m   [34mexpect[39m(api[33m.[39msendUserMessage)[33m.[39m[34mtoHaveBeenCalledExactlyOnceWith[39m(
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m .pi/extensions/pij/adapters/rust-runtime.test.ts[2m > [22mextension-stream delivery[2m > [22mbusy-seat previously unseen reclaimed mail waits for idle with busy=true
+[31m[1mAssertionError[22m: expected "vi.fn()" to not be called at all, but actually been called 1 times[90m
+
+Received:
+
+[1m  1st vi.fn() call:
+
+[22m    Array [
+      "[pij resend 1]
+    [pijMessageId:unseen-reclaim]
+    [pij-rs from pij-sender]
+    unseen-reclaim
+    [/pij]",
+    ]
+[31m[90m
+
+Number of calls: [1m1[22m
+[31m[39m
+[36m [2m❯[22m .pi/extensions/pij/adapters/rust-runtime.test.ts:[2m1680:35[22m[39m
+    [90m1678|[39m   }
+    [90m1679|[39m   [35mawait[39m vi[33m.[39m[34madvanceTimersByTimeAsync[39m([34m9_000[39m)[33m;[39m
+    [90m1680|[39m   [34mexpect[39m(api[33m.[39msendUserMessage)[33m.[39mnot[33m.[39m[34mtoHaveBeenCalled[39m()[33m;[39m
+    [90m   |[39m                                   [31m^[39m
+    [90m1681|[39m   [35mawait[39m vi[33m.[39m[34madvanceTimersByTimeAsync[39m([34m1_000[39m)[33m;[39m
+    [90m1682|[39m   [34mexpect[39m(api[33m.[39msendUserMessage)[33m.[39m[34mtoHaveBeenCalledExactlyOnceWith[39m(
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m .pi/extensions/pij/adapters/rust-runtime.test.ts[2m > [22mextension-stream delivery[2m > [22mrecovers interrupted mail through the same bounded prompt path and never repeats consumed mail
+[31m[1mAssertionError[22m: expected "vi.fn()" to not be called at all, but actually been called 1 times[90m
+
+Received:
+
+[1m  1st vi.fn() call:
+
+[22m    Array [
+      "[pij resend 1]
+    [pijMessageId:survive-interrupt]
+    [pij-rs from pij-sender]
+    survive-interrupt
+    [/pij]",
+    ]
+[31m[90m
+
+Number of calls: [1m1[22m
+[31m[39m
+[36m [2m❯[22m .pi/extensions/pij/adapters/rust-runtime.test.ts:[2m1966:35[22m[39m
+    [90m1964|[39m   runtime[33m.[39m[34monAgentEnd[39m()[33m;[39m
+    [90m1965|[39m   [35mawait[39m vi[33m.[39m[34madvanceTimersByTimeAsync[39m([34m9_000[39m)[33m;[39m
+    [90m1966|[39m   [34mexpect[39m(api[33m.[39msendUserMessage)[33m.[39mnot[33m.[39m[34mtoHaveBeenCalled[39m()[33m;[39m
+    [90m   |[39m                                   [31m^[39m
+    [90m1967|[39m   [35mawait[39m vi[33m.[39m[34madvanceTimersByTimeAsync[39m([34m1_000[39m)[33m;[39m
+    [90m1968|[39m   [34mexpect[39m(api[33m.[39msendUserMessage)[33m.[39m[34mtoHaveBeenCalledOnce[39m()[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m .pi/extensions/pij/adapters/rust-runtime.test.ts[2m > [22mextension-stream delivery[2m > [22mdoes not requeue during a scheduled continuation or acknowledge after shutdown
+[31m[1mAssertionError[22m: expected [ { …(2) }, { …(2) } ] to have a length of 1 but got 2[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 1[39m
+[31m+ 2[39m
+
+[36m [2m❯[22m .pi/extensions/pij/adapters/rust-runtime.test.ts:[2m2026:22[22m[39m
+    [90m2024|[39m   pi[33m.[39m[34msetBusy[39m([35mfalse[39m)[33m;[39m
+    [90m2025|[39m   [35mawait[39m vi[33m.[39m[34madvanceTimersByTimeAsync[39m([34m1_000[39m)[33m;[39m
+    [90m2026|[39m   [34mexpect[39m(pi[33m.[39minjects)[33m.[39m[34mtoHaveLength[39m([34m1[39m)[33m;[39m
+    [90m   |[39m                      [31m^[39m
+    [90m2027|[39m   runtime[33m.[39m[34mshutdown[39m([32m"quit"[39m)[33m;[39m
+    [90m2028|[39m   [35mawait[39m runtime[33m.[39m[34monMessageStart[39m({
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m1 passed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[31m5 failed[39m[22m[2m | [22m[1m[32m102 passed[39m[22m[90m (107)[39m
+[2m   Start at [22m 13:54:00
+[2m   Duration [22m 2.08s[2m (transform 415ms, setup 0ms, import 508ms, tests 3.04s, environment 0ms)[22m
+

@@ -535,6 +535,38 @@ impl Queue for SqliteQueue {
         }))
     }
 
+    async fn terminal_delivery_state(
+        &self,
+        job: JobId,
+        recipient: &SeatId,
+    ) -> Result<Option<&'static str>> {
+        require_current_schema(&self.pool).await?;
+        let Ok(id) = i64::try_from(job.0) else {
+            return Ok(None);
+        };
+        let row = sqlx::query(
+            "SELECT state FROM jobs WHERE id = ?1 AND serial_key = ?2 \
+             AND state IN ('done', 'failed') AND kind = 'delivery:' || serial_key \
+             AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.to') END = ?2 \
+             AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.command') END IS NULL",
+        )
+        .bind(id)
+        .bind(recipient.as_str())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(adapter_error)?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        Ok(
+            match row.try_get::<&str, _>("state").map_err(adapter_error)? {
+                "done" => Some("done"),
+                "failed" => Some("failed"),
+                _ => None,
+            },
+        )
+    }
+
     async fn heartbeat_delivery(
         &self,
         job: JobId,

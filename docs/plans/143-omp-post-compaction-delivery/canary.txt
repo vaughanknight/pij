@@ -1,0 +1,3 @@
+Command: omp --no-extensions --no-skills --no-rules --no-tools --no-session --no-title --model github-copilot/gpt-5-mini --thinking minimal -p "Reply exactly PIJ143_CANARY_OK"
+Observed exit 0: Working...
+PIJ143_CANARY_OK

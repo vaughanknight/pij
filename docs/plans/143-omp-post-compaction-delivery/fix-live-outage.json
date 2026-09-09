@@ -1,0 +1,120 @@
+{
+  "seat": "pij-reasonable-excuse",
+  "addr": "127.0.0.1:63186",
+  "messageId": "f284054a-e7f8-471b-80bf-6cd330169074",
+  "send": {
+    "ok": true,
+    "command": "pij send",
+    "v": 2,
+    "data": {
+      "msg_id": "f284054a-e7f8-471b-80bf-6cd330169074",
+      "outcome": {
+        "outcome": "queued",
+        "reason": "extension-stream",
+        "next_retry_at": 0
+      },
+      "at": 1788928740690
+    }
+  },
+  "sendAt": 1788928740689,
+  "claimSql": "SELECT id,state,claimed_at,acked_at,attempt,lease_expirations FROM jobs WHERE dedupe_key = ?",
+  "stopAt": 1788928740694,
+  "consumption": {
+    "at": 1788928750929,
+    "kind": "message_start",
+    "idle": false,
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "[pij resend 1]\n[pijMessageId:f284054a-e7f8-471b-80bf-6cd330169074]\n[pij-rs from test:pij143-offline]\nReply with PIJ143_AUTHORITY_OFFLINE_RECOVERED. No tools.\n[/pij]"
+      }
+    ]
+  },
+  "restartAt": 1788928766524,
+  "finalJob": {
+    "id": 8,
+    "state": "done",
+    "claimed_at": 1788928740,
+    "acked_at": 1788928769,
+    "attempt": 0,
+    "lease_expirations": 0
+  },
+  "events": [
+    {
+      "at": 1788928750929,
+      "kind": "turn_start",
+      "idle": false
+    },
+    {
+      "at": 1788928750929,
+      "kind": "message_start",
+      "idle": false,
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "[pij resend 1]\n[pijMessageId:f284054a-e7f8-471b-80bf-6cd330169074]\n[pij-rs from test:pij143-offline]\nReply with PIJ143_AUTHORITY_OFFLINE_RECOVERED. No tools.\n[/pij]"
+        }
+      ]
+    },
+    {
+      "at": 1788928752498,
+      "kind": "message_start",
+      "idle": false,
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "PIJ143_AUTHORITY",
+          "textSignature": "{\"v\":1,\"id\":\"HRl6yqBBQ7HHXqNrobGU0at/d4sBaXvSL9SqtDqZeT9VpMAYxK+hhgztiPBzOToBa9DmFKqvoS2IbJMVkRBVSx63op7wLKIMIJ/K1ClSf8YiT5BIKGXyO0woCVQdvw7xMZxSEADsXuZRBTkw/LhrUiztp85aH1yvXk7tlZoIQPLmxmW1kt6EmKsgbfzNdlHBdWzp+lctkviBfZ9bMLOw9uWow5zwnEDzVMTxZZ4OKip83J9919Vf3b47bTW8EuQOlbPpRwchx83v0ytdiZBJV47Blfm1Wz65rzrQI1iFWEwARBcVgV67yEXuuhJSL/4NBt5l7WQYtFef717xjEQTz8qbJ41kLIeUIEfJHbrFHCbQskEJuD6r//p5yMRWZtRYtLW4ZOZFHFQdUa+ZAhqkKcfNICkc03loIj8Ztb54u3CTrA==\"}"
+        }
+      ],
+      "model": "gpt-5-mini"
+    },
+    {
+      "at": 1788928752625,
+      "kind": "turn_end",
+      "idle": false
+    },
+    {
+      "at": 1788928752634,
+      "kind": "agent_end",
+      "idle": false
+    }
+  ],
+  "spine": [
+    {
+      "seq": 34,
+      "at": 1788928740690,
+      "kind": "message.pushed",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"f284054a-e7f8-471b-80bf-6cd330169074\",\"from\":\"test:pij143-offline\",\"body\":\"Reply with PIJ143_AUTHORITY_OFFLINE_RECOVERED. No tools.\"}"
+    },
+    {
+      "seq": 35,
+      "at": 1788928740690,
+      "kind": "delivery.outcome",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"f284054a-e7f8-471b-80bf-6cd330169074\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+    },
+    {
+      "seq": 36,
+      "at": 1788928769920,
+      "kind": "delivery.outcome",
+      "seat": "pij-reasonable-excuse",
+      "payload": "{\"msg_id\":\"f284054a-e7f8-471b-80bf-6cd330169074\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+    }
+  ],
+  "discardedProbes": [
+    {
+      "messageId": "848bd447-4717-4469-8501-9ffb7d05650b",
+      "reason": "daemon stop happened after native consumption"
+    },
+    {
+      "messageId": "a3041991-12ef-47d9-b598-ed84fd63b37b",
+      "reason": "peek response did not expose running state; daemon not stopped"
+    }
+  ],
+  "trafficEvidence": "Observer global fetch replacement does not intercept the client captured fetch dependency. Retry throttling is proven by deterministic runtime tests, not by this live observer."
+}

@@ -17,7 +17,7 @@
     "method": "POST",
     "path": "/v1/inbox/heartbeat",
     "request": { "seat": "pij-reader", "job_id": 1 },
-    "response": { "ok": true, "command": "pij inbox", "v": 2, "data": 1 }
+    "response": { "ok": true, "command": "pij inbox", "v": 2, "data": { "job_id": 1, "state": "running" } }
   },
   "operator_release": {
     "method": "POST",

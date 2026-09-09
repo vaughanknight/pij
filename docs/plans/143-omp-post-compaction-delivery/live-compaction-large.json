@@ -1,0 +1,1441 @@
+{
+  "message_id": "134860e2-dbd8-462c-8b36-22e50c039d03",
+  "nonce": "PIJ143_COMPACT_134860e2-dbd8-462c-8b36-22e50c039d03",
+  "send_at": 1788926546999,
+  "send": {
+    "ok": true,
+    "command": "pij send",
+    "v": 2,
+    "data": {
+      "msg_id": "134860e2-dbd8-462c-8b36-22e50c039d03",
+      "outcome": {
+        "outcome": "queued",
+        "reason": "extension-stream",
+        "next_retry_at": 0
+      },
+      "at": 1788926547000
+    }
+  },
+  "first_running_observation": {
+    "observed_at": 1788926562086,
+    "id": 1,
+    "state": "running",
+    "claimed_at": 1788926562,
+    "acked_at": null,
+    "attempt": 0,
+    "lease_expirations": 0
+  },
+  "samples": [
+    {
+      "observed_at": 1788926559084,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559119,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559139,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559160,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559181,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559202,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559223,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559244,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559265,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559286,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559307,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559328,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559349,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559370,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559391,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559412,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559432,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559454,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559475,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559495,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559516,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559537,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559559,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559579,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559600,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559621,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559642,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559663,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559684,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559705,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559727,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559748,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559769,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559790,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559810,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559832,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559853,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559873,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559895,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559915,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559935,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559955,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559977,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926559997,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560017,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560037,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560057,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560078,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560099,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560120,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560142,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560163,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560184,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560204,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560225,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560246,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560267,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560287,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560308,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560329,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560349,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560371,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560391,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560412,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560433,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560454,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560475,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560496,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560517,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560538,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560558,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560580,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560600,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560622,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560643,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560663,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560683,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560704,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560725,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560746,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560767,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560788,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560811,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560832,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560853,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560874,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560895,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560917,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560938,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560959,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926560979,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561000,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561020,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561041,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561062,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561083,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561103,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561124,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561145,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561166,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561187,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561208,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561229,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561249,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561270,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561291,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561312,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561333,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561354,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561375,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561397,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561418,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561438,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561459,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561481,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561502,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561523,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561544,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561565,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561586,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561607,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561628,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561649,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561670,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561691,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561712,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561732,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561754,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561774,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561795,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561815,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561836,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561857,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561878,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561900,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561921,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561941,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561962,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926561982,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926562003,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926562024,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926562044,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926562065,
+      "id": 1,
+      "state": "pending",
+      "claimed_at": null,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    },
+    {
+      "observed_at": 1788926562086,
+      "id": 1,
+      "state": "running",
+      "claimed_at": 1788926562,
+      "acked_at": null,
+      "attempt": 0,
+      "lease_expirations": 0
+    }
+  ],
+  "lifecycle": [
+    {
+      "at": 1788926546988,
+      "kind": "session_before_compact",
+      "idle": true
+    },
+    {
+      "at": 1788926556655,
+      "kind": "session_compact",
+      "idle": true
+    },
+    {
+      "at": 1788926562112,
+      "kind": "turn_start",
+      "idle": false
+    },
+    {
+      "at": 1788926562117,
+      "kind": "message_start",
+      "idle": false,
+      "role": "custom",
+      "customType": "pij",
+      "id": "134860e2-dbd8-462c-8b36-22e50c039d03"
+    },
+    {
+      "at": 1788926566047,
+      "kind": "message_start",
+      "idle": false,
+      "role": "assistant"
+    },
+    {
+      "at": 1788926566308,
+      "kind": "turn_end",
+      "idle": false
+    },
+    {
+      "at": 1788926566314,
+      "kind": "agent_end",
+      "idle": false
+    }
+  ],
+  "job": {
+    "id": 1,
+    "state": "done",
+    "claimed_at": 1788926562,
+    "acked_at": 1788926562,
+    "attempt": 0,
+    "lease_expirations": 0
+  },
+  "spine": [
+    {
+      "seq": 1,
+      "at": 1788926403791,
+      "kind": "config.claude-inbound-ensured",
+      "seat": null,
+      "payload": "{\"after\":\"accept\",\"before\":null,\"home\":\"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij143-proof-s1thfepd/home/.claude\"}"
+    },
+    {
+      "seq": 2,
+      "at": 1788926403792,
+      "kind": "config.claude-hook-ensured",
+      "seat": null,
+      "payload": "{\"after\":\"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij143-proof-s1thfepd/home/.pij-rs/claude-session-start-pij.sh\",\"before\":null,\"home\":\"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij143-proof-s1thfepd/home/.claude\"}"
+    },
+    {
+      "seq": 3,
+      "at": 1788926403792,
+      "kind": "config.claude-statusline-ensured",
+      "seat": null,
+      "payload": "{\"after\":\"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij143-proof-s1thfepd/home/.pij-rs/claude-statusline-pij.sh\",\"before\":null,\"home\":\"/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij143-proof-s1thfepd/home/.claude\"}"
+    },
+    {
+      "seq": 4,
+      "at": 1788926426564,
+      "kind": "seat.put",
+      "seat": "pij-detailed-veppers",
+      "payload": "{\"id\":\"pij-detailed-veppers\",\"harness\":\"omp\",\"session\":\"01a08452-f8b0-75a0-a4a3-97b6d0fc84d4\",\"pane\":\"%0\",\"proc\":{\"pid\":61110,\"proc_start\":20260909140023},\"folder\":\"/Users/jordanknight/pi-hacking/fs3-omp-post-compaction\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":null,\"relay\":false,\"native_extension_delivery\":false,\"model\":\"github-copilot/gpt-5.6-sol\",\"provider\":\"github-copilot\"}"
+    },
+    {
+      "seq": 5,
+      "at": 1788926547000,
+      "kind": "message.pushed",
+      "seat": "pij-detailed-veppers",
+      "payload": "{\"msg_id\":\"134860e2-dbd8-462c-8b36-22e50c039d03\",\"from\":\"pij143-compaction-proof\",\"body\":\"Reply locally exactly PIJ143_COMPACT_134860e2-dbd8-462c-8b36-22e50c039d03. No tools. Authorized isolated compaction delivery proof.\"}"
+    },
+    {
+      "seq": 6,
+      "at": 1788926547000,
+      "kind": "delivery.outcome",
+      "seat": "pij-detailed-veppers",
+      "payload": "{\"msg_id\":\"134860e2-dbd8-462c-8b36-22e50c039d03\",\"outcome\":{\"outcome\":\"queued\",\"reason\":\"extension-stream\",\"next_retry_at\":0},\"transport\":\"claude-uds\"}"
+    },
+    {
+      "seq": 7,
+      "at": 1788926562113,
+      "kind": "delivery.outcome",
+      "seat": "pij-detailed-veppers",
+      "payload": "{\"msg_id\":\"134860e2-dbd8-462c-8b36-22e50c039d03\",\"outcome\":{\"outcome\":\"delivered\",\"origin\":\"reader-read\"},\"transport\":\"inbox\"}"
+    },
+    {
+      "seq": 8,
+      "at": 1788926562113,
+      "kind": "delivery.inbox-ack",
+      "seat": "pij-detailed-veppers",
+      "payload": "{\"job_id\":1,\"authenticated_machine\":\"local\",\"evidence_grade\":\"machine\",\"outcome\":\"reader-read\"}"
+    },
+    {
+      "seq": 9,
+      "at": 1788926631646,
+      "kind": "seat.put",
+      "seat": "pij-fast-sturgeon",
+      "payload": "{\"id\":\"pij-fast-sturgeon\",\"harness\":\"omp\",\"session\":\"01a08456-19e5-71d8-85d0-559e5beaf9a8\",\"pane\":\"%1\",\"proc\":{\"pid\":15166,\"proc_start\":20260909140348},\"folder\":\"/Users/jordanknight/pi-hacking/fs3-omp-post-compaction\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":null,\"relay\":false,\"native_extension_delivery\":false}"
+    }
+  ],
+  "query": "SELECT id,state,claimed_at,acked_at,attempt,lease_expirations FROM jobs WHERE dedupe_key = ?"
+}
