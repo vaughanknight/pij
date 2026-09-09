@@ -734,6 +734,7 @@ export class NativeBridge {
 						this.emit("receive-held", {
 							holdKind: hold.kind,
 							diagnostic: hold.reason,
+							safeDiagnostic: hold.reason,
 							action:
 								"Resume the targeted native session or use a new seat and intentionally reissue the message; no acknowledgement was sent.",
 						});
@@ -753,7 +754,11 @@ export class NativeBridge {
 						if (!error.retryable) throw error;
 						this.registered = false;
 						if (!failureEpisode)
-							this.emit("reconnecting", { diagnostic: error.message, retryMs: retry });
+							this.emit("reconnecting", {
+								diagnostic: error.message,
+								safeDiagnostic: error instanceof NativeError ? error.safeDiagnostic : null,
+								retryMs: retry,
+							});
 						failureEpisode = true;
 					}
 					await this.delay(retry, signal);
@@ -764,6 +769,10 @@ export class NativeBridge {
 			if (!signal.aborted)
 				this.emit("receive-held", {
 					diagnostic: error.message,
+					safeDiagnostic:
+						error instanceof NativeError
+							? error.safeDiagnostic
+							: `non-native ${error?.name ?? "error"}`,
 					action:
 						"Inspect native history and durable acceptance before recovery; do not blindly resend or acknowledge.",
 				});
@@ -1100,6 +1109,13 @@ export function createNativeReporter({ log, capture }) {
 						? `native registration failed: ${event.safeDiagnostic ?? "native initialization failed"}; no retry is scheduled — restart the Copilot CLI (/restart or relaunch) to recover; ordinary Copilot remains usable`
 						: "check the Pij daemon and PIJ_RS_ADDR/PIJ_RS_STATE_DIR; retrying when available; ordinary Copilot remains usable";
 			// Never project the raw diagnostic: HTTP/OS errors may carry bodies or credentials.
+			// The stderr log keeps the SAFE diagnostic so a hold is diagnosable after the fact.
+			capture({
+				kind: event.kind,
+				holdKind: event.holdKind ?? null,
+				safeDiagnostic: event.safeDiagnostic ?? null,
+				retryMs: event.retryMs ?? null,
+			});
 			return Promise.resolve()
 				.then(() => log(`[pij native] unavailable: ${event.kind}; ${advice}`, { level: "info" }))
 				.catch(() => capture({ kind: "native-diagnostic-unavailable", failureKind: event.kind }));

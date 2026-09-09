@@ -1000,7 +1000,8 @@ describe("RustRuntimeSession", () => {
 		// without this line its loss is indistinguishable from the documented pre-144 null.
 		expect(
 			registrations.every(
-				(claim) => claim.extension_build === "0123456789" && claim.extension_path === "/abs/extension",
+				(claim) =>
+					claim.extension_build === "0123456789" && claim.extension_path === "/abs/extension",
 			),
 		).toBe(true);
 		expect(seatReads).toBeGreaterThanOrEqual(2);
