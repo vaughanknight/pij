@@ -339,6 +339,92 @@ describe("RustRuntimeSession", () => {
 		}
 	});
 
+	it("a failed outbox send never leaves the flush chain rejected", async () => {
+		// Jordan, 2026-09-11: quitting omp printed `[Unhandled Rejection] AbortError`
+		// instead of exiting cleanly. `flush()` STORES its chain, and two callers are
+		// fire-and-forget, so a send aborted on the way out rejected with nobody to
+		// catch it — and every later flush inherited that rejection.
+		vi.stubEnv("PIJ_ANNOUNCE_TO", "pij-parent");
+		vi.stubEnv("PIJ_SPAWN_ID", "s-test");
+		vi.stubEnv("PIJ_SESSION_ID", "pij-self");
+		vi.stubEnv("PIJ_SPAWN_TASK", undefined);
+		const unhandled: unknown[] = [];
+		const onUnhandled = (error: unknown) => unhandled.push(error);
+		process.on("unhandledRejection", onUnhandled);
+		const seat: RustSeatDescriptor = {
+			id: "pij-self",
+			harness: "pi",
+			session: "native-session",
+			folder: "/abs/tree",
+			state: "idle",
+			proc: { pid: process.pid, proc_start: 20260905092248 },
+		} as unknown as RustSeatDescriptor;
+		let failSend = true;
+		const sends: unknown[] = [];
+		const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+			const path = new URL(String(url)).pathname;
+			if (path === "/v1/send") {
+				if (failSend)
+					throw Object.assign(new Error("The operation was aborted."), { name: "AbortError" });
+				sends.push(JSON.parse(String(init?.body)));
+				return envelope("pij send", { msg_id: "m1", outcome: { outcome: "queued" } });
+			}
+			if (path === "/v1/inbox") return envelope("pij inbox", []);
+			if (path === "/v1/seats") return envelope("pij seats", { seats: [seat], unavailable: [] });
+			if (path === "/v1/register") return envelope("pij register", { ...seat, binding: "created" });
+			if (path === "/v1/events") return eventResponse("");
+			throw new Error(`unexpected path ${path}`);
+		});
+		const client = new PijDaemonClient(
+			{ addr: "127.0.0.1:7461", stateDir: "/tmp/state" },
+			"secret",
+			{
+				fetch: fetchMock as typeof fetch,
+				readFile: async () => "secret",
+				processStart: () => 20260905092248,
+			},
+		);
+		const runtime = new RustRuntimeSession(client, new FakeTmux(), []);
+		const pi = new FakePiRuntime();
+		bindRuntime(runtime, pi);
+		try {
+			// Boot queues the ready-ping and awaits the flush: the abort must be
+			// captured, not thrown, and must not poison the stored chain.
+			await expect(
+				runtime.boot({
+					extension_build: "0123456789",
+					extension_path: "/abs/extension",
+					folder: "/abs/tree",
+					dataDir: "",
+					eventsPath: "",
+					harness: "pi",
+					harnessSessionId: "native-session",
+					piSessionId: "native-session",
+					runtimeBin: "omp",
+					resetRuntimeState: true,
+					reason: "startup",
+				} as unknown as Parameters<RustRuntimeSession["boot"]>[0]),
+			).resolves.toBeDefined();
+
+			// The chain still works afterwards — a rejected stored chain would make
+			// every later flush reject too.
+			// CONTROL: the scenario is worthless unless a send was actually attempted.
+			const attempts = fetchMock.mock.calls.filter(
+				([url]) => new URL(String(url)).pathname === "/v1/send",
+			).length;
+			expect(attempts).toBeGreaterThan(0);
+
+			failSend = true;
+			runtime.onTurnStart(new Date().toISOString());
+			await new Promise((resolve) => setImmediate(resolve));
+			runtime.shutdown("quit");
+			await new Promise((resolve) => setImmediate(resolve));
+			expect(unhandled).toEqual([]);
+		} finally {
+			process.off("unhandledRejection", onUnhandled);
+		}
+	});
+
 	it("native control sends carry command and pane caller proof with no scaffold body", async () => {
 		vi.stubEnv("TMUX_PANE", "%42");
 		const { runtime, sends } = await bootPushedEvent(PUSHED_EVENT_WIRE, new FakePiRuntime());
