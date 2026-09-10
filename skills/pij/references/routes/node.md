@@ -52,15 +52,15 @@ The daemon reads/hashes packet bytes relative to caller cwd and persists the dis
 ```bash
 pij task set <seat> '<task>' [--project <slug>]
 pij task close <assignment-id> --reason done|cancelled|failed|superseded
-pij report now '<did>' '<next>' [--state <word>] [--note '<text>'] [--project <slug>]
+pij report now '<did>' '<next>' [--state <word>] [--note '<text>']
 pij report question "<what I need from you>" [--assignment <id>]
 pij report blocked "<what I am waiting on>" [--assignment <id>]
 pij report state <state> [--assignment <id>] [--refs a,b]
-pij report clear [--assignment <id>]
+pij report clear
 pij report verify <seat> [--assignment <id>]
 ```
 
-Everything under `report` is a first-person claim about yourself. `report verify <seat>` is the supervisory exception and requires the target's **current recorded parent**, never self or an unrelated seat. Done verification binds the latest done sequence; another done declaration reopens unverified-done. Closing a task does not substitute for verification.
+Everything under `report` is a first-person claim about yourself. `report verify <seat>` is the supervisory exception and requires the target's **current recorded parent**, never self or an unrelated seat. With `--assignment`, verification binds the latest done naming that assignment; unscoped verification binds the latest done overall. A newer done for the same assignment reopens its unverified-done anomaly. Closing a task does not substitute for verification.
 
 States: `blocked|question|hold|waiting|ready|failed|cancelled|done`. Mechanical liveness/activity is derived, not a writable semantic state; do not invent `working`. Existing now/state outputs and events stay unchanged. Use `--note` with question/blocked; report clear removes a state, not a durable decision. Record now/next at both edges of work (invariant 12), at the seat's own altitude. Query anomalies unscoped when supervising status cards: project/here filters may hide node-keyed stale status.
 

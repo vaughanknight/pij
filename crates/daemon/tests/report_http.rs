@@ -23,6 +23,9 @@
 
 use std::net::SocketAddr;
 
+use pij_core::anomalies::{
+    AnomalyThresholds, AnomalyView, Detector, DoneFact, UnverifiedDoneDetector,
+};
 use pij_core::config::{AdapterChoice, Adapters, Config};
 use pij_core::model::{Envelope, Harness, SeatDescriptor, SeatId, SemanticState, Seq};
 use pij_core::report::{CARD_EVENT_KIND, CardRecord, ReportConfig, ReportService};
@@ -1403,18 +1406,102 @@ async fn assignment_done_is_verified_only_by_current_parent_for_matching_task() 
     .await
     .expect("self refusal");
     assert_eq!(self_verify["details"]["code"], "E-RS-OWNERSHIP");
-    let verified: serde_json::Value = post_report(
-        addr,
-        Some("parent"),
-        &["report", "verify", SEAT, "--assignment", id],
-    )
-    .await
-    .json()
-    .await
-    .expect("verify");
-    assert_eq!(verified["ok"], true, "{verified}");
-    assert_eq!(verified["data"]["done_seq"], declared["data"]["seq"]);
-    assert_eq!(verified["data"]["assignment_id"], id);
+    let other_task = governance_request(addr, "task", &["task", "set", SEAT, "other done"]).await;
+    let other_id = other_task["task"]["id"].as_str().expect("other task id");
+    for later_assignment in [None, Some(other_id)] {
+        // Repeating A ensures both readers select its latest done, not its first.
+        let latest: serde_json::Value = post_report(
+            addr,
+            Some(SEAT),
+            &["report", "state", "done", "--assignment", id],
+        )
+        .await
+        .json()
+        .await
+        .expect("latest A");
+        assert_eq!(latest["ok"], true, "{latest}");
+        let mut later_argv = vec!["report", "state", "done"];
+        if let Some(assignment) = later_assignment {
+            later_argv.extend(["--assignment", assignment]);
+        }
+        let later: serde_json::Value = post_report(addr, Some(SEAT), &later_argv)
+            .await
+            .json()
+            .await
+            .expect("later unrelated done");
+        assert_eq!(later["ok"], true, "{later}");
+        let before = governance_request(addr, "anomalies", &["anomalies"]).await;
+        let row = before["anomalies"]
+            .as_array()
+            .expect("rows")
+            .iter()
+            .find(|row| row["kind"] == "unverified-done" && row["assignmentId"] == id)
+            .expect("A awaits verification");
+        assert_eq!(row["evidence"][0], latest["data"]["seq"]);
+
+        // Run the detector's actual advice for the fact selected by HTTP, not a
+        // separately written verify command that could drift from remediation.
+        let facts = [DoneFact {
+            seat: SeatId::from(row["nodeId"].as_str().expect("node")),
+            assignment_id: Some(
+                row["assignmentId"]
+                    .as_str()
+                    .expect("assignment")
+                    .to_string(),
+            ),
+            done_seq: Seq(row["evidence"][0].as_u64().expect("done seq")),
+            verified_seq: None,
+            verified_done_seq: None,
+        }];
+        let advice = UnverifiedDoneDetector.scan(&AnomalyView {
+            now_ms: 0,
+            thresholds: AnomalyThresholds::default(),
+            seats: &[],
+            cards: &[],
+            activity: &[],
+            dispatches: &[],
+            done: &facts,
+            dispositions: &[],
+            decisions: &[],
+            dead: &[],
+        });
+        let argv: Vec<_> = advice[0]
+            .remediation_line
+            .split_whitespace()
+            .skip(1)
+            .collect();
+        let verified: serde_json::Value = post_report(addr, Some("parent"), &argv)
+            .await
+            .json()
+            .await
+            .expect("verify via remediation");
+        assert_eq!(verified["ok"], true, "{verified}");
+        assert_eq!(verified["data"]["done_seq"], latest["data"]["seq"]);
+        assert_eq!(verified["data"]["assignment_id"], id);
+        let after = governance_request(addr, "anomalies", &["anomalies"]).await;
+        let rows = after["anomalies"].as_array().expect("rows");
+        assert!(
+            !rows
+                .iter()
+                .any(|row| { row["kind"] == "unverified-done" && row["assignmentId"] == id }),
+            "A's remediation must clear A: {after}"
+        );
+        assert!(
+            rows.iter().any(|row| {
+                row["kind"] == "unverified-done" && row["evidence"][0] == later["data"]["seq"]
+            }),
+            "unrelated done still awaits verification: {after}"
+        );
+
+        let unscoped: serde_json::Value =
+            post_report(addr, Some("parent"), &["report", "verify", SEAT])
+                .await
+                .json()
+                .await
+                .expect("unscoped verify");
+        assert_eq!(unscoped["ok"], true, "{unscoped}");
+        assert_eq!(unscoped["data"]["done_seq"], later["data"]["seq"]);
+    }
     let wrong: serde_json::Value = post_report(
         addr,
         Some("parent"),
