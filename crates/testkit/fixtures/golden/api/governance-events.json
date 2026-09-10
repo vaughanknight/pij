@@ -104,6 +104,8 @@
       "decoded_payload": {
         "state": "done",
         "note": null,
+        "assignment_id": null,
+        "refs": [],
         "registry_seq": 100
       },
       "frame": {
@@ -115,7 +117,7 @@
           "at": 1788739200000,
           "kind": "report.state",
           "seat": "pij-worker",
-          "payload": "{\"state\":\"done\",\"note\":null,\"registry_seq\":100}"
+          "payload": "{\"state\":\"done\",\"note\":null,\"assignment_id\":null,\"refs\":[],\"registry_seq\":100}"
         }
       }
     },

@@ -486,6 +486,12 @@ pub struct StateCard {
     /// The explanation supplied with `report blocked` / `report question`,
     /// which TS renders beside the declared state (cli.ts:5794).
     pub state_note: Option<String>,
+    /// Task associated with the latest declaration; canonical report wire spelling.
+    #[serde(default, rename = "assignment_id")]
+    pub assignment_id: Option<String>,
+    /// Supporting references from that same declaration.
+    #[serde(default)]
+    pub refs: Vec<String>,
     /// Active human-typing holds; the queue, not this projection, owns the bodies.
     #[serde(default)]
     pub held: Vec<pij_core::delivery::HeldEvent>,

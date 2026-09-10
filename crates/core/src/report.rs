@@ -48,6 +48,12 @@ pub struct StateRecord {
     pub state: Option<SemanticState>,
     /// The explanation supplied with `blocked` or `question`.
     pub note: Option<String>,
+    /// The task this declaration concerns, validated by the caller.
+    #[serde(default)]
+    pub assignment_id: Option<String>,
+    /// Supporting references; these may accompany an unscoped declaration.
+    #[serde(default)]
+    pub refs: Vec<String>,
     /// The authoritative registry write this history record describes.
     pub registry_seq: Seq,
 }
@@ -154,7 +160,8 @@ where
 
     /// Declare work finished.
     pub async fn done(&self, seat: &SeatId) -> Result<Seq> {
-        self.set_state(seat, Some(SemanticState::Done), None).await
+        self.set_state(seat, Some(SemanticState::Done), None, None, Vec::new())
+            .await
     }
 
     /// Declare a blocking dependency and retain its explanation in the spine.
@@ -163,6 +170,8 @@ where
             seat,
             Some(SemanticState::Blocked),
             Some(collapse_whitespace(note)),
+            None,
+            Vec::new(),
         )
         .await
     }
@@ -173,13 +182,15 @@ where
             seat,
             Some(SemanticState::Question),
             Some(collapse_whitespace(note)),
+            None,
+            Vec::new(),
         )
         .await
     }
 
     /// Clear the current semantic-state declaration.
     pub async fn clear(&self, seat: &SeatId) -> Result<Seq> {
-        self.set_state(seat, None, None).await
+        self.set_state(seat, None, None, None, Vec::new()).await
     }
 
     /// Declare (or clear) a semantic state directly.
@@ -199,9 +210,17 @@ where
         seat: &SeatId,
         state: Option<SemanticState>,
         note: Option<&str>,
+        assignment_id: Option<&str>,
+        refs: &[String],
     ) -> Result<Seq> {
-        self.set_state(seat, state, note.map(collapse_whitespace))
-            .await
+        self.set_state(
+            seat,
+            state,
+            note.map(collapse_whitespace),
+            assignment_id.map(str::to_string),
+            refs.to_vec(),
+        )
+        .await
     }
 
     /// Read the latest state-history record, independently of the registry row.
@@ -217,6 +236,8 @@ where
         seat: &SeatId,
         state: Option<SemanticState>,
         note: Option<String>,
+        assignment_id: Option<String>,
+        refs: Vec<String>,
     ) -> Result<Seq> {
         let mut descriptor =
             self.registry
@@ -234,6 +255,8 @@ where
         let record = StateRecord {
             state,
             note,
+            assignment_id,
+            refs,
             registry_seq,
         };
         let append = self

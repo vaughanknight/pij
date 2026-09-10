@@ -14,10 +14,10 @@
 //!
 //! # Two rules that shape every refusal here
 //!
-//! 1. **A shape rs cannot honour refuses BY NAME.** Reports retain their
-//!    established grammar; task assignment is accepted specifically by verify,
-//!    where it is checked against real task and done evidence. Unsupported
-//!    state words and scoping flags never disappear into a near-fit behavior.
+//! 1. **A shape rs cannot honour refuses BY NAME.** State declarations can
+//!    carry a task assignment owned by the caller and supporting references.
+//!    Verify checks task-scoped done evidence under current-parent authority.
+//!    Unsupported scoping flags never disappear into a near-fit behavior.
 //! 2. **No refusal may be a bare 404.** Wave 1's shim classifies "404 or 405
 //!    with a body that does not decode as a pij envelope" as ROUTE ABSENCE and
 //!    falls back to legacy. A refusal wearing that shape would not be a refusal
@@ -55,12 +55,19 @@ pub(crate) enum ReportCall {
         state: Option<SemanticState>,
         note: Option<String>,
     },
-    /// `report state <state>` — `core/cli.ts:1708`.
-    State(SemanticState),
-    /// `report blocked "<text>"` — `core/cli.ts:1690`.
-    Blocked(String),
-    /// `report question "<text>"` — `core/cli.ts:1689`.
-    Question(String),
+    /// A state declaration, including the explaining blocked leaf.
+    State {
+        state: SemanticState,
+        note: Option<String>,
+        assignment_id: Option<String>,
+        refs: Vec<String>,
+    },
+    /// A durable question plus its state declaration.
+    Question {
+        note: String,
+        assignment_id: Option<String>,
+        refs: Vec<String>,
+    },
     /// Parent verifies an actual done event, optionally for its named task.
     Verify {
         target: String,
@@ -107,13 +114,8 @@ pub(crate) fn parse_report(argv: &[String]) -> Result<ReportCall, Refusal> {
 
     let Arguments { positionals, flags } = split_arguments(tokens)?;
 
-    // Flags that address objects rs does not have. Checked BEFORE the leaf is
-    // dispatched so the answer is the same wherever the flag was typed — the
-    // caller's mistake is the flag, not the verb they attached it to.
+    // These scoping operations are unavailable on every report leaf.
     for (name, _) in &flags {
-        if leaf == "verify" && *name == "assignment" {
-            continue;
-        }
         if let Some(why) = unsupported_flag(name) {
             return Err(why);
         }
@@ -136,17 +138,7 @@ pub(crate) fn parse_report(argv: &[String]) -> Result<ReportCall, Refusal> {
                 "usage: pij report verify <seat> [--assignment <id>]",
             )?;
             reject_unknown_flags("report verify", &flags, &["assignment"])?;
-            let assignment = flag_value(&flags, "assignment")?;
-            if flags
-                .iter()
-                .filter(|(name, _)| *name == "assignment")
-                .count()
-                > 1
-                || (flags.iter().any(|(name, _)| *name == "assignment")
-                    && assignment.is_none_or(str::is_empty))
-            {
-                return Err("--assignment requires one nonempty task id".into());
-            }
+            let assignment = single_value(&flags, "assignment")?;
             if positionals[0].trim().is_empty() {
                 return Err("report verify requires a seat".into());
             }
@@ -161,36 +153,16 @@ pub(crate) fn parse_report(argv: &[String]) -> Result<ReportCall, Refusal> {
     }
 }
 
-/// Scoping semantics unavailable on the selected leaf must refuse explicitly.
-/// Verify handles its supported assignment flag before this fallback.
-///
-/// Accepting and ignoring them was the tempting failure: the report would have
-/// succeeded, the caller would have seen success, and the scoping they asked for
-/// would have been silently discarded.
+/// Unsupported scopes refuse honestly, without suggesting a legacy fallback.
 fn unsupported_flag(name: &str) -> Option<Refusal> {
-    let subject = match name {
-        "assignment" => {
-            "an ASSIGNMENT id (.pi/extensions/pij/core/cli.ts:888-892). rs has no assignment model"
-        }
-        "refs" => {
-            "assignment state REFS (.pi/extensions/pij/core/cli.ts:890). rs has no assignment model"
-        }
+    let reason = match name {
         "project" => {
-            "a PROJECT slug (.pi/extensions/pij/core/cli.ts:887). rs reports carry no project"
+            "rs reports are node-scoped; project comes from the node (see `pij node show`)"
         }
-        "for" => {
-            "a RELAY subject — another seat's card written by its PA (plan 078, \
-             .pi/extensions/pij/core/cli.ts:1646). rs has no PA/prime relation to authorise it, \
-             and an unauthorised relay is exactly the identity borrowing the flag exists to make \
-             attributable"
-        }
+        "for" => "rs has no relay authority yet; report as yourself",
         _ => return None,
     };
-    Some(format!(
-        "rs cannot honour --{name}: it names {subject}. Refusing by name rather than accepting \
-         the flag and discarding what it asked for. This verb still works on the legacy \
-         generation: PIJ_DAEMON_GENERATION=legacy pij report …"
-    ))
+    Some(format!("--{name}: {reason}"))
 }
 
 /// Split the remaining tokens into positionals and `--flag [value]` pairs.
@@ -287,14 +259,19 @@ fn parse_now(positionals: &[&str], flags: &[Flag<'_>]) -> Result<ReportCall, Ref
 
 /// `report state <state> [--json]` — `.pi/extensions/pij/core/cli.ts:1708-1731`.
 fn parse_state_leaf(positionals: &[&str], flags: &[Flag<'_>]) -> Result<ReportCall, Refusal> {
-    reject_unknown_flags("report state", flags, &[])?;
+    reject_unknown_flags("report state", flags, &["assignment", "refs"])?;
     expect_positionals(
         "report state",
         positionals,
         1,
         "usage: pij report state <state>",
     )?;
-    Ok(ReportCall::State(parse_semantic_state(positionals[0])?))
+    Ok(ReportCall::State {
+        state: parse_semantic_state(positionals[0])?,
+        note: None,
+        assignment_id: single_value(flags, "assignment")?.map(str::to_string),
+        refs: super::governance::csv(single_value(flags, "refs")?),
+    })
 }
 
 /// `report blocked|question "<text>" [--json]` —
@@ -304,7 +281,7 @@ fn parse_note_leaf(
     positionals: &[&str],
     flags: &[Flag<'_>],
 ) -> Result<ReportCall, Refusal> {
-    reject_unknown_flags(&format!("report {leaf}"), flags, &[])?;
+    reject_unknown_flags(&format!("report {leaf}"), flags, &["assignment", "refs"])?;
     expect_positionals(
         &format!("report {leaf}"),
         positionals,
@@ -312,10 +289,21 @@ fn parse_note_leaf(
         &format!(r#"usage: pij report {leaf} "<text>""#),
     )?;
     let note = normalize_note(positionals[0])?;
+    let assignment_id = single_value(flags, "assignment")?.map(str::to_string);
+    let refs = super::governance::csv(single_value(flags, "refs")?);
     Ok(if leaf == "blocked" {
-        ReportCall::Blocked(note)
+        ReportCall::State {
+            state: SemanticState::Blocked,
+            note: Some(note),
+            assignment_id,
+            refs,
+        }
     } else {
-        ReportCall::Question(note)
+        ReportCall::Question {
+            note,
+            assignment_id,
+            refs,
+        }
     })
 }
 
@@ -334,12 +322,7 @@ fn parse_semantic_state(word: &str) -> Result<SemanticState, Refusal> {
         "question" => Ok(SemanticState::Question),
         "done" => Ok(SemanticState::Done),
         word if TS_ONLY_STATES.contains(&word) => Err(format!(
-            "rs has no semantic state '{word}'. It is in the TypeScript vocabulary \
-             (.pi/extensions/pij/core/types.ts:110) and not in rs's \
-             (crates/core/src/model.rs, SemanticState), whose words are {RS_STATE_WORDS}. \
-             Refusing by name: mapping '{word}' onto the nearest rs state would record a \
-             declaration you did not make. Declare it on the legacy generation instead: \
-             PIJ_DAEMON_GENERATION=legacy pij report state {word}"
+            "rs has no semantic state '{word}'; supported states: {RS_STATE_WORDS}"
         )),
         other => Err(format!(
             "invalid semantic state '{other}' ({RS_STATE_WORDS})"
@@ -406,6 +389,22 @@ fn flag_value<'a>(flags: &[Flag<'a>], name: &str) -> Result<Option<&'a str>, Ref
         .iter()
         .find(|(flag, _)| *flag == name)
         .and_then(|(_, value)| *value))
+}
+
+/// Assignment metadata flags take one nonempty value, never another flag.
+fn single_value<'a>(flags: &[Flag<'a>], name: &str) -> Result<Option<&'a str>, Refusal> {
+    let mut matches = flags.iter().filter(|(flag, _)| *flag == name);
+    let Some((_, value)) = matches.next() else {
+        return Ok(None);
+    };
+    match value {
+        Some(value)
+            if !value.trim().is_empty() && !value.starts_with("--") && matches.next().is_none() =>
+        {
+            Ok(Some(value))
+        }
+        _ => Err(format!("--{name} requires one nonempty value")),
+    }
 }
 
 /// TypeScript refuses an unrecognised flag per verb (`ALLOWED_FLAGS`,
@@ -514,20 +513,46 @@ mod tests {
     }
 
     #[test]
-    fn flags_backed_by_objects_rs_lacks_are_refused_on_every_leaf_that_takes_them() {
-        for tokens in [
-            vec!["report", "state", "done", "--assignment", "as-1"],
-            vec!["report", "blocked", "t", "--assignment", "as-1"],
-            vec!["report", "state", "done", "--refs", "a,b"],
-            vec!["report", "now", "a", "b", "--project", "slug"],
-            vec!["report", "now", "a", "b", "--for", "pij-other"],
+    fn reporting_assignment_flags_are_accepted_only_on_state_leaves() {
+        for (leaf, value) in [
+            ("state", "waiting"),
+            ("blocked", "why"),
+            ("question", "which?"),
         ] {
-            let refusal = parse_report(&argv(&tokens)).expect_err("rs lacks the object");
-            let flag = tokens
-                .iter()
-                .find(|token| token.starts_with("--"))
-                .expect("a flag");
-            assert!(refusal.contains(flag), "{refusal}");
+            assert!(
+                parse_report(&argv(&[
+                    "report",
+                    leaf,
+                    value,
+                    "--assignment",
+                    "task-1",
+                    "--refs",
+                    "a,b"
+                ]))
+                .is_ok()
+            );
+            assert!(parse_report(&argv(&["report", leaf, value, "--refs", "a,b"])).is_ok());
+            for flags in [
+                vec!["--assignment"],
+                vec!["--assignment", " "],
+                vec!["--assignment", "a", "--assignment", "b"],
+                vec!["--assignment", "--refs", "a"],
+                vec!["--refs"],
+                vec!["--refs", "a", "--refs", "b"],
+            ] {
+                let mut tokens = vec!["report", leaf, value];
+                tokens.extend(flags);
+                assert!(parse_report(&argv(&tokens)).is_err(), "{tokens:?}");
+            }
+        }
+        for tokens in [
+            vec!["report", "now", "a", "b", "--assignment", "task-1"],
+            vec!["report", "clear", "--refs", "a"],
+            vec!["report", "verify", "worker", "--refs", "a"],
+            vec!["report", "now", "a", "b", "--project", "slug"],
+            vec!["report", "now", "a", "b", "--for", "other"],
+        ] {
+            assert!(parse_report(&argv(&tokens)).is_err(), "{tokens:?}");
         }
     }
 

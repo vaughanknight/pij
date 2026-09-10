@@ -102,7 +102,10 @@ async fn registry_and_report_publish_canonical_payloads_to_both_live_subscribers
 
     let state_case = case(&fixture, "report-state");
     let state = serde_json::from_value(state_case["decoded_payload"]["state"].clone()).unwrap();
-    let state_seq = reports.declare(&seat.id, state, None).await.unwrap();
+    let state_seq = reports
+        .declare(&seat.id, state, None, None, &[])
+        .await
+        .unwrap();
     let changed = next(&mut first).await;
     assert_eq!(changed, next(&mut second).await);
     let declared = next(&mut first).await;

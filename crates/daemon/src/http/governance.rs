@@ -23,6 +23,7 @@ use pij_core::orchestration::{
     TaskAssignment, TaskCloseReason, plan_stream_creation, plan_stream_creation_at_ordinal,
 };
 use pij_core::ports::{SeatFilter, Spine};
+use pij_core::report::{ReportConfig, ReportService};
 use pij_store::{DispatchAck, GovernanceOutcome, SqliteOrchestration};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -626,7 +627,7 @@ fn slug(input: &str) -> GovResult<String> {
     Ok(slug)
 }
 
-fn csv(value: Option<&str>) -> Vec<String> {
+pub(crate) fn csv(value: Option<&str>) -> Vec<String> {
     value
         .into_iter()
         .flat_map(|value| value.split(','))
@@ -1573,7 +1574,16 @@ async fn node_show(service: &GovernanceService, state: &AppState, id: &str) -> G
             .or_default()
             .push(dispatch);
     }
-    let node = tree.build(target, &mut BTreeSet::new())?;
+    let mut node = serde_json::to_value(tree.build(target, &mut BTreeSet::new())?)
+        .map_err(|error| adapter(error.to_string()))?;
+    let reports = ReportService::new(
+        state.services.registry.as_ref(),
+        state.services.spine.as_ref(),
+        || 0,
+        ReportConfig::default(),
+    );
+    node["state"] = serde_json::to_value(reports.latest_state_record(&target.id).await?)
+        .map_err(|error| adapter(error.to_string()))?;
     let cursor = service
         .event_bus
         .tail(None, Seq(0))

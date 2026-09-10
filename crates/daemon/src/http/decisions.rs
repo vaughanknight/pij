@@ -59,13 +59,43 @@ impl DecisionService {
         }
     }
 
+    /// Assignment existence and immutable owner are checked before any report write.
+    pub(crate) async fn validate_report_assignment(
+        &self,
+        seat: &SeatId,
+        assignment_id: Option<&str>,
+    ) -> std::result::Result<(), DecisionError> {
+        let Some(id) = assignment_id else {
+            return Ok(());
+        };
+        let task = self.store.task(id).await?.ok_or_else(|| DecisionError {
+            status: StatusCode::BAD_REQUEST,
+            code: "E-RS-ASSIGNMENT-UNKNOWN".into(),
+            message: format!("no task assignment {id}"),
+            details: json!({"assignment_id":id}),
+        })?;
+        if task.node_id != *seat {
+            return Err(DecisionError {
+                status: StatusCode::BAD_REQUEST,
+                code: "E-RS-ASSIGNMENT-NOT-YOURS".into(),
+                message: format!("assignment {id} belongs to {}, not {seat}", task.node_id),
+                details: json!({"assignment_id":id,"owner":task.node_id,"caller":seat}),
+            });
+        }
+        Ok(())
+    }
+
     /// Persist first, then publish the existing question state OUTSIDE the bus
     /// lock. A second-step failure returns the durable decision as partial proof.
     pub async fn question(
         &self,
         asker: &SeatId,
         question: &str,
+        assignment_id: Option<&str>,
+        refs: &[String],
     ) -> std::result::Result<Value, DecisionError> {
+        self.validate_report_assignment(asker, assignment_id)
+            .await?;
         let mut bytes = [0u8; 16];
         getrandom::fill(&mut bytes).map_err(|error| DecisionError::internal(error.to_string()))?;
         let mut id = String::from("decision-");
@@ -97,6 +127,8 @@ impl DecisionService {
                 &decision.asked_by,
                 Some(SemanticState::Question),
                 Some(question),
+                assignment_id,
+                refs,
             )
             .await
         {
@@ -111,7 +143,7 @@ impl DecisionService {
             });
         }
         Ok(
-            json!({"seat":decision.asked_by,"seq":seq,"line":format!("question recorded: {}",decision.id),"decision":decision}),
+            json!({"seat":decision.asked_by,"seq":seq,"line":format!("question recorded: {}",decision.id),"decision":decision,"assignment_id":assignment_id,"refs":refs}),
         )
     }
 
@@ -680,10 +712,20 @@ pub(crate) fn respond(
     }
 }
 
-pub(crate) async fn question(state: &AppState, seat: &SeatId, note: &str) -> Response {
+pub(crate) async fn question(
+    state: &AppState,
+    seat: &SeatId,
+    note: &str,
+    assignment_id: Option<&str>,
+    refs: &[String],
+) -> Response {
     respond(
         "pij report",
-        state.services.decisions.question(seat, note).await,
+        state
+            .services
+            .decisions
+            .question(seat, note, assignment_id, refs)
+            .await,
     )
 }
 pub(crate) async fn verify(
@@ -787,7 +829,7 @@ mod tests {
         async fn ask(&self) -> String {
             let opened = self
                 .service
-                .question(&self.worker, "which branch owns this?")
+                .question(&self.worker, "which branch owns this?", None, &[])
                 .await
                 .expect("question");
             opened["decision"]["id"].as_str().expect("id").to_string()
@@ -930,7 +972,7 @@ mod tests {
         sqlx::query("CREATE TRIGGER reject_question_state BEFORE INSERT ON spine_events WHEN NEW.kind='seat.put' BEGIN SELECT RAISE(ABORT,'injected second-step failure'); END").execute(&f.pool).await.expect("inject");
         let result = tokio::time::timeout(
             std::time::Duration::from_secs(2),
-            f.service.question(&f.worker, "which branch?"),
+            f.service.question(&f.worker, "which branch?", None, &[]),
         )
         .await
         .expect("no recursive bus lock");
@@ -1021,7 +1063,7 @@ mod tests {
             ReportConfig::default(),
         );
         let first = reports
-            .declare(&f.worker, Some(SemanticState::Done), None)
+            .declare(&f.worker, Some(SemanticState::Done), None, None, &[])
             .await
             .expect("done");
         assert_eq!(
@@ -1047,7 +1089,7 @@ mod tests {
             .expect("parent");
         assert_eq!(verified["done_seq"], first.0);
         let second = reports
-            .declare(&f.worker, Some(SemanticState::Done), None)
+            .declare(&f.worker, Some(SemanticState::Done), None, None, &[])
             .await
             .expect("new done");
         let anomalies = super::super::anomalies::AnomalyService::new(
@@ -1585,7 +1627,7 @@ mod tests {
             authority_fixture(AdapterChoice::Real, AdapterChoice::Real).await;
         let opened = services
             .decisions
-            .question(&worker, "persist this recovery")
+            .question(&worker, "persist this recovery", None, &[])
             .await
             .expect("question");
         let id = opened["decision"]["id"].as_str().expect("id");
@@ -1728,7 +1770,7 @@ mod tests {
         );
         let opened = services
             .decisions
-            .question(&worker, "ordinary question still works")
+            .question(&worker, "ordinary question still works", None, &[])
             .await
             .expect("question");
         let id = opened["decision"]["id"].as_str().expect("id");
@@ -1811,7 +1853,7 @@ mod tests {
         assert_eq!(inbox[0].message.body, "old");
         let self_question = services
             .decisions
-            .question(&worker, "self ruling still works")
+            .question(&worker, "self ruling still works", None, &[])
             .await
             .expect("second question");
         let self_answer = services

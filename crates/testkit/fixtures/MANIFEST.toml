@@ -397,17 +397,17 @@ answer = "Both CLI surfaces emit these exact complete envelope bytes with --json
 
 [[fixture]]
 path = "golden/api/governance-routes.json"
-sha256 = "2676cc36112db998ffd95874cbd800bd9717a1a4fc2d2e1bfd4fdcb911d58f01"
-bytes = 88942
-note = "DESIGNED merged governance route contract promoted from docs/plans/139-rs-governance-port/assets/contracts/governance-routes.json at e22833b0d0caf00d95346008dab1587005d0173d, not a runtime capture. The historical original remains unchanged. The unported refusal's meta and details.ledger_item are rebased to docs/how/pij-rs-api.md#unsupported-status so refusal guidance survives plan archival. The wire invariant corrects historical kebab-case prose to the existing snake_case ErrorKind contract; no v2 wire change is introduced. All request, response, terminal-only supersede and backend-pairing cases are retained."
-answer = "Permanent readers consume this stable contract rather than the active plan copy. Preserve complete v2 success and refusal envelopes, daemon-owned attribution and role joins, observed lease-id requirements, and terminal-only answer supersede. Pending answers stay in transit, delivered answers cannot be replaced, and mixed/fake queue-spine authority refuses E-RS-ANSWER-AUTHORITY-SPLIT. Unsupported commands point to the stable unsupported-status ledger."
+sha256 = "aee1eca986d65cf7a60f2bfaa951beea465c7a88d718b0c718a6d06c91a729f6"
+bytes = 89016
+note = "DESIGNED merged governance route contract promoted from plan 139 at e22833b0d0caf00d95346008dab1587005d0173d, not a runtime capture. Historical originals remain unchanged; unsupported guidance uses docs/how/pij-rs-api.md#unsupported-status and ErrorKind retains its existing snake_case wire. Plan 145 adds selected-node state and report assignment_id/refs defaults without changing verification or answer authority."
+answer = "Permanent readers consume stable complete v2 envelopes, daemon-owned attribution and role joins, observed lease-id requirements, and terminal-only answer supersede. Preserve E-RS-ANSWER-AUTHORITY-SPLIT for mixed persistence. Reports retain assignment_id and refs; the selected node exposes its latest state record, null before any declaration. Unsupported commands point to the stable ledger."
 
 [[fixture]]
 path = "golden/api/governance-events.json"
-sha256 = "170ccfb43ad2821b95820c2f9485d3d27d82d70e4a68b95853880daf970a3ea3"
-bytes = 34124
-note = "Merged governance event contract promoted from docs/plans/139-rs-governance-port/assets/contracts/governance-events.json at e22833b0d0caf00d95346008dab1587005d0173d; plan 144 adds explicit unknown extension_build/path to the current seat.put descriptor. The historical original remains unchanged. This is a designed contract with retained positive-control evidence, not a new runtime capture; permanent readers use this stable path so plan archival cannot break them."
-answer = "Consume the shared Hello and event cases without restating them: NDJSON begins with Hello, StreamFrame::Event retains a JSON-string payload and machine-scoped cursor, and since is an exclusive per-machine cursor map. Commit state and governance events through the shared publication seam; replay/live handoff must not skip or duplicate its boundary. Preserve the decision.answer-superseded payload including the old answer under superseded."
+sha256 = "a650137717eba301eeaa7735e9ff241adc0a8ce5a170bbd61ccc3c7d4f3c90cc"
+bytes = 34210
+note = "DESIGNED governance event contract promoted from plan 139 at e22833b0d0caf00d95346008dab1587005d0173d. Plan 144 adds unknown extension_build/path on seat.put; plan 145 adds assignment_id:null and refs:[] on unscoped report.state. Historical originals remain unchanged; this is not a new runtime capture."
+answer = "Consume shared Hello and event cases: Event retains JSON-string payload and machine-scoped cursor; since is exclusive. Shared publication prevents skipped or duplicate replay/live boundaries. Preserve superseded answers and canonical report assignment_id/refs, with serde defaults for older report.state records."
 
 [[fixture]]
 path = "golden/api/error-envelopes.json"
@@ -429,3 +429,17 @@ sha256 = "c8edc151c55707a86f109f4aa1b35101d45ce60b209b11ba1301032d09b462c9"
 bytes = 1010
 note = "DESIGNED OMP/Pi inbox recovery contract, exercised by Rust HTTP regressions against SQLite; not a production capture. Native release remains distinct from extension typing release."
 answer = "Heartbeat reports running, done or failed for a recipient-owned extension body; only running renews claimed_at, without ReaderRead or lease-expiration spending. Terminal observations do not mutate. Live working seats renew at expiry; three silent unprotected leases or bounded swallowed resends park failed rows. Peek lists live head before parked rows. delivery.parked is sender-addressed and names its recipient, message, job, outcome and reason. Native operator release requires authoritative prime or recorded parent and explicit evidence."
+
+[[fixture]]
+path = "golden/api/report-state-record.json"
+sha256 = "2e822685af6dcea9d32b2ff5717842cfe16fb3ddfb4b08c450d060e8ad24638f"
+bytes = 133
+note = "GENERATED with UPDATE_GOLDENS=1 from ReportService assignment_state_round_trips_and_clear_drops_its_metadata, plan 145. Deterministic injected registry/spine, not live deployment proof."
+answer = "Assignment-scoped state history round-trips canonical assignment_id and refs through the spine. Clearing removes both; old records deserialize with empty metadata."
+
+[[fixture]]
+path = "golden/api/report-assignment-client-parity.json"
+sha256 = "72102f00f8aa590642052db34609666a86dd9509f1d3b29b2da216a2389ac385"
+bytes = 9524
+note = "EXECUTED plan 145 native/shim captures against one private real daemon and private tmux server; binary SHA retained. Two read pairs and two assignment refusal pairs, not production acceptance."
+answer = "Node/state readers expose canonical assignment_id and refs identically in both clients. Assignment ownership and unknown-id refusal stdout is byte-equal; existing native exit 2 and shim exit 4 policies remain distinct."

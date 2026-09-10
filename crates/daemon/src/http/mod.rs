@@ -2181,11 +2181,11 @@ async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequ
     // descriptor carries the declared state, the record carries why. Reading
     // only the descriptor would report a blocked seat with no reason, which is
     // the half of the answer nobody needs.
-    let state_note = match reports.latest_state_record(&id).await {
-        Ok(record) => record.and_then(|record| record.note),
+    let state_record = match reports.latest_state_record(&id).await {
+        Ok(record) => record,
         Err(error) => return internal("pij state", error),
     };
-    let mut projection = state_card(seat, liveness, &state.machine_alias, card, state_note);
+    let mut projection = state_card(seat, liveness, &state.machine_alias, card, state_record);
     projection.card.held = match active_holds(&state, &id).await {
         Ok(holds) => holds,
         Err(error) => return internal("pij state", error),
@@ -2240,9 +2240,12 @@ fn state_card(
     liveness: Option<pij_core::model::Liveness>,
     machine_alias: &str,
     card: Option<pij_core::report::CardStatus>,
-    state_note: Option<String>,
+    state_record: Option<pij_core::report::StateRecord>,
 ) -> StateProjection {
     use pij_core::model::{Liveness, SystemState};
+    let (state_note, assignment_id, refs) = state_record
+        .map(|record| (record.note, record.assignment_id, record.refs))
+        .unwrap_or_default();
     StateProjection {
         session: seat.harness_session,
         generation: "rs",
@@ -2291,6 +2294,8 @@ fn state_card(
                 .map(|seq| seq.0),
             status_stale: card.as_ref().map(|status| status.stale),
             state_note,
+            assignment_id,
+            refs,
             held: Vec::new(),
             unsupported: unsupported_state_fields(),
         },
@@ -2641,6 +2646,8 @@ struct ReportReceipt {
     state: Option<SemanticState>,
     #[serde(skip_serializing_if = "Option::is_none")]
     note: Option<String>,
+    assignment_id: Option<String>,
+    refs: Vec<String>,
     line: String,
 }
 
@@ -2766,7 +2773,7 @@ async fn report(State(state): State<AppState>, Json(request): Json<ReportRequest
             // would be a second, false account of the same failure.
             if let Some(declared) = declared
                 && let Err(error) = reports
-                    .declare(&seat, Some(declared), note.as_deref())
+                    .declare(&seat, Some(declared), note.as_deref(), None, &[])
                     .await
             {
                 return report_failure(command, error);
@@ -2788,6 +2795,8 @@ async fn report(State(state): State<AppState>, Json(request): Json<ReportRequest
                                 next: Some(next),
                                 state: declared,
                                 note,
+                                assignment_id: None,
+                                refs: Vec::new(),
                                 line,
                             },
                         ),
@@ -2796,25 +2805,41 @@ async fn report(State(state): State<AppState>, Json(request): Json<ReportRequest
                 Err(error) => report_failure(command, error),
             }
         }
-        report::ReportCall::State(declared) => {
-            declaration_response(command, &reports, &seat, Some(declared), None).await
-        }
-        report::ReportCall::Blocked(note) => {
+        report::ReportCall::State {
+            state: declared,
+            note,
+            assignment_id,
+            refs,
+        } => {
+            if let Err(error) = state
+                .services
+                .decisions
+                .validate_report_assignment(&seat, assignment_id.as_deref())
+                .await
+            {
+                return error.response(command);
+            }
             declaration_response(
                 command,
                 &reports,
                 &seat,
-                Some(SemanticState::Blocked),
-                Some(note),
+                Some(declared),
+                note,
+                assignment_id,
+                refs,
             )
             .await
         }
-        report::ReportCall::Question(note) => decisions::question(&state, &seat, &note).await,
+        report::ReportCall::Question {
+            note,
+            assignment_id,
+            refs,
+        } => decisions::question(&state, &seat, &note, assignment_id.as_deref(), &refs).await,
         report::ReportCall::Verify { target, assignment } => {
             decisions::verify(&state, &seat, &target, assignment).await
         }
         report::ReportCall::Clear => {
-            declaration_response(command, &reports, &seat, None, None).await
+            declaration_response(command, &reports, &seat, None, None, None, Vec::new()).await
         }
     }
 }
@@ -2828,13 +2853,24 @@ async fn declaration_response<R, S, C>(
     seat: &SeatId,
     declared: Option<SemanticState>,
     note: Option<String>,
+    assignment_id: Option<String>,
+    refs: Vec<String>,
 ) -> Response
 where
     R: Registry + ?Sized,
     S: pij_core::ports::Spine + ?Sized,
     C: Fn() -> u64,
 {
-    match reports.declare(seat, declared, note.as_deref()).await {
+    match reports
+        .declare(
+            seat,
+            declared,
+            note.as_deref(),
+            assignment_id.as_deref(),
+            &refs,
+        )
+        .await
+    {
         Ok(seq) => {
             let line = match declared {
                 Some(state) => match &note {
@@ -2854,6 +2890,8 @@ where
                         next: None,
                         state: declared,
                         note,
+                        assignment_id,
+                        refs,
                         line,
                     },
                 ),
