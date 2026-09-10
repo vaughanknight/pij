@@ -936,6 +936,7 @@
                 "parent": "pij-parent",
                 "role": "reviewer",
                 "plan_id": "139",
+                "state": null,
                 "children": [],
                 "assignments": [
                   {
@@ -1446,6 +1447,8 @@
             "data": {
               "seat": "pij-worker",
               "seq": 101,
+              "assignment_id": null,
+              "refs": [],
               "decision": {
                 "id": "decision-139-proof",
                 "asked_by": "pij-worker",
@@ -1491,7 +1494,7 @@
         }
       ],
       "invariants": [
-        "Existing now/state/blocked/clear outputs and report.now/report.state events remain unchanged; u1 fixes their publication, not their grammar.",
+        "State declarations retain assignment_id and refs additively (plan 145); old report.state records default to null and [].",
         "Question persists a durable decision; clearing card/state does not silently answer or delete the decision. Distinct questions remain independently answerable.",
         "Verify requires the current recorded parent, never self-verification or unrelated actors. Tie receipt to specific latest done seq; later done declarations reopen unverified-done.",
         "Keep existing assignment/project filters meaningful once supported, and refuse unsupported flags explicitly rather than ignoring them."

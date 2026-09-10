@@ -192,8 +192,9 @@ impl SqliteOrchestration {
         Ok((event, decision))
     }
 
-    /// Append a receipt for the latest actual done event, never for a guessed
-    /// assignment. Caller resolves current-parent authority under the bus lock.
+    /// Append a receipt for the latest done naming the requested assignment, or
+    /// latest done overall when unscoped. Caller resolves current-parent authority
+    /// under the bus lock.
     pub async fn verify_done_committed(
         &self,
         actor: &SeatId,
@@ -206,30 +207,29 @@ impl SqliteOrchestration {
         let history = sqlx::query("SELECT seq,at,payload FROM spine_events WHERE seat=?1 AND kind='report.state' ORDER BY seq DESC")
             .bind(target.as_str()).fetch_all(&mut *tx).await.map_err(adapter_error)?;
         let mut latest = None;
+        let mut saw_done = false;
         for row in history {
             let payload: String = row.try_get("payload").map_err(adapter_error)?;
             let Ok(payload) = serde_json::from_str::<serde_json::Value>(&payload) else {
                 continue;
             };
             if payload["state"] == "done" {
+                saw_done = true;
+                if assignment.is_some_and(|id| payload["assignment_id"].as_str() != Some(id)) {
+                    continue;
+                }
                 latest = Some((
                     sql_u64(row.try_get("seq").map_err(adapter_error)?, "done_seq")?,
                     sql_u64(row.try_get("at").map_err(adapter_error)?, "done_at")?,
-                    payload,
                 ));
                 break;
             }
         }
-        let (done_seq, done_at, payload) =
-            latest.ok_or_else(|| refusal("E-RS-NO-DONE", target.as_str()))?;
+        let (done_seq, done_at) = latest.ok_or_else(|| match assignment {
+            Some(id) if saw_done => refusal("E-RS-DONE-ASSIGNMENT", id),
+            _ => refusal("E-RS-NO-DONE", target.as_str()),
+        })?;
         if let Some(assignment) = assignment {
-            if payload
-                .get("assignment_id")
-                .and_then(serde_json::Value::as_str)
-                != Some(assignment)
-            {
-                return Err(refusal("E-RS-DONE-ASSIGNMENT", assignment));
-            }
             let task =
                 sqlx::query("SELECT node_id,opened_at,closed_at FROM task_assignments WHERE id=?1")
                     .bind(assignment)

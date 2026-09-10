@@ -218,7 +218,7 @@ All POST families below use argv/caller unless the typed alternative is named. U
 | POST `/v1/node` | `node show <seat>` | `node-show` |
 | POST `/v1/orchestration` | `orchestration baton define/list/show/request/grant/return/reclaim`; `prime set/retire/unset <seat>`; `role set <seat> <role>` / `role unset <seat>` | `baton-define`, `baton-list`, `baton-show`, `baton-request`, `baton-grant`, `baton-return`, `baton-reclaim`, `prime-set`, `prime-retire`, `prime-unset`, `orchestration-role-set`, `role-unset` |
 | POST `/v1/role` | `role [<seat>] <role>` / `role [<seat>] --unset`; typed `{seat?, role, caller}` | `role-set` |
-| POST `/v1/report` | `report now/state/question/blocked/clear/verify`; existing now/state receipt shapes remain unchanged | `report-question`, `report-verify` |
+| POST `/v1/report` | `report now/state/question/blocked/clear/verify`; state metadata flags below | `report-question`, `report-verify` |
 | GET and POST `/v1/anomalies` | `anomalies [--here] [--project <slug>]`; GET `here=<absolute-path>&project=<slug>` | `anomalies-list`, `anomalies-argv` |
 | GET and POST `/v1/decisions` | `decisions [--state <open/answered/all>] [--asked_by <seat>] [--parent <seat>]`; GET keys `state`, `asked_by`, `parent` (literal underscore; `--asked-by` refuses) | `decisions-list`, `decisions-argv` |
 | POST `/v1/answer` | `answer [--supersede] <decision> <answer>`; typed `{decision, answer, supersede?, caller}` | `decision-answer`, `decision-answer-supersede` |
@@ -287,11 +287,43 @@ Matching canonical event frame (decode `event.payload` as a JSON string):
 }
 ```
 
+## Report assignment metadata
+
+| Leaf / flag | Contract |
+|---|---|
+| `report state <state> --assignment <id> [--refs a,b]` | Assignment must exist and belong to the reporting caller. |
+| `report blocked\|question "<text>" --assignment <id> [--refs a,b]` | Same ownership check, before state publication or durable question creation. |
+| `--refs a,b` on `state`, `blocked`, `question` | Allowed without an assignment; split on commas, trim entries, discard empty entries, preserve order. |
+| `report verify <seat> [--assignment <id>]` | Unchanged: current parent verifies matching task-scoped done evidence; self-verification refuses. |
+| `--project` | Refused: rs reports are node-scoped; project comes from the node (`pij node show`). |
+| `--for` | Refused: rs has no relay authority yet; report as yourself. |
+
+Unknown task ids return `E-RS-ASSIGNMENT-UNKNOWN`. Another node's task returns
+`E-RS-ASSIGNMENT-NOT-YOURS` and names its owner. Both are HTTP 400 v2 refusals,
+with the code in `details.code`; neither writes state or opens a question.
+Assignment and refs flags require one nonempty value; duplicates refuse.
+`now` and `clear` do not accept assignment/refs flags.
+
+The canonical persisted and projected names are **`assignment_id`** and **`refs`**.
+Old `report.state` records read with `assignment_id: null` and `refs: []`.
+`node show` exposes the selected node's latest record at `data.node.state`
+(null before its first declaration); child summaries remain structural.
+`pij state` exposes `assignment_id` and `refs` beside `stateNote`, and report
+JSON receipts expose the same metadata. An unscoped declaration or `clear`
+replaces previous metadata rather than retaining stale task context.
+Reporting `done` never closes a task; closure remains an explicit task operation.
+
+[`report-assignment-client-parity.json`](../../crates/testkit/fixtures/golden/api/report-assignment-client-parity.json)
+retains isolated native/shim node/state readbacks and assignment refusals.
+Stdout is byte-equal; existing refusal exit policies remain native `2`, shim `4`.
+The deterministic state-record golden is separately generated from the core
+service; neither fixture claims production deployment.
+
 ## Questions, answers and current parents
 
 `report question <text>` creates a durable decision plus `decision.opened` atomically; `question_seq` is that actual allocated event sequence. A later report clear/state change does not answer or delete the question. Read projections and parent filters follow the asker's **current parent**; the historical `decision.opened` payload retains parent-at-ask. Root questions may be visible through prime fallback, but that visibility does not grant answer authority.
 
-The asker or current parent may answer. Another-seat answers retain stable `answer_msg_id` and use the existing DeliveryService to the **asker**, not its parent. Durable delivery acceptance closes the decision; a rejection leaves inspectable open intent. Identical retry must not duplicate a push. Self-answer closes with `answer_msg_id: null`, without a redundant self-send. `report verify <seat>` is current-parent-only, never self-verification; it refers to the latest done event. Another done declaration reopens the unverified-done finding.
+The asker or current parent may answer. Another-seat answers retain stable `answer_msg_id` and use the existing DeliveryService to the **asker**, not its parent. Durable delivery acceptance closes the decision; a rejection leaves inspectable open intent. Identical retry must not duplicate a push. Self-answer closes with `answer_msg_id: null`, without a redundant self-send. `report verify <seat>` is current-parent-only, never self-verification. With `--assignment`, it selects the latest done naming that assignment even if unrelated done events followed; without it, the latest done overall. A newer done for the same assignment reopens its unverified-done finding.
 
 ```bash
 pij report question 'Who owns the migration?'

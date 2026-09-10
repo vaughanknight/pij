@@ -23,6 +23,9 @@
 
 use std::net::SocketAddr;
 
+use pij_core::anomalies::{
+    AnomalyThresholds, AnomalyView, Detector, DoneFact, UnverifiedDoneDetector,
+};
 use pij_core::config::{AdapterChoice, Adapters, Config};
 use pij_core::model::{Envelope, Harness, SeatDescriptor, SeatId, SemanticState, Seq};
 use pij_core::report::{CARD_EVENT_KIND, CardRecord, ReportConfig, ReportService};
@@ -493,22 +496,12 @@ async fn states_rs_does_not_have_refuse_by_name_instead_of_mapping_to_a_near_fit
     server.abort();
 }
 
-/// `--assignment`, `--refs` and `--project` address the assignment/project
-/// objects TS's report family is built on (`core/cli.ts:887-892`). rs has no
-/// assignment model anywhere in `crates/` — there is no object to honour them
-/// against, so each refuses by name rather than being accepted and ignored.
-///
-/// Accepted-and-ignored is the specific failure this pins: every one of these
-/// flags could have been dropped on the floor with the report still succeeding,
-/// and the caller would never learn their scoping was discarded.
+/// Unsupported scoping refuses instead of silently writing a different subject.
 #[tokio::test]
-async fn flags_backed_by_objects_rs_lacks_refuse_by_name() {
+async fn unsupported_report_scopes_refuse_by_name() {
     let (addr, server, _store, _config) = daemon().await;
 
     for argv in [
-        vec!["report", "state", "done", "--assignment", "as-1"],
-        vec!["report", "blocked", "text", "--assignment", "as-1"],
-        vec!["report", "state", "done", "--refs", "a,b"],
         vec!["report", "now", "did", "next", "--project", "some-slug"],
         vec!["report", "now", "did", "next", "--for", "pij-other"],
     ] {
@@ -1220,5 +1213,304 @@ async fn explicit_report_claim_cannot_hide_a_conflicting_caller_session() {
         .await
         .expect("history");
     assert!(events.iter().all(|event| event.kind != "report.now"));
+    server.abort();
+}
+
+async fn governance_request(addr: SocketAddr, family: &str, argv: &[&str]) -> serde_json::Value {
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/{family}"))
+        .bearer_auth(KEY)
+        .json(&serde_json::json!({"caller":{"PIJ_SESSION_ID":SEAT},"argv":argv}))
+        .send()
+        .await
+        .expect("governance request");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("governance envelope");
+    assert_eq!(status, reqwest::StatusCode::OK, "{body}");
+    body["data"].clone()
+}
+
+#[tokio::test]
+async fn assignment_reports_survive_reopen_and_reach_node_and_state_readers() {
+    let (addr, server, _store, config) = daemon().await;
+    let task = governance_request(addr, "task", &["task", "set", SEAT, "prove reports"]).await;
+    let id = task["task"]["id"].as_str().expect("task id");
+    for (leaf, value, expected_state, note) in [
+        ("state", "waiting", "waiting", None),
+        (
+            "blocked",
+            "waiting on owner",
+            "blocked",
+            Some("waiting on owner"),
+        ),
+        (
+            "question",
+            "which target?",
+            "question",
+            Some("which target?"),
+        ),
+    ] {
+        let response = post_report(
+            addr,
+            Some(SEAT),
+            &[
+                "report",
+                leaf,
+                value,
+                "--assignment",
+                id,
+                "--refs",
+                "x, y,,",
+            ],
+        )
+        .await;
+        let status = response.status();
+        let receipt: serde_json::Value = response.json().await.expect("receipt");
+        assert_eq!(status, reqwest::StatusCode::OK, "{receipt}");
+        assert_eq!(receipt["data"]["assignment_id"], id);
+        assert_eq!(receipt["data"]["refs"], serde_json::json!(["x", "y"]));
+        let services =
+            pij_daemon::build_services(&config, std::path::Path::new("/unused-report-assignment"))
+                .await
+                .expect("reopen");
+        let reports = ReportService::new(
+            services.registry.as_ref(),
+            services.spine.as_ref(),
+            || 0,
+            ReportConfig::default(),
+        );
+        let record = serde_json::to_value(
+            reports
+                .latest_state_record(&SeatId::from(SEAT))
+                .await
+                .expect("read persisted state")
+                .expect("state"),
+        )
+        .expect("serialize");
+        assert_eq!(record["assignment_id"], id);
+        assert_eq!(record["refs"], serde_json::json!(["x", "y"]));
+        assert_eq!(record["state"], expected_state);
+        assert_eq!(record["note"], serde_json::json!(note));
+        let node = governance_request(addr, "node", &["node", "show", SEAT]).await;
+        assert_eq!(node["node"]["state"], record);
+        let state: serde_json::Value = post_state(addr, SEAT).await.json().await.expect("state");
+        assert_eq!(state["data"]["assignment_id"], id);
+        assert_eq!(state["data"]["refs"], serde_json::json!(["x", "y"]));
+        assert_eq!(state["data"]["stateNote"], serde_json::json!(note));
+        if leaf == "question" {
+            assert_eq!(receipt["data"]["decision"]["question"], value);
+        }
+    }
+    let refs_only = post_report(
+        addr,
+        Some(SEAT),
+        &["report", "state", "done", "--refs", "proof"],
+    )
+    .await;
+    assert_eq!(refs_only.status(), reqwest::StatusCode::OK);
+    let node = governance_request(addr, "node", &["node", "show", SEAT]).await;
+    assert!(node["node"]["state"]["assignment_id"].is_null());
+    assert_eq!(node["node"]["state"]["refs"], serde_json::json!(["proof"]));
+    assert!(
+        node["node"]["assignments"][0]["closed_at"].is_null(),
+        "done does not close a task"
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn assignment_refusals_name_owner_and_leave_state_and_questions_untouched() {
+    let (addr, server, _store, config) = daemon().await;
+    let services =
+        pij_daemon::build_services(&config, std::path::Path::new("/unused-report-assignment"))
+            .await
+            .expect("reopen");
+    services
+        .registry
+        .put(SeatDescriptor::new("other", Harness::Omp, "/abs/tree"))
+        .await
+        .expect("other seat");
+    let task = governance_request(addr, "task", &["task", "set", "other", "other work"]).await;
+    let id = task["task"]["id"].as_str().expect("task id");
+    let before = services.spine.tail(None, Seq(0)).await.expect("before");
+    for (assignment, code) in [
+        (id, "E-RS-ASSIGNMENT-NOT-YOURS"),
+        ("missing", "E-RS-ASSIGNMENT-UNKNOWN"),
+    ] {
+        for (leaf, text) in [
+            ("state", "done"),
+            ("blocked", "blocked"),
+            ("question", "why?"),
+        ] {
+            let response = post_report(
+                addr,
+                Some(SEAT),
+                &["report", leaf, text, "--assignment", assignment],
+            )
+            .await;
+            let status = response.status();
+            let body: serde_json::Value = response.json().await.expect("refusal");
+            assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "{body}");
+            assert_eq!(body["details"]["code"], code, "{body}");
+            if assignment == id {
+                assert!(body["meta"].as_str().unwrap().contains("other"), "{body}");
+            }
+        }
+    }
+    assert_eq!(
+        services.spine.tail(None, Seq(0)).await.expect("after"),
+        before
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn assignment_done_is_verified_only_by_current_parent_for_matching_task() {
+    let (addr, server, _store, config) = daemon().await;
+    let services =
+        pij_daemon::build_services(&config, std::path::Path::new("/unused-report-assignment"))
+            .await
+            .expect("reopen");
+    services
+        .registry
+        .put(SeatDescriptor::new("parent", Harness::Omp, "/abs/tree"))
+        .await
+        .expect("parent");
+    let mut seat = services
+        .registry
+        .get(&SeatId::from(SEAT))
+        .await
+        .expect("read")
+        .expect("seat");
+    seat.parent = Some(SeatId::from("parent"));
+    services.registry.put(seat).await.expect("record parent");
+    let task = governance_request(addr, "task", &["task", "set", SEAT, "done control"]).await;
+    let id = task["task"]["id"].as_str().expect("task id");
+    let declared: serde_json::Value = post_report(
+        addr,
+        Some(SEAT),
+        &["report", "state", "done", "--assignment", id],
+    )
+    .await
+    .json()
+    .await
+    .expect("done receipt");
+    assert_eq!(declared["ok"], true, "{declared}");
+    let self_verify: serde_json::Value = post_report(
+        addr,
+        Some(SEAT),
+        &["report", "verify", SEAT, "--assignment", id],
+    )
+    .await
+    .json()
+    .await
+    .expect("self refusal");
+    assert_eq!(self_verify["details"]["code"], "E-RS-OWNERSHIP");
+    let other_task = governance_request(addr, "task", &["task", "set", SEAT, "other done"]).await;
+    let other_id = other_task["task"]["id"].as_str().expect("other task id");
+    for later_assignment in [None, Some(other_id)] {
+        // Repeating A ensures both readers select its latest done, not its first.
+        let latest: serde_json::Value = post_report(
+            addr,
+            Some(SEAT),
+            &["report", "state", "done", "--assignment", id],
+        )
+        .await
+        .json()
+        .await
+        .expect("latest A");
+        assert_eq!(latest["ok"], true, "{latest}");
+        let mut later_argv = vec!["report", "state", "done"];
+        if let Some(assignment) = later_assignment {
+            later_argv.extend(["--assignment", assignment]);
+        }
+        let later: serde_json::Value = post_report(addr, Some(SEAT), &later_argv)
+            .await
+            .json()
+            .await
+            .expect("later unrelated done");
+        assert_eq!(later["ok"], true, "{later}");
+        let before = governance_request(addr, "anomalies", &["anomalies"]).await;
+        let row = before["anomalies"]
+            .as_array()
+            .expect("rows")
+            .iter()
+            .find(|row| row["kind"] == "unverified-done" && row["assignmentId"] == id)
+            .expect("A awaits verification");
+        assert_eq!(row["evidence"][0], latest["data"]["seq"]);
+
+        // Run the detector's actual advice for the fact selected by HTTP, not a
+        // separately written verify command that could drift from remediation.
+        let facts = [DoneFact {
+            seat: SeatId::from(row["nodeId"].as_str().expect("node")),
+            assignment_id: Some(
+                row["assignmentId"]
+                    .as_str()
+                    .expect("assignment")
+                    .to_string(),
+            ),
+            done_seq: Seq(row["evidence"][0].as_u64().expect("done seq")),
+            verified_seq: None,
+            verified_done_seq: None,
+        }];
+        let advice = UnverifiedDoneDetector.scan(&AnomalyView {
+            now_ms: 0,
+            thresholds: AnomalyThresholds::default(),
+            seats: &[],
+            cards: &[],
+            activity: &[],
+            dispatches: &[],
+            done: &facts,
+            dispositions: &[],
+            decisions: &[],
+            dead: &[],
+        });
+        let argv: Vec<_> = advice[0]
+            .remediation_line
+            .split_whitespace()
+            .skip(1)
+            .collect();
+        let verified: serde_json::Value = post_report(addr, Some("parent"), &argv)
+            .await
+            .json()
+            .await
+            .expect("verify via remediation");
+        assert_eq!(verified["ok"], true, "{verified}");
+        assert_eq!(verified["data"]["done_seq"], latest["data"]["seq"]);
+        assert_eq!(verified["data"]["assignment_id"], id);
+        let after = governance_request(addr, "anomalies", &["anomalies"]).await;
+        let rows = after["anomalies"].as_array().expect("rows");
+        assert!(
+            !rows
+                .iter()
+                .any(|row| { row["kind"] == "unverified-done" && row["assignmentId"] == id }),
+            "A's remediation must clear A: {after}"
+        );
+        assert!(
+            rows.iter().any(|row| {
+                row["kind"] == "unverified-done" && row["evidence"][0] == later["data"]["seq"]
+            }),
+            "unrelated done still awaits verification: {after}"
+        );
+
+        let unscoped: serde_json::Value =
+            post_report(addr, Some("parent"), &["report", "verify", SEAT])
+                .await
+                .json()
+                .await
+                .expect("unscoped verify");
+        assert_eq!(unscoped["ok"], true, "{unscoped}");
+        assert_eq!(unscoped["data"]["done_seq"], later["data"]["seq"]);
+    }
+    let wrong: serde_json::Value = post_report(
+        addr,
+        Some("parent"),
+        &["report", "verify", SEAT, "--assignment", "different"],
+    )
+    .await
+    .json()
+    .await
+    .expect("wrong task");
+    assert_eq!(wrong["details"]["code"], "E-RS-DONE-ASSIGNMENT");
     server.abort();
 }

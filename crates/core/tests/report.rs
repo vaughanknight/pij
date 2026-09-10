@@ -240,7 +240,7 @@ fn declare_reaches_the_states_the_named_helpers_never_exposed() {
         SemanticState::Waiting,
         SemanticState::Hold,
     ] {
-        block_on(service.declare(&seat, Some(state), None)).expect("declare");
+        block_on(service.declare(&seat, Some(state), None, None, &[])).expect("declare");
         assert_eq!(
             block_on(registry.get(&seat))
                 .expect("read registry")
@@ -261,8 +261,14 @@ fn declare_reaches_the_states_the_named_helpers_never_exposed() {
 
     // A note collapses exactly as the named helpers collapse theirs — one rule,
     // not a second one that happens to agree today.
-    block_on(service.declare(&seat, Some(SemanticState::Blocked), Some("  on   a peer ")))
-        .expect("declare with a note");
+    block_on(service.declare(
+        &seat,
+        Some(SemanticState::Blocked),
+        Some("  on   a peer "),
+        None,
+        &[],
+    ))
+    .expect("declare with a note");
     assert_eq!(
         block_on(service.latest_state_record(&seat))
             .expect("read history")
@@ -274,7 +280,7 @@ fn declare_reaches_the_states_the_named_helpers_never_exposed() {
 
     // `None` clears, which is what `clear` is — the same operation, not a
     // parallel one.
-    block_on(service.declare(&seat, None, None)).expect("clear through declare");
+    block_on(service.declare(&seat, None, None, None, &[])).expect("clear through declare");
     assert_eq!(
         block_on(registry.get(&seat))
             .expect("read registry")
@@ -282,4 +288,65 @@ fn declare_reaches_the_states_the_named_helpers_never_exposed() {
             .semantic_state,
         None
     );
+}
+
+#[test]
+fn old_state_history_defaults_assignment_and_refs_without_losing_its_note() {
+    let registry = FakeRegistry::new();
+    let spine = FakeSpine::new();
+    let seat = SeatId::from("pij-old-report");
+    block_on(spine.append(Event {
+        seq: None,
+        v: 1,
+        at: 9,
+        kind: "report.state".into(),
+        seat: Some(seat.clone()),
+        payload: r#"{"state":"blocked","note":"original explanation","registry_seq":1}"#.into(),
+    }))
+    .expect("old event");
+    let service = ReportService::new(&registry, &spine, || 10, ReportConfig::default());
+    let record = serde_json::to_value(
+        block_on(service.latest_state_record(&seat))
+            .expect("read")
+            .expect("state"),
+    )
+    .expect("serialize");
+    assert_eq!(record["note"], "original explanation");
+    assert!(record["assignment_id"].is_null());
+    assert_eq!(record["refs"], serde_json::json!([]));
+}
+
+#[test]
+fn assignment_state_round_trips_and_clear_drops_its_metadata() {
+    let registry = FakeRegistry::new();
+    let spine = FakeSpine::new();
+    let seat = SeatId::from("pij-scoped-report");
+    registered(&registry, &seat);
+    let service = ReportService::new(&registry, &spine, || 100, ReportConfig::default());
+    block_on(service.declare(
+        &seat,
+        Some(SemanticState::Waiting),
+        None,
+        Some("assignment-145"),
+        &["x".into(), "y".into()],
+    ))
+    .expect("declare");
+    let record = block_on(service.latest_state_record(&seat))
+        .expect("read")
+        .expect("record");
+    assert_eq!(record.assignment_id.as_deref(), Some("assignment-145"));
+    assert_eq!(record.refs, ["x", "y"]);
+    pij_testkit::golden::assert_golden(
+        "api/report-state-record.json",
+        &format!(
+            "{}\n",
+            serde_json::to_string_pretty(&record).expect("serialize")
+        ),
+    );
+    block_on(service.clear(&seat)).expect("clear");
+    let cleared = block_on(service.latest_state_record(&seat))
+        .expect("read")
+        .expect("record");
+    assert!(cleared.assignment_id.is_none());
+    assert!(cleared.refs.is_empty());
 }
