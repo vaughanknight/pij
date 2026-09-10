@@ -34,6 +34,12 @@ PARSED=$(printf '%s' "$input" | jq -r '
 eval "$PARSED"
 MODEL=${MODEL:-?}
 CWD=${CWD:-.}
+# The git walk below strips one path segment per step; a relative CWD (jq
+# missing, malformed payload) would never reach "/" and loop forever.
+case "$CWD" in
+  /*) ;;
+  *) CWD=$(cd "$CWD" 2>/dev/null && pwd -P) || CWD=${PWD:-/} ;;
+esac
 TRANSCRIPT=${TRANSCRIPT:-}
 EFFORT_INPUT=${EFFORT_INPUT:-}
 PCT_INT=${PCT_INT:-0}
@@ -58,7 +64,10 @@ while [ -n "$PROBE" ]; do
     break
   fi
   [ "$PROBE" = "/" ] && break
-  PROBE=${PROBE%/*}
+  case "$PROBE" in
+    */*) PROBE=${PROBE%/*} ;;
+    *) break ;;
+  esac
   [ -n "$PROBE" ] || PROBE=/
 done
 if [ -n "$GIT_DIR" ] && IFS= read -r HEAD_VALUE <"$GIT_DIR/HEAD"; then

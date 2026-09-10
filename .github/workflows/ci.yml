@@ -113,4 +113,15 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: test
-        run: cargo test --workspace
+        # Bounded and logged: a hung test must end with a readable log, not a
+        # runner kill at 49 min with no log (main, 2026-09-10).
+        run: |
+          set -o pipefail
+          timeout 25m cargo test --workspace 2>&1 | tee cargo-test.log
+      - name: upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-cargo-test-log
+          path: cargo-test.log
+          if-no-files-found: ignore

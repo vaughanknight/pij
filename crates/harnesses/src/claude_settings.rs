@@ -1588,6 +1588,85 @@ mod tests {
     }
 
     #[cfg(unix)]
+    /// Waits for a statusline run with a hard deadline: a hung script must fail
+    /// the test in seconds, never stall a whole CI job (main, 2026-09-10).
+    fn wait_bounded(
+        mut child: std::process::Child,
+        deadline: std::time::Duration,
+    ) -> std::process::Output {
+        use std::io::Read as _;
+        let mut stdout = child.stdout.take().expect("stdout");
+        let reader = std::thread::spawn(move || {
+            let mut buffer = Vec::new();
+            let _ = stdout.read_to_end(&mut buffer);
+            buffer
+        });
+        let started = std::time::Instant::now();
+        loop {
+            if let Some(status) = child.try_wait().expect("wait for statusline") {
+                let stdout = reader.join().expect("stdout reader");
+                return std::process::Output {
+                    status,
+                    stdout,
+                    stderr: Vec::new(),
+                };
+            }
+            if started.elapsed() > deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                let stdout = reader.join().expect("stdout reader");
+                panic!(
+                    "statusline script exceeded {deadline:?}; stdout={}",
+                    String::from_utf8_lossy(&stdout)
+                );
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+
+    #[test]
+    fn statusline_script_terminates_without_jq_on_path() {
+        use std::io::Write as _;
+        use std::os::unix::fs::PermissionsExt;
+        use std::process::Stdio;
+
+        // No jq on PATH: the payload cannot be parsed, CWD falls back to `.`, and
+        // the git walk must still terminate. Before the fix `${PROBE%/*}` left `.`
+        // unchanged and the loop never ended (Linux CI rust job, 2026-09-10).
+        let root = TestDir::new();
+        let state_dir = root.path().join("state");
+        let bin_dir = root.path().join("bin");
+        fs::create_dir_all(&bin_dir).expect("bin directory");
+        let rs = bin_dir.join("pij-rs");
+        fs::write(
+            &rs,
+            "#!/bin/sh\nprintf '{\"ok\":true,\"data\":{\"id\":\"pij-rs-seat\"}}\\n'\n",
+        )
+        .expect("fake rs");
+        let mut permissions = fs::metadata(&rs).expect("metadata").permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&rs, permissions).expect("executable fake");
+        let script = install_claude_statusline_script(&state_dir).expect("install script");
+        let mut hook = std::process::Command::new(&script);
+        hook.env("PATH", bin_dir.display().to_string())
+            .env("HOME", root.path())
+            .env("TMUX_PANE", "%42")
+            .current_dir(root.path())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped());
+        let mut child = retry_etxtbsy(|| hook.spawn());
+        child
+            .stdin
+            .take()
+            .expect("stdin")
+            .write_all(b"{}")
+            .expect("write input");
+        let output = wait_bounded(child, std::time::Duration::from_secs(10));
+        assert!(output.status.success(), "status {}", output.status);
+        let stdout = String::from_utf8(output.stdout).expect("utf-8 stdout");
+        assert!(stdout.contains("pij-rs-seat"), "stdout={stdout}");
+    }
+
     #[test]
     fn statusline_script_prefers_rs_and_falls_back_to_legacy() {
         use std::io::Write as _;
@@ -1638,13 +1717,22 @@ mod tests {
         );
         let run = || {
             let mut hook = std::process::Command::new(&script);
-            hook.env("PATH", format!("{}:/usr/bin:/bin", bin_dir.display()))
-                .env("HOME", root.path())
-                .env("TMUX_PANE", "%42")
-                .env("PIJ_SESSION_ID", "pij-other-seat")
-                .env("LEGACY_MARKER", &legacy_marker)
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped());
+            // jq must be reachable wherever the host installs it (runner images
+            // moved it out of /usr/bin once); the fakes still shadow pij binaries.
+            let jq_dir = std::env::var_os("PATH")
+                .and_then(|path| std::env::split_paths(&path).find(|dir| dir.join("jq").is_file()))
+                .map(|dir| format!(":{}", dir.display()))
+                .unwrap_or_default();
+            hook.env(
+                "PATH",
+                format!("{}{jq_dir}:/usr/bin:/bin", bin_dir.display()),
+            )
+            .env("HOME", root.path())
+            .env("TMUX_PANE", "%42")
+            .env("PIJ_SESSION_ID", "pij-other-seat")
+            .env("LEGACY_MARKER", &legacy_marker)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped());
             let mut child = retry_etxtbsy(|| hook.spawn());
             child
                 .stdin
@@ -1652,7 +1740,7 @@ mod tests {
                 .expect("stdin")
                 .write_all(input.as_bytes())
                 .expect("write input");
-            child.wait_with_output().expect("statusline output")
+            wait_bounded(child, std::time::Duration::from_secs(10))
         };
 
         let rs_output = run();
