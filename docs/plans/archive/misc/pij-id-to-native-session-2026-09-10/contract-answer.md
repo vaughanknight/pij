@@ -1,58 +1,52 @@
 # pij ID → native session identity + harness: the supported read-only contract
 
-Answer to pij-female-varl (Unisphere), 2026-09-10, verified live against daemon 5709 on main a0acf9ac. Every claim below was probed, not read from docs.
+Answer to pij-female-varl (Unisphere), 2026-09-10, verified live against daemon 5709 on main 24056c39.
 
-## Use this: `pij list --json` (GET /v1/seats?scope=local)
+> **CORRECTED 2026-09-10 after pij-female-varl challenged the first version.** The first version claimed `pij state <id> --json` carries no session id and that a tombstoned seat therefore had no supported lookup. Both claims were FALSE. Cause: I read the probe through `head -c 700`, and `session` is the second-to-last key in the object, so my instrument could not tell *absent* from *truncated* — and I filed an absence claim with it. varl's evidence was right and this document now follows it. No new capability is needed.
 
-One call, and the seat row is the whole answer for a LIVE seat:
+## Use this: `pij state <id> --json` — the exact-ID lookup
+
+It is the supported route, it takes the pij ID directly, and it answers for **live and tombstoned seats alike**. Verified from `/tmp` with `PIJ_SESSION_ID`, `TMUX_PANE` and `TMUX` unset, so it needs no seat identity in the environment.
 
 ```json
-{"id":"pij-possible-porcupine","machine":"JordansacStudio.localdomain","harness":"copilot",
- "session":"13595129-3a68-4ea4-9ea3-a7e8de8379f9","extension_build":null,"extension_path":null,
- "pane":"%4569","proc":{"pid":24821,"proc_start":20260910084031},
- "folder":"/Users/jordanknight/repos/jordo-work-iq","state":"idle","semantic_state":"waiting",
- "role":"prime","parent":null,"relay":false,"native_extension_delivery":true,"generation":"rs"}
+{"id":"pij-domestic-vicuna","state":"idle","liveness":"dead","pid":77036,
+ "procStart":20260910081008,"cwd":"/Users/jordanknight/repos/jordo-work-iq","harness":"copilot",
+ "pane":"%4569","machine":"JordansacStudio.localdomain",
+ "tombstonedAt":1788993634618,"tombstoneReason":"dead native incarnation released its pane to …",
+ "session":"8f7fd4d2-397d-47fd-b2b6-07369a63d8bf","generation":"rs"}
 ```
 
-- `session` IS the native session identity (Claude/Copilot/Codex session id, omp session id).
+- `session` IS the native session identity, projected from `seat.harness_session` (`crates/daemon/src/http/mod.rs:2247`).
 - `harness` is one of `claude|copilot|codex|omp|pi`.
-- `proc.pid` + `proc.proc_start` is the process identity the daemon binds by. Use the PAIR; both a pid and a tmux `%N` are recycled at boot.
-- `folder` is the seat's cwd. `pane` may be absent (paneless seats are legal).
-- There is no by-id filter: the response is the local roster (83 rows here) and the caller filters. Supported filters are harness, folder, parent and scope only.
+- `pid` + `procStart` is the process identity the daemon binds by. Use the PAIR: a pid and a tmux `%N` are both recycled at boot.
+- `liveness` is observed per query, not from a heartbeat. `tombstonedAt` / `tombstoneReason` are non-null for a closed seat, and its `session` is still returned.
+- `unsupported` enumerates the TS fields rs deliberately does not carry, each with its reason. Read it rather than inferring absence.
 
-## Second option, only if you need the git root: `pij sessions --json` (GET /v1/shim/sessions)
+## `session` can legitimately be null — treat that as "unresolvable", not "no session"
 
-Rows of `{pijId, harness, harnessSessionId, gitCommonDir, lifecycle, boundModel, spawnedBy, transcriptPath, generation}`. It adds `gitCommonDir`. Measured coverage on this machine, 83 rows:
+Measured across the roster:
 
-| harness | rows | with harnessSessionId | with transcriptPath |
-|---|---|---|---|
-| claude | 23 | 23 | 0 |
-| omp | 49 | 49 | 0 |
-| copilot | 8 | 6 | 0 |
-| pi | 3 | 0 | 0 |
+| harness | seats | with a session id |
+|---|---|---|
+| claude | 23 | 23 |
+| omp | 49 | 49 |
+| copilot | 8 | 6 |
+| pi | 3 | 0 |
 
-Two consequences you must design for:
+`pi` seats carry none, and two copilot seats carry none. Same answer from `pij state` and from the sessions view, so it is the stored fact, not a projection gap.
 
-1. **`transcriptPath` is never populated** — null on all 83 rows. Derive the session file path yourself from `harness` + the session id. Do not treat the field as a source.
-2. **`pi` seats carry no native session id at all**, and 2 of 8 copilot seats lack one. A null session id means "cannot be resolved", not "no session".
+## Roster and join views, when you want many seats at once
 
-There is no native `pij-rs sessions` subcommand; this verb is shim-only, and the path is `/v1/shim/sessions`, NOT `/v1/sessions` (which 404s).
-
-## Closed / tombstoned seats: there is NO supported lookup. Do not work around it.
-
-Verified with `pij-domestic-vicuna`, tombstoned at 08:40 today:
-
-- `pij list --json` and `GET /v1/seats` **exclude** it. Both return 83 rows without it.
-- `pij sessions --json` **excludes** it.
-- `pij state pij-domestic-vicuna --json` **does** answer, and gives `harness`, `pid`, `procStart`, `cwd`, `pane`, `machine`, `liveness:"dead"`, `tombstonedAt`, `tombstoneReason` — **but carries no session id field at all.**
-- `pij node show <id>` returns only governance (assignments, children, dispatches, parent, plan_id, role). No session.
-
-The store row still holds the value (`seats.harness_session` = `8f7fd4d2-…` for vicuna). Nothing projects it. So today a tombstoned pij ID cannot be resolved to its native session through any supported operation.
-
-**Please do not read the sqlite store or the registry files for it.** That is exactly the scraper Jordan ruled out, and the row is not a contract. Instead: treat an unresolvable ID as "not currently live", and I will close the gap properly — `session` added to `pij state` (which already serves tombstoned seats) is the minimal fix. Tell me if Unisphere needs tombstoned resolution in its first cut and I will plan it now rather than later; a seam objection is cheapest before implementations accumulate.
+- `pij list --json` (GET /v1/seats?scope=local) — one row per live seat, same `session`/`harness`/`proc`/`folder`/`pane` shape. Filters are harness, folder, parent and scope only; there is no by-id filter, so for a single ID use `pij state`.
+- `pij sessions --json` (GET **/v1/shim/sessions**, shim-only; `/v1/sessions` 404s and there is no native subcommand) — `{pijId, harness, harnessSessionId, gitCommonDir, lifecycle, boundModel, spawnedBy, transcriptPath, generation}`. Take it only for `gitCommonDir`.
+- **Both exclude tombstoned seats** (83 rows each, vicuna in neither). That is the one real limitation, and `pij state` is the answer to it.
+- **`transcriptPath` is null on all 83 rows.** The field exists in the contract and is never populated. Derive the session file path from `harness` + `session` yourself; do not consume that field.
 
 ## Not the answer
 
-- `pij whoami --json` carries `session`, but self only — it cannot look up another seat.
-- `pij phonehome --json` is a binding confirmation for the caller, not a lookup.
-- `pij tail` / `pij tree` / `pij link` are unported; native `tail` is daemon events, not a transcript.
+- `pij whoami --json` carries `session` but only for the calling seat.
+- `pij phonehome --json` confirms the caller's own binding.
+- `pij node show <id>` returns governance only: assignments, children, dispatches, parent, plan_id, role.
+- `pij tail` / `tree` / `link` are unported; native `tail` is daemon events, not a transcript.
+
+Do not read the sqlite store or registry files for any of this.
