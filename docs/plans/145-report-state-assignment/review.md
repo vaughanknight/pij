@@ -302,3 +302,111 @@ one-line plan.
 Land after F1 and F2. F1 is a real control defect but is a small, well-localised
 change to `verify_done_committed` plus one regression test; F2 is two words deleted
 from a skill route. F3 wants a decision, F4 a test — both can follow.
+
+---
+
+# Re-review — fix commit `fe3895bb` (F1 and F2 only)
+
+Reviewer: `pij-gratifying-perosteck`. Reviewed `fe3895bb` against review `6598483f`
+(itself on `79af8508`). Scope per prime: F1 and F2 only; F3 and F4 were never
+blockers and are unchanged. Probes ran in a throwaway worktree `/tmp/145-probe2`
+detached at `fe3895bb`, removed afterwards. Production daemon untouched.
+
+## Verdict: **APPROVE**
+
+Both blockers are closed, and closed the right way — F1 by the recommended
+selection change plus a regression that binds the *detector's own advice line*, F2
+by deleting the two flags and correcting the report's false claim.
+
+## F1 — CLOSED
+
+`crates/store/src/decisions.rs:216-227`: the done scan now sets `saw_done` on any
+done, then `continue`s past dones whose `payload["assignment_id"]` does not equal
+the requested assignment, so scoped verify binds the latest done **naming that
+assignment**. Unscoped verify is unchanged (`assignment.is_some_and(…)` is false
+when `None`). `E-RS-DONE-ASSIGNMENT` survives for a genuinely wrong id via the
+`saw_done` discriminator at `:229`, and the task open/closed window check at
+`:246-254` still runs against the *selected* done's `done_at`. This is exactly the
+fix the review recommended, with the refusal semantics preserved rather than widened.
+
+**Baseline green** at `fe3895bb`, unmodified worktree:
+
+```
+$ cargo test -p pij-daemon --test report_http assignment_
+test result: ok. 3 passed; 0 failed; 26 filtered out
+```
+
+**Revert proof.** Neutralised the new scope guard only
+(`decisions.rs:218` → `if false && assignment.is_some_and(…)`), restoring
+latest-done-overall selection; nothing else touched:
+
+```
+test assignment_done_is_verified_only_by_current_parent_for_matching_task ... FAILED
+  crates/daemon/tests/report_http.rs:1479  left: Number(11)  right: Number(9)
+test result: FAILED. 2 passed; 1 failed
+```
+
+The receipt bound spine 11 (the intervening unrelated done) instead of 9 (A's own
+latest done). Reverted with `git checkout`; green again.
+
+**The original F1 scenario, re-run verbatim** (scoped done A, later plain done B,
+parent verifies A):
+
+```
+SCOPED DONE seq => 6
+PLAIN DONE seq  => 8
+SCOPED VERIFY => {"ok":true,"data":{"done_seq":6,"assignment_id":"assignment-669ac32f…", …}}
+A ROW STILL OPEN = false   B ROW STILL OPEN = true
+UNSCOPED VERIFY => {"ok":true,"data":{"done_seq":8, …}}
+```
+
+All four required properties hold: scoped verify succeeds; it binds A's done (6),
+not the later one; **it clears only A** — B's `unverified-done` row is still open
+and still verifiable; and unscoped verify still selects the latest overall (8).
+
+**The advice line no longer refuses, and is proven by execution not by inspection.**
+The regression at `crates/daemon/tests/report_http.rs:1445-1470` builds a `DoneFact`
+from the *HTTP anomaly card's own* `nodeId`/`assignmentId`/`evidence[0]`, runs
+`UnverifiedDoneDetector.scan`, splits `advice[0].remediation_line` into argv and
+POSTs that — then asserts `ok:true` and that A's row is gone while the unrelated
+row remains. That is the correct shape: it cannot drift from the printed
+remediation, because it *is* the printed remediation. The comment at `:1446-1447`
+says so explicitly.
+
+Coverage is also wider than the review asked for: the loop at `:1411` runs the
+whole sequence twice, once with an intervening **plain** done and once with an
+intervening **other-assignment** done, and re-reports A first each pass so both
+readers must select A's *latest* done rather than its first. The `E-RS-DONE-ASSIGNMENT`
+refusal for a wrong id is still asserted after the loop.
+
+## F2 — CLOSED
+
+`skills/pij/references/routes/node.md:55` is now
+`pij report now '<did>' '<next>' [--state <word>] [--note '<text>']` and `:59` is a
+bare `pij report clear`. Every flag still advertised in that block is one the
+daemon accepts (`--assignment` on `question`/`blocked`/`state`/`verify`, `--refs` on
+`state`, `--project` on `task set`). No sibling document repeats the mistake:
+`grep -rn "pij report now\|pij report clear" skills/ docs/how/` returns only
+flagless usages outside the legacy-surface doc `docs/how/pij.md`.
+
+The false claim is corrected too. `report.md:16` no longer asserts the node guidance
+"remains true and unchanged"; it now names the finding and the fix. Honest.
+
+## Independent gate
+
+`cargo test --workspace` in the reviewed worktree at `fe3895bb`: **1064 passed**,
+zero `FAILED`, zero `error:` — matching the commit message's claim exactly.
+
+## Remaining, non-blocking
+
+- **F3** — `validate_report_assignment` still ignores `closed_at`, so a state may be
+  scoped to a closed assignment while verify would refuse it. Wants a decision
+  (guard, or a documented "deliberately permitted"), not a fix in this round.
+- **F4** — the `anomalies --project` join is now genuinely reachable; the new
+  regression exercises unscoped `anomalies` only. One filtered assertion would close it.
+- **F5** — `shim.rs:262` still recommends `PIJ_DAEMON_GENERATION=legacy` for
+  multi-destination `pij send`. Separate surface, separate plan.
+
+## Disposition
+
+Ship. No further changes required for plan 145.
