@@ -570,9 +570,14 @@ struct TelegramChat {
 }
 
 fn http_error(error: reqwest::Error) -> PijError {
+    // reqwest stringifies the FULL URL, and every Telegram URL carries the bot
+    // token in its path (`/bot<token>/getUpdates`). That is how 313 copies of a
+    // live credential reached a world-readable daemon.log (found 2026-09-11).
+    // `without_url` keeps the cause and drops the URL; nothing here needs it,
+    // because the adapter name already says which service failed.
     PijError::Adapter {
         adapter: "sidecars/telegram".to_string(),
-        message: error.to_string(),
+        message: error.without_url().to_string(),
     }
 }
 fn codec_error(error: serde_json::Error) -> PijError {
@@ -584,10 +589,40 @@ fn codec_error(error: serde_json::Error) -> PijError {
 
 #[cfg(test)]
 mod tests {
+    /// A transport failure must not carry the bot token. Every Telegram URL has
+    /// the credential in its path, and reqwest's Display includes the URL, so the
+    /// unredacted form put a live token in a world-readable log 313 times.
+    #[tokio::test]
+    async fn transport_errors_never_carry_the_bot_token() {
+        let token = "8954155285:NOT-A-REAL-TOKEN-abcdef";
+        // Port 1 refuses immediately: a transport error, not an HTTP status.
+        let error = reqwest::Client::new()
+            .get(format!("http://127.0.0.1:1/bot{token}/getUpdates"))
+            .send()
+            .await
+            .expect_err("connection to port 1 must fail");
+        let mapped = http_error(error);
+        let message = match &mapped {
+            PijError::Adapter { adapter, message } => {
+                assert_eq!(adapter, "sidecars/telegram");
+                message.clone()
+            }
+            other => panic!("expected an adapter error, got {other:?}"),
+        };
+        assert!(!message.contains(token), "token leaked: {message}");
+        assert!(
+            !message.contains("NOT-A-REAL-TOKEN"),
+            "token leaked: {message}"
+        );
+        assert!(!message.contains("127.0.0.1:1"), "url retained: {message}");
+        // Still says something actionable about the cause.
+        assert!(!message.trim().is_empty(), "diagnostic emptied");
+    }
+
     use std::fs;
     use std::path::PathBuf;
 
-    use super::{BridgeLock, parse_lock_holder};
+    use super::{BridgeLock, PijError, http_error, parse_lock_holder};
 
     fn lock_path(label: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
