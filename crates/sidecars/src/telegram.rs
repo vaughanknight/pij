@@ -595,8 +595,14 @@ mod tests {
     #[tokio::test]
     async fn transport_errors_never_carry_the_bot_token() {
         let token = "8954155285:NOT-A-REAL-TOKEN-abcdef";
-        // Port 1 refuses immediately: a transport error, not an HTTP status.
-        let error = reqwest::Client::new()
+        // A transport error, not an HTTP status. The client carries its own short
+        // timeout so the test cannot depend on how the host refuses port 1: a
+        // runner that DROPS instead of resetting would otherwise hang the suite.
+        let error = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(250))
+            .connect_timeout(std::time::Duration::from_millis(250))
+            .build()
+            .expect("client")
             .get(format!("http://127.0.0.1:1/bot{token}/getUpdates"))
             .send()
             .await
