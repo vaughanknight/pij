@@ -971,25 +971,48 @@ export class RustRuntimeSession {
 
 	private flush(): Promise<void> {
 		const outgoing = this.delivery.take();
+		const lifecycle = this.lifecycle;
+		// The chain must NEVER be left rejected. Two callers are fire-and-forget
+		// (`void this.flush()` from spawn and onTurnStart), so a rejection there is
+		// an unhandled rejection — and because the rejected promise is STORED, every
+		// later flush inherits it. On quit an in-flight send is aborted, which is how
+		// a clean exit turned into `[Unhandled Rejection] AbortError` (observed
+		// 2026-09-11). A failed send is captured per item instead: the outbox item is
+		// already taken, so silence would lose it without a trace.
 		this.flushChain = this.flushChain.then(async () => {
 			for (const item of outgoing) {
 				if (item.message.kind === "receipt") continue;
-				await this.client.send({
-					from: item.message.from,
-					to: { seat: item.message.to },
-					body: item.message.body,
-					msg_id: item.messageId,
-					...(item.message.command === undefined
-						? {}
-						: {
-								command: item.message.command,
-								caller: buildCallerContext(process.env, {
-									cwd: process.cwd(),
-									pid: process.pid,
-									procStart: this.client.processStart(process.pid),
+				try {
+					await this.client.send({
+						from: item.message.from,
+						to: { seat: item.message.to },
+						body: item.message.body,
+						msg_id: item.messageId,
+						...(item.message.command === undefined
+							? {}
+							: {
+									command: item.message.command,
+									caller: buildCallerContext(process.env, {
+										cwd: process.cwd(),
+										pid: process.pid,
+										procStart: this.client.processStart(process.pid),
+									}),
 								}),
-							}),
-				});
+					});
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					this.session.capture("daemon_event_flush_error", {
+						messageId: item.messageId,
+						to: item.message.to,
+						shuttingDown: this.lifecycle !== lifecycle,
+						message,
+					});
+					// Only a live session can act on it; during teardown the abort IS
+					// the expected outcome and a notice would be noise on the way out.
+					if (this.lifecycle === lifecycle) {
+						this.pi.notify?.(`pij: send to ${item.message.to} failed: ${message}`, "error");
+					}
+				}
 			}
 		});
 		return this.flushChain;
