@@ -116,8 +116,17 @@ jobs:
         # Bounded and logged: a hung test must end with a readable log, not a
         # runner kill at 49 min with no log (main, 2026-09-10).
         run: |
-          set -o pipefail
-          timeout 25m cargo test --workspace 2>&1 | tee cargo-test.log
+          # NOT a pipeline: bash waits for every member, so `| tee` kept the step
+          # alive after `timeout` killed cargo, and a 25m bound ran 32m+ anyway
+          # (PR #412, 2026-09-11). Redirect instead, and SIGKILL what ignores TERM.
+          set +e
+          timeout --kill-after=60s 25m cargo test --workspace > cargo-test.log 2>&1
+          status=$?
+          tail -n 400 cargo-test.log
+          if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
+            echo "::error::cargo test exceeded the 25m bound; see the rust-cargo-test-log artifact"
+          fi
+          exit "$status"
       - name: upload test log
         if: always()
         uses: actions/upload-artifact@v4
