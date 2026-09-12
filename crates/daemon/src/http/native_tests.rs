@@ -54,7 +54,13 @@ impl HostFixture {
             // fd between fork and exec (CI, PR #381). Retry briefly.
             let mut command = std::process::Command::new(&executable);
             command
-                .arg("60")
+                // The fixture must outlive the whole test, not a guess at its
+                // duration: at 60s a loaded machine reached the observation after
+                // the child had exited, and `read_native_process` correctly
+                // reported Ok(None) — read as "process observation failed" rather
+                // than "the fixture died" (hit twice on 2026-09-12). Drop still
+                // kills and reaps it, so a long sleep leaves nothing behind.
+                .arg("3600")
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null());
