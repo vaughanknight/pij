@@ -84,6 +84,12 @@ jobs:
 
   rust:
     runs-on: ubuntu-latest
+    # Enforced by GitHub, NOT by the runner. An in-shell `timeout` cannot bound a
+    # job whose runner is dying: on 2026-09-12 main's rust job reported
+    # completed/failure at 48m01s with the test step still `in_progress` and the
+    # `if: always()` upload step never run at all. Both the shell bound and the
+    # artifact live inside the thing that dies. This is the only real bound.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
@@ -120,8 +126,29 @@ jobs:
           # alive after `timeout` killed cargo, and a 25m bound ran 32m+ anyway
           # (PR #412, 2026-09-11). Redirect instead, and SIGKILL what ignores TERM.
           set +e
+          # A dying runner takes the artifact AND the `if: always()` step with it,
+          # so post-mortem storage proves nothing. Only output already STREAMED to
+          # the workflow log survives. Sample resources straight to stdout so the
+          # last line before the runner goes quiet names the resource that ran out.
+          (
+            while :; do
+              printf '[res] %s up=%ss root_avail=%s tmp_avail=%s mem_avail=%s load=%s procs=%s\n' \
+                "$(date -u +%H:%M:%S)" \
+                "$(cut -d. -f1 /proc/uptime)" \
+                "$(df -BM --output=avail / | tail -1 | tr -d ' ')" \
+                "$(df -BM --output=avail /tmp | tail -1 | tr -d ' ')" \
+                "$(awk '/MemAvailable/{printf "%dM", $2/1024}' /proc/meminfo)" \
+                "$(cut -d' ' -f1-3 /proc/loadavg)" \
+                "$(ps -e --no-headers | wc -l | tr -d ' ')"
+              sleep 30
+            done
+          ) &
+          sampler=$!
           timeout --kill-after=60s 25m cargo test --workspace > cargo-test.log 2>&1
           status=$?
+          kill "$sampler" 2>/dev/null
+          wait "$sampler" 2>/dev/null
+          echo "[res] final $(df -BM --output=avail / | tail -1 | tr -d ' ') root avail, status=$status"
           tail -n 400 cargo-test.log
           if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
             echo "::error::cargo test exceeded the 25m bound; see the rust-cargo-test-log artifact"
