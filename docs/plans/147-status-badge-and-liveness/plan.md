@@ -28,5 +28,13 @@ Nothing is joined per row. If a value cannot be produced in the roster query it 
 - AC8 Live proof on the PRODUCTION daemon is the prime's, not yours: an isolated daemon, a seat driven busy and then quiet, the badge observed changing, and the roster timing figures. State anything you could not prove.
 - AC9 Docs: `docs/how/pij-rs-api.md` seat-row and state-card sections gain the three fields and the badge vocabulary; the `unsupported` entries that this plan makes real are removed from that array in the same commit (a field cannot be both supported and declared missing).
 
+## Carried to the following plan (consumer-supplied, do not lose)
+
+From the chainglass o-prime, checked in its code rather than recalled:
+
+- `currentTask` IS a real gap. My earlier note that its spine poller covers it was wrong: `report.now` folds into the status CARD (did/next, `pij-poller.service.ts:279-291`), while the task line reads `currentTask` from the row or tree (`lib/fleet-grouping.ts:131-137`) and rs supplies neither. Deferred with `bindHealth`, because the card is what humans read and it already works.
+- **When `currentTask` is implemented, a cleared task must be an explicit `null`, never an omitted key.** An omitted key falls through to the legacy tree shape (comment at `fleet-grouping.ts:125-130`), so omission silently resurrects stale text instead of clearing it.
+- If AC2's honest signal turns out to be recency rather than work, chainglass renders it as observed-recent; the vocabulary doc must say which fact each value derives from (AC2a).
+
 ## Non-goals
 `bindHealth` / `degraded` / `failureReason` (needs a classifier; next plan — chainglass ranks it sixth). `contextCurrent` / `contextMax` (seventh). `activity` / `currentTask` (chainglass says its spine poller may already cover it). The chainglass mapper itself — the chainglass prime owns that and will dispatch it once these names are frozen.
