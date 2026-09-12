@@ -210,3 +210,50 @@ after, because after is when the sensors are already lying.
 
 Pij-Seat: pij-relative-panther
 Pij-Prime: pij-relative-panther
+
+---
+
+## Amendment 4 — 2026-09-12: I understated blocker 1, and upstream just proved it
+
+Amendment 2 called blocker 1 — `pij-telegram` dead as a send target on rs — "a
+rename with stale docs, not a lost capability," and said the replacement existed.
+That was **too generous, and I should correct it rather than let it stand.**
+
+Upstream PR #415 (plan 146, merged `72355d7`) fixes Telegram sender tagging on
+rs, and in doing so records what the author found while reading that code:
+
+> "Reading the code for this also found that rs had no chunker at all: any
+> message over 4096 characters was rejected by Telegram and lost."
+
+So the rs Telegram path was not merely renamed. Until this week it **silently
+dropped every message over 4096 characters** — the exact silent-loss-to-the-human-
+channel failure this government ruled outranks all other considerations
+(E29/E30: "silent loss to the human channel" beats "noisy duplicate" in every
+ruling). Outbound bubbles were also anonymous, with ~90 seats on this machine and
+no way to tell which one was talking.
+
+**This machine was never exposed.** The legacy bridge has had a chunker the whole
+time — `.pi/extensions/pij/telegram/chunk.ts`, the very code hardened through
+items 24/29b and encoded as E29 (positional idempotency keys under partition
+drift), E36 (state the invariant as a set) and E38 (hash the materialised plan,
+never a summary). Upstream's fix is an explicit **port of that TS bridge**, not a
+redesign. My largest message to Vaughan today was 1,426 bytes, so nothing of mine
+would have tripped the 4096 limit — but the margin was luck, not design, and a
+single long handover or incident report would have crossed it.
+
+**What this changes.** Not the gate — blocker 1 is now genuinely closed, and
+better than before, since rs also gains `--body-file`/stdin on the sidecar. What
+it changes is my confidence in the shape of the earlier assessment: I reasoned
+from the docs saying "use this other verb" to "capability present, just renamed,"
+without reading the implementation behind the verb. The capability was present
+and **defective in the one way that matters most**, and I would not have found it
+by reading release notes.
+
+Rule for the rest of this migration, and the reason amendment 3 matters more than
+it looked: **on the human channel, do not accept "a replacement exists" as
+equivalent to "the replacement works."** Read the implementation, or test it with
+a body long enough to break it. Same family as E61 — a footer proving the CLI
+accepted a selection proves nothing about whether the thing still functions.
+
+Pij-Seat: pij-relative-panther
+Pij-Prime: pij-relative-panther
