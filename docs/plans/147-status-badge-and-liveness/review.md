@@ -360,3 +360,215 @@ Production and chainglass rendering. The coder's isolated-daemon run on `127.0.0
 in `evidence.json`; I did not re-run it and did not touch `127.0.0.1:7461`. The `harness checks`
 composite (vitest, smoke, package audit, snapshots) is likewise the coder's receipt — I independently
 re-ran only the Rust gates, which pass.
+
+---
+
+# Round 2 — fix verification (`9b089a59`)
+
+Verification pass, not a fresh review. Scope: did each fix do what it claims, and did it break
+anything on the way. Probes ran in a fresh throwaway detached worktree at
+`/Users/jordanknight/pi-hacking/pij-worktrees/s147-rr` (`ad5c6589`→`9b089a59`), worktree-local
+`CARGO_TARGET_DIR`, `RUST_TEST_THREADS=1`. The live daemon on `127.0.0.1:7461` was never contacted;
+the one probe that needed real data used a `VACUUM INTO` snapshot copy of
+`~/.pij-rs/pij.sqlite`, never the file itself.
+
+## Verdict: **VERIFIED 9b089a59**
+
+All eight findings are fixed, and the three I had proved by revert now go RED for the reason claimed
+rather than by accident of a new fixture. No regression found. Two of the fixes are materially better
+than what I asked for: the F1 escape hatch is pinned end-to-end through the real CLI against a
+migrated copy of the original proof store, and the F5 fix catches a *wrong* rank, not merely a
+missing one. One new measurement changes how the index should be read — see "Index cost, measured"
+below: at real store scale the index is not an optimisation, it is what keeps plan 147 shippable.
+
+## 1. My own mutants, re-applied to the fixed tree
+
+| Mutant | Before (`ad5c6589`) | After (`9b089a59`) | Discriminates for the right reason? |
+|---|---|---|---|
+| **F3** — card re-derives instead of using the projected badge (`http/mod.rs:2255-2257` → unconditional `badge_of`) | GREEN (whole `-p pij-daemon` suite) | **RED**, `left: "done"` / `right: "blocked"` | ✅ Yes. The fixture now sets descriptor `semantic_state = Done` and declares `blocked` **scoped to an open assignment**, so the projection (worst over assignments) and the descriptor-only fallback give genuinely different words. This is the discriminating case I asked for, not a renamed assertion. |
+| **F4** — drop the `latest_assignment_id.is_none()` guard (`store/src/status.rs:123`) | GREEN (`-p pij-store --test status`, `status_http`, `report_http`) | **RED**, `left: "blocked"` / `right: "idle"`, message "closed scope must not fall back to its stale descriptor word" | ✅ Yes. `closing_last_assignment_does_not_resurrect_descriptor_declaration` declares `blocked` scoped to `task`, asserts the badge, then closes the assignment and asserts `row.seat.semantic_state == Some(Blocked)` **and** `badge() == "idle"` — it pins the contradiction explicitly rather than relying on the two words differing. |
+| **F5** — synthetic `SystemState::Suspended` with rank 15, absent from `BADGE_SEVERITY` | GREEN; `badge_of` silently returned `"unknown"` | **RED**, `every_state_has_a_published_badge_slot` panics: `Suspended has no published badge slot` | ✅ Yes, and the characterisation is right — see below. |
+
+**The F5 "compile error was setup noise" claim checks out.** In round 1 the E0004 non-exhaustive-match
+errors at `model.rs:113` and `status.rs:50` were what you hit *before* giving the variant a rank; they
+are the cost of introducing the variant at all, so they cannot witness the vocabulary gap. My round-1
+probe supplied the rank to both tables precisely to get past them, and only then observed the silent
+`"unknown"`. On the fixed tree the same fully-ranked variant compiles and **fails a test**, so the
+guard is now the assertion and not the type checker. Not counting the compile error as the witness is
+correct.
+
+The new test is stronger than the fix I proposed. I asked for membership
+(`BADGE_SEVERITY.contains(state.as_str())`); it also asserts
+`badge_of(Some(state), &[]) == state.as_str()` for every variant of both enums, so a variant given the
+*wrong* rank — pointing at another word's slot, which membership alone would pass — also fails. The
+`usize::MAX` sentinel additionally turns an out-of-range rank into a panic rather than a wrong answer.
+
+## 2. The vocabulary macro (F2) — wire compatibility proven byte-for-byte
+
+This was the largest unrequested change and the one with real blast radius: `SystemState` and
+`SemanticState` are encoded by every stored descriptor and every `report.state` spine payload, and the
+macro adds a per-variant `#[serde(rename = …)]` alongside the container `rename_all`.
+
+I did not reason about serde attribute precedence — I measured it. A probe enumerating all 15 variants
+explicitly (so it compiles unchanged at both SHAs, using no macro-introduced item) dumps
+`serde_json` encode, decode round-trip, `as_str`, `parse`, and `nudgeable`, plus seven near-miss words
+that must stay refusals. Run at `9b089a59`, then `git checkout e3f99483`, run again, `diff`:
+
+```
+== DIFF before vs after ==
+WIRE-IDENTICAL
+```
+
+All 15 spellings identical (`idle`…`unknown`, `ready`…`cancelled`), all round-trips true, `parse`
+agrees with `as_str` on every variant, `nudgeable` unchanged (`Ready` alone true). Refusals hold on
+**both** codecs and **both** axes for `"Idle"`, `"IDLE"`, `"busy"`, `""`, `" idle"`, `"cancel"`,
+`"fail"` — so the macro did not quietly acquire case-insensitivity or an alias. `row_to_descriptor`'s
+refusal (`registry.rs:139-144`) is textually unchanged and still routes through the same `parse`, so
+the round-1 validation stands.
+
+`SemanticState::WORDS` expands to the same string the deleted `RS_STATE_WORDS` held, and
+`semantic_words_match_every_declared_variant` now pins the enum and the published list together —
+which is what AC6 asked for and round 1 said was false. The three hand-maintained copies are down to
+one definition: daemon refusal text, CLI `after_long_help` and the test all read `WORDS`.
+
+One residual, explicitly minor: the new test compares `WORDS` as a `BTreeSet`, so reordering the enum
+would change the refusal string's word order undetected. Cosmetic — the order carries no meaning and
+`BADGE_SEVERITY` (which does) is pinned exactly. Not worth a change.
+
+## 3. Index cost, measured — the number nobody had
+
+The coder declined to claim anything about index write or storage cost. Both fixture sets are
+synthetic; neither is production. I measured all three on a `VACUUM INTO` snapshot of the **real**
+store — 1078 seats, 35 260 spine events, 0 open assignments, `user_version` 19 migrating to 20 on
+open. Debug build (matching the coder's methodology), 30 interleaved read samples after 5 warmups,
+1000 timed `SqliteSpine::append` calls per case, and the whole present/absent cycle run **twice** to
+cancel drift:
+
+| Index | `SqliteRegistry::list` median | `SqliteStatus::read` median | `read` p95 | `spine.append` median | append p95 |
+|---|---:|---:|---:|---:|---:|
+| present (pass 1) | 13.359 ms | **19.972 ms** | 28.656 ms | 0.1530 ms | 0.1959 ms |
+| absent (pass 1) | 14.112 ms | **70.235 ms** | 74.174 ms | 0.1967 ms | 0.3956 ms |
+| present (pass 2) | 13.361 ms | **20.606 ms** | 25.453 ms | 0.1509 ms | 0.2166 ms |
+| absent (pass 2) | 14.148 ms | **69.545 ms** | 73.258 ms | 0.1479 ms | 0.1892 ms |
+
+**Write cost: below measurement noise. Acceptable.** The append medians are 0.1530 / 0.1509 with the
+index and 0.1967 / 0.1479 without — the *between-pass* spread in the index-absent case (33%) is larger
+than any difference between the cases, and the two cases interleave rather than separate. The append
+is dominated by its transaction and WAL fsync, not by B-tree maintenance; a second three-column index
+on a table of this width does not move it. This is the answer to the open question, and it is the
+permissive one.
+
+**Storage cost: 1.71 MiB on a 27.8 MiB store, 6.2%.** (`SELECT SUM(pgsize) FROM dbstat` — 1 798 144
+bytes for `spine_by_seat_kind`, against 1 171 456 for the existing `spine_by_seat`; larger because it
+carries `kind`.) It grows with the spine, which is append-only and unpruned — worth a line in the
+retention conversation (#204), not a blocker here.
+
+**Read: the index is load-bearing, not an optimisation.** At real scale the delivered `ad5c6589`
+roster read is **70 ms** against a 13 ms baseline — 5.3×, +56 ms on a read chainglass runs every 8 s.
+With the index it is 20 ms, 1.5×, +6.6 ms. So the fix did not merely tidy my F6 finding; without it
+plan 147 ships a 5× regression on the real store, and neither the 2.5 ms headline nor my own 3.5 ms
+reviewer number was anywhere near that. Note that production currently has **zero** open assignments,
+so the entire 70 ms is the per-seat last-event and last-state subqueries over 35 k events — the growth
+term is seat count × per-seat history, exactly what the index addresses, and exactly what the
+assignment-shaped fixtures could not show. **Recommend this measurement be carried into the report**;
+it is the strongest available argument for the migration.
+
+## 4. Migration safety — an older binary refuses cleanly
+
+Forward: `fix-cli-smoke.json` records a real `source_schema_version: 19` → `migrated_schema_version:
+20` on daemon boot against a private backup of the original proof store, `production_contact: false`.
+
+Backward — the case the packet cares about, tested with a genuinely older binary (the globally
+installed `pij-rs`, which speaks v19) pointed at a v20 store copy:
+
+```
+$ PIJ_RS_STATE_DIR=/tmp/rr-old-state pij-rs daemon --bind 127.0.0.1:51999
+pij-rs: store schema is v20 but this binary speaks v19 — /tmp/rr-old-state/pij.sqlite was written by
+a NEWER pij than this binary — upgrade pij (or point PIJ_STORE at a different file); this build will
+not guess at a schema it does not know
+EXIT=1
+```
+
+**Refuses decodably, names both versions and the remedy, exits 1, and leaves the store untouched**
+(`PRAGMA integrity_check` → `ok`, `user_version` still 20, 35 260 events unchanged). That is the
+`StoreSchemaStale` contract at `migrate.rs:103-111` behaving as documented, and it is the right answer:
+a prime who bounces production onto this and needs to roll back gets a refusal, not corruption.
+
+Note for whoever schedules the bounce: `0020` ships no `.down.sql`, so rollback is
+restore-from-backup, not migrate-down. Correct for an additive index — `DROP INDEX` is the whole
+inverse and an operator can issue it — but it should be said out loud in the bounce plan rather than
+discovered.
+
+## 5. F1's new surface — same resolution path, both directions documented
+
+- **Not a second implementation.** `report clear --assignment` calls
+  `decisions.validate_report_assignment` (`http/mod.rs:2864`) — the identical function `report state
+  --assignment` calls at `http/mod.rs:2836`, defined once at `decisions.rs:63`. Both refusals come
+  from that one body.
+- **Both refusals pinned for `clear`**: `assignment_refusals_name_owner_and_leave_state_and_questions_untouched`
+  (`report_http.rs:1354`) drives `["report","clear","--assignment", …]` through both
+  `E-RS-ASSIGNMENT-NOT-YOURS` and `E-RS-ASSIGNMENT-UNKNOWN`, and asserts state and questions are left
+  untouched.
+- **Unscoped clear unchanged**, and the test proves it by asserting the defect I reported:
+  `scoped_report_clear_removes_only_its_assignment_declaration` (`report_http.rs:1295`) checks
+  `semanticState` is null while `badge == "blocked"` — "unscoped clear leaves task testimony intact" —
+  *then* clears with `--assignment` and gets `idle`, *then* asserts `closed_at` is still null so
+  "clear is not task closure". That single test encodes the finding, the escape hatch, and the
+  boundary.
+- **Proven through the real CLI, not just HTTP**: `fix-cli-smoke.json` walks
+  `state` → `clear --assignment blocked-task` → `state` → `clear --assignment done-task` → `state`,
+  and the badge moves `blocked` → `done` → `idle` with `assignments_still_open: 2` throughout. That is
+  the operator path I said did not exist, exercised end to end.
+- **Docs name both directions** (`pij-rs-api.md`, new paragraph after the badge vocabulary): unscoped
+  clear leaving `semanticState: null` beside `badge: "blocked"`, *and* closing the assignment leaving
+  `semanticState: "blocked"` beside `badge: "idle"`. Both of the cases I found are stated, with the
+  reason they answer different questions.
+
+## 6. F6/F7 honesty
+
+**The density correction is right, and it is confirmed by retained receipts rather than assertion.**
+`fix-cli-smoke.json` records `assignments_still_open: 2` on the original proof store, and its steps
+name both of them — `blocked-task` and `done-task`, both on `pij-bench-000`. So the original fixture
+really did have 2 open assignments on 1 of 91 seats; the remaining 90 had none. The event arithmetic
+in the report is self-consistent too (89×32 + 34 + 36 + 3 = 2921 = the retained `fixture_events`).
+This corrects **against** the coder and **in my favour**: the `1.106 → 2.500 ms` headline was measured
+where 90 of 91 seats did no assignment work at all, so it understated the shipped cost by more than my
+round-1 note claimed. Correctly reported.
+
+**F7 relabelling is sufficient.** The `governance-client-parity.json` citation now says in the text
+that the capture **predates plan 147**, that its rows carry neither `badge` nor `last_event_at`, what
+it does still prove (folder-filter/argument and native/shim byte parity), and where the current row
+shape lives instead. A reader cannot now take it for the current contract.
+
+**F8** is covered by `peer_status_metadata_decodes_but_raw_descriptors_never_emit_it`
+(`core/tests/status.rs`), which asserts the pre-147 peer row decodes to `None`/`None`, the current
+peer row retains both, and a raw descriptor re-serializes neither — the three legs I verified by hand
+in round 1, now committed.
+
+**F2's restored control** is back verbatim at `crates/daemon/src/http/tests.rs:5518-5525`, including
+the original reason string.
+
+## 7. Gates — my independent re-run at `9b089a59`
+
+| Gate | Result |
+|---|---|
+| `cargo test --workspace` | **exit 0**, 2m47s, no `FAILED`, no `failures:` |
+| `cargo fmt --all --check` | **FMT-OK** |
+| `cargo clippy --workspace --all-targets -- -D warnings` | **exit 0** |
+| Targeted: `-p pij-core -p pij-store --test status`, `-p pij-daemon --test status_http --test report_http` | 7 + 3 + 1 + 30 passed |
+
+Test counts moved as expected: `core/tests/status.rs` 4 → 7 (`every_state_has_a_published_badge_slot`,
+`semantic_words_match_every_declared_variant`, `peer_status_metadata_decodes_but_raw_descriptors_never_emit_it`),
+`store/tests/status.rs` 2 → 3, `report_http` 29 → 30. Per the packet I spot-checked rather than
+re-running `just self-check`, and I did not re-verify the `pi-askuserquestion` audit finding, which
+prime confirmed is pre-existing on main.
+
+All probe files were deleted and the throwaway worktree left clean (`git status --porcelain` empty)
+before this addendum was written.
+
+## Nothing carried forward
+
+No finding from round 1 remains open, and round 2 introduced none. The only items I would hand to
+whoever bounces production are operational, not defects: carry the real-store index numbers into the
+report, say in the bounce plan that `0020` rolls back by restore rather than by migrate-down, and let
+the 1.71 MiB index join the spine-retention conversation.
