@@ -161,7 +161,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	rmSync(tmpRoot, { recursive: true, force: true });
+	rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 });
 
 // ─── Fix 4: delegationId validation ─────────────────────────────────────────

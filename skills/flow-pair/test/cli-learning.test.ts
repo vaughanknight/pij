@@ -75,7 +75,7 @@ describe("flow-pair learn — CLI subprocess (T007)", () => {
 	});
 
 	afterEach(() => {
-		rmSync(tmpRoot, { recursive: true, force: true });
+		rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 	});
 
 	it("learn: stdout = exactly 'learning: learn-0001' and writes implement-code candidate", () => {

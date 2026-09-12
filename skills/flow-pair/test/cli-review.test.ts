@@ -79,7 +79,7 @@ describe("flow-pair review + fix — CLI subprocess (T007)", () => {
 	});
 
 	afterEach(() => {
-		rmSync(tmpRoot, { recursive: true, force: true });
+		rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 	});
 
 	it("review: stdout = exactly 'verdict: FIX_REQUIRED' (missing log), exit 0", () => {

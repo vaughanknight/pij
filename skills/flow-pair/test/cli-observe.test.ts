@@ -42,7 +42,7 @@ describe("flow-pair observe — CLI subprocess (T006)", () => {
 	});
 
 	afterEach(() => {
-		rmSync(tmpRoot, { recursive: true, force: true });
+		rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 	});
 
 	it("success: stdout = exactly 'diffId: diff-NNNN' (one line, exit 0)", () => {

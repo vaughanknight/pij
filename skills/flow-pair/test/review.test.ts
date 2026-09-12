@@ -158,7 +158,7 @@ describe("Review — evaluate() AC-05 (T001)", () => {
 	});
 
 	afterEach(() => {
-		rmSync(tmpRoot, { recursive: true, force: true });
+		rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 	});
 
 	it("missing execution.log.md → verdict is FIX_REQUIRED [AC-05 load-bearing]", () => {
@@ -307,7 +307,7 @@ describe("Review — generateFixPacket() AC-06 (T002)", () => {
 	});
 
 	afterEach(() => {
-		rmSync(tmpRoot, { recursive: true, force: true });
+		rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 	});
 
 	it("allowedFiles length is exactly 2 (findings with file only) [AC-06 load-bearing]", () => {
