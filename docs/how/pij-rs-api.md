@@ -172,16 +172,17 @@ of successful delivery or model completion.
 
 | Row fields | Wire contract |
 |---|---|
-| `id`, `harness`, `folder`, `state` | Present stable seat id, harness enum, absolute working folder and observed system state; do not rename them to TS fields. |
+| `id`, `harness`, `folder`, `state` | Stable seat id, harness enum, absolute working folder and stored mechanical state. Every harness currently defaults to `idle`; this is not observed inactivity. |
 | `generation`, `relay`, `native_extension_delivery` | Present `"rs"` and boolean flags. False is an explicit value, not omission. Display role does not grant native delivery attestation. |
 | `session`, `pane`, `proc`, `semantic_state`, `role`, `parent` | Present even when null. `session` is the serialized native harness-session id (not `harness_session`); null is unknown. `pane:null` is paneless; `proc:null` is no bound process identity. Non-null `proc` is `{pid, proc_start}`; never interpret pid alone as identity. Null semantic state/role means no declaration/assertion; null parent means no recorded governing seat. |
 | `extension_build`, `extension_path` | Present string or null on current-daemon whoami, seats and state responses. Build is the loaded Pi/OMP extension's `<sha10>`, `<sha10>+dirty`, or `hash:<12 hex>`; path is its resolved real source directory, not the seat's working folder. Null means no build was reported (a pre-144 Pi/OMP extension, or a harness without this feature), never a retroactive guess from today's checkout. Older daemons omit these keys entirely. |
+| `badge`, `last_event_at` | Current-daemon rows carry the worst-first row-fact badge and the highest-sequence seat event's epoch-ms timestamp, or null when no event exists. Both come from the roster's SQL snapshot, without per-seat queries. Older remote daemons may omit badge; absent remote freshness is null, not proof of no remote events. |
 | `machine` | Optional in the base descriptor serialization; this HTTP handler stamps it for local rows. Preserve the machine alias in federated views rather than guessing from seat ids. |
 | `spawn_id`, `model`, `provider`, `effort` | Omitted when unknown/unset (`skip_serializing_if`), not emitted as null; absence is not an inferred launch, model or effort. |
 | `cross_session_inbound_accept` | Omitted means unknown, treated as closed; explicit false differs from unknown and true. |
 | `tombstoned_at`, `tombstone_reason` | Omitted when absent in descriptor/history serialization. Tombstones are excluded from this active-roster endpoint, not proof that their history never existed. |
 
-These are flattened `SeatDescriptor` fields plus HTTP `generation`, **not StateCard**: the latter has its own camelCase projection and explicit `unsupported` list. Preserve null versus omission when comparing envelopes. RoleService owns the role join; the phonehome optional-role change remains a u2 dependency for PM composition, not a runtime acceptance claimed here.
+These are flattened descriptor fields plus HTTP projection metadata, **not StateCard**: the latter has its own camelCase projection and explicit `unsupported` list. Preserve null versus omission when comparing envelopes. RoleService owns the role join.
 
 Pi/OMP captures build identity once at extension load and reuses it on registration, adoption and re-registration. Git identity uses the real extension directory's repository HEAD, with `+dirty` scoped to that directory; a standalone install hashes sorted relative paths and bytes from `index.ts`, `adapters/*.ts` and `core/*.ts`. Later disk changes do not relabel the running extension. A registration without metadata clears any prior values. This is runtime-reported provenance, not a daemon-verified attestation. Human `pij whoami` prints `extension: <build> (<path>)`, and the Pi/OMP footer keeps the build and dirty marker visible. Build identity remains JSON-only for list: the native human view has no width-budgeted build column, and the shim's existing list route is JSON-only.
 
@@ -198,6 +199,54 @@ pij sessions --json      # rs session projection: no query flags
 | GET/POST `/v1/seats?here=<absolute-path>`; POST argv `list [--here]` | Canonical caller folder equality; preserves `unavailable` and existing exact filters | Relative query/caller cwd or path-valued argv `--here` returns a v2 `E-RS-ARG` envelope |
 
 The additive `list_here_capture` in [`governance-client-parity.json`](../../crates/testkit/fixtures/golden/api/governance-client-parity.json) retains four actual native/shim byte-equal pairs (bare, true, false, unfiltered) and four argument refusals against one private real-adapter daemon. Its binary hash and captured cwd identify the exercised artifact; this is not production deployment evidence.
+
+## State card and badge vocabulary
+
+`POST /v1/state` with `{"id":"<seat>"}` returns the same `badge` and
+`last_event_at` as the roster for the same stored facts. These two names are
+literal, including the underscore in `last_event_at`; the existing card's other
+camelCase fields are unchanged. Freshness follows event **sequence**, not the
+greatest timestamp: a later committed event can have an earlier supplied clock.
+
+The one closed severity order is the exported
+[`pij_core::status::BADGE_SEVERITY`](../../crates/core/src/status.rs).
+[`badge_of`](../../crates/core/src/status.rs) selects the worst mechanical state
+and latest declaration for **each open assignment**, plus an unscoped declaration
+when present. Closing an assignment removes its declaration from the badge even
+if the legacy single `semantic_state` still contains it. No inputs means
+`unknown`. Consumers may colour by these strings; they must not derive a second
+badge or severity order.
+
+| Priority | Badge | Meaning and current reachability |
+|---|---|---|
+| 1 | `dead` | Reserved mechanical failure. **Not reported by the 147 badge:** it never consults process liveness or tombstones. Read the card's separate `liveness`. |
+| 2 | `failed` | Declared failure; reachable through `pij report state failed`. |
+| 3 | `stalled` | Reserved claims-working plus silent event history. **Not reachable yet:** needs native working publication and its age projection (148). |
+| 4 | `blocked` | Declared external blocker; reachable. |
+| 5 | `question` | Declared human question; reachable. |
+| 6 | `hold` | Declared intentional hold; reachable. |
+| 7 | `stopped` | Reserved process suspension. **Not reachable:** no suspension observation is published. |
+| 8 | `unknown` | Pure-function fallback when neither axis has inputs. Current registered rows have a stored mechanical state, so this is not currently produced by their normal badge path. |
+| 9 | `waiting` | Declared wait for external work; reachable. |
+| 10 | `starting` | Reserved pre-bind lifecycle. **Not reachable:** no lifecycle publication path (148). |
+| 11 | `working` | Reserved native runtime work observation. **Not reachable:** no production work-state publisher (148). Event recency must never be called working. |
+| 12 | `ready` | Declared availability; reachable. |
+| 13 | `cancelled` | Declared cancellation; reachable through `pij report state cancelled`. |
+| 14 | `done` | Declared completion; reachable while its assignment remains open, or as an unscoped declaration. |
+| 15 | `idle` | Current stored mechanical default for **Pi, OMP, Claude, Copilot and Codex**. It means work was **not observed**, not that no work is happening. |
+
+`failed` and `cancelled` also work with `report now --state`; old state records
+remain readable. Both are non-nudgeable, like other terminal/parked declarations.
+
+**Liveness remains separate.** The card still performs its existing exact
+process-identity probe and reports `active`, `dead`, `recycled` or `unbound`.
+It does not change the badge, so focusing a row cannot produce a different
+badge merely because the card probes a PID. The roster has **no `liveness`
+field** until a batch observation source exists (148). A stored PID is not
+evidence of a live process; emitting all-unknown values would incorrectly enable
+the consumer's presence-gated idle filter. Tombstoned seats remain excluded from
+the roster; their retained card does not acquire a `dead` badge by inference.
+
 
 Sources: [`types.rs::FederatedRoster / UnavailablePeer`](../../crates/daemon/src/http/types.rs), [`model.rs::SeatDescriptor`](../../crates/core/src/model.rs), [`http/mod.rs::SeatProjection / seats`](../../crates/daemon/src/http/mod.rs).
 

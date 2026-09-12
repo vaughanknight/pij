@@ -16,6 +16,7 @@ pub mod queue;
 pub mod registry;
 mod role_assertion;
 pub mod spine;
+pub mod status;
 
 pub use governance::GovernanceOutcome;
 pub use migrate::{SCHEMA_VERSION, StorePool, open, require_current_schema, schema_version};

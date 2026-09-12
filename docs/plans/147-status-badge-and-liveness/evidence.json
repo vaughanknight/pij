@@ -1,0 +1,140 @@
+{
+  "row_count": 91,
+  "row": {
+    "id": "pij-bench-000",
+    "machine": "JordansacStudio.localdomain",
+    "harness": "omp",
+    "session": null,
+    "extension_build": null,
+    "extension_path": null,
+    "pane": null,
+    "proc": null,
+    "folder": "/fixture/status147",
+    "state": "idle",
+    "semantic_state": null,
+    "role": null,
+    "parent": null,
+    "relay": false,
+    "native_extension_delivery": false,
+    "generation": "rs",
+    "badge": "blocked",
+    "last_event_at": 1789174388520
+  },
+  "card": {
+    "id": "pij-bench-000",
+    "state": "idle",
+    "badge": "blocked",
+    "last_event_at": 1789174388520,
+    "liveness": "unbound",
+    "pid": null,
+    "procStart": null,
+    "cwd": "/fixture/status147",
+    "harness": "omp",
+    "extension_build": null,
+    "extension_path": null,
+    "role": null,
+    "parent": null,
+    "boundModel": null,
+    "effort": null,
+    "pane": null,
+    "provider": null,
+    "semanticState": null,
+    "machine": "JordansacStudio.localdomain",
+    "tombstonedAt": null,
+    "tombstoneReason": null,
+    "statusPrev": null,
+    "statusNext": null,
+    "statusAt": null,
+    "statusSeq": null,
+    "statusStale": null,
+    "stateNote": null,
+    "assignment_id": "done-task",
+    "refs": [],
+    "held": [],
+    "unsupported": [
+      {
+        "field": "lifecycle",
+        "why": "rs seats have no pending/bound/dissolved lifecycle field; binding evidence lives in `proc` and is reported through `liveness`"
+      },
+      {
+        "field": "activity",
+        "why": "no native work observation is published yet; mechanical idle is the legacy default, not evidence of inactivity"
+      },
+      {
+        "field": "ageMs",
+        "why": "not emitted; consumers may subtract last_event_at from their epoch-ms clock"
+      },
+      {
+        "field": "liveness:stale",
+        "why": "the card reports a live process-identity probe, not activity staleness; no native activity observer is published yet"
+      },
+      {
+        "field": "daemonLastTickAt",
+        "why": "no per-seat daemon tick is recorded in the rs store"
+      },
+      {
+        "field": "daemonTickAgeMs",
+        "why": "derived from the tick rs does not record"
+      },
+      {
+        "field": "daemonTickStale",
+        "why": "derived from the tick rs does not record"
+      },
+      {
+        "field": "failureReason",
+        "why": "rs records no per-seat failure reason on the descriptor"
+      },
+      {
+        "field": "bindHealth",
+        "why": "the TS pre-bind health classifier has no rs counterpart"
+      },
+      {
+        "field": "degraded",
+        "why": "derived from `bindHealth`"
+      },
+      {
+        "field": "degradedReason",
+        "why": "derived from `bindHealth`"
+      },
+      {
+        "field": "terminal",
+        "why": "rs records termination as `tombstonedAt` + `tombstoneReason`, which this card DOES carry \u2014 a different shape, not a missing fact"
+      },
+      {
+        "field": "watchdog",
+        "why": "rs has no watchdog block on the seat row"
+      }
+    ],
+    "session": null,
+    "generation": "rs"
+  },
+  "semantic_changes": [
+    "failed",
+    "cancelled"
+  ],
+  "roster_liveness_present": false,
+  "isolated_addr": "127.0.0.1:51202",
+  "http_timing": {
+    "samples": 30,
+    "median_ms": 4.462979035452008,
+    "p95_ms": 9.072916116565466
+  },
+  "fixture_events": 2921,
+  "query_timing": {
+    "seats": 91,
+    "samples": 100,
+    "warmup": 10,
+    "before": "SqliteRegistry::list",
+    "before_median_ms": 1.1057290000000002,
+    "before_p95_ms": 1.2185,
+    "after": "SqliteStatus::read",
+    "after_median_ms": 2.5003745,
+    "after_p95_ms": 2.659792
+  },
+  "scope": {
+    "badge": "row mechanical plus open-assignment semantic states only",
+    "roster_liveness": "absent by ruling",
+    "native_activity": "deferred to 148",
+    "process_probe_badge_input": false
+  }
+}

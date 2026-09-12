@@ -45,7 +45,7 @@ use pij_core::model::{
     SeatId, SemanticState, Seq,
 };
 use pij_core::names::memorable_pij_id_candidates;
-use pij_core::ports::{Registry, SeatFilter};
+use pij_core::ports::Registry;
 use pij_core::wire;
 use pij_harnesses::{SpawnPlanInput, build_spawn_plan, observed_launch_command};
 use serde::{Deserialize, Serialize};
@@ -2124,7 +2124,16 @@ async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequ
             ),
         );
     };
-    let seat = match state.services.registry.get(&id).await {
+    let seat = match state
+        .services
+        .status
+        .read(state.services.registry.as_ref(), Some(&id))
+        .await
+        .map(|rows| {
+            rows.into_iter()
+                .next()
+                .map(pij_store::status::SeatStatus::into_projection)
+        }) {
         Ok(Some(seat)) => seat,
         Ok(None) => {
             return envelope(
@@ -2242,7 +2251,10 @@ fn state_card(
     card: Option<pij_core::report::CardStatus>,
     state_record: Option<pij_core::report::StateRecord>,
 ) -> StateProjection {
-    use pij_core::model::{Liveness, SystemState};
+    use pij_core::model::Liveness;
+    let badge = seat.badge.unwrap_or_else(|| {
+        pij_core::status::badge_of(Some(seat.state), seat.semantic_state.as_slice()).to_string()
+    });
     let (state_note, assignment_id, refs) = state_record
         .map(|record| (record.note, record.assignment_id, record.refs))
         .unwrap_or_default();
@@ -2251,11 +2263,9 @@ fn state_card(
         generation: "rs",
         card: StateCard {
             id: seat.id,
-            state: match seat.state {
-                SystemState::Working => "working",
-                SystemState::Idle => "idle",
-            }
-            .to_string(),
+            state: seat.state.as_str().to_string(),
+            badge,
+            last_event_at: seat.last_event_at,
             // A seat that was never bound to a process has no process to observe, so
             // it gets its own word rather than borrowing `dead` — "never had one" and
             // "had one and it is gone" are different facts about a seat.
@@ -2308,17 +2318,14 @@ fn state_card(
 /// (`.pi/extensions/pij/core/cli.ts:3630-3684`). They are NAMED rather than
 /// emitted as `null` because `null` is itself an answer — "we looked and this
 /// seat has none" — and a caller cannot tell that from "this store has no such
-/// concept". Two of them, `activity` and `liveness: "stale"`, would be
-/// answerable by scanning this seat's spine for its newest event; that is a
-/// full per-seat scan on a single-row read, so it is named here as a known gap
-/// rather than paid for on every call.
+/// concept". `last_event_at` is now supplied by the same indexed query as
+/// the roster. Missing activity observers remain explicitly unsupported.
 fn unsupported_state_fields() -> Vec<UnsupportedField> {
     [
         ("lifecycle", "rs seats have no pending/bound/dissolved lifecycle field; binding evidence lives in `proc` and is reported through `liveness`"),
-        ("activity", "the done-vs-idle split needs `lastEventAt`, which the rs descriptor does not carry; `state` reports the working/idle half"),
-        ("lastEventAt", "not on the rs descriptor — deriving it needs a full spine scan per read"),
-        ("ageMs", "derived from `lastEventAt`, which rs does not carry"),
-        ("liveness:stale", "TS reports `stale` for a seat that claims to be working and has gone quiet; that needs event age. An rs `active` therefore covers BOTH the TS `active` and the TS `stale` case — it is a weaker claim, not the same one"),
+        ("activity", "no native work observation is published yet; mechanical idle is the legacy default, not evidence of inactivity"),
+        ("ageMs", "not emitted; consumers may subtract last_event_at from their epoch-ms clock"),
+        ("liveness:stale", "the card reports a live process-identity probe, not activity staleness; no native activity observer is published yet"),
         ("daemonLastTickAt", "no per-seat daemon tick is recorded in the rs store"),
         ("daemonTickAgeMs", "derived from the tick rs does not record"),
         ("daemonTickStale", "derived from the tick rs does not record"),
@@ -2351,6 +2358,9 @@ struct SeatProjection<'a> {
     #[serde(flatten)]
     seat: &'a SeatDescriptor,
     generation: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    badge: Option<&'a str>,
+    last_event_at: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -2393,9 +2403,16 @@ async fn seats(State(state): State<AppState>, Query(query): Query<SeatQuery>) ->
     if query.scope.as_deref().is_some_and(|scope| scope != "local") {
         return refused("pij seats", "scope must be `local` when supplied");
     }
-    let listed = state.services.registry.list(SeatFilter::default()).await;
+    let listed = state
+        .services
+        .status
+        .read(state.services.registry.as_ref(), None)
+        .await;
     let mut local = match listed {
-        Ok(seats) => seats,
+        Ok(seats) => seats
+            .into_iter()
+            .map(pij_store::status::SeatStatus::into_projection)
+            .collect::<Vec<_>>(),
         Err(error) => return internal("pij seats", error),
     };
     if let Err(error) = state.services.roles.join_roles(&mut local).await {
@@ -2437,6 +2454,8 @@ async fn seats(State(state): State<AppState>, Query(query): Query<SeatQuery>) ->
             .map(|seat| SeatProjection {
                 seat,
                 generation: "rs",
+                badge: seat.badge.as_deref(),
+                last_event_at: seat.last_event_at,
             })
             .collect(),
         unavailable: &roster.unavailable,

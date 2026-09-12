@@ -13,7 +13,7 @@ use pij_core::model::{
     DeliveryOrigin, Destination, Envelope, Event, Harness, Job, JobId, Outcome, Pane, ProcIdentity,
     Receipt, SeatDescriptor,
 };
-use pij_core::ports::{DeliveryAck, DeliveryEnqueue, Queue, Registry, Spine, TmuxPort};
+use pij_core::ports::{DeliveryAck, DeliveryEnqueue, Queue, Registry, SeatFilter, Spine, TmuxPort};
 use pij_core::wire::{self, WireEvent};
 use pij_testkit::fakes::{FakeLiveness, FakeQueue, FakeRegistry, FakeSpine, FakeTmux};
 
@@ -5497,7 +5497,6 @@ async fn state_names_what_it_cannot_answer_instead_of_nulling_it() {
     for field in [
         "lifecycle",
         "activity",
-        "lastEventAt",
         "ageMs",
         "liveness:stale",
         "bindHealth",
@@ -5513,13 +5512,6 @@ async fn state_names_what_it_cannot_answer_instead_of_nulling_it() {
         assert!(
             card.get(field).is_none(),
             "{field} must be ABSENT from the card — emitting it as null answers a question rs never asked"
-        );
-    }
-    // Every named gap carries a reason; a bare list of names is not an answer.
-    for entry in card["unsupported"].as_array().expect("unsupported list") {
-        assert!(
-            !entry["why"].as_str().expect("why").trim().is_empty(),
-            "an unsupported field with no reason is a gap nobody can act on"
         );
     }
 

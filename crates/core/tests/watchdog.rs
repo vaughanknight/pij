@@ -43,6 +43,8 @@ fn every_pause_tier_and_declared_state_has_one_nudge_decision() {
         Some(SemanticState::Blocked),
         Some(SemanticState::Question),
         Some(SemanticState::Done),
+        Some(SemanticState::Failed),
+        Some(SemanticState::Cancelled),
     ];
 
     for self_paused in [false, true] {

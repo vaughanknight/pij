@@ -93,6 +93,45 @@ pub enum SystemState {
     Idle,
     /// A turn is running.
     Working,
+    /// The process is gone or the seat has been tombstoned.
+    Dead,
+    /// Pre-bind lifecycle; reserved until mechanical observation is published.
+    Starting,
+    /// A working observation has gone silent; reserved until activity is published.
+    Stalled,
+    /// The process is suspended; reserved until suspension is observed.
+    Stopped,
+    /// Mechanical observation is unavailable.
+    Unknown,
+}
+
+impl SystemState {
+    /// The stable, lowercase wire spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Working => "working",
+            Self::Dead => "dead",
+            Self::Starting => "starting",
+            Self::Stalled => "stalled",
+            Self::Stopped => "stopped",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    /// Parse a wire spelling without guessing an unknown observation.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "idle" => Some(Self::Idle),
+            "working" => Some(Self::Working),
+            "dead" => Some(Self::Dead),
+            "starting" => Some(Self::Starting),
+            "stalled" => Some(Self::Stalled),
+            "stopped" => Some(Self::Stopped),
+            "unknown" => Some(Self::Unknown),
+            _ => None,
+        }
+    }
 }
 
 /// What the seat SAYS about itself. Observation and declaration are different
@@ -114,9 +153,42 @@ pub enum SemanticState {
     Question,
     /// Work finished.
     Done,
+    /// Work ended unsuccessfully.
+    Failed,
+    /// Work was cancelled.
+    Cancelled,
 }
 
 impl SemanticState {
+    /// The stable, lowercase wire spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Waiting => "waiting",
+            Self::Hold => "hold",
+            Self::Blocked => "blocked",
+            Self::Question => "question",
+            Self::Done => "done",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    /// Parse a declared state without substituting a near-fit meaning.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "ready" => Some(Self::Ready),
+            "waiting" => Some(Self::Waiting),
+            "hold" => Some(Self::Hold),
+            "blocked" => Some(Self::Blocked),
+            "question" => Some(Self::Question),
+            "done" => Some(Self::Done),
+            "failed" => Some(Self::Failed),
+            "cancelled" => Some(Self::Cancelled),
+            _ => None,
+        }
+    }
+
     /// May the watchdog nudge a seat in this state?
     ///
     /// Deliberate silence is not a stall. This is the predicate TS lacked; the
@@ -135,7 +207,9 @@ impl SemanticState {
             | SemanticState::Hold
             | SemanticState::Blocked
             | SemanticState::Question
-            | SemanticState::Done => false,
+            | SemanticState::Done
+            | SemanticState::Failed
+            | SemanticState::Cancelled => false,
         }
     }
 }
@@ -259,6 +333,13 @@ pub struct SeatDescriptor {
     /// leave every stored seat carrying stale machine identity.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub machine: Option<String>,
+    /// Read-projection badge retained when decoding a federated roster. Raw
+    /// descriptors never serialize it; the roster/card boundary owns emission.
+    #[serde(default, skip_serializing)]
+    pub badge: Option<String>,
+    /// Read-projection event freshness, in epoch milliseconds. Not registry state.
+    #[serde(default, skip_serializing)]
+    pub last_event_at: Option<u64>,
     /// Harness it runs.
     pub harness: Harness,
     /// Harness-native session id, when the registering runtime supplied one.
@@ -409,6 +490,8 @@ impl SeatDescriptor {
         SeatDescriptor {
             id: id.into(),
             machine: None,
+            badge: None,
+            last_event_at: None,
             harness,
             harness_session: None,
             extension_build: None,

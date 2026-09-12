@@ -42,6 +42,8 @@ fn watchdog_eligibility_is_a_decision_table_not_a_timeout() {
         SemanticState::Blocked,
         SemanticState::Question,
         SemanticState::Done,
+        SemanticState::Failed,
+        SemanticState::Cancelled,
     ] {
         assert!(
             !seat(Some(parked), SystemState::Idle, false).nudgeable(),

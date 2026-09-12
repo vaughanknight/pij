@@ -127,7 +127,7 @@ fn row_proc(row: &sqlx::sqlite::SqliteRow) -> Result<Option<ProcIdentity>> {
     }
 }
 
-fn row_to_descriptor(row: &sqlx::sqlite::SqliteRow) -> Result<SeatDescriptor> {
+pub(crate) fn row_to_descriptor(row: &sqlx::sqlite::SqliteRow) -> Result<SeatDescriptor> {
     let harness_text: String = row.try_get("harness").map_err(adapter_error)?;
     // An unrecognised harness is refused, never coerced to a default: guessing
     // here is how a seat gets bound to the wrong readiness anchor.
@@ -137,33 +137,21 @@ fn row_to_descriptor(row: &sqlx::sqlite::SqliteRow) -> Result<SeatDescriptor> {
     })?;
 
     let state_text: String = row.try_get("state").map_err(adapter_error)?;
-    let state = match state_text.as_str() {
-        "idle" => SystemState::Idle,
-        "working" => SystemState::Working,
-        other => {
-            return Err(PijError::Adapter {
-                adapter: "store/registry".to_string(),
-                message: format!("unknown system state `{other}` in the seats table"),
-            });
-        }
-    };
+    let state = SystemState::parse(&state_text).ok_or_else(|| PijError::Adapter {
+        adapter: "store/registry".to_string(),
+        message: format!("unknown system state `{state_text}` in the seats table"),
+    })?;
 
     let semantic_text: Option<String> = row.try_get("semantic_state").map_err(adapter_error)?;
-    let semantic_state = match semantic_text.as_deref() {
-        None => None,
-        Some("ready") => Some(SemanticState::Ready),
-        Some("waiting") => Some(SemanticState::Waiting),
-        Some("hold") => Some(SemanticState::Hold),
-        Some("blocked") => Some(SemanticState::Blocked),
-        Some("question") => Some(SemanticState::Question),
-        Some("done") => Some(SemanticState::Done),
-        Some(other) => {
-            return Err(PijError::Adapter {
+    let semantic_state = semantic_text
+        .as_deref()
+        .map(|word| {
+            SemanticState::parse(word).ok_or_else(|| PijError::Adapter {
                 adapter: "store/registry".to_string(),
-                message: format!("unknown semantic state `{other}` in the seats table"),
-            });
-        }
-    };
+                message: format!("unknown semantic state `{word}` in the seats table"),
+            })
+        })
+        .transpose()?;
 
     let proc = row_proc(row)?;
     // Keep native attestation's raw bounds checks before relying on the
@@ -211,6 +199,8 @@ fn row_to_descriptor(row: &sqlx::sqlite::SqliteRow) -> Result<SeatDescriptor> {
         // Machine identity belongs to the federated view, not durable local
         // registry state. The HTTP boundary stamps the daemon's current alias.
         machine: None,
+        badge: None,
+        last_event_at: None,
         harness,
         harness_session,
         extension_build: row.try_get("extension_build").map_err(adapter_error)?,
@@ -235,24 +225,6 @@ fn row_to_descriptor(row: &sqlx::sqlite::SqliteRow) -> Result<SeatDescriptor> {
             .map(|flag| flag != 0),
         native_extension_delivery,
     })
-}
-
-fn semantic_str(state: SemanticState) -> &'static str {
-    match state {
-        SemanticState::Ready => "ready",
-        SemanticState::Waiting => "waiting",
-        SemanticState::Hold => "hold",
-        SemanticState::Blocked => "blocked",
-        SemanticState::Question => "question",
-        SemanticState::Done => "done",
-    }
-}
-
-fn state_str(state: SystemState) -> &'static str {
-    match state {
-        SystemState::Idle => "idle",
-        SystemState::Working => "working",
-    }
 }
 
 /// Construct a stamped registry fact without assigning its durable sequence.
@@ -379,8 +351,8 @@ impl Registry for SqliteRegistry {
         .bind(descriptor.proc.map(|p| i64::from(p.pid)))
         .bind(descriptor.proc.map(|p| p.proc_start as i64))
         .bind(&descriptor.folder)
-        .bind(state_str(descriptor.state))
-        .bind(descriptor.semantic_state.map(semantic_str))
+        .bind(descriptor.state.as_str())
+        .bind(descriptor.semantic_state.map(SemanticState::as_str))
         .bind(descriptor.role.as_deref())
         .bind(descriptor.parent.as_ref().map(SeatId::as_str))
         .bind(i64::from(descriptor.relay))

@@ -314,7 +314,7 @@ enum Command {
     /// grammar has exactly one implementation and the two surfaces cannot drift:
     ///
     ///   pij-rs report now "<did>" "<next>" [--state <word>] [--note <text>]
-    ///   pij-rs report state <ready|waiting|hold|blocked|question|done>
+    ///   pij-rs report state <ready|waiting|hold|blocked|question|done|failed|cancelled>
     ///   pij-rs report blocked|question "<text>"
     ///   pij-rs report clear
     ///   pij-rs report verify <seat> [--assignment <id>]

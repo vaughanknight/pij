@@ -217,13 +217,7 @@ fn malformed_latest_card_is_an_error_not_a_disappearing_card() {
     );
 }
 
-/// `declare` reaches the three states that had no way in.
-///
-/// `done`, `blocked`, `question` and `clear` cover four of the six words
-/// [`SemanticState`] carries; `Ready`, `Waiting` and `Hold` had no exposed path
-/// at all. A caller needing one of those had to re-implement the
-/// registry-then-spine sequence beside this service, or map onto a near-fit that
-/// IS exposed — and a near-fit records a declaration the seat never made.
+/// `declare` preserves states without a dedicated named helper.
 ///
 /// The registry row and the spine record are BOTH asserted: this service's whole
 /// contract is that the authoritative state and its history move together.
@@ -239,6 +233,8 @@ fn declare_reaches_the_states_the_named_helpers_never_exposed() {
         SemanticState::Ready,
         SemanticState::Waiting,
         SemanticState::Hold,
+        SemanticState::Failed,
+        SemanticState::Cancelled,
     ] {
         block_on(service.declare(&seat, Some(state), None, None, &[])).expect("declare");
         assert_eq!(
