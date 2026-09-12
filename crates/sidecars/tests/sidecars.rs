@@ -18,7 +18,10 @@ use pij_sidecars::background::{self, BgRequest, BgStatus, BgWorker, group_pids};
 use pij_sidecars::chore::{self, ChoreRequest, ChoreStatus, ChoreWorker};
 use pij_sidecars::telegram::{self, TelegramConfig, TelegramSend, TelegramWorker};
 use pij_store::SqliteQueue;
-use pij_testkit::{FreshStore, fakes::FakeSpine};
+use pij_testkit::{
+    FreshStore,
+    fakes::{FakeRegistry, FakeSpine},
+};
 
 async fn sqlite_queue(fresh: &FreshStore) -> Arc<SqliteQueue> {
     let config = Config::default();
@@ -426,6 +429,7 @@ async fn all_three_shipped_loops_survive_a_transient_claim_failure() {
         TelegramWorker::new(
             flaky,
             spine_port,
+            Arc::new(FakeRegistry::new()),
             TelegramConfig {
                 token: "TOKEN".to_string(),
                 allowed_user_ids: vec![7],
@@ -485,6 +489,7 @@ async fn telegram_reply_uses_only_the_persisted_outbound_binding_and_refuses_whe
     let worker = TelegramWorker::new(
         queue_port,
         spine_port,
+        Arc::new(FakeRegistry::new()),
         TelegramConfig {
             token: "TOKEN".to_string(),
             allowed_user_ids: vec![7],
@@ -546,6 +551,7 @@ async fn telegram_reply_uses_only_the_persisted_outbound_binding_and_refuses_whe
     let worker = TelegramWorker::new(
         queue_port,
         spine_port,
+        Arc::new(FakeRegistry::new()),
         TelegramConfig {
             token: "TOKEN".to_string(),
             allowed_user_ids: vec![7],
@@ -790,8 +796,14 @@ async fn failed_inbound_delivery_keeps_the_update_unconfirmed_and_cursor_survive
         api_root,
     };
     let lock = temp_path(&fresh, "cursor.lock");
-    let worker =
-        TelegramWorker::new(refusing, spine_port, config.clone(), lock.clone()).expect("worker");
+    let worker = TelegramWorker::new(
+        refusing,
+        spine_port,
+        Arc::new(FakeRegistry::new()),
+        config.clone(),
+        lock.clone(),
+    )
+    .expect("worker");
     let lock_json: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&lock).expect("read bridge lock"))
             .expect("parse bridge lock");
@@ -839,7 +851,14 @@ async fn failed_inbound_delivery_keeps_the_update_unconfirmed_and_cursor_survive
 
     let queue_port: Arc<dyn Queue> = queue.clone();
     let spine_port: Arc<dyn Spine> = spine.clone();
-    let restarted = TelegramWorker::new(queue_port, spine_port, config, lock).expect("restart");
+    let restarted = TelegramWorker::new(
+        queue_port,
+        spine_port,
+        Arc::new(FakeRegistry::new()),
+        config,
+        lock,
+    )
+    .expect("restart");
     restarted.run_once(4).await.expect("restart poll");
     assert_eq!(
         *api.offsets.lock().expect("offsets"),
@@ -864,6 +883,7 @@ async fn successful_send_with_failed_binding_is_terminal_and_never_posts_twice()
     let worker = TelegramWorker::new(
         queue_port,
         spine,
+        Arc::new(FakeRegistry::new()),
         TelegramConfig {
             token: "TOKEN".to_string(),
             allowed_user_ids: vec![],
@@ -1142,6 +1162,7 @@ async fn telegram_refuses_egress_outside_the_configured_operator_chat() {
     let worker = TelegramWorker::new(
         queue_port,
         spine_port,
+        Arc::new(FakeRegistry::new()),
         TelegramConfig {
             token: "TOKEN".to_string(),
             allowed_user_ids: Vec::new(),

@@ -509,9 +509,12 @@ enum SidecarAction {
         /// Assert the derived sending seat, which inbound replies route back to.
         #[arg(long)]
         from: Option<String>,
-        /// Message text.
-        #[arg(long)]
-        body: String,
+        /// Literal message body, including values beginning with `-`.
+        #[arg(long, allow_hyphen_values = true, conflicts_with = "body_file")]
+        body: Option<String>,
+        /// Read the literal body from a path, or from stdin with `-`.
+        #[arg(long, conflicts_with = "body")]
+        body_file: Option<String>,
         /// Correlation id. Omit to mint a UUIDv7.
         #[arg(long)]
         msg_id: Option<String>,
@@ -579,9 +582,11 @@ impl SidecarAction {
             Self::Telegram {
                 from,
                 body,
+                body_file,
                 msg_id,
                 chat_id,
             } => {
+                let body = resolve_send_body(body, body_file)?;
                 let from =
                     resolve_command_seat(client, "pij sidecar telegram", from.as_deref()).await?;
                 let msg_id = msg_id.unwrap_or_else(|| uuid::Uuid::now_v7().to_string());
@@ -2293,9 +2298,19 @@ mod tests {
     }
 
     #[test]
-    fn telegram_short_form_leaves_identity_and_message_id_for_runtime_resolution() {
-        let _ = Cli::try_parse_from(["pij-rs", "sidecar", "telegram", "--body", "hello"])
-            .expect("short Telegram form parses");
+    fn telegram_body_sources_are_mutually_exclusive() {
+        let error = Cli::try_parse_from([
+            "pij-rs",
+            "sidecar",
+            "telegram",
+            "--body",
+            "hello",
+            "--body-file",
+            "-",
+        ])
+        .err()
+        .expect("conflicting body sources must refuse before reading stdin");
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
 
     #[test]
