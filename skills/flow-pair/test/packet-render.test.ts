@@ -128,7 +128,7 @@ describe("PacketRenderer — renderBody (T001)", () => {
 	});
 
 	afterEach(() => {
-		rmSync(tmpRoot, { recursive: true, force: true });
+		rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 	});
 
 	it("body contains each forbidden path verbatim", () => {
@@ -221,7 +221,7 @@ describe("PacketRenderer — renderBody single-pass (Fix 5)", () => {
 	});
 
 	afterEach(() => {
-		rmSync(tmpRoot, { recursive: true, force: true });
+		rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 	});
 
 	it("injected tasks content containing a marker is NOT re-substituted (single-pass)", () => {
@@ -271,7 +271,7 @@ describe("PacketRenderer — renderBody manifest validation (Fix 6)", () => {
 	});
 
 	afterEach(() => {
-		rmSync(tmpRoot, { recursive: true, force: true });
+		rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 	});
 
 	it("{ok:false} when manifest has no plan-phase entry", () => {
@@ -317,7 +317,7 @@ describe("PacketRenderer — {{SKILL_ROOT}} injection (DL-003)", () => {
 	});
 
 	afterEach(() => {
-		rmSync(tmpRoot, { recursive: true, force: true });
+		rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 	});
 
 	it("substitutes an explicit opts.skillRoot verbatim (mutation guard: drop SKILL_ROOT sub → RED)", () => {
@@ -382,7 +382,7 @@ describe("PacketRenderer — pointer message format (T004)", () => {
 	});
 
 	afterEach(() => {
-		rmSync(tmpRoot, { recursive: true, force: true });
+		rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 	});
 
 	it("pointerMsg contains the delegationId", () => {

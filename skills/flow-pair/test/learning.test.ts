@@ -203,7 +203,7 @@ describe("Learning.recordLearning — AC-07 cluster isolation", () => {
 	});
 
 	afterEach(() => {
-		rmSync(tmpRoot, { recursive: true, force: true });
+		rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 	});
 
 	it("implement-code miss writes exactly one implement-code candidate and leaves siblings byte-identical", () => {
@@ -312,7 +312,7 @@ describe("Learning.recordLearning — P9 ledger before candidate", () => {
 	});
 
 	afterEach(() => {
-		rmSync(tmpRoot, { recursive: true, force: true });
+		rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 	});
 
 	it("appends learning event and writes ledger record before prompt-lab candidate", () => {
