@@ -2857,8 +2857,25 @@ async fn report(State(state): State<AppState>, Json(request): Json<ReportRequest
         report::ReportCall::Verify { target, assignment } => {
             decisions::verify(&state, &seat, &target, assignment).await
         }
-        report::ReportCall::Clear => {
-            declaration_response(command, &reports, &seat, None, None, None, Vec::new()).await
+        report::ReportCall::Clear { assignment_id } => {
+            if let Err(error) = state
+                .services
+                .decisions
+                .validate_report_assignment(&seat, assignment_id.as_deref())
+                .await
+            {
+                return error.response(command);
+            }
+            declaration_response(
+                command,
+                &reports,
+                &seat,
+                None,
+                None,
+                assignment_id,
+                Vec::new(),
+            )
+            .await
         }
     }
 }

@@ -33,11 +33,11 @@ pub const BADGE_SEVERITY: [&str; 15] = [
 /// The caller selects open assignments; their order cannot affect the badge.
 /// No candidates means `unknown`, not an inferred `idle`.
 pub fn badge_of(system: Option<SystemState>, semantic_states: &[SemanticState]) -> &'static str {
-    let mut worst = system.map_or(BADGE_SEVERITY.len(), system_rank);
+    let mut worst = system.map_or(usize::MAX, system_rank);
     for &state in semantic_states {
         worst = worst.min(semantic_rank(state));
     }
-    if worst == BADGE_SEVERITY.len() {
+    if worst == usize::MAX {
         SystemState::Unknown.as_str()
     } else {
         BADGE_SEVERITY[worst]
@@ -45,7 +45,7 @@ pub fn badge_of(system: Option<SystemState>, semantic_states: &[SemanticState]) 
 }
 
 // Exhaustive mappings force every enum addition to acquire a severity slot.
-// The vocabulary test checks each slot against the enum's wire spelling.
+// The vocabulary tests check both slot-to-enum and enum-to-slot coverage.
 const fn system_rank(state: SystemState) -> usize {
     match state {
         SystemState::Dead => 0,

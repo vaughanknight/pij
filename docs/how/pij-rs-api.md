@@ -200,6 +200,13 @@ pij sessions --json      # rs session projection: no query flags
 
 The additive `list_here_capture` in [`governance-client-parity.json`](../../crates/testkit/fixtures/golden/api/governance-client-parity.json) retains four actual native/shim byte-equal pairs (bare, true, false, unfiltered) and four argument refusals against one private real-adapter daemon. Its binary hash and captured cwd identify the exercised artifact; this is not production deployment evidence.
 
+That retained capture **predates plan 147**: its roster rows have neither `badge`
+nor `last_event_at`. It proves the historical folder-filter/argument and
+native/shim byte-parity contract, not the current status-row shape. The private
+capture daemon and scratch state were removed; the current isolated status
+row/card evidence is [`plan 147 evidence.json`](../plans/147-status-badge-and-liveness/evidence.json),
+not a recapture of those old CLI pairs.
+
 ## State card and badge vocabulary
 
 `POST /v1/state` with `{"id":"<seat>"}` returns the same `badge` and
@@ -216,6 +223,22 @@ when present. Closing an assignment removes its declaration from the badge even
 if the legacy single `semantic_state` still contains it. No inputs means
 `unknown`. Consumers may colour by these strings; they must not derive a second
 badge or severity order.
+
+`semantic_state` on a roster row (`semanticState` on its card) is the legacy
+single descriptor declaration; `badge` is the worst current declaration across
+open assignments and the mechanical axis. They answer different questions and
+may disagree in **both** directions: unscoped `report clear` clears only the
+descriptor, leaving `semanticState: null` beside `badge: "blocked"` when an open
+assignment still declares blocked; closing that assignment can leave the stale
+descriptor `semanticState: "blocked"` beside `badge: "idle"`.
+Use `report clear --assignment <id>` to clear a task's declaration without
+closing its assignment. Assignment lookup and ownership use the same resolution
+as `report state --assignment`, refusing with `E-RS-ASSIGNMENT-UNKNOWN` or
+`E-RS-ASSIGNMENT-NOT-YOURS`. Unscoped clear retains its descriptor-only meaning.
+
+The semantic word list is [`SemanticState::WORDS`](../../crates/core/src/model.rs),
+generated from the same definitions as the enum, parser and `SemanticState::ALL`;
+both CLI help and report refusals read it.
 
 | Priority | Badge | Meaning and current reachability |
 |---|---|---|

@@ -85,110 +85,120 @@ impl fmt::Display for Harness {
     }
 }
 
-/// What the machine can observe about a seat: is its process doing work.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum SystemState {
-    /// No inference in flight.
-    Idle,
-    /// A turn is running.
-    Working,
-    /// The process is gone or the seat has been tombstoned.
-    Dead,
-    /// Pre-bind lifecycle; reserved until mechanical observation is published.
-    Starting,
-    /// A working observation has gone silent; reserved until activity is published.
-    Stalled,
-    /// The process is suspended; reserved until suspension is observed.
-    Stopped,
-    /// Mechanical observation is unavailable.
-    Unknown,
+// Keep each axis's variants, wire spellings and published vocabulary together.
+macro_rules! state_enum {
+    (
+        $(#[$enum_meta:meta])*
+        pub enum $name:ident {
+            $(#[$first_meta:meta])*
+            $first:ident => $first_word:literal,
+            $(
+                $(#[$variant_meta:meta])*
+                $variant:ident => $word:literal,
+            )*
+        }
+        $(#[$parse_meta:meta])*
+        fn parse;
+        $(words: $words:ident;)?
+    ) => {
+        $(#[$enum_meta])*
+        pub enum $name {
+            $(#[$first_meta])*
+            #[serde(rename = $first_word)]
+            $first,
+            $(
+                $(#[$variant_meta])*
+                #[serde(rename = $word)]
+                $variant,
+            )*
+        }
+
+        impl $name {
+            /// Every variant, in declaration order.
+            pub const ALL: &'static [Self] = &[Self::$first, $(Self::$variant,)*];
+
+            state_enum!(@words [$($words)?] $first_word $(, $word)*);
+
+            /// The stable, lowercase wire spelling.
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    Self::$first => $first_word,
+                    $(Self::$variant => $word,)*
+                }
+            }
+
+            $(#[$parse_meta])*
+            pub fn parse(value: &str) -> Option<Self> {
+                match value {
+                    $first_word => Some(Self::$first),
+                    $($word => Some(Self::$variant),)*
+                    _ => None,
+                }
+            }
+        }
+    };
+    (@words [$words:ident] $first:literal $(, $word:literal)*) => {
+        /// Accepted wire words, pipe-separated in declaration order.
+        pub const $words: &'static str = concat!($first $(, "|", $word)*);
+    };
+    (@words [] $first:literal $(, $word:literal)*) => {};
 }
 
-impl SystemState {
-    /// The stable, lowercase wire spelling.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Idle => "idle",
-            Self::Working => "working",
-            Self::Dead => "dead",
-            Self::Starting => "starting",
-            Self::Stalled => "stalled",
-            Self::Stopped => "stopped",
-            Self::Unknown => "unknown",
-        }
+state_enum! {
+    /// What the machine can observe about a seat: is its process doing work.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "lowercase")]
+    pub enum SystemState {
+        /// No inference in flight.
+        Idle => "idle",
+        /// A turn is running.
+        Working => "working",
+        /// The process is gone or the seat has been tombstoned.
+        Dead => "dead",
+        /// Pre-bind lifecycle; reserved until mechanical observation is published.
+        Starting => "starting",
+        /// A working observation has gone silent; reserved until activity is published.
+        Stalled => "stalled",
+        /// The process is suspended; reserved until suspension is observed.
+        Stopped => "stopped",
+        /// Mechanical observation is unavailable.
+        Unknown => "unknown",
     }
-
     /// Parse a wire spelling without guessing an unknown observation.
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "idle" => Some(Self::Idle),
-            "working" => Some(Self::Working),
-            "dead" => Some(Self::Dead),
-            "starting" => Some(Self::Starting),
-            "stalled" => Some(Self::Stalled),
-            "stopped" => Some(Self::Stopped),
-            "unknown" => Some(Self::Unknown),
-            _ => None,
-        }
-    }
+    fn parse;
 }
 
-/// What the seat SAYS about itself. Observation and declaration are different
-/// facts and are stored separately: a seat that is idle because it is waiting
-/// for a human answer is not the same as one that has wedged, and collapsing the
-/// two is what made the TS watchdog nudge parked seats (defect #9).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum SemanticState {
-    /// Adopted, idle, available for dispatch.
-    Ready,
-    /// Waiting on a peer or a dispatch.
-    Waiting,
-    /// Deliberately parked by its operator.
-    Hold,
-    /// Waiting on an external dependency it cannot influence.
-    Blocked,
-    /// Waiting on a human answer.
-    Question,
-    /// Work finished.
-    Done,
-    /// Work ended unsuccessfully.
-    Failed,
-    /// Work was cancelled.
-    Cancelled,
+state_enum! {
+    /// What the seat SAYS about itself. Observation and declaration are different
+    /// facts and are stored separately: a seat that is idle because it is waiting
+    /// for a human answer is not the same as one that has wedged, and collapsing the
+    /// two is what made the TS watchdog nudge parked seats (defect #9).
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "lowercase")]
+    pub enum SemanticState {
+        /// Adopted, idle, available for dispatch.
+        Ready => "ready",
+        /// Waiting on a peer or a dispatch.
+        Waiting => "waiting",
+        /// Deliberately parked by its operator.
+        Hold => "hold",
+        /// Waiting on an external dependency it cannot influence.
+        Blocked => "blocked",
+        /// Waiting on a human answer.
+        Question => "question",
+        /// Work finished.
+        Done => "done",
+        /// Work ended unsuccessfully.
+        Failed => "failed",
+        /// Work was cancelled.
+        Cancelled => "cancelled",
+    }
+    /// Parse a declared state without substituting a near-fit meaning.
+    fn parse;
+    words: WORDS;
 }
 
 impl SemanticState {
-    /// The stable, lowercase wire spelling.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Ready => "ready",
-            Self::Waiting => "waiting",
-            Self::Hold => "hold",
-            Self::Blocked => "blocked",
-            Self::Question => "question",
-            Self::Done => "done",
-            Self::Failed => "failed",
-            Self::Cancelled => "cancelled",
-        }
-    }
-
-    /// Parse a declared state without substituting a near-fit meaning.
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "ready" => Some(Self::Ready),
-            "waiting" => Some(Self::Waiting),
-            "hold" => Some(Self::Hold),
-            "blocked" => Some(Self::Blocked),
-            "question" => Some(Self::Question),
-            "done" => Some(Self::Done),
-            "failed" => Some(Self::Failed),
-            "cancelled" => Some(Self::Cancelled),
-            _ => None,
-        }
-    }
-
     /// May the watchdog nudge a seat in this state?
     ///
     /// Deliberate silence is not a stall. This is the predicate TS lacked; the

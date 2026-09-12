@@ -1,11 +1,11 @@
 # Plan 147 — implementation evidence
 
-Status: implemented, isolated runtime proved, all required gates green; ready for independent review. The source delivery commit is identified in the final peer message and this file's Git history. No push, PR, merge or production deployment performed.
+Status: **all F1–F8 fixes implemented and verified; none deferred to 148.** Required gates exited 0; report-only package audit findings are recorded below, not represented as clean. The containing fix commit is this round's source delivery; its exact SHA is supplied in the delivery message and post-commit report stamp. Original delivery: `ad5c6589`; review: `e3f99483`. No push, PR, merge or production deployment performed.
 
 ## Delivered scope and rulings
 
 - **AC1/AC4/AC6:** exported `pij_core::status::{BADGE_SEVERITY,badge_of}`, exact 15-word order, exhaustive mappings over both full enums, allocation-free pure selector; `failed`/`cancelled` accepted through semantic report state and report-now flags, persisted/read back, non-nudgeable.
-- **AC5/AC7/AC8:** `badge` and epoch-ms `last_event_at` on roster/card; one SQLite snapshot joins current row, latest seat event and latest declaration per open assignment. Closed assignment declarations do not leak through the legacy single-state descriptor. Legacy rows without events have null freshness.
+- **AC5/AC7/AC8:** `badge` and epoch-ms `last_event_at` on roster/card; one SQLite snapshot joins current row, latest seat event and latest declaration per open assignment. Closed-assignment descriptor suppression was implemented in round 1, but its claimed regression protection was false; the new round-2 removed-guard witness below pins it. Legacy rows without events have null freshness.
 - **AC3a/AC9:** API documentation includes the per-value reachability table. All harnesses still mechanically default to idle; this is not observed inactivity. Working/starting/stalled/stopped/dead are not newly produced. `unknown` remains the pure no-input fallback. The state card's existing process-liveness vocabulary is unchanged.
 - **Final liveness ruling:** roster liveness is ABSENT, not downgraded to all-unknown. Field presence would enable chainglass's idle filter over unusable information. The badge never consults liveness or tombstones on either surface, preventing row/focus disagreement. This split was the coder's finding: existing SQL has no process observation, and the exact-PID liveness port cannot produce one inside the roster query.
 - The prime accepted the activity split at its plan commit `250354bc`, then authorized updating AC2/AC5/AC3a and dependent acceptance text for the final liveness/badge ruling. `plan.md` now reflects it. Plan 148 was not started.
@@ -18,7 +18,7 @@ Prefer a true working observation; otherwise a clearly named recency observation
 
 Pij extension code reading runtime lifecycle/isIdle is an observation; agent-selected mechanical state is not. Future publication must be extension-only, identity checked, no CLI working declaration, reuse the existing seam, document per-harness coverage and latency, and project a lost end event as stalled rather than working forever. Pane scraping is rejected. These constraints belong to 148 after the accepted split.
 
-## RED → GREEN evidence
+## Round-1 historical RED → GREEN evidence
 
 All commands ran in the assigned worktree using `~/.cargo/bin/cargo`, a worktree-local target directory and `RUST_TEST_THREADS=1` where applicable.
 
@@ -27,7 +27,7 @@ All commands ran in the assigned worktree using `~/.cargo/bin/cargo`, a worktree
 | Failed/cancelled semantic declarations | `cargo test -p pij-daemon --test report_http report_state_accepts_failed_and_cancelled_and_preserves_them_after_reopen`: HTTP 400 instead of 200 for failed; exit 101 | `cargo test -p pij-daemon --test status_http --test report_http`: 30 passed |
 | Full badge vocabulary and pure selector | `cargo test -p pij-core --test status`: unresolved status module/enum additions; exit 101 | `cargo test -p pij-core -p pij-store --test status`: 6 passed across two suites |
 | Open-assignment selection, closing and legacy event absence | `cargo test -p pij-store --test status`: unresolved status module; exit 101 | Same 6-test command above passed |
-| Row/card agreement and independent card liveness | Added composed HTTP regression: fake dead process still yields the same blocked badge on both surfaces; no roster liveness; tombstone excluded from roster without changing retained card badge | `status_http` included in the 30-test pass; actual daemon smoke below also passed |
+| Row/card agreement and independent card liveness | Round-1 test used the same blocked descriptor word and no assignments: it did **not** discriminate the projection from fallback. No chronological RED witness existed for that test. | The test passed and the separate live capture discriminated, but this did not make the committed test a regression witness. Corrected and mutation-proved in round 2 below. |
 
 Native-publication tests were authored and produced seven RED failures before the split. Their additions were removed from the working source; `/tmp/plan147-native-red.patch` preserves them for optional future use. They are NOT 147 acceptance proof.
 
@@ -54,6 +54,211 @@ Ran the built `target/debug/pij-rs` program, not a test file, on `127.0.0.1:5120
 
 Additional real HTTP measurement: 30 roster reads, median **4.462979 ms**, p95 **9.072916 ms**. These are controlled local measurements, not production fleet or CI performance claims. The temporary Rust timing executable was removed after running.
 
+**F6 correction — density matters.** SQL inspection of the retained original
+fixture found just **2 open assignments on 1 of 91 seats** (90 unassigned),
+not one assignment per seat. There were 89 seats with 32 events, one with 34,
+one with 36, plus 3 non-seat configuration events: 2921 total. The original
+`1.106 → 2.500 ms` number applies only to that sparse fixture.
+
+The reviewer's independent medians were **3.563 ms** for one assignment per
+seat at 32 events/seat, **13.517 ms** at 200 events/seat, and **1.963 ms** for
+the latter with the index. Those are reviewer measurements, not this run.
+
+Round 2 added additive migration `0020_spine_by_seat_kind.sql`:
+`CREATE INDEX spine_by_seat_kind ON spine_events (seat, kind, seq)`.
+I independently re-ran the real store methods on isolated in-memory SQLite:
+91 seats, **91 open assignments**, exactly one early `report.state` per seat;
+the remainder was one `seat.put` and 30 or 198 later filler events. Debug build,
+10 warmups and 100 alternating/interleaved samples per method per index case.
+Setup, DDL and result validation were outside timings; schema checks, SQL and
+decoding were inside. Index absence/presence was changed only in each private
+fixture. The temporary executable was removed after its output was retained.
+
+| Events/seat | Total events | Index | Registry median / p95 (ms) | Status median / p95 (ms) |
+|---:|---:|---|---:|---:|
+| 32 | 2912 | absent | 1.131896 / 1.234458 | 3.832813 / 3.987958 |
+| 32 | 2912 | present | 1.203646 / 2.139583 | 2.086250 / 3.011375 |
+| 200 | 18200 | absent | 1.196355 / 1.428375 | 15.788667 / 17.311167 |
+| 200 | 18200 | present | 1.197667 / 1.285125 | 2.183500 / 2.304667 |
+
+Full SQL density checks, raw samples and lookup EXPLAIN output:
+[`fix-timing.json`](./fix-timing.json). The state lookups changed from
+`spine_by_seat (seat=?)` to `spine_by_seat_kind (seat=? AND kind=?)`.
+This removes scans of unrelated event kinds, **not every growth term**:
+assignment count and matching `report.state` history still matter because
+`assignment_id` is JSON-filtered. Neither fixture measures arbitrary assignment
+or declaration density, production latency, or index write/storage cost.
+
+## Round 2 — accepted findings and executable witnesses
+
+- **F1:** `report clear --assignment` reuses the same assignment resolution and
+  `E-RS-ASSIGNMENT-UNKNOWN` / `E-RS-ASSIGNMENT-NOT-YOURS` refusals as declarations.
+  Unscoped clear remains descriptor-only. API docs explain both mismatch
+  directions, including closed-task `semanticState: "blocked"` / `badge: "idle"`.
+- **F2:** restored the unrelated non-empty `unsupported[].why` control.
+  A single variant/spelling definition now generates each enum, parse/as_str
+  and ALL; semantic WORDS is generated from it. Both report refusals and CLI
+  help consume WORDS rather than maintaining separate lists.
+- **F3 correction:** I claimed the cross-surface regression protected badge
+  agreement. In truth the old test had descriptor blocked and no assignments,
+  so an unconditional descriptor fallback survived. It now has an open blocked
+  assignment and a done descriptor; removing the card projection fails.
+  The old-peer `unwrap_or_else` fallback is retained, not deleted.
+- **F4 correction:** I claimed an encoded regression prevented stale scoped
+  declarations from surviving closure. The condition was implemented, but the
+  old fixture could not detect its removal. The new test closes the only blocked
+  assignment while retaining descriptor blocked and requires badge idle.
+- **F5:** ALL-to-badge coverage now complements badge-to-enum coverage;
+  `usize::MAX` is the no-candidate sentinel, leaving invalid ranks loud.
+- **F6:** index and independently re-derived density-specific numbers above.
+- **F7:** retained historical CLI capture is explicitly labelled pre-147,
+  not current badge/freshness evidence. Its capture report records that its
+  private daemon and scratch state were removed; it was not relabelled/recreated.
+- **F8:** a committed codec test covers current-peer metadata retention, old-peer
+  absent fields decoding to None, and omission on raw descriptor serialization.
+
+All five newly introduced tests have behavioral RED witnesses below; the changed
+cross-surface and assignment-refusal tests do too. **F1 is chronological pre-fix
+RED** with its original parser/handler. **F2/F3/F4/F5/F8 are deliberate mutation
+RED**, not a claim the already-correct baseline behavior was failing. Each
+mutation was removed before the 41-test GREEN run. The synthetic variant's
+initial missing-doc compile failure was setup noise, not counted as a witness.
+
+### F1 — original clear parser, before implementation (exit 101)
+
+`cargo test -p pij-daemon --test report_http`
+
+```text
+---- assignment_refusals_name_owner_and_leave_state_and_questions_untouched stdout ----
+assertion `left == right` failed: {"command":"pij report","error":"refused","meta":"unknown flag --assignment for `pij report clear`","ok":false,"v":2}
+  left: Null
+ right: "E-RS-ASSIGNMENT-NOT-YOURS"
+
+---- scoped_report_clear_removes_only_its_assignment_declaration stdout ----
+assertion `left == right` failed: {"command":"pij report","error":"refused","meta":"unknown flag --assignment for `pij report clear`","ok":false,"v":2}
+  left: 400
+ right: 200
+test result: FAILED. 28 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+### F3/F4 — exact removed-projection / removed-closing-guard mutants (exit 101)
+
+`cargo test -p pij-store -p pij-daemon --test status --test status_http --no-fail-fast`
+
+Replaced card badge projection with unconditional descriptor-only `badge_of`;
+removed `latest_assignment_id.is_none()` around descriptor contribution.
+
+```text
+---- roster_and_card_share_badge_and_freshness_without_inventing_roster_liveness stdout ----
+assertion `left == right` failed
+  left: String("done")
+ right: String("blocked")
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out
+
+---- closing_last_assignment_does_not_resurrect_descriptor_declaration stdout ----
+assertion `left == right` failed: closed scope must not fall back to its stale descriptor word
+  left: "blocked"
+ right: "idle"
+test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+### F2/F5/F8 — missing-word, extra-variant and dropped-metadata mutants (exit 101)
+
+`cargo test -p pij-core --test status`
+
+Omitted cancelled from published WORDS; added synthetic SystemState::Suspended
+with rank 15 in both rank matches but no BADGE_SEVERITY entry; changed projection
+metadata attributes to `serde(skip)`.
+
+```text
+---- every_state_has_a_published_badge_slot stdout ----
+Suspended has no published badge slot
+
+---- peer_status_metadata_decodes_but_raw_descriptors_never_emit_it stdout ----
+assertion `left == right` failed
+  left: None
+ right: Some("blocked")
+
+---- semantic_words_match_every_declared_variant stdout ----
+assertion `left == right` failed
+  left: {"blocked", "done", "failed", "hold", "question", "ready", "waiting"}
+ right: {"blocked", "cancelled", "done", "failed", "hold", "question", "ready", "waiting"}
+test result: FAILED. 4 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+Independent serialization-leg mutant: removed `skip_serializing` (kept
+`default`). `cargo test -p pij-core --test status peer_status_metadata_decodes_but_raw_descriptors_never_emit_it`:
+
+```text
+---- peer_status_metadata_decodes_but_raw_descriptors_never_emit_it stdout ----
+assertion failed: raw.get("badge").is_none()
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6 filtered out
+```
+
+### Restored implementation — GREEN
+
+`cargo test -p pij-core -p pij-store -p pij-daemon --test status --test status_http --test report_http`
+passed **41 tests across four suites**. The clear test witnesses unscoped clear
+leaving blocked testimony, then scoped clear returning idle without closing the
+task. Ownership refusals preserve the spine. No tests were weakened to pass.
+
+### Actual fixed CLI and forward-migration smoke
+
+Built `target/debug/pij-rs`, launched it with private HOME/Claude configuration
+and state at `127.0.0.1:51219`, using a SQLite backup of the original isolated
+fixture. Native CLI invocations (all exit 0) cleared blocked-task then done-task:
+the card moved **blocked → done → idle**, demonstrating that clearing one
+assignment preserves the other. Both tasks remained open.
+The final native roster row and card agreed on `badge: "idle"` and
+`last_event_at: 1789176898308`; roster liveness remained absent.
+The original fixture remained schema 19; the private daemon migrated its copy
+to schema 20 with `spine_by_seat_kind`. CLI `report --help` printed the generated
+eight-word list and the scoped-clear grammar. The private daemon was stopped.
+Full receipts: [`fix-cli-smoke.json`](./fix-cli-smoke.json).
+
+**Deployment boundary:** the additive index advances the schema to 20. Under
+the existing directional schema guard, an older schema-19 binary refuses the
+migrated store; dropping the index alone is not a supported rollback. Production
+deployment/rollback remains prime-owned.
+
+### Round-2 gate receipts
+
+- `harness boot`: ready=true; worktree dependencies, typecheck and smoke passed.
+  Automatic conversation ingestion reported unresolved session identity;
+  no ingestion success is claimed.
+- `cargo fmt --all --check`: exit 0 after formatting the changed Rust files.
+- Bare `node_modules/.bin/biome check .`, with `$?` captured immediately:
+  **BIOME_EXIT=0**, “Checked 540 files in 319ms. No fixes applied.”
+  One informational notice: config schema 2.0.0 versus installed CLI 2.4.14.
+- The packet's `just checks` recipe is absent. Prime explicitly corrected it
+  to full `just self-check`; this is the canonical composite, not a reduced gate.
+- `cargo test --workspace`: **1078 passed across 88 suites**, 8 ignored,
+  93 filtered; exit 0, 164.98 seconds, serialized with `RUST_TEST_THREADS=1`.
+- `cargo clippy --workspace --all-targets -- -D warnings`: exit 0.
+- **Full `just self-check`: exit 0**, 112.45 seconds. Vitest: 241 files /
+  5306 tests passed, 4 files / 22 tests skipped. Copilot native: 170 passed,
+  3 skipped. Windows portable checks: all passed (84 focused tests, 2 skipped).
+  All 11 smoke scenarios passed on this first round-2 composite invocation,
+  after cargo finished; no cargo job in this worktree or private smoke daemon
+  was running. No smoke retry or reduced composite was needed.
+  Closing receipts: `snapshot-check: briefing.md SHA matches snapshots
+  (cdf5f5b25001...)`; `pij-commit-trailers: warn — 0 missing across 3 harness
+  commit(s) since merge-base with main`.
+- **Report-only package finding, not suppressed:** `git:github.com/ghoseb/pi-askuserquestion`
+  aggregate fail, score 58, **4 fail / 13 warn**. Audit named critical Vitest /
+  coverage-istanbul advisories, high nanoid and undici advisories, non-allowlisted
+  Azure package hosts and missing detected license. Under the existing
+  report-and-continue policy this is non-blocking; the package was left unchanged
+  for operator review, not silently accepted as safe or disabled.
+  The remaining three packages reported aggregate ok. Attribution still reports
+  only the three inherited unresolved Pij-Seat applicability notices listed in
+  the historical gate section; no shared history was rewritten.
+- Recorded DL-002 for the misleading regression fixtures; the new contrasted
+  inputs and mutation witnesses encode the correction. `harness observe --list`
+  listed the visible observations; read-only `harness retro insights --json`
+  returned 63 records / 265 entries. Prime retains canonical receipt/governance
+  ownership; no flight-plan or governance files were edited.
+
 ## Plan 148 handoff — native observation trace and boundaries
 
 1. **The honest signal already exists.** `.pi/extensions/pij/adapters/pi-runtime.ts:35-36` delegates `isIdle()` directly to `ctx.isIdle()`. Existing `index.ts:586-587,624-626,651-656` forwards tool-result, agent-end (including OMP `willContinue`), turn-start and turn-end. No new index handler appears necessary.
@@ -72,7 +277,7 @@ Additional real HTTP measurement: 30 roster reads, median **4.462979 ms**, p95 *
 - `just worktree-deps`: created 358 local links, READY; main checkout dependencies unchanged.
 - Second boot: deps passed (120 ms), typecheck passed (2430 ms), smoke timed out at 90003 ms (exit 124), matching packet-known load noise. No green-boot claim.
 - `harness observe` recorded DL-001; post-coding `harness observe --list --json` found that one entry. The most valuable learning is routed into the 148 handoff above rather than written to prime-owned governance.
-- Encoded harness improvement: permanent cross-surface regression prevents adding roster liveness by default or deriving a different badge from the card's live process probe; the assignment-closing regression prevents stale scoped declarations from dominating forever.
+- Round-1 harness-improvement claim corrected: the test prevented default roster liveness but did not discriminate the badge fallback, and the closing test did not protect the descriptor guard. The round-2 contrasting-state fixtures and pasted mutation failures above supply those missing controls.
 - Suggested next encoding, owned by 148: a runtime-driven native-observation smoke with stale-incarnation and missing-end cases. No new implementation undertaken here.
 - `cargo fmt --all --check` passed. `cargo clippy --workspace --all-targets -- -D warnings` passed after moving a test-only SeatFilter import into its test module.
 - First full `harness checks` passed every required sensor except Vitest. Its recovered failure was known teardown noise: `.pi/extensions/pij/core/cli.test.ts:6778`, `rmSync(root, { recursive: true, force: true })`, **ENOTEMPTY** in the retained stream/fence integration fixture. Smoke passed on that run. Diagnostic `just test` then passed: **241 files / 5306 tests passed; 4 files / 22 tests skipped**. No source change masked the teardown.
@@ -85,4 +290,4 @@ Additional real HTTP measurement: 30 roster reads, median **4.462979 ms**, p95 *
 
 ## Unproved / intentionally unchanged
 
-Production and chainglass rendering are prime-owned and unverified here. There is no native activity publisher, stalled projection, suspension observer, roster liveness value or new liveness policy. No database migration or capability endpoint was added. An older federated daemon may omit its badge; metadata is retained when a current remote daemon supplies it, not re-derived from partial remote semantics.
+Production and chainglass rendering are prime-owned and unverified here. There is no native activity publisher, stalled projection, suspension observer, roster liveness value or new liveness policy. The only schema change is the additive seat/kind/sequence index; no capability endpoint was added. An older federated daemon may omit its badge; current-peer projection metadata is preserved by the tested codec rather than re-derived from partial remote semantics. Cross-machine network operation was not exercised.

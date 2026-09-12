@@ -55,3 +55,42 @@ async fn legacy_rows_without_events_have_null_freshness_and_keep_semantics() {
     assert_eq!(row.last_event_at, None);
     assert_eq!(row.badge(), "blocked");
 }
+
+#[tokio::test]
+async fn closing_last_assignment_does_not_resurrect_descriptor_declaration() {
+    let pool = pij_store::open("").await.unwrap();
+    let registry = SqliteRegistry::new(pool.clone(), support::publisher());
+    let spine = SqliteSpine::new(pool.clone());
+    let seat = SeatDescriptor::new("pij-closed", Harness::Omp, "/fixture");
+    registry.put(seat.clone()).await.unwrap();
+    sqlx::query("INSERT INTO task_assignments(id,node_id,task,opened_by,opened_at) VALUES ('task',?1,'work',?1,0)")
+        .bind(seat.id.as_str()).execute(&pool).await.unwrap();
+    let reports =
+        pij_core::report::ReportService::new(&registry, &spine, || 10, Default::default());
+    reports
+        .declare(
+            &seat.id,
+            Some(SemanticState::Blocked),
+            None,
+            Some("task"),
+            &[],
+        )
+        .await
+        .unwrap();
+    let reader = SqliteStatus::new(pool.clone(), true);
+    assert_eq!(
+        reader.read(&registry, None).await.unwrap()[0].badge(),
+        "blocked"
+    );
+    sqlx::query("UPDATE task_assignments SET closed_at=20,close_reason='done' WHERE id='task'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let row = reader.read(&registry, None).await.unwrap().remove(0);
+    assert_eq!(row.seat.semantic_state, Some(SemanticState::Blocked));
+    assert_eq!(
+        row.badge(),
+        "idle",
+        "closed scope must not fall back to its stale descriptor word"
+    );
+}

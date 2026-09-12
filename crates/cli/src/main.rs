@@ -19,7 +19,7 @@ use pij_cli::{
     render_frame, setup_refusal,
 };
 use pij_core::error::PijError;
-use pij_core::model::{Envelope, ErrorKind, Event, Harness, SeatDescriptor, SeatId};
+use pij_core::model::{Envelope, ErrorKind, Event, Harness, SeatDescriptor, SeatId, SemanticState};
 use pij_core::wire;
 use pij_harnesses::{
     claude_homes, ensure_claude_inbound_accept, ensure_claude_session_start_hook,
@@ -314,10 +314,13 @@ enum Command {
     /// grammar has exactly one implementation and the two surfaces cannot drift:
     ///
     ///   pij-rs report now "<did>" "<next>" [--state <word>] [--note <text>]
-    ///   pij-rs report state <ready|waiting|hold|blocked|question|done|failed|cancelled>
-    ///   pij-rs report blocked|question "<text>"
-    ///   pij-rs report clear
+    ///   pij-rs report state <word> [--assignment <id>] [--refs <csv>]
+    ///   pij-rs report blocked|question "<text>" [--assignment <id>] [--refs <csv>]
+    ///   pij-rs report clear [--assignment <id>]
     ///   pij-rs report verify <seat> [--assignment <id>]
+    ///
+    /// Available semantic state words are listed below.
+    #[command(after_long_help = SemanticState::WORDS)]
     Report {
         /// Assert the derived reporting seat. Omit to use the observable pane,
         /// or PIJ_SESSION_ID when no pane exists; contradictions are refused.

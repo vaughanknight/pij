@@ -5515,6 +5515,14 @@ async fn state_names_what_it_cannot_answer_instead_of_nulling_it() {
         );
     }
 
+    // Every named gap carries a reason; a bare list of names is not an answer.
+    for entry in card["unsupported"].as_array().expect("unsupported list") {
+        assert!(
+            !entry["why"].as_str().expect("why").trim().is_empty(),
+            "an unsupported field with no reason is a gap nobody can act on"
+        );
+    }
+
     server.abort();
 }
 

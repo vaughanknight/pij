@@ -1292,6 +1292,43 @@ async fn assignment_reports_survive_reopen_and_reach_node_and_state_readers() {
 }
 
 #[tokio::test]
+async fn scoped_report_clear_removes_only_its_assignment_declaration() {
+    let (addr, server, _store, _config) = daemon().await;
+    let task =
+        governance_request(addr, "task", &["task", "set", SEAT, "clear scoped blocker"]).await;
+    let id = task["task"]["id"].as_str().expect("task id");
+    let declared = post_report(
+        addr,
+        Some(SEAT),
+        &["report", "state", "blocked", "--assignment", id],
+    )
+    .await;
+    assert_eq!(declared.status(), reqwest::StatusCode::OK);
+    let cleared = post_report(addr, Some(SEAT), &["report", "clear"]).await;
+    assert_eq!(cleared.status(), reqwest::StatusCode::OK);
+    let card: serde_json::Value = post_state(addr, SEAT).await.json().await.unwrap();
+    assert!(card["data"]["semanticState"].is_null());
+    assert_eq!(
+        card["data"]["badge"], "blocked",
+        "unscoped clear leaves task testimony intact"
+    );
+
+    let cleared = post_report(addr, Some(SEAT), &["report", "clear", "--assignment", id]).await;
+    let status = cleared.status();
+    let receipt: serde_json::Value = cleared.json().await.unwrap();
+    assert_eq!(status, reqwest::StatusCode::OK, "{receipt}");
+    let card: serde_json::Value = post_state(addr, SEAT).await.json().await.unwrap();
+    assert_eq!(card["data"]["badge"], "idle");
+    let node = governance_request(addr, "node", &["node", "show", SEAT]).await;
+    assert!(
+        node["node"]["assignments"][0]["closed_at"].is_null(),
+        "clear is not task closure"
+    );
+    server.abort();
+    let _ = server.await;
+}
+
+#[tokio::test]
 async fn assignment_refusals_name_owner_and_leave_state_and_questions_untouched() {
     let (addr, server, _store, config) = daemon().await;
     let services =
@@ -1310,17 +1347,13 @@ async fn assignment_refusals_name_owner_and_leave_state_and_questions_untouched(
         (id, "E-RS-ASSIGNMENT-NOT-YOURS"),
         ("missing", "E-RS-ASSIGNMENT-UNKNOWN"),
     ] {
-        for (leaf, text) in [
-            ("state", "done"),
-            ("blocked", "blocked"),
-            ("question", "why?"),
+        for argv in [
+            vec!["report", "state", "done", "--assignment", assignment],
+            vec!["report", "blocked", "blocked", "--assignment", assignment],
+            vec!["report", "question", "why?", "--assignment", assignment],
+            vec!["report", "clear", "--assignment", assignment],
         ] {
-            let response = post_report(
-                addr,
-                Some(SEAT),
-                &["report", leaf, text, "--assignment", assignment],
-            )
-            .await;
+            let response = post_report(addr, Some(SEAT), &argv).await;
             let status = response.status();
             let body: serde_json::Value = response.json().await.expect("refusal");
             assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "{body}");

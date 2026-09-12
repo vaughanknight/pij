@@ -1,0 +1,376 @@
+{
+  "isolated_addr": "127.0.0.1:51219",
+  "fixture": "private backup of original isolated proof, migrated on daemon boot",
+  "source_schema_version": 19,
+  "migrated_schema_version": 20,
+  "assignments_still_open": 2,
+  "production_contact": false,
+  "steps": [
+    {
+      "args": [
+        "state",
+        "pij-bench-000"
+      ],
+      "code": 0,
+      "body": {
+        "ok": true,
+        "command": "pij state",
+        "v": 2,
+        "data": {
+          "id": "pij-bench-000",
+          "state": "idle",
+          "badge": "blocked",
+          "last_event_at": 1789174388520,
+          "liveness": "unbound",
+          "pid": null,
+          "procStart": null,
+          "cwd": "/fixture/status147",
+          "harness": "omp",
+          "extension_build": null,
+          "extension_path": null,
+          "role": null,
+          "parent": null,
+          "boundModel": null,
+          "effort": null,
+          "pane": null,
+          "provider": null,
+          "semanticState": null,
+          "machine": "JordansacStudio.localdomain",
+          "tombstonedAt": null,
+          "tombstoneReason": null,
+          "statusPrev": null,
+          "statusNext": null,
+          "statusAt": null,
+          "statusSeq": null,
+          "statusStale": null,
+          "stateNote": null,
+          "assignment_id": "done-task",
+          "refs": [],
+          "held": [],
+          "unsupported": [
+            {
+              "field": "lifecycle",
+              "why": "rs seats have no pending/bound/dissolved lifecycle field; binding evidence lives in `proc` and is reported through `liveness`"
+            },
+            {
+              "field": "activity",
+              "why": "no native work observation is published yet; mechanical idle is the legacy default, not evidence of inactivity"
+            },
+            {
+              "field": "ageMs",
+              "why": "not emitted; consumers may subtract last_event_at from their epoch-ms clock"
+            },
+            {
+              "field": "liveness:stale",
+              "why": "the card reports a live process-identity probe, not activity staleness; no native activity observer is published yet"
+            },
+            {
+              "field": "daemonLastTickAt",
+              "why": "no per-seat daemon tick is recorded in the rs store"
+            },
+            {
+              "field": "daemonTickAgeMs",
+              "why": "derived from the tick rs does not record"
+            },
+            {
+              "field": "daemonTickStale",
+              "why": "derived from the tick rs does not record"
+            },
+            {
+              "field": "failureReason",
+              "why": "rs records no per-seat failure reason on the descriptor"
+            },
+            {
+              "field": "bindHealth",
+              "why": "the TS pre-bind health classifier has no rs counterpart"
+            },
+            {
+              "field": "degraded",
+              "why": "derived from `bindHealth`"
+            },
+            {
+              "field": "degradedReason",
+              "why": "derived from `bindHealth`"
+            },
+            {
+              "field": "terminal",
+              "why": "rs records termination as `tombstonedAt` + `tombstoneReason`, which this card DOES carry — a different shape, not a missing fact"
+            },
+            {
+              "field": "watchdog",
+              "why": "rs has no watchdog block on the seat row"
+            }
+          ],
+          "session": null,
+          "generation": "rs"
+        }
+      }
+    },
+    {
+      "args": [
+        "report",
+        "--seat",
+        "pij-bench-000",
+        "clear",
+        "--assignment",
+        "blocked-task"
+      ],
+      "code": 0,
+      "body": {
+        "ok": true,
+        "command": "pij report",
+        "v": 2,
+        "data": {
+          "seat": "pij-bench-000",
+          "seq": 2926,
+          "assignment_id": "blocked-task",
+          "refs": [],
+          "line": "pij-bench-000 cleared its declared state (spine 2926)"
+        }
+      }
+    },
+    {
+      "args": [
+        "state",
+        "pij-bench-000"
+      ],
+      "code": 0,
+      "body": {
+        "ok": true,
+        "command": "pij state",
+        "v": 2,
+        "data": {
+          "id": "pij-bench-000",
+          "state": "idle",
+          "badge": "done",
+          "last_event_at": 1789176898294,
+          "liveness": "unbound",
+          "pid": null,
+          "procStart": null,
+          "cwd": "/fixture/status147",
+          "harness": "omp",
+          "extension_build": null,
+          "extension_path": null,
+          "role": null,
+          "parent": null,
+          "boundModel": null,
+          "effort": null,
+          "pane": null,
+          "provider": null,
+          "semanticState": null,
+          "machine": "JordansacStudio.localdomain",
+          "tombstonedAt": null,
+          "tombstoneReason": null,
+          "statusPrev": null,
+          "statusNext": null,
+          "statusAt": null,
+          "statusSeq": null,
+          "statusStale": null,
+          "stateNote": null,
+          "assignment_id": "blocked-task",
+          "refs": [],
+          "held": [],
+          "unsupported": [
+            {
+              "field": "lifecycle",
+              "why": "rs seats have no pending/bound/dissolved lifecycle field; binding evidence lives in `proc` and is reported through `liveness`"
+            },
+            {
+              "field": "activity",
+              "why": "no native work observation is published yet; mechanical idle is the legacy default, not evidence of inactivity"
+            },
+            {
+              "field": "ageMs",
+              "why": "not emitted; consumers may subtract last_event_at from their epoch-ms clock"
+            },
+            {
+              "field": "liveness:stale",
+              "why": "the card reports a live process-identity probe, not activity staleness; no native activity observer is published yet"
+            },
+            {
+              "field": "daemonLastTickAt",
+              "why": "no per-seat daemon tick is recorded in the rs store"
+            },
+            {
+              "field": "daemonTickAgeMs",
+              "why": "derived from the tick rs does not record"
+            },
+            {
+              "field": "daemonTickStale",
+              "why": "derived from the tick rs does not record"
+            },
+            {
+              "field": "failureReason",
+              "why": "rs records no per-seat failure reason on the descriptor"
+            },
+            {
+              "field": "bindHealth",
+              "why": "the TS pre-bind health classifier has no rs counterpart"
+            },
+            {
+              "field": "degraded",
+              "why": "derived from `bindHealth`"
+            },
+            {
+              "field": "degradedReason",
+              "why": "derived from `bindHealth`"
+            },
+            {
+              "field": "terminal",
+              "why": "rs records termination as `tombstonedAt` + `tombstoneReason`, which this card DOES carry — a different shape, not a missing fact"
+            },
+            {
+              "field": "watchdog",
+              "why": "rs has no watchdog block on the seat row"
+            }
+          ],
+          "session": null,
+          "generation": "rs"
+        }
+      }
+    },
+    {
+      "args": [
+        "report",
+        "--seat",
+        "pij-bench-000",
+        "clear",
+        "--assignment",
+        "done-task"
+      ],
+      "code": 0,
+      "body": {
+        "ok": true,
+        "command": "pij report",
+        "v": 2,
+        "data": {
+          "seat": "pij-bench-000",
+          "seq": 2928,
+          "assignment_id": "done-task",
+          "refs": [],
+          "line": "pij-bench-000 cleared its declared state (spine 2928)"
+        }
+      }
+    },
+    {
+      "args": [
+        "state",
+        "pij-bench-000"
+      ],
+      "code": 0,
+      "body": {
+        "ok": true,
+        "command": "pij state",
+        "v": 2,
+        "data": {
+          "id": "pij-bench-000",
+          "state": "idle",
+          "badge": "idle",
+          "last_event_at": 1789176898308,
+          "liveness": "unbound",
+          "pid": null,
+          "procStart": null,
+          "cwd": "/fixture/status147",
+          "harness": "omp",
+          "extension_build": null,
+          "extension_path": null,
+          "role": null,
+          "parent": null,
+          "boundModel": null,
+          "effort": null,
+          "pane": null,
+          "provider": null,
+          "semanticState": null,
+          "machine": "JordansacStudio.localdomain",
+          "tombstonedAt": null,
+          "tombstoneReason": null,
+          "statusPrev": null,
+          "statusNext": null,
+          "statusAt": null,
+          "statusSeq": null,
+          "statusStale": null,
+          "stateNote": null,
+          "assignment_id": "done-task",
+          "refs": [],
+          "held": [],
+          "unsupported": [
+            {
+              "field": "lifecycle",
+              "why": "rs seats have no pending/bound/dissolved lifecycle field; binding evidence lives in `proc` and is reported through `liveness`"
+            },
+            {
+              "field": "activity",
+              "why": "no native work observation is published yet; mechanical idle is the legacy default, not evidence of inactivity"
+            },
+            {
+              "field": "ageMs",
+              "why": "not emitted; consumers may subtract last_event_at from their epoch-ms clock"
+            },
+            {
+              "field": "liveness:stale",
+              "why": "the card reports a live process-identity probe, not activity staleness; no native activity observer is published yet"
+            },
+            {
+              "field": "daemonLastTickAt",
+              "why": "no per-seat daemon tick is recorded in the rs store"
+            },
+            {
+              "field": "daemonTickAgeMs",
+              "why": "derived from the tick rs does not record"
+            },
+            {
+              "field": "daemonTickStale",
+              "why": "derived from the tick rs does not record"
+            },
+            {
+              "field": "failureReason",
+              "why": "rs records no per-seat failure reason on the descriptor"
+            },
+            {
+              "field": "bindHealth",
+              "why": "the TS pre-bind health classifier has no rs counterpart"
+            },
+            {
+              "field": "degraded",
+              "why": "derived from `bindHealth`"
+            },
+            {
+              "field": "degradedReason",
+              "why": "derived from `bindHealth`"
+            },
+            {
+              "field": "terminal",
+              "why": "rs records termination as `tombstonedAt` + `tombstoneReason`, which this card DOES carry — a different shape, not a missing fact"
+            },
+            {
+              "field": "watchdog",
+              "why": "rs has no watchdog block on the seat row"
+            }
+          ],
+          "session": null,
+          "generation": "rs"
+        }
+      }
+    }
+  ],
+  "final_roster_row": {
+    "id": "pij-bench-000",
+    "machine": "JordansacStudio.localdomain",
+    "harness": "omp",
+    "session": null,
+    "extension_build": null,
+    "extension_path": null,
+    "pane": null,
+    "proc": null,
+    "folder": "/fixture/status147",
+    "state": "idle",
+    "semantic_state": null,
+    "role": null,
+    "parent": null,
+    "relay": false,
+    "native_extension_delivery": false,
+    "generation": "rs",
+    "badge": "idle",
+    "last_event_at": 1789176898308
+  }
+}

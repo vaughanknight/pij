@@ -1,0 +1,2511 @@
+{
+  "build": "debug",
+  "fixtures": [
+    {
+      "index_cases": [
+        {
+          "index_present": false,
+          "index_sql": null,
+          "measurements": {
+            "SqliteRegistry::list": {
+              "median_ms": 1.1318955,
+              "p95_ms": 1.2344579999999998,
+              "samples_ms": [
+                1.3027920000000002,
+                1.1603329999999998,
+                1.0654169999999998,
+                1.181,
+                1.11225,
+                1.191541,
+                1.1378339999999998,
+                1.1850829999999999,
+                1.149292,
+                1.11625,
+                1.1635,
+                1.150041,
+                1.1752500000000001,
+                1.0895,
+                1.1821659999999998,
+                1.1932909999999999,
+                1.182458,
+                1.28575,
+                1.154458,
+                1.107917,
+                1.0691249999999999,
+                1.20875,
+                1.159416,
+                1.079291,
+                1.1235410000000001,
+                1.0718329999999998,
+                1.068166,
+                1.086417,
+                1.05175,
+                1.049459,
+                1.123042,
+                1.087917,
+                1.122625,
+                1.1457920000000001,
+                1.0696670000000001,
+                1.0832089999999999,
+                1.1290829999999998,
+                1.137125,
+                1.132,
+                1.122833,
+                1.1483750000000001,
+                1.091791,
+                1.209166,
+                1.144833,
+                1.153,
+                1.131667,
+                1.087167,
+                1.1109589999999998,
+                1.200375,
+                1.1551669999999998,
+                1.107959,
+                1.101917,
+                1.103208,
+                1.1558339999999998,
+                1.0691249999999999,
+                1.085625,
+                1.118208,
+                1.0995,
+                1.0911250000000001,
+                1.105166,
+                1.1483750000000001,
+                1.084959,
+                1.0839999999999999,
+                1.1267079999999998,
+                1.189042,
+                1.084708,
+                1.118833,
+                1.165625,
+                1.2344579999999998,
+                1.121,
+                1.1199999999999999,
+                1.201875,
+                1.131791,
+                3.806833,
+                1.17875,
+                1.125167,
+                1.078125,
+                1.129375,
+                1.205166,
+                1.0827090000000001,
+                1.151125,
+                1.164458,
+                1.109416,
+                1.181791,
+                1.0727499999999999,
+                1.154833,
+                1.057459,
+                1.174333,
+                1.1519169999999999,
+                1.202125,
+                1.130541,
+                1.2015,
+                1.1662919999999999,
+                1.2400829999999998,
+                1.139167,
+                1.164167,
+                1.1563750000000002,
+                1.131042,
+                1.305292,
+                1.164083
+              ]
+            },
+            "SqliteStatus::read": {
+              "median_ms": 3.8328125,
+              "p95_ms": 3.987958,
+              "samples_ms": [
+                3.8930000000000002,
+                3.962958,
+                3.942625,
+                3.889709,
+                3.8455,
+                3.9067499999999997,
+                3.833875,
+                3.87075,
+                3.9116250000000004,
+                3.987958,
+                4.000166999999999,
+                3.907041,
+                3.904958,
+                3.827833,
+                3.954209,
+                3.936084,
+                3.9276249999999995,
+                4.040666,
+                3.695375,
+                3.6458329999999997,
+                3.7113340000000004,
+                3.7115,
+                3.8205829999999996,
+                3.683833,
+                3.621291,
+                3.91225,
+                3.77825,
+                3.891917,
+                3.6219580000000002,
+                3.664375,
+                3.8380419999999997,
+                3.686625,
+                3.7684580000000003,
+                3.850583,
+                3.84725,
+                3.661875,
+                3.8716660000000003,
+                3.881,
+                3.9285409999999996,
+                3.83175,
+                3.9235420000000003,
+                3.739708,
+                3.858583,
+                3.685625,
+                3.820958,
+                3.723584,
+                3.948416,
+                3.73225,
+                3.712334,
+                3.718,
+                3.7363750000000002,
+                3.7882089999999997,
+                3.7798749999999997,
+                3.650792,
+                3.71025,
+                3.616709,
+                3.904833,
+                3.73025,
+                3.75825,
+                3.789417,
+                3.687708,
+                3.673916,
+                3.7607500000000003,
+                3.9934999999999996,
+                3.9462919999999997,
+                3.8657909999999998,
+                3.89525,
+                3.74375,
+                3.7218329999999997,
+                3.887208,
+                3.669291,
+                3.762542,
+                3.934959,
+                4.13225,
+                3.890709,
+                3.696709,
+                3.678292,
+                3.891458,
+                3.735084,
+                3.696084,
+                3.700917,
+                3.859375,
+                3.9216249999999997,
+                3.8566659999999997,
+                3.78925,
+                3.896375,
+                3.807833,
+                3.769708,
+                3.633708,
+                3.709416,
+                3.88025,
+                3.868083,
+                4.019792000000001,
+                3.9752090000000004,
+                3.6699580000000003,
+                3.908125,
+                3.867,
+                3.9191670000000003,
+                3.738,
+                3.883625
+              ]
+            }
+          },
+          "relevant_query_plans": [
+            {
+              "probe": "latest_event",
+              "sql": "EXPLAIN QUERY PLAN SELECT at FROM spine_events WHERE seat=?1 ORDER BY seq DESC LIMIT 1",
+              "steps": [
+                {
+                  "detail": "SEARCH spine_events USING INDEX spine_by_seat (seat=?)",
+                  "id": 5,
+                  "parent": 0
+                }
+              ]
+            },
+            {
+              "probe": "latest_state_assignment",
+              "sql": "EXPLAIN QUERY PLAN SELECT json_extract(payload,'$.assignment_id') FROM spine_events WHERE seat=?1 AND kind='report.state' ORDER BY seq DESC LIMIT 1",
+              "steps": [
+                {
+                  "detail": "SEARCH spine_events USING INDEX spine_by_seat (seat=?)",
+                  "id": 5,
+                  "parent": 0
+                }
+              ]
+            },
+            {
+              "probe": "assignment_declaration",
+              "sql": "EXPLAIN QUERY PLAN SELECT seq FROM spine_events WHERE seat=?1 AND kind='report.state' AND json_extract(payload,'$.assignment_id')=?2 ORDER BY seq DESC LIMIT 1",
+              "steps": [
+                {
+                  "detail": "SEARCH spine_events USING INDEX spine_by_seat (seat=?)",
+                  "id": 5,
+                  "parent": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index_present": true,
+          "index_sql": "CREATE INDEX spine_by_seat_kind ON spine_events (seat, kind, seq)",
+          "measurements": {
+            "SqliteRegistry::list": {
+              "median_ms": 1.203646,
+              "p95_ms": 2.139583,
+              "samples_ms": [
+                1.1334579999999999,
+                1.073833,
+                1.081083,
+                1.09425,
+                1.0945,
+                1.062916,
+                1.1325420000000002,
+                1.2572919999999999,
+                1.055209,
+                2.335583,
+                1.166,
+                1.157291,
+                1.279792,
+                1.224917,
+                1.2205,
+                3.1698749999999998,
+                1.9737090000000002,
+                1.273417,
+                1.1814580000000001,
+                1.2049999999999998,
+                3.564291,
+                2.7345,
+                1.442291,
+                1.277291,
+                1.152834,
+                1.258292,
+                1.123625,
+                1.2935830000000001,
+                1.18475,
+                1.198083,
+                1.2510839999999999,
+                2.139583,
+                1.628625,
+                1.3782079999999999,
+                1.2505000000000002,
+                1.579458,
+                1.365,
+                2.00025,
+                2.169,
+                1.4158330000000001,
+                1.1993340000000001,
+                1.232625,
+                1.148,
+                1.607792,
+                1.279625,
+                1.277542,
+                1.4104160000000001,
+                1.216042,
+                1.165208,
+                1.14825,
+                1.20525,
+                1.258417,
+                1.162917,
+                1.1731669999999998,
+                1.166666,
+                1.1834580000000001,
+                1.2231670000000001,
+                1.154458,
+                1.171625,
+                1.164625,
+                1.184125,
+                1.188666,
+                1.239459,
+                1.19775,
+                1.123166,
+                1.255125,
+                1.193875,
+                1.196458,
+                1.209333,
+                1.2015,
+                1.1770839999999998,
+                1.223583,
+                1.16025,
+                1.161708,
+                1.1532090000000002,
+                1.108292,
+                1.077709,
+                1.202292,
+                1.2075,
+                1.217834,
+                1.250375,
+                1.174791,
+                1.2535,
+                1.292208,
+                1.2418749999999998,
+                1.2229160000000001,
+                1.1677499999999998,
+                1.226625,
+                1.273167,
+                1.1199160000000001,
+                1.198833,
+                1.2363330000000001,
+                1.155541,
+                1.140458,
+                1.1475000000000002,
+                1.237583,
+                1.252292,
+                1.189792,
+                1.171041,
+                1.1857499999999999
+              ]
+            },
+            "SqliteStatus::read": {
+              "median_ms": 2.0862499999999997,
+              "p95_ms": 3.011375,
+              "samples_ms": [
+                2.122083,
+                1.960875,
+                2.011916,
+                1.982667,
+                1.943084,
+                2.057792,
+                2.051125,
+                2.077916,
+                1.902709,
+                1.950792,
+                2.38375,
+                2.184708,
+                2.078375,
+                2.096625,
+                2.07525,
+                2.19525,
+                2.181833,
+                2.177375,
+                2.071917,
+                1.976541,
+                3.565875,
+                3.35725,
+                2.466125,
+                2.075917,
+                2.060417,
+                2.0885830000000003,
+                5.7721659999999995,
+                2.247084,
+                5.413917,
+                2.171292,
+                2.785792,
+                3.011375,
+                2.2034580000000004,
+                2.248208,
+                2.173375,
+                2.5422499999999997,
+                5.2,
+                2.499583,
+                2.0875,
+                2.145333,
+                2.054791,
+                2.049708,
+                2.0617080000000003,
+                2.055083,
+                1.9983330000000001,
+                2.163375,
+                2.199833,
+                2.041167,
+                2.037917,
+                2.1195,
+                2.004709,
+                2.033125,
+                2.105083,
+                2.1015420000000002,
+                2.159166,
+                2.042125,
+                2.0296250000000002,
+                2.286084,
+                2.092416,
+                2.078292,
+                2.018459,
+                2.145166,
+                2.036959,
+                2.0747500000000003,
+                2.1952920000000002,
+                2.016042,
+                2.082542,
+                2.04325,
+                2.050541,
+                2.076542,
+                2.085,
+                2.1324159999999996,
+                2.046375,
+                2.161667,
+                2.040792,
+                1.947458,
+                2.0635,
+                2.180166,
+                2.103333,
+                2.1674580000000003,
+                2.1665,
+                2.224625,
+                2.094166,
+                2.159084,
+                2.16675,
+                2.062666,
+                2.025875,
+                2.161833,
+                2.11225,
+                2.111791,
+                2.094708,
+                2.102667,
+                2.0495,
+                2.007625,
+                2.061875,
+                2.0255,
+                2.058875,
+                2.039625,
+                2.026875,
+                2.032708
+              ]
+            }
+          },
+          "relevant_query_plans": [
+            {
+              "probe": "latest_event",
+              "sql": "EXPLAIN QUERY PLAN SELECT at FROM spine_events WHERE seat=?1 ORDER BY seq DESC LIMIT 1",
+              "steps": [
+                {
+                  "detail": "SEARCH spine_events USING INDEX spine_by_seat (seat=?)",
+                  "id": 5,
+                  "parent": 0
+                }
+              ]
+            },
+            {
+              "probe": "latest_state_assignment",
+              "sql": "EXPLAIN QUERY PLAN SELECT json_extract(payload,'$.assignment_id') FROM spine_events WHERE seat=?1 AND kind='report.state' ORDER BY seq DESC LIMIT 1",
+              "steps": [
+                {
+                  "detail": "SEARCH spine_events USING INDEX spine_by_seat_kind (seat=? AND kind=?)",
+                  "id": 5,
+                  "parent": 0
+                }
+              ]
+            },
+            {
+              "probe": "assignment_declaration",
+              "sql": "EXPLAIN QUERY PLAN SELECT seq FROM spine_events WHERE seat=?1 AND kind='report.state' AND json_extract(payload,'$.assignment_id')=?2 ORDER BY seq DESC LIMIT 1",
+              "steps": [
+                {
+                  "detail": "SEARCH spine_events USING INDEX spine_by_seat_kind (seat=? AND kind=?)",
+                  "id": 5,
+                  "parent": 0
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "migrated_index_sql": "CREATE INDEX spine_by_seat_kind ON spine_events (seat, kind, seq)",
+      "requested_events_per_seat": 32,
+      "sql_density": {
+        "assignments": 91,
+        "events": 2912,
+        "open_assignments": 91,
+        "per_seat": [
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-000",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-001",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-002",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-003",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-004",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-005",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-006",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-007",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-008",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-009",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-010",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-011",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-012",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-013",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-014",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-015",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-016",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-017",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-018",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-019",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-020",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-021",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-022",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-023",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-024",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-025",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-026",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-027",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-028",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-029",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-030",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-031",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-032",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-033",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-034",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-035",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-036",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-037",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-038",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-039",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-040",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-041",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-042",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-043",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-044",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-045",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-046",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-047",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-048",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-049",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-050",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-051",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-052",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-053",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-054",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-055",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-056",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-057",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-058",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-059",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-060",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-061",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-062",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-063",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-064",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-065",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-066",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-067",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-068",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-069",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-070",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-071",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-072",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-073",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-074",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-075",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-076",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-077",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-078",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-079",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-080",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-081",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-082",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-083",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-084",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-085",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-086",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-087",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-088",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-089",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 32,
+            "filler_events": 30,
+            "open_assignments": 1,
+            "seat": "pij-status147-090",
+            "state_reports": 1
+          }
+        ],
+        "seats": 91
+      },
+      "sqlite_version": "3.46.0"
+    },
+    {
+      "index_cases": [
+        {
+          "index_present": false,
+          "index_sql": null,
+          "measurements": {
+            "SqliteRegistry::list": {
+              "median_ms": 1.1963545,
+              "p95_ms": 1.428375,
+              "samples_ms": [
+                1.286584,
+                1.248458,
+                1.180334,
+                1.2531249999999998,
+                1.200208,
+                1.296916,
+                1.13675,
+                1.255791,
+                1.230042,
+                1.225709,
+                1.2220410000000002,
+                1.239875,
+                1.161042,
+                1.273833,
+                1.165084,
+                1.287333,
+                1.286459,
+                1.219667,
+                1.186875,
+                1.141375,
+                1.1011250000000001,
+                1.168625,
+                1.201792,
+                1.2657079999999998,
+                1.201125,
+                1.262416,
+                1.2067919999999999,
+                1.259458,
+                1.1806670000000001,
+                1.428375,
+                1.116083,
+                1.196625,
+                1.230709,
+                1.3164170000000002,
+                1.1956250000000002,
+                1.222125,
+                1.163166,
+                1.2729169999999999,
+                1.195,
+                1.332417,
+                1.208167,
+                1.2209160000000001,
+                1.162625,
+                1.1588749999999999,
+                1.164792,
+                1.1895829999999998,
+                1.121375,
+                1.219084,
+                1.19275,
+                1.1155410000000001,
+                1.172125,
+                1.0865420000000001,
+                1.0930829999999998,
+                1.171208,
+                1.152458,
+                1.175916,
+                1.194917,
+                1.203125,
+                1.092,
+                1.135208,
+                1.133625,
+                1.279542,
+                1.1203750000000001,
+                1.092458,
+                1.0805420000000001,
+                1.215042,
+                1.117458,
+                1.19625,
+                1.1525839999999998,
+                1.239583,
+                1.215042,
+                1.2832080000000001,
+                1.1726670000000001,
+                1.196459,
+                1.1620000000000001,
+                1.161375,
+                1.103083,
+                1.143042,
+                1.07,
+                1.108875,
+                1.062542,
+                1.224583,
+                1.070417,
+                13.889208,
+                1.195334,
+                1.506292,
+                1.4786249999999999,
+                1.4864590000000002,
+                1.4207079999999999,
+                1.407333,
+                1.290167,
+                1.328917,
+                1.27825,
+                1.138625,
+                1.111917,
+                1.1876659999999999,
+                1.067208,
+                2.685792,
+                1.235958,
+                1.250291
+              ]
+            },
+            "SqliteStatus::read": {
+              "median_ms": 15.788667,
+              "p95_ms": 17.311166999999998,
+              "samples_ms": [
+                16.068459,
+                16.272208,
+                15.662791999999998,
+                15.948542,
+                16.282,
+                15.938750000000002,
+                16.943375,
+                16.897125,
+                16.104291,
+                15.853875,
+                16.034166,
+                16.57075,
+                15.828042,
+                16.1355,
+                16.090083,
+                15.871416,
+                16.204917,
+                15.5645,
+                15.36275,
+                15.346833,
+                15.412583,
+                15.236666,
+                15.729750000000001,
+                16.039041,
+                16.119709,
+                16.039709,
+                15.769874999999999,
+                16.583707999999998,
+                16.262625,
+                17.311166999999998,
+                15.777541999999999,
+                16.271207999999998,
+                16.430542,
+                16.391167000000003,
+                15.945375000000002,
+                16.405292,
+                16.347333,
+                16.049750000000003,
+                16.706709,
+                16.656083,
+                16.147417,
+                15.799792,
+                15.727749999999999,
+                15.830332999999998,
+                15.662959,
+                15.163208,
+                15.5365,
+                15.355125000000001,
+                15.680333000000001,
+                15.546709,
+                15.248958,
+                15.366333,
+                15.204791,
+                15.419667,
+                15.117708,
+                15.40075,
+                15.412208,
+                15.160458,
+                15.169333,
+                15.387042,
+                15.674666,
+                15.575958,
+                15.706833,
+                15.405208,
+                15.335916999999998,
+                15.625290999999999,
+                15.557292,
+                15.740875,
+                15.555541000000002,
+                16.508458,
+                15.934332999999999,
+                16.022499999999997,
+                15.980333,
+                16.204832999999997,
+                16.101709,
+                15.511958,
+                15.479375,
+                15.431375000000001,
+                14.635666,
+                15.018459,
+                15.129667,
+                15.665459,
+                15.251667,
+                21.535458000000002,
+                20.27775,
+                31.647624999999998,
+                16.358749999999997,
+                17.244625,
+                23.086667000000002,
+                18.420209,
+                15.936583,
+                15.542666,
+                15.952417,
+                15.832583000000001,
+                15.179167,
+                15.513041999999999,
+                15.659291999999999,
+                15.602084,
+                15.6925,
+                15.65275
+              ]
+            }
+          },
+          "relevant_query_plans": [
+            {
+              "probe": "latest_event",
+              "sql": "EXPLAIN QUERY PLAN SELECT at FROM spine_events WHERE seat=?1 ORDER BY seq DESC LIMIT 1",
+              "steps": [
+                {
+                  "detail": "SEARCH spine_events USING INDEX spine_by_seat (seat=?)",
+                  "id": 5,
+                  "parent": 0
+                }
+              ]
+            },
+            {
+              "probe": "latest_state_assignment",
+              "sql": "EXPLAIN QUERY PLAN SELECT json_extract(payload,'$.assignment_id') FROM spine_events WHERE seat=?1 AND kind='report.state' ORDER BY seq DESC LIMIT 1",
+              "steps": [
+                {
+                  "detail": "SEARCH spine_events USING INDEX spine_by_seat (seat=?)",
+                  "id": 5,
+                  "parent": 0
+                }
+              ]
+            },
+            {
+              "probe": "assignment_declaration",
+              "sql": "EXPLAIN QUERY PLAN SELECT seq FROM spine_events WHERE seat=?1 AND kind='report.state' AND json_extract(payload,'$.assignment_id')=?2 ORDER BY seq DESC LIMIT 1",
+              "steps": [
+                {
+                  "detail": "SEARCH spine_events USING INDEX spine_by_seat (seat=?)",
+                  "id": 5,
+                  "parent": 0
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index_present": true,
+          "index_sql": "CREATE INDEX spine_by_seat_kind ON spine_events (seat, kind, seq)",
+          "measurements": {
+            "SqliteRegistry::list": {
+              "median_ms": 1.1976665,
+              "p95_ms": 1.285125,
+              "samples_ms": [
+                1.206291,
+                1.20425,
+                1.251583,
+                1.285792,
+                1.2402909999999998,
+                1.2860420000000001,
+                1.2425419999999998,
+                1.261875,
+                1.153834,
+                1.171541,
+                1.180333,
+                1.250708,
+                1.212542,
+                1.2138749999999998,
+                1.2636660000000002,
+                1.285125,
+                1.215917,
+                1.201292,
+                1.339875,
+                1.222291,
+                1.262166,
+                1.172375,
+                1.21675,
+                1.2678749999999999,
+                1.129417,
+                1.199125,
+                1.138125,
+                1.2201250000000001,
+                1.1599169999999999,
+                1.185583,
+                1.15675,
+                1.122584,
+                1.170375,
+                1.171084,
+                1.1775,
+                1.204459,
+                1.3372080000000002,
+                1.187375,
+                1.181542,
+                1.164416,
+                1.200458,
+                1.234666,
+                1.169083,
+                1.201708,
+                1.200625,
+                1.1908750000000001,
+                1.196458,
+                1.1669580000000002,
+                1.189208,
+                1.2405000000000002,
+                1.156666,
+                1.187375,
+                1.1375,
+                1.269416,
+                1.1887079999999999,
+                1.157459,
+                1.1993749999999999,
+                1.219625,
+                1.153083,
+                1.196041,
+                1.166042,
+                1.2229160000000001,
+                1.185917,
+                1.232583,
+                1.216,
+                1.170709,
+                1.159709,
+                1.143666,
+                1.17425,
+                1.193375,
+                1.147541,
+                1.1799169999999999,
+                1.089625,
+                1.2470409999999998,
+                1.1956250000000002,
+                1.164917,
+                1.128875,
+                1.170458,
+                1.153166,
+                1.097959,
+                1.232125,
+                1.220167,
+                1.149167,
+                1.257125,
+                1.230042,
+                1.317791,
+                1.132084,
+                1.056791,
+                1.097458,
+                1.1988750000000001,
+                1.238084,
+                1.204666,
+                1.162292,
+                1.153208,
+                1.2299579999999999,
+                1.242375,
+                1.210375,
+                1.2324169999999999,
+                1.206041,
+                1.263875
+              ]
+            },
+            "SqliteStatus::read": {
+              "median_ms": 2.1834995,
+              "p95_ms": 2.304667,
+              "samples_ms": [
+                2.322083,
+                2.304667,
+                2.2472920000000003,
+                2.2647079999999997,
+                2.1953340000000003,
+                2.1449580000000004,
+                2.302667,
+                2.3280839999999996,
+                2.250667,
+                2.2778329999999998,
+                2.126958,
+                2.224125,
+                2.244167,
+                2.344291,
+                2.2690829999999997,
+                2.238333,
+                2.29175,
+                2.2722089999999997,
+                2.240666,
+                2.182208,
+                2.228167,
+                2.143042,
+                2.195458,
+                2.3014580000000002,
+                2.1537919999999997,
+                2.144291,
+                2.11575,
+                2.137916,
+                2.117084,
+                2.1342499999999998,
+                2.217334,
+                2.185959,
+                2.033292,
+                2.18925,
+                2.198709,
+                2.20375,
+                2.179583,
+                2.172542,
+                2.274042,
+                2.133125,
+                2.1901249999999997,
+                2.222375,
+                2.100667,
+                2.255916,
+                2.087917,
+                2.082084,
+                2.16375,
+                2.1117079999999997,
+                2.1775,
+                2.1493749999999996,
+                2.0808329999999997,
+                2.259083,
+                2.234292,
+                2.180291,
+                2.172875,
+                2.155084,
+                2.373083,
+                2.230834,
+                2.154833,
+                2.131041,
+                2.146416,
+                2.175208,
+                2.193041,
+                2.171959,
+                2.14575,
+                2.1003749999999997,
+                2.168167,
+                2.046958,
+                2.0765409999999997,
+                2.1219170000000003,
+                2.046459,
+                2.152042,
+                2.297625,
+                2.137834,
+                2.116584,
+                2.1350000000000002,
+                2.053166,
+                2.0630420000000003,
+                2.037625,
+                1.967584,
+                2.184791,
+                2.1723749999999997,
+                2.29325,
+                2.314458,
+                2.050708,
+                2.271708,
+                2.212333,
+                2.219125,
+                2.169958,
+                2.214709,
+                2.197709,
+                2.213667,
+                2.106667,
+                2.2475,
+                2.283042,
+                2.296125,
+                2.200958,
+                2.226416,
+                2.118542,
+                2.211167
+              ]
+            }
+          },
+          "relevant_query_plans": [
+            {
+              "probe": "latest_event",
+              "sql": "EXPLAIN QUERY PLAN SELECT at FROM spine_events WHERE seat=?1 ORDER BY seq DESC LIMIT 1",
+              "steps": [
+                {
+                  "detail": "SEARCH spine_events USING INDEX spine_by_seat (seat=?)",
+                  "id": 5,
+                  "parent": 0
+                }
+              ]
+            },
+            {
+              "probe": "latest_state_assignment",
+              "sql": "EXPLAIN QUERY PLAN SELECT json_extract(payload,'$.assignment_id') FROM spine_events WHERE seat=?1 AND kind='report.state' ORDER BY seq DESC LIMIT 1",
+              "steps": [
+                {
+                  "detail": "SEARCH spine_events USING INDEX spine_by_seat_kind (seat=? AND kind=?)",
+                  "id": 5,
+                  "parent": 0
+                }
+              ]
+            },
+            {
+              "probe": "assignment_declaration",
+              "sql": "EXPLAIN QUERY PLAN SELECT seq FROM spine_events WHERE seat=?1 AND kind='report.state' AND json_extract(payload,'$.assignment_id')=?2 ORDER BY seq DESC LIMIT 1",
+              "steps": [
+                {
+                  "detail": "SEARCH spine_events USING INDEX spine_by_seat_kind (seat=? AND kind=?)",
+                  "id": 5,
+                  "parent": 0
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "migrated_index_sql": "CREATE INDEX spine_by_seat_kind ON spine_events (seat, kind, seq)",
+      "requested_events_per_seat": 200,
+      "sql_density": {
+        "assignments": 91,
+        "events": 18200,
+        "open_assignments": 91,
+        "per_seat": [
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-000",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-001",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-002",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-003",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-004",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-005",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-006",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-007",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-008",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-009",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-010",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-011",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-012",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-013",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-014",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-015",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-016",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-017",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-018",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-019",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-020",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-021",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-022",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-023",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-024",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-025",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-026",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-027",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-028",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-029",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-030",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-031",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-032",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-033",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-034",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-035",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-036",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-037",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-038",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-039",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-040",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-041",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-042",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-043",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-044",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-045",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-046",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-047",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-048",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-049",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-050",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-051",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-052",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-053",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-054",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-055",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-056",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-057",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-058",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-059",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-060",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-061",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-062",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-063",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-064",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-065",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-066",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-067",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-068",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-069",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-070",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-071",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-072",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-073",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-074",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-075",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-076",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-077",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-078",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-079",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-080",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-081",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-082",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-083",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-084",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-085",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-086",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-087",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-088",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-089",
+            "state_reports": 1
+          },
+          {
+            "assignments": 1,
+            "events": 200,
+            "filler_events": 198,
+            "open_assignments": 1,
+            "seat": "pij-status147-090",
+            "state_reports": 1
+          }
+        ],
+        "seats": 91
+      },
+      "sqlite_version": "3.46.0"
+    }
+  ],
+  "p95_definition": "nearest rank, ceil(0.95 * samples)",
+  "runtime": "tokio current_thread",
+  "sample_order": "index absent then present; alternating registry/status first within each pair",
+  "samples_per_method_per_index_case": 100,
+  "schema_version": 20,
+  "storage": "isolated in-memory SQLite; max_connections=1",
+  "timing_boundary": "actual async store method including schema check, SQL and decoding; excludes setup, DDL, plans, row validation and result drop",
+  "warmups_per_method_per_index_case": 10
+}

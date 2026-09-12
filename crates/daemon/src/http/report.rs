@@ -28,10 +28,6 @@
 
 use pij_core::model::{CARD_LIMIT, NOTE_LIMIT, SemanticState};
 
-/// The rs vocabulary, in the order [`SemanticState`] declares it. Named in every
-/// refusal, so a caller who typed a word rs lacks learns what it does have.
-const RS_STATE_WORDS: &str = "ready|waiting|hold|blocked|question|done|failed|cancelled";
-
 /// One parsed report invocation, including sequence-bound parent verification.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ReportCall {
@@ -63,8 +59,8 @@ pub(crate) enum ReportCall {
         target: String,
         assignment: Option<String>,
     },
-    /// `report clear` — `core/cli.ts:1746`.
-    Clear,
+    /// `report clear [--assignment <id>]`; no scope clears only the descriptor.
+    Clear { assignment_id: Option<String> },
 }
 
 /// A refusal, in the caller's own vocabulary.
@@ -116,9 +112,16 @@ pub(crate) fn parse_report(argv: &[String]) -> Result<ReportCall, Refusal> {
         "state" => parse_state_leaf(&positionals, &flags),
         "blocked" | "question" => parse_note_leaf(leaf, &positionals, &flags),
         "clear" => {
-            expect_positionals("report clear", &positionals, 0, "usage: pij report clear")?;
-            reject_unknown_flags("report clear", &flags, &[])?;
-            Ok(ReportCall::Clear)
+            expect_positionals(
+                "report clear",
+                &positionals,
+                0,
+                "usage: pij report clear [--assignment <id>]",
+            )?;
+            reject_unknown_flags("report clear", &flags, &["assignment"])?;
+            Ok(ReportCall::Clear {
+                assignment_id: single_value(&flags, "assignment")?.map(str::to_string),
+            })
         }
         "verify" => {
             expect_positionals(
@@ -300,7 +303,7 @@ fn parse_note_leaf(
 /// Map a typed word onto rs's [`SemanticState`].
 fn parse_semantic_state(word: &str) -> Result<SemanticState, Refusal> {
     SemanticState::parse(word)
-        .ok_or_else(|| format!("invalid semantic state '{word}' ({RS_STATE_WORDS})"))
+        .ok_or_else(|| format!("invalid semantic state '{word}' ({})", SemanticState::WORDS))
 }
 
 /// The card-field rules the TypeScript generation enforces —
@@ -459,7 +462,9 @@ mod tests {
         );
         assert_eq!(
             parse_report(&argv(&["report", "clear", "--json"])),
-            Ok(ReportCall::Clear)
+            Ok(ReportCall::Clear {
+                assignment_id: None
+            })
         );
     }
 
