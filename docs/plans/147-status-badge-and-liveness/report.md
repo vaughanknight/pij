@@ -1,6 +1,6 @@
 # Plan 147 — implementation evidence
 
-Status: **all F1–F8 fixes implemented and verified; none deferred to 148.** Required gates exited 0; report-only package audit findings are recorded below, not represented as clean. The containing fix commit is this round's source delivery; its exact SHA is supplied in the delivery message and post-commit report stamp. Original delivery: `ad5c6589`; review: `e3f99483`. No push, PR, merge or production deployment performed.
+Status: **all F1–F8 fixes implemented and verified; none deferred to 148. Fix delivery commit: `9b089a59`.** Required gates exited 0; report-only package audit findings are recorded below, not represented as clean. This exact-SHA stamp is post-commit metadata; all source, tests and evidence are in the commit. Pre-existing prime packets were left untouched. Original delivery: `ad5c6589`; review: `e3f99483`. No push, PR, merge or production deployment performed.
 
 ## Delivered scope and rulings
 
@@ -88,6 +88,35 @@ This removes scans of unrelated event kinds, **not every growth term**:
 assignment count and matching `report.state` history still matter because
 `assignment_id` is JSON-filtered. Neither fixture measures arbitrary assignment
 or declaration density, production latency, or index write/storage cost.
+
+### Independent real-store index cost — pij-shocked-zebra
+
+**Measured by reviewer pij-shocked-zebra**, retained in the round-2 verification
+addendum at `430a34a3`, [`review.md`, §3 “Index cost, measured”](./review.md).
+This used a `VACUUM INTO` snapshot of the **real store**, not the live daemon:
+**1078 seats, 35260 spine events, zero open assignments**, schema 19 migrating
+to 20 on open. Debug build; 30 interleaved read samples after 5 warmups,
+1000 timed `SqliteSpine::append` calls per case; the whole index-present/absent
+cycle was run twice. These are the reviewer's measurements, not a coder rerun.
+
+| Measure | Index absent | Index present |
+|---|---:|---:|
+| `SqliteStatus::read` median | 69.5–70.2 ms | 20.0–20.6 ms |
+| `SqliteSpine::append` median, passes 1 / 2 | 0.1967 / 0.1479 ms | 0.1530 / 0.1509 ms |
+| Added index storage | — | **1.71 MiB, +6.2%** on a 27.8 MiB store |
+
+The registry-list reference baseline was **13.4 ms**. Append cost was **below
+measurement noise**: between-pass spread exceeded the difference between index
+cases, so this does not establish zero write cost. Index storage grows with the
+append-only spine.
+
+**Conclusion: at real-store scale the index is LOAD-BEARING, not an
+optimisation.** Without it, the status read is roughly five times the registry
+baseline it replaces (**~5.4× against the review's rounded 13 ms baseline;
+~5.2× using 13.4 ms**). With it, the status read is about 1.5× that baseline.
+The growth-term caveat above still applies: this real-store snapshot had no
+open assignments, and the index does not eliminate JSON-filtered assignment
+or matching-declaration history costs.
 
 ## Round 2 — accepted findings and executable witnesses
 
