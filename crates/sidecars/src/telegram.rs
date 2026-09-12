@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use pij_core::error::{PijError, Result};
 use pij_core::model::{Event, Job, Outcome, SeatId};
-use pij_core::ports::{Queue, Spine};
+use pij_core::ports::{Queue, Registry, Spine};
 use serde::{Deserialize, Serialize};
 
 use crate::common::{LoopHandle, Processed, enqueue_turn, now_ms, start_resilient_loop};
@@ -19,9 +19,13 @@ const WORKER_ID: &str = "sidecar-telegram";
 const BINDING_KIND: &str = "telegram.binding";
 const CURSOR_KIND: &str = "telegram.cursor";
 const DELIVERY_FAILED_KIND: &str = "telegram.inbound-delivery-failed";
+const OUTBOUND_FAILED_KIND: &str = "telegram.outbound-delivery-failed";
 const INBOUND_ENQUEUED_KIND: &str = "telegram.inbound-enqueued";
 const CURSOR_SEAT: &str = "pij-telegram-cursor";
 const REFUSAL_KIND: &str = "telegram.inbound-refused";
+// Match the TS bridge's margin below Telegram's 4096-character hard cap.
+const TEXT_LIMIT: usize = 4000;
+const PREFIX_LIMIT: usize = 1024;
 
 /// Validated Telegram credentials loaded from the legacy file.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -257,6 +261,7 @@ fn process_exists(pid: u32) -> bool {
 pub struct TelegramWorker {
     queue: Arc<dyn Queue>,
     spine: Arc<dyn Spine>,
+    registry: Arc<dyn Registry>,
     client: reqwest::Client,
     config: TelegramConfig,
     _lock: BridgeLock,
@@ -267,12 +272,14 @@ impl TelegramWorker {
     pub fn new(
         queue: Arc<dyn Queue>,
         spine: Arc<dyn Spine>,
+        registry: Arc<dyn Registry>,
         config: TelegramConfig,
         lock_path: PathBuf,
     ) -> Result<Self> {
         Ok(Self {
             queue,
             spine,
+            registry,
             client: reqwest::Client::new(),
             config,
             _lock: BridgeLock::acquire(lock_path)?,
@@ -346,30 +353,88 @@ impl TelegramWorker {
                 ),
             });
         }
-        let result = async {
-            let response = self
-                .client
-                .post(format!(
-                    "{}/bot{}/sendMessage",
-                    self.config.api_root, self.config.token
-                ))
-                .json(&serde_json::json!({"chat_id": chat_id, "text": request.body}))
-                .send()
-                .await
-                .map_err(http_error)?;
-            if !response.status().is_success() {
-                return Err(PijError::Adapter {
-                    adapter: "sidecars/telegram".to_string(),
-                    message: format!("sendMessage returned HTTP {}", response.status()),
-                });
-            }
-            Ok::<_, PijError>((chat_id, request))
-        }
-        .await;
-        let (chat_id, request) = match result {
-            Ok(value) => value,
+        let sender = match self.registry.get(&request.from).await {
+            Ok(sender) => sender,
             Err(error) => return SendOutcome::Retry(error),
         };
+        // TS resolveRepositoryContext consulted git for repository/worktree identity.
+        // The recorded folder's basename is enough to orient the operator here,
+        // without a subprocess or filesystem lookup on every send.
+        let context = sender
+            .as_ref()
+            .and_then(|seat| Path::new(&seat.folder).file_name())
+            .and_then(|name| name.to_str());
+        let parts = match prefixed_text_parts(&request.from, context, &request.body) {
+            Ok(parts) => parts,
+            Err(error) => return SendOutcome::Terminal(error),
+        };
+        let url = format!(
+            "{}/bot{}/sendMessage",
+            self.config.api_root, self.config.token
+        );
+        for (index, text) in parts.iter().enumerate() {
+            let mut status = None;
+            let result = async {
+                let response = self
+                    .client
+                    .post(&url)
+                    .json(&serde_json::json!({"chat_id": chat_id, "text": text}))
+                    .send()
+                    .await
+                    .map_err(http_error)?;
+                status = Some(response.status().as_u16());
+                if !response.status().is_success() {
+                    return Err(PijError::Adapter {
+                        adapter: "sidecars/telegram".to_string(),
+                        message: format!("sendMessage returned HTTP {}", response.status()),
+                    });
+                }
+                let response: SendResponse = response.json().await.map_err(http_error)?;
+                if !response.ok {
+                    return Err(PijError::Adapter {
+                        adapter: "sidecars/telegram".to_string(),
+                        message: "sendMessage returned ok=false".to_string(),
+                    });
+                }
+                Ok(())
+            }
+            .await;
+            if let Err(error) = result {
+                let mut detail = serde_json::json!({
+                    "conversation": chat_id,
+                    "from": request.from,
+                    "msg_id": request.msg_id,
+                    "attempt": u64::from(job.attempt) + 1,
+                    "part": index + 1,
+                    "parts": parts.len(),
+                    "http_status": status,
+                    "reason": error.to_string(),
+                });
+                let recorded = async {
+                    self.spine
+                        .append(Event {
+                            seq: None,
+                            v: 1,
+                            at: now_ms()?,
+                            kind: OUTBOUND_FAILED_KIND.to_string(),
+                            seat: Some(conversation_seat(&chat_id)),
+                            payload: detail.to_string(),
+                        })
+                        .await
+                }
+                .await;
+                if let Err(error) = recorded {
+                    detail["persistence_error"] = serde_json::json!(error.to_string());
+                }
+                // AC5a preserves whole-job retries, including already sent parts.
+                // The failed attempt/part is durable; transport errors have no
+                // HTTP status and http_error removes the credential-bearing URL.
+                return SendOutcome::Retry(PijError::Adapter {
+                    adapter: "sidecars/telegram".to_string(),
+                    message: detail.to_string(),
+                });
+            }
+        }
         let binding = Event {
             seq: None,
             v: 1,
@@ -523,6 +588,94 @@ impl TelegramWorker {
     }
 }
 
+fn strip_exact_prefix<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
+    let rest = text.strip_prefix(prefix)?;
+    if rest.is_empty() {
+        Some(rest)
+    } else {
+        rest.strip_prefix(' ')
+    }
+}
+
+fn prefixed_text_parts(from: &SeatId, context: Option<&str>, text: &str) -> Result<Vec<String>> {
+    let tag = format!("[{from}]");
+    let mut prefix = match context {
+        Some(context) if !context.is_empty() => format!("{tag} [{context}]"),
+        _ => tag.clone(),
+    };
+    if prefix.encode_utf16().count() > PREFIX_LIMIT {
+        prefix.truncate(tag.len());
+    }
+    let text = strip_exact_prefix(text, &prefix)
+        .or_else(|| strip_exact_prefix(text, &tag))
+        .unwrap_or(text);
+    let limit = TEXT_LIMIT.checked_sub(prefix.encode_utf16().count() + 1);
+    let too_long = || PijError::Adapter {
+        adapter: "sidecars/telegram".to_string(),
+        message: "sender prefix leaves no room for Telegram text".to_string(),
+    };
+    let limit = limit.ok_or_else(too_long)?;
+    if text.encode_utf16().count() <= limit {
+        return Ok(vec![format!("{prefix} {text}")]);
+    }
+    // Port of .pi/extensions/pij/telegram/chunk.ts: reserve numbering, then
+    // converge on its digit width. UTF-16 units match TS string.length while
+    // char_indices keeps surrogate pairs/UTF-8 characters intact.
+    let mut width = "(1/1) ".len();
+    let slices = loop {
+        let budget = limit
+            .checked_sub(width)
+            .filter(|n| *n >= 2)
+            .ok_or_else(too_long)?;
+        let slices = split_on_boundary(text, budget);
+        let next_width = format!("({0}/{0}) ", slices.len()).len();
+        if next_width <= width {
+            break slices;
+        }
+        width = next_width;
+    };
+    let n = slices.len();
+    Ok(slices
+        .into_iter()
+        .enumerate()
+        .map(|(i, slice)| format!("{prefix} ({}/{n}) {slice}", i + 1))
+        .collect())
+}
+
+// Prefer newline, then space, in the back 40% of a window. Keep the boundary
+// character in the leading slice, so concatenation recovers every input byte.
+fn split_on_boundary(mut text: &str, budget: usize) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let floor = (budget * 3 / 5).max(1);
+    loop {
+        let mut units = 0;
+        let mut cut = text.len();
+        let mut newline = None;
+        let mut space = None;
+        for (index, ch) in text.char_indices() {
+            if units + ch.len_utf16() > budget {
+                cut = index;
+                break;
+            }
+            if units >= floor {
+                match ch {
+                    '\n' => newline = Some(index + 1),
+                    ' ' => space = Some(index + 1),
+                    _ => {}
+                }
+            }
+            units += ch.len_utf16();
+        }
+        if cut == text.len() {
+            parts.push(text);
+            return parts;
+        }
+        cut = newline.or(space).unwrap_or(cut);
+        parts.push(&text[..cut]);
+        text = &text[cut..];
+    }
+}
+
 fn conversation_seat(chat_id: &str) -> SeatId {
     SeatId::from(format!("pij-telegram-chat-{chat_id}"))
 }
@@ -542,6 +695,11 @@ enum SendOutcome {
     Done,
     Retry(PijError),
     Terminal(PijError),
+}
+
+#[derive(Deserialize)]
+struct SendResponse {
+    ok: bool,
 }
 
 #[derive(Deserialize)]
@@ -586,6 +744,10 @@ fn codec_error(error: serde_json::Error) -> PijError {
         message: error.to_string(),
     }
 }
+
+#[cfg(test)]
+#[path = "telegram_outbound_tests.rs"]
+mod outbound_tests;
 
 #[cfg(test)]
 mod tests {

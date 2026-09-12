@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use pij_core::error::Result;
-use pij_core::ports::{Queue, Spine};
+use pij_core::ports::{Queue, Registry, Spine};
 
 use crate::LoopHandle;
 use crate::background::BgWorker;
@@ -16,7 +16,7 @@ use crate::telegram::{TelegramConfig, TelegramWorker};
 /// In `pij-daemon::boot`, after the bind and service construction but before key
 /// publication, construct
 /// `Sidecars::new(services.queue.clone(), services.spine.clone(),
-/// state_dir.join("sidecars"), telegram_env.as_deref())?`. Immediately after key
+/// services.registry.clone(), state_dir.join("sidecars"), telegram_env.as_deref())?`. Immediately after key
 /// publication call `.start()` and store the returned [`SidecarHandles`] on
 /// `Daemon`; join `handles.shutdown()` beside the existing daemon workers. Add
 /// `pij-sidecars = { workspace = true }` to `crates/daemon/Cargo.toml`.
@@ -31,6 +31,7 @@ impl Sidecars {
     pub fn new(
         queue: Arc<dyn Queue>,
         spine: Arc<dyn Spine>,
+        registry: Arc<dyn Registry>,
         state_dir: PathBuf,
         telegram_env: Option<&Path>,
     ) -> Result<Self> {
@@ -46,7 +47,9 @@ impl Sidecars {
                     .parent()
                     .unwrap_or_else(|| Path::new("."))
                     .join("pij-telegram.lock");
-                Some(Arc::new(TelegramWorker::new(queue, spine, config, lock)?))
+                Some(Arc::new(TelegramWorker::new(
+                    queue, spine, registry, config, lock,
+                )?))
             }
             _ => None,
         };

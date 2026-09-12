@@ -688,6 +688,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     let sidecars = match pij_sidecars::Sidecars::new(
         Arc::clone(&services.queue),
         Arc::clone(&services.spine),
+        Arc::clone(&services.registry),
         state_dir.join("sidecars"),
         telegram_env.as_deref(),
     ) {
@@ -699,6 +700,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
             pij_sidecars::Sidecars::new(
                 Arc::clone(&services.queue),
                 Arc::clone(&services.spine),
+                Arc::clone(&services.registry),
                 state_dir.join("sidecars"),
                 None,
             )?

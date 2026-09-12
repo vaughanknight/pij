@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use pij_core::config::{AdapterChoice, Adapters, Config};
 use pij_core::model::{
-    DeliveryOrigin, DeliveryOutcome, Envelope, Harness, Msg, ProcIdentity, Receipt, SeatDescriptor,
-    SeatId, SemanticState, Seq,
+    DeliveryOrigin, DeliveryOutcome, Envelope, Harness, Msg, Outcome, ProcIdentity, Receipt,
+    SeatDescriptor, SeatId, SemanticState, Seq,
 };
 use pij_daemon::delivery::InboxClaim;
 use pij_daemon::http::{HttpConfig, router_with_config};
@@ -469,6 +469,7 @@ async fn shipped_cli_registers_sends_reads_acks_and_does_not_read_twice() {
         .expect("rebuild delivery from pull-only transport"),
     );
     let spine = Arc::clone(&services.spine);
+    let queue = Arc::clone(&services.queue);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind server");
@@ -786,6 +787,41 @@ async fn shipped_cli_registers_sends_reads_acks_and_does_not_read_twice() {
     let stdin_read: Envelope<Vec<Msg>> =
         serde_json::from_slice(&stdin_read.stdout).expect("stdin read");
     assert_eq!(stdin_read.data.expect("stdin message")[0].body, stdin_body);
+
+    let telegram_body =
+        "First line: \"quoted\" and 'single'\n$(not-a-command) `literal` \\\nUnicode: café 🙂\n"
+            .repeat(80);
+    std::fs::write(&body_path, &telegram_body).expect("Telegram body file");
+    for input in [body_path.to_str().expect("body path"), "-"] {
+        let sent = run_cli_with_stdin(
+            &dir,
+            &addr,
+            &["sidecar", "telegram", "--body-file", input],
+            if input == "-" { &telegram_body } else { "" },
+            &[("PIJ_SESSION_ID", "pij-sender"), ("TMUX_PANE", "%88")],
+        );
+        assert!(
+            sent.status.success(),
+            "Telegram body-file: stdout={} stderr={}",
+            String::from_utf8_lossy(&sent.stdout),
+            String::from_utf8_lossy(&sent.stderr)
+        );
+        let (id, job) = queue
+            .claim(&["sidecar:telegram:send".into()], "assert-telegram-body")
+            .await
+            .expect("claim")
+            .expect("outbound Telegram job");
+        let payload: serde_json::Value = serde_json::from_str(&job.payload).expect("request");
+        assert_eq!(
+            payload["body"].as_str().expect("body").as_bytes(),
+            telegram_body.as_bytes()
+        );
+        assert_eq!(payload["from"], "pij-sender");
+        queue
+            .ack(id, Outcome::Done)
+            .await
+            .expect("finish inspected job");
+    }
 
     server.abort();
     drop(dir);
