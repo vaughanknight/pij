@@ -1,3 +1,6 @@
+COMMAND: /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon native_session_ -- --nocapture
+EXIT: 101
+ROUND: 1 (historical); last 60 output lines
    Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-native-identity/crates/daemon)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 16.68s
      Running unittests src/lib.rs (target/debug/deps/pij_daemon-043514ab0ddb16b1)

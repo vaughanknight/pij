@@ -1,6 +1,6 @@
-Checked 540 files in 234ms. No fixes applied.
-Found 1 info.
-BIOME_EXIT=0
+COMMAND: node_modules/.bin/biome check; code=$?; printf "BIOME_EXIT=%s\n" "$code"; exit "$code"
+EXIT: 0
+ROUND: 2; last60 output lines
 biome.json:2:13 deserialize ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   i The configuration schema version does not match the CLI version 2.4.14
@@ -18,3 +18,6 @@ biome.json:2:13 deserialize ━━━━━━━━━━━━━━━━━�
   i Run the command biome migrate to migrate the configuration file.
   
 
+Checked 540 files in 274ms. No fixes applied.
+Found 1 info.
+BIOME_EXIT=0

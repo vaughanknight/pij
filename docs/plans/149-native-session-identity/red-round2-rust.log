@@ -1,0 +1,63 @@
+COMMAND: /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --lib native_ -- --nocapture
+EXIT: 101
+BASELINE: 6be799ec248e1a4c2456aba97c7396e48bdc8834 production code with fix-round tests
+thread 'http::native_tests::native_sqlite_http_prebind_precedes_saved_session_without_retargeting_work' (12448946) panicked at crates/daemon/src/http/native_tests.rs:641:5:
+assertion `left == right` failed
+  left: String("pij-copilot-fixture")
+ right: "pij-new-prebind"
+FAILED
+test http::native_tests::native_sqlite_malformed_claim_is_held_without_ack ... ok
+test http::native_tests::native_typing_http_rejects_missing_mismatched_and_noncurrent_identity_without_mutation ... ok
+test http::native_tests::native_typing_http_snapshot_is_authenticated_read_only_and_echoes_owner ... ok
+test http::native_tests::native_typing_http_unavailable_observation_preserves_operator_hold_and_queue_ownership ... ok
+test http::native_tests::native_typing_recent_nonempty_draft_does_not_gate_native_claim ... ok
+test http::native_tests::queued_native_target_holds_different_session_but_allows_same_session_restart ... ok
+test http::native_tests::retired_or_prebind_copilot_cannot_be_relabelled_to_bypass_native_inbox ... ok
+test http::native_tests::shim_and_direct_service_cannot_bypass_native_claim_or_ack ... ok
+test http::native_tests::stale_native_ack_cannot_retire_replacement_incarnation_work ... ok
+test http::native_tests::unstamped_prebind_task_reaches_first_verified_native_session ... ok
+test http::tests::a_native_session_boundary_supersedes_its_own_seat_but_never_another ... ok
+test http::tests::ordinary_registration_preserves_native_attestation_and_claude_consent ... ok
+test http::tests::redelivery_failure_ack_refuses_controls_native_recipients_and_unknown_outcomes ... ok
+test http::tests::redelivery_heartbeat_rejects_wrong_recipient_control_pending_and_native_claims ... ok
+test http::tests::registration_does_not_inherit_native_capability_from_another_incarnation ... ok
+test pointer::worker::tests::copilot_drain_never_claims_native_body_or_legacy_control ... ok
+test registration::tests::blocked_native_host_observation_does_not_block_unrelated_inbox_ack ... ok
+test registration::tests::native_ancestry_observation_is_bounded_to_32_processes ... ok
+test registration::tests::native_attests_actual_host_below_shell_but_refuses_shell_pane_pid ... ok
+test registration::tests::native_bootstrap_other_pane_refusal_identifies_conflicting_address ... ok
+test registration::tests::native_historical_session_tie_uses_id_only_after_incarnation ... 
+thread 'registration::tests::native_historical_session_tie_uses_id_only_after_incarnation' (12450401) panicked at crates/daemon/src/registration.rs:2724:20:
+historical duplicates do not compete: Retryable("native session has multiple Pij addresses; refresh the roster")
+FAILED
+test registration::tests::native_host_observation_has_a_wall_clock_bound ... ok
+test registration::tests::native_host_refusal_names_observed_basename_and_replacement ... ok
+test registration::tests::native_observation_revalidates_cross_seat_process_takeover_before_commit ... ok
+test registration::tests::native_observed_owner_drift_returns_retryable_without_retirement ... ok
+test registration::tests::native_prebind_requires_exact_spawn_id_pane_and_harness ... ok
+test registration::tests::native_rechecks_process_start_after_actual_host_observation ... ok
+test registration::tests::native_reconnect_retains_address_and_explicit_new_session_retires_old_capability ... ok
+test registration::tests::native_refuses_different_session_harness_and_relay_ownership ... ok
+test registration::tests::native_requires_exact_observed_pane_ancestry_but_supports_paneless_hosts ... ok
+test registration::tests::native_requires_truthful_harness_session_and_complete_observed_tuple ... ok
+test registration::tests::native_session_cannot_resume_a_row_from_another_machine ... ok
+test registration::tests::native_session_fast_restart_does_not_consult_old_process ... ok
+test registration::tests::native_session_resume_lifts_tombstone_and_publishes_incarnation_change ... ok
+test registration::tests::native_supersedes_refuses_same_id_same_session_wrong_process_or_existing_target ... ok
+test registration::tests::ordinary_registration_never_inherits_native_capability ... ok
+test registration::tests::ordinary_registration_preserves_unchanged_attested_native_owner_and_binding ... ok
+test registration::tests::ordinary_registration_refuses_changed_native_owner_after_readoption ... ok
+test registration::tests::shared_native_lock_converges_concurrent_claims_for_the_same_session ... ok
+
+failures:
+
+failures:
+    http::native_tests::native_session_all_tombstones_resume_newest_process_not_first_id
+    http::native_tests::native_session_live_address_outranks_two_newer_tombstones
+    http::native_tests::native_spawn_wait_resolves_prebound_child_resuming_saved_session
+    http::native_tests::native_sqlite_http_prebind_precedes_saved_session_without_retargeting_work
+    registration::tests::native_historical_session_tie_uses_id_only_after_incarnation
+
+test result: FAILED. 63 passed; 5 failed; 0 ignored; 0 measured; 312 filtered out; finished in 7.50s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

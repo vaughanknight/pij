@@ -1,335 +1,236 @@
-# Plan 149 — native session identity implementation
+# Plan149 — fix round2 report
 
-Coder: `pij-dry-pavetta`. Branch: `149-native-session-identity`.
-Pre-fix source: `86855c61dc26551ac7339de61883c067433b9982`.
+Coder: `pij-dry-pavetta`; prime: `pij-far-jackal`; branch: `149-native-session-identity`.
 
-## Delivered behavior
+**Fix source commit: `2675854c93d823385018172cdd3fa31e5e46e037`.** Completion SHA includes the subsequent evidence-only commit. Review baseline: `6be799ec248e1a4c2456aba97c7396e48bdc8834`. Parent-authored reviewer/fix packet commits are preserved. Rulings: [packet-fix.md](packet-fix.md); original cross-model findings: [review.md](review.md).
 
-- `registration_target` selects the Copilot session before process/pane/spawn heuristics. Verified resume clears both tombstone fields and retains the address even if old-process observation would block or fail.
-- `seat.native-resumed` carries old/new process, old/new pane, and `reason:native-session-resume` for an incarnation change or tombstone revival. Existing `seat.put` publication remains authoritative registry persistence.
-- Queue jobs, parent, authoritative role and Telegram binding remain on the same id. Same-host bootstrap conversations can be retired when returning to a saved session. Explicit verified prebind intent cannot replace the saved address; its own queued work stays on its old prebind id.
-- Typed transient registration refusal: HTTP 409, v2 `error:refused`, `details.retryable:true`. Native JS refreshes/retries and never manufactures an id. Wrong endpoint/command/version/error/status and untyped refusal text remain terminal.
-- Different native sessions, harness mismatches, relay ownership, unrelated process/pane ownership and incorrect spawn correlation still refuse. Foreign-provenance rows refuse; registry rows are local at rest (`SeatDescriptor.machine` is a federated-view field).
-- API paragraph: `docs/how/pij-rs-api.md`, Native Copilot registration.
+## Delivered contract
 
-## Acceptance evidence
+- Verified spawn prebind wins its allocated **id and parent**. Otherwise native `harness_session` selects the address: live first, greatest `proc_start`, ascending id only as final tie.
+- Only **multiple live** same-session addresses are ambiguous. One live address plus tombstones resumes that address; all-history sessions resume the newest incarnation. A verified unbound prebind is explicit spawn intent, not another incumbent.
+- Ordinary native resume retains queue address, parent, authoritative role and Telegram binding; clears both tombstone fields; records `seat.native-resumed`. New native incarnation does not wait for incumbent liveness/death sweep.
+- Explicit spawn retires the saved live address with `seat.native-superseded` (`successor`, `spawn_id`, `reason:native-spawn-prebind`). Both addresses keep their original jobs/bindings. The actual `/v1/spawn` waiter now resolves the allocated child rather than504. Non-native parent-update behavior remains unchanged.
+- Owner drift returns typed retry without retirement. Register/adopt error projections preserve HTTP409, v2 `error:refused`, boolean `details.retryable:true`; other ownership refusals remain terminal. Current ordinary adopt cannot enter native owner-observation; its new proof is explicitly an error-projection test.
 
-| AC | Evidence |
+## Corrections to round1 claims
+
+| Finding | What was claimed; what was true; correction |
 |---|---|
-| AC1 | `native_session_resume_lifts_tombstone_and_publishes_incarnation_change`: stable id, new tuple/pane, both tombstone fields cleared, exact event fields |
-| AC2 | `native_session_fast_restart_does_not_consult_old_process`; JS retired/withdrawn candidate regressions; actual extension subprocess HTTP409 retry and queue consumption; `native_session_ambiguity_returns_typed_retry_without_mutation` |
-| AC3 | `native_session_resume_preserves_queued_mail`: real SQLite/HTTP/OS host, queued original job id/body claimable after revival |
-| AC4 | `native_session_resume_preserves_parent_role_and_telegram_binding`: original parent, authoritative role and persisted Telegram binding asserted |
-| AC5 | foreign-machine RED regression; distinct-session HTTP registration/mail guard, existing same-pane different-session supersede and spawn-correlation controls |
-| AC6 | `native_session_resume_state_shows_new_process_and_no_tombstone`; live `pij state` HTTP projection asserts `pid`, `procStart`, `tombstonedAt`, `tombstoneReason`; API paragraph |
-| AC7 | `native-resume-live.ts`, `live-red-final.json`, `live-green-release.json`; real installed Copilot CLI + real isolated daemon/tmux/SQLite, deterministic local provider |
+| F001 | Historical duplicates were described as transient ambiguity and deferred reconciliation. They actually caused permanent409 because tombstones never disappear. Four real production sessions are now proven to register from a read-only snapshot. |
+| F007 | Session lookup was described as identity-first but selected registry alphabetical order, including tombstones. Ranking is now explicit; adversarial live/history/newest/id-tie fixtures prove it. |
+| F002 | Keeping a saved parent was called preservation. During explicit spawn it flipped the requested parent to the old parent, retired the allocated id and left its waiter timing out504. Verified prebind now wins; registration and real spawn-waiter tests independently prove retirement and unchanged queue addresses. |
+| F003 | Fast restart was proven, but incumbent exclusivity was not. The dependency on Copilot's `inuse.<pid>.lock` is now named in the API and risks below; no liveness probe was reintroduced. |
+| F004 | The foreign-machine RED test used a synthetic in-memory row. SQLite clears `machine` on every write, so no reachable production refusal was demonstrated. Guard retained; evidence now explicitly defence-in-depth. |
+| F005 | Adopt silently collapsed Retryable to400. It now preserves409 and the discriminator, with a projection-boundary test, not a fabricated claim of reachable native adoption. |
+| F006 | Restored owner-drift test; pane diagnostic brake and independent retirement/correlation witnesses each went RED by deletion. Old prebind-retirement and client `!prebind` escapes were removed rather than retained as compatibility code. |
+| F008 | Routine full gate logs were needless bulk. Every committed `gate-*`, `red-*`, `green-*` log now has command/exit headers and at most60 output lines. Four round1 inline Node probes are marked historical; their inline fixture source was not retained and they are not round2 proof. |
 
-## RED outputs — production source unchanged
+## Production defect population — actual isolated daemon
 
-Command/cwd: `/Users/jordanknight/.cargo/bin/cargo test -p pij-daemon native_session_ -- --nocapture`, this worktree. Exit **101**. Six new criterion regressions failed; one existing control passed. Full raw output: [red-rust.log](red-rust.log).
+Source opened SQLite **read-only** and used its online backup API for a consistent snapshot, including committed WAL data. Immutable snapshot SHA256:
+
+`1853577747618141a7fca4a9a73bad3f483ccb3cbf675cccf6bb7aa816a931b0`
+
+Snapshot: `/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-round2-mi4r7sn_/production-readonly.sqlite`. It remained byte-identical after replay. The fixed daemon used a separate writable clone, not the source or immutable snapshot. All seat rows were preserved. Only executable work was removed from the **private clone** before boot:9096 queued jobs,82 background jobs,0 spawn records. This prevents replaying production work; it is not evidence of queue migration. Queue preservation is independently proven by the SQLite HTTP tests.
+
+Isolated daemon: `127.0.0.1:63385`; tmux socket: `pij-149-copy-75602de7-0d78-40a1-92a7-36e613121909`; HOME/Copilot/Claude homes are private under `/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-round2-mi4r7sn_/production-proof`. Acceptance never used127.0.0.1:7461, production tmux, production credentials, or production homes. Death sweep interval was3600000ms, preventing the fixture's original live/history distinction changing before registration. The proof uses real HTTP/SQLite and owned OS-verified inert `copilot` executables, **not** SDK/model inference. Separate AC7 below uses the real Copilot CLI.
+
+Command: `python3 /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-round2-mi4r7sn_/production-copy-proof.py` — **exit0**. Full four request/response records and isolation facts are retained in [artifact-provenance.json](artifact-provenance.json) under `round2.production_copy`.
+
+| Native session | Rows / live before | HTTP | Resumed address |
+|---|---:|---:|---|
+| `3ca048e4-9f2f-486c-a652-b85e60726922` | 3 / 0 | 200 | `pij-isolated-mollusk` |
+| `47a987ea-9191-4543-a144-330009718afb` | 2 / 1 | 200 | `pij-religious-rennala` |
+| `7a582862-748a-4b07-b35c-2dcd067b3e7b` | 3 / 1 | 200 | `pij-continental-flamingo` |
+| `d0d682ed-4249-498b-b974-1795c3476e12` | 2 / 1 | 200 | `pij-other-sobeck` |
+
+Each request used `id:""`, the original session UUID and a newly observed owned host tuple. Returned id matched the ranked original row; tombstone was absent. The `7a582862…` session is the defect named in the plan itself.
+
+## RED proof — unchanged reviewed production code
+
+Baseline `6be799ec248e1a4c2456aba97c7396e48bdc8834` production registration/client modules were restored temporarily while retaining the new test bodies, then fixed sources restored in `finally`. Commands and exit codes are in [red-round2-rust.log](red-round2-rust.log), [red-round2-js.log](red-round2-js.log), and [red-round2-spawn-extension.log](red-round2-spawn-extension.log).
+
+`cargo test -p pij-daemon --lib native_ -- --nocapture`: **exit101,63 pass /5 fail**. Both history fixtures returned409 instead of200. Spawn waiter returned504 instead of200. Saved-id precedence selected `pij-copilot-fixture` instead of `pij-new-prebind`.
 
 ```text
-Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-native-identity/crates/daemon)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 16.68s
-     Running unittests src/lib.rs (target/debug/deps/pij_daemon-043514ab0ddb16b1)
-
-running 7 tests
-
-thread 'registration::tests::native_session_resume_lifts_tombstone_and_publishes_incarnation_change' (9598247) panicked at crates/daemon/src/registration.rs:1540:9:
-assertion `left == right` failed
-  left: SeatId("pij-mild-elisabet")
- right: SeatId("pij-durable")
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-
-thread 'registration::tests::native_session_cannot_resume_a_row_from_another_machine' (9598245) panicked at crates/daemon/src/registration.rs:1520:9:
-Ok(SeatDescriptor { id: SeatId("pij-remote-native"), machine: Some("another-machine"), harness: Copilot, harness_session: Some("00000000-0000-4000-8000-000000000137"), extension_build: None, extension_path: None, pane: Some("%137"), proc: Some(ProcIdentity { pid: 4242, proc_start: 126 }), folder: "/isolated/native-registration", state: Idle, semantic_state: None, role: None, parent: None, relay: false, tombstoned_at: None, tombstone_reason: None, cross_session_inbound_accept: None, native_extension_delivery: true, spawn_id: None, model: None, provider: None, effort: None })
-test registration::tests::native_session_cannot_resume_a_row_from_another_machine ... FAILED
-test registration::tests::native_session_resume_lifts_tombstone_and_publishes_incarnation_change ... FAILED
-test http::tests::a_native_session_boundary_supersedes_its_own_seat_but_never_another ... ok
-
-thread 'registration::tests::native_session_fast_restart_does_not_consult_old_process' (9598246) panicked at crates/daemon/src/registration.rs:1572:20:
-resume must not await the old incarnation sensor: Elapsed(())
-test registration::tests::native_session_fast_restart_does_not_consult_old_process ... FAILED
-
-thread 'http::native_tests::native_session_resume_preserves_queued_mail' (9598242) panicked at crates/daemon/src/http/native_tests.rs:293:5:
-assertion `left == right` failed: mail: durable address
-  left: String("pij-mild-elisabet")
- right: "pij-copilot-fixture"
-
-thread 'http::native_tests::native_session_resume_preserves_parent_role_and_telegram_binding' (9598241) panicked at crates/daemon/src/http/native_tests.rs:293:5:
-assertion `left == right` failed: bindings: durable address
-  left: String("pij-mild-elisabet")
- right: "pij-copilot-fixture"
-
-thread 'http::native_tests::native_session_resume_state_shows_new_process_and_no_tombstone' (9598243) panicked at crates/daemon/src/http/native_tests.rs:293:5:
-assertion `left == right` failed: state: durable address
-  left: String("pij-mild-elisabet")
- right: "pij-copilot-fixture"
-test http::native_tests::native_session_resume_preserves_queued_mail ... FAILED
-test http::native_tests::native_session_resume_preserves_parent_role_and_telegram_binding ... FAILED
-test http::native_tests::native_session_resume_state_shows_new_process_and_no_tombstone ... FAILED
-
-failures:
-
-failures:
-    http::native_tests::native_session_resume_preserves_parent_role_and_telegram_binding
-    http::native_tests::native_session_resume_preserves_queued_mail
-    http::native_tests::native_session_resume_state_shows_new_process_and_no_tombstone
-    registration::tests::native_session_cannot_resume_a_row_from_another_machine
-    registration::tests::native_session_fast_restart_does_not_consult_old_process
-    registration::tests::native_session_resume_lifts_tombstone_and_publishes_incarnation_change
-
-test result: FAILED. 1 passed; 6 failed; 0 ignored; 0 measured; 367 filtered out; finished in 0.30s
-
-error: test failed, to rerun pass `-p pij-daemon --lib`
+thread 'http::native_tests::native_session_all_tombstones_resume_newest_process_not_first_id' (12442972) panicked at crates/daemon/src/http/native_tests.rs:213:5:
+thread 'http::native_tests::native_session_live_address_outranks_two_newer_tombstones' (12443291) panicked at crates/daemon/src/http/native_tests.rs:213:5:
+thread 'http::native_tests::native_spawn_wait_resolves_prebound_child_resuming_saved_session' (12444962) panicked at crates/daemon/src/http/native_tests.rs:791:5:
+thread 'http::native_tests::native_sqlite_http_prebind_precedes_saved_session_without_retargeting_work' (12448946) panicked at crates/daemon/src/http/native_tests.rs:641:5:
+thread 'registration::tests::native_historical_session_tie_uses_id_only_after_incarnation' (12450401) panicked at crates/daemon/src/registration.rs:2724:20:
+test result: FAILED. 63 passed; 5 failed; 0 ignored; 0 measured; 312 filtered out; finished in 7.50s
 ```
 
-Command/cwd: `just copilot-native-test` (expands to `node --test .copilot/extensions/pij/*.test.mjs`), this worktree. Exit **1**. Eight changed-contract regressions failed. Full raw output: [red-js.log](red-js.log). Failure output:
+`node --test .copilot/extensions/pij/store.test.mjs .copilot/extensions/pij/extension.test.mjs`: **exit1**. Verbatim baseline failures for ten new/changed contract witnesses:
 
 ```text
-✖ failing tests:
+✖ two-live native ambiguity refreshes until one live address remains beside tombstoned history (1843.143417ms)
+✖ live native address outranks newer tombstones in adversarial alphabetical order (0.097583ms)
+✖ all-tombstoned native addresses select newest process with missing starts last and id tie break (0.065667ms)
+✖ same-session nomination leaves missing historical process verification to the daemon (0.459542ms)
+✖ verified spawn allocation retains its id and parent over a correlated session address (0.203541ms)
+✖ fresh verified spawn keeps its allocated identity and journal separate from the saved session (21.03525ms)
+✖ verified spawn with a compatible saved session retains the allocated parent (0.236959ms)
+✖ spawn prebind cannot bypass ownership for relay allocation (0.217291ms)
+✖ spawn prebind cannot bypass ownership for different native session (0.066083ms)
+✖ saved native session alone cannot corroborate a wrong requested id with matching spawn (0.116458ms)
+```
 
-test at .copilot/extensions/pij/extension.test.mjs:555:2
-✖ retired native attachment retains its durable id across dropped registration response (379.114417ms)
-  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+The first spawned-extension test used an invalid fixture pane and timed out; **that timeout is excluded as proof**. Corrected numeric-pane fixture was rerun against the baseline client with `node --test --test-name-pattern="spawned extension" .copilot/extensions/pij/extension.test.mjs`: **exit1**, actual identity mismatch:
+
+```text
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
   + actual - expected
   
-    [
-  +   '',
-  +   'pij-bright-otter'
-  -   'pij-copilot-0123456789abcdef01234567',
-  -   'pij-copilot-0123456789abcdef01234567'
-    ]
-  
-      at TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-native-identity/.copilot/extensions/pij/extension.test.mjs:569:10)
-      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-      at async Test.run (node:internal/test_runner/test:1113:7)
-      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
-    generatedMessage: true,
-    code: 'ERR_ASSERTION',
-    actual: [ '', 'pij-bright-otter' ],
-    expected: [ 'pij-copilot-0123456789abcdef01234567', 'pij-copilot-0123456789abcdef01234567' ],
-    operator: 'deepStrictEqual',
-    diff: 'simple'
-  }
-
-test at .copilot/extensions/pij/extension.test.mjs:578:2
-✖ actual HTTP 409 registration retry retains the native id and later consumes queued work (112.4925ms)
-  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
-  
-  true !== false
-  
-      at TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-native-identity/.copilot/extensions/pij/extension.test.mjs:599:10)
-      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-      at async Test.run (node:internal/test_runner/test:1113:7)
-      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
-    generatedMessage: true,
-    code: 'ERR_ASSERTION',
-    actual: true,
-    expected: false,
-    operator: 'strictEqual',
-    diff: 'simple'
-  }
-
-test at .copilot/extensions/pij/store.test.mjs:1347:2
-✖ same native session nominates its durable address when tombstoned (0.44275ms)
-  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
-  
-  '' !== 'pij-test'
-  
-      at TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-native-identity/.copilot/extensions/pij/store.test.mjs:1355:10)
-      at Test.runInAsyncScope (node:async_hooks:214:14)
-      at Test.run (node:internal/test_runner/test:1106:25)
-      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
-      at Test.postRun (node:internal/test_runner/test:1235:19)
-      at Test.run (node:internal/test_runner/test:1163:12)
-      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
-    generatedMessage: true,
-    code: 'ERR_ASSERTION',
-    actual: '',
-    expected: 'pij-test',
-    operator: 'strictEqual',
-    diff: 'simple'
-  }
-
-test at .copilot/extensions/pij/store.test.mjs:1347:2
-✖ same native session nominates its durable address when native delivery withdrawn (0.036542ms)
-  Error [NativeError]: Pane belongs to a different process identity
-      at chooseRegistration (file:///Users/jordanknight/pi-hacking/fs3-native-identity/.copilot/extensions/pij/store.mjs:106:9)
-      at TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-native-identity/.copilot/extensions/pij/store.test.mjs:1348:20)
-      at Test.runInAsyncScope (node:async_hooks:214:14)
-      at Test.run (node:internal/test_runner/test:1106:25)
-      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
-      at Test.postRun (node:internal/test_runner/test:1235:19)
-      at Test.run (node:internal/test_runner/test:1163:12)
-      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
-    retryable: false,
-    safeDiagnostic: 'Pane belongs to a different process identity'
-  }
-
-test at .copilot/extensions/pij/store.test.mjs:1394:1
-✖ same-process A to B to A restores the retired native address and accepted journal (20.70925ms)
-  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
-  + actual - expected
-  
-  + ''
-  - 'pij-bright-otter'
-  
-      at TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-native-identity/.copilot/extensions/pij/store.test.mjs:1434:9)
-      at async Test.run (node:internal/test_runner/test:1113:7)
-      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
-    generatedMessage: true,
-    code: 'ERR_ASSERTION',
-    actual: '',
-    expected: 'pij-bright-otter',
-    operator: 'strictEqual',
-    diff: 'simple'
-  }
-
-test at .copilot/extensions/pij/store.test.mjs:1505:1
-✖ same-session address precedes spawn preallocation and retains correlated parent (0.147208ms)
-  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
-  + actual - expected
-  
-  + 'pij-preallocated'
-  - 'pij-test'
+  + 'pij-saved-session'
+  - 'pij-allocated-child'
          ^
-  
-      at TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-native-identity/.copilot/extensions/pij/store.test.mjs:1525:9)
-      at Test.runInAsyncScope (node:async_hooks:214:14)
-      at Test.run (node:internal/test_runner/test:1106:25)
-
-[Showing lines 1-300 of 350. Use :301 to continue]
 ```
 
-AC5's already-correct distinct-session refusals are green pre-fix controls; falsifying those to manufacture RED would not prove preservation. The new foreign-machine guard did fail pre-fix. Some old tests encoded the obsolete incarnation-as-identity policy; their assertions were migrated or replaced, not suppressed.
+All fixed native tests then passed before mutation probes. Already-correct guards are not falsely labelled baseline failures: their RED evidence is deletion below.
 
-## AC7 live execution
+## RED by deletion —20 independent mutations
 
-Reproduce with a newly built worktree binary:
+Each mutation changed one condition on otherwise fixed production code; its targeted tests ran; the original source was restored before the next. All eight Rust runs exited101, all twelve JS runs exited1, **none failed compilation**. Full command, exact before/after mutation text and observed failure names are in `artifact-provenance.json#round2.mutations`.
 
-```sh
-node_modules/.bin/tsx docs/plans/149-native-session-identity/native-resume-live.ts /tmp/unique-native-149-receipt.json
-```
+- `rust-owner-drift`: delete post-observation owner revalidation. Both dead-owner and prebind ownership changes are tested; no mutation may escape on retry.
+- `rust-live-ambiguity`: delete the live ambiguity guard.
+- `rust-pane-brake`: delete auto-bootstrap pane equality. Later guards still reject; the test pins the **actual conflicting address in the diagnostic**, not literal prose or a claim that deletion alone permits retirement.
+- `rust-retirement`: delete `.chain(spawn_predecessor)`; both HTTP registration/queue and spawn-waiter consumers fail independently.
+- `rust-spawn-correlation`: delete exact spawn authorization; an invented correlation and another pane's real allocation fail independently.
+- Ranking mutations remove live/incarnation ordering; adopt mutation restores400. JS mutations remove live ambiguity, ranking/id tie, requested-id/spawn authorization, legitimate same-process successor correlation, or individual prebind/harness brakes.
 
-The script refuses receipt overwrite. Launch under a supervised process; it creates its own daemon port/state-dir, HOME/COPILOT_HOME, Claude config home, tmux `-L` socket and workspace, and shuts down only those owned resources. No production daemon restart, production send, global extension/config write, push, PR or merge.
-
-Pre-fix live failure: after native `/exit`, same-window resume retained `pij-distinct-wolf`; after the next exit and canonical owner-close, new-window `--resume` changed it to `pij-youthful-indiscretion`. Both refer to the same native session. Exact failure:
+Verbatim failure lines, covering every new/changed guard test:
 
 ```text
-AssertionError [ERR_ASSERTION]: native session retains seat id
-+ actual - expected
+rust-owner-drift (exit 101)
+thread 'registration::tests::native_observed_owner_drift_returns_retryable_without_retirement' (12717698) panicked at crates/daemon/src/registration.rs:2748:13:
 
-+ 'pij-youthful-indiscretion'
-- 'pij-distinct-wolf'
-       ^
+rust-live-ambiguity (exit 101)
+thread 'http::native_tests::native_session_ambiguity_returns_typed_retry_without_mutation' (12722229) panicked at crates/daemon/src/http/native_tests.rs:213:5:
 
-    at <anonymous> (/Users/jordanknight/pi-hacking/fs3-native-identity/docs/plans/149-native-session-identity/native-resume-live.ts:112:10)
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+rust-pane-brake (exit 101)
+thread 'registration::tests::native_bootstrap_other_pane_refusal_identifies_conflicting_address' (12727614) panicked at crates/daemon/src/registration.rs:2787:9:
+
+rust-retirement (exit 101)
+thread 'http::native_tests::native_spawn_wait_resolves_prebound_child_resuming_saved_session' (12734727) panicked at crates/daemon/src/http/native_tests.rs:862:5:
+thread 'http::native_tests::native_sqlite_http_prebind_precedes_saved_session_without_retargeting_work' (12736766) panicked at crates/daemon/src/http/native_tests.rs:213:5:
+
+rust-spawn-correlation (exit 101)
+thread 'http::native_tests::native_session_rejects_unverified_spawn_correlation_without_retiring_owner' (12744095) panicked at crates/daemon/src/http/native_tests.rs:213:5:
+thread 'registration::tests::native_saved_resume_cannot_borrow_unrelated_spawn_intent' (12749098) panicked at crates/daemon/src/registration.rs:1647:9:
+
+rust-live-ranking (exit 101)
+thread 'http::native_tests::native_session_live_address_outranks_two_newer_tombstones' (12753421) panicked at crates/daemon/src/http/native_tests.rs:213:5:
+
+rust-incarnation-ranking (exit 101)
+thread 'http::native_tests::native_session_all_tombstones_resume_newest_process_not_first_id' (12757982) panicked at crates/daemon/src/http/native_tests.rs:213:5:
+
+rust-adopt-discriminator (exit 101)
+thread 'http::identity::tests::adopt_registration_retryable_error_preserves_conflict_discriminator' (12762311) panicked at crates/daemon/src/http/identity.rs:668:9:
+
+js-live-ambiguity (exit 1)
+✖ two live native addresses remain retryable despite tombstoned history (0.288041ms)
+✖ native session resolution precedes stale pane metadata and duplicate process candidates (0.149458ms)
+✖ two live same-session addresses cannot hide behind an exact process or verified prebind (0.09ms)
+
+js-live-ranking (exit 1)
+✖ live native address outranks newer tombstones in adversarial alphabetical order (0.482375ms)
+
+js-incarnation-ranking (exit 1)
+✖ all-tombstoned native addresses select newest process with missing starts last and id tie break (0.462292ms)
+
+js-id-tie (exit 1)
+✖ all-tombstoned native addresses select newest process with missing starts last and id tie break (0.483167ms)
+
+js-requested-id (exit 1)
+✖ manual identity requests daemon allocation; exact process rollover supersedes predecessor (0.606625ms)
+✖ saved native session alone cannot corroborate a wrong requested id with matching spawn (0.103541ms)
+✖ same-session nomination cannot corroborate an unrelated requested identity (0.06275ms)
+✖ exact native process cannot corroborate an incorrect requested id (0.066583ms)
+
+js-spawn-correlation (exit 1)
+✖ spawn binding requires exact process, pane and correlation (0.301625ms)
+✖ same-process A to B to A restores the retired native address and accepted journal (19.704708ms)
+✖ correct requested id cannot corroborate an incorrect spawn correlation (0.225375ms)
+
+js-successor-correlation (exit 1)
+✖ same-process native successor reload corroborates immutable launch id by spawn correlation (0.092916ms)
+✖ spawned native rollover preserves correlation across extension reload (0.094083ms)
+
+js-prebind-tombstone (exit 1)
+✖ spawn prebind cannot bypass ownership for tombstoned allocation (0.290583ms)
+
+js-prebind-pane (exit 1)
+✖ spawn prebind cannot bypass ownership for different pane (0.301125ms)
+
+js-prebind-process (exit 1)
+✖ spawn prebind cannot bypass ownership for bound process (0.286541ms)
+
+js-prebind-harness (exit 1)
+✖ spawn prebind cannot bypass ownership for foreign harness (0.290083ms)
+
+js-candidate-harness (exit 1)
+✖ foreign harness cannot nominate a native session or yield its occupied pane (0.447584ms)
 ```
 
-Final live **passed**, native session `f010da4e-09a9-4270-8ee2-eb3f8b43ae63`, daemon `127.0.0.1:52395`, private tmux socket `pij-149-fad09fae-a502-4a62-a690-486f2a0065d5`:
+Retirement predicates are **one-directional brakes**: removing them can broaden eligible retirement. Native identity ranking and explicit spawn precedence are **policies**: removing them changes which address wins. No operation deletes mail or kills an incumbent process/pane.
 
-| Leg | Seat id | Pane | Host pid | Message id | Job id |
-|---|---|---|---|---|---|
-| spawn | pij-better-ifechi | %1 | 84354 | — |  |
-| same-window | pij-better-ifechi | %1 | 87580 | 6637af55-7a65-4045-933c-370bdf6db389 | 1 |
-| new-window | pij-better-ifechi | %2 | 88468 | 25a11faf-e2ad-4bdd-a1de-ebe6ab46ee07 | 2 |
+## AC1–AC7 and final native runtime
 
-Both gap messages have native-history arrival and `reader-read` acknowledgements; state readbacks contain the new process and null tombstone fields. New-window proof retires the exited seat using canonical self-close after a dry-run reaper proves dead process + absent pane; this exercises tombstone revival without depending on sweep cadence. Captured receipts include old/new tuple, job payload/state, native terminal and daemon output. Same-window stays in the same pane; new-window uses a different pane.
-
-**Evidence grade:** actual installed Copilot CLI and its SDK extension, real OS processes, real daemon HTTP and SQLite, real tmux. Provider responses are a deterministic local fixture, not a remote-model/provider claim. AC7 does not require model reasoning. Initial warmup writes a real native user turn so Copilot persists the session before `/exit`.
-
-## Operational risks and harness feedback
-
-- Existing ambiguous duplicate rows remain a typed retryable refusal rather than guessing which address owns queued work. This change prevents new duplication; it does not merge historical ids or move their queues. Operator reconciliation of already-duplicated production conversations is separate, destructive work.
-- Native session claims are trusted within the existing machine bearer/verified executable+process boundary; this does not introduce per-seat cryptographic authentication.
-- Registry persistence and the additional resume notification use existing registry/event-bus patterns; the registry `seat.put` is authoritative. The new descriptive event is not a second identity store.
-- Encoded improvement: retained focused same-window/new-window+tombstone scenario, with persisted native warmup and queue/ACK assertions. The old large native smoke only covered a dead-host new-window leg and could pass without touching tombstones.
-- Harness observation `DL-001` / fingerprint `f21ccd4d854b` captures this proof gap. Worktree dependency boot was repaired with `just worktree-deps` (358 local links), never touching main dependencies. No changelog exists in this checkout; API documentation is updated instead.
-
-## Spawn/session composition edge
-
-The first implementation passed the daemon prebind test but JS rejected a fresh verified spawn correlation when the saved session carried an older spawn id. A throwaway real-module probe reproduced that refusal before the correction ([red-prebind.log](red-prebind.log)). The boundary now keeps the saved address/parent, carries the newly corroborated spawn correlation, and the daemon discovers and retires that exact unbound prebind while retaining its queue. The new correlation is stored on the resumed incarnation so a repeated registration remains valid after the prebind retires; the HTTP regression checks the repeated response is `binding:same`. The probe then passed ([green-prebind.log](green-prebind.log)).
-
-Retirement checks are **brakes**, not age-based retention policy: removing the verified prebind/spawn or same-host predecessor conditions could only broaden retirement. Retirement changes registry rows only; it neither deletes queued work nor terminates a process/pane. Native session matching is the identity policy.
-
-The final nomination check also found that stale pane metadata was examined before session identity. The real-module probe failed before the ordering fix ([red-pane.log](red-pane.log)) and then passed ([green-pane.log](green-pane.log)); the regression also ensures duplicate same-session/process candidates remain retryable. The daemon still verifies the claimed pane ancestry.
-
-Live resume events on the final artifact: `10` (`pij-better-ifechi`), `17` (`pij-better-ifechi`). Binary and file SHA-256 provenance: [artifact-provenance.json](artifact-provenance.json).
-
-## Gate evidence
-
-Implementation commit: **`7f9e1cb2e88adc00c4b570683be7d649d34a78eb`**. The completion SHA includes this source commit and a subsequent evidence-only commit. All source hashes and the exercised binary hash are in [artifact-provenance.json](artifact-provenance.json).
-
-| Gate | Actual result |
+| AC | Final evidence |
 |---|---|
-| `/Users/jordanknight/.cargo/bin/cargo test --workspace` | exit 0; 1079 passed across 85 suites; `RUST_TEST_THREADS=1` in final run, no test-selection filter |
-| `/Users/jordanknight/.cargo/bin/cargo fmt --all --check` | exit 0; empty output |
-| `/Users/jordanknight/.cargo/bin/cargo clippy --workspace --all-targets -- -D warnings` | exit 0 |
-| `/Users/jordanknight/.cargo/bin/cargo build -p pij-cli --bin pij-rs` | exit 0; final live scenario exercised this binary |
-| `node --test .copilot/extensions/pij/*.test.mjs` | exit 0; 181 tests, 178 passed, 3 platform skips, zero failed |
-| `just self-check` | exit 0; 241 Vitest files passed, 4 skipped; 5306 tests passed, 22 skipped; native JS, Windows-compatible focused tests, all 11 smoke scenarios, report-only audit, snapshots, attribution all executed |
-| bare `node_modules/.bin/biome check` | direct `$?` captured as `BIOME_EXIT=0`; 540 files checked; no fixes; one pre-existing schema-version info notice |
+| AC1 | Tombstone revival, stable id and exact `seat.native-resumed` payload test; historical duplicate HTTP fixtures; four production-copy sessions above |
+| AC2 | `native_session_fast_restart_does_not_consult_old_process`; real extension typed-retry test; live-only ambiguity/no mutation; deterministic owner-drift interleaving |
+| AC3 | `native_session_resume_preserves_queued_mail`; both prebind/saved queue tests; final live reader ACKs below |
+| AC4 | `native_session_resume_preserves_parent_role_and_telegram_binding`; explicit-spawn exception retains allocated parent/coder role and saved address's original bindings |
+| AC5 | Reachable distinct-session, harness, relay, process/pane and spawn ownership refusals; synthetic foreign-provenance guard only |
+| AC6 | Real `/v1/state` new `pid`/`procStart` and cleared `tombstonedAt`/`tombstoneReason`; unchanged v2 envelopes except typed retry; updated API |
+| AC7 | Real installed Copilot CLI, actual native extension, daemon/HTTP/SQLite, private tmux and deterministic local provider; final receipt [live-green-release.json](live-green-release.json) |
 
-Final full project gate environment: inherited PATH preserved with Cargo added; `VITEST_MAX_WORKERS=1`. Every sensor/test runs: this changes concurrency, not coverage. Earlier concurrent runs had varying real-process observation refusals; a first ad-hoc PATH override also hid installed `/usr/local/bin/pwsh`, corrected by preserving inherited PATH. The first cold Pi smoke waited on extension package cloning and failed the 30-second idle window; `just smoke` then passed alone, and the full final `just self-check` passed including smoke. Harness observation **DL-002** records the concurrency/boot friction. The installed Vitest 4.1.10 supports this worker environment variable; the old configuration comment saying otherwise is stale.
+Final binary SHA256: `0aa87ed15b8707808b1dc249feabb2d44a6263927598f273bf4f744cfa8e20c0`. Final native session: `9048a6f8-0833-41b0-8a8f-c337d9891271`. Daemon: `127.0.0.1:63383`; socket: `pij-149-1f37b103-bd56-4067-ad6c-989eb818379b`. Initial id `pij-tory-pig`, pid95476, pane`%1`.
 
-Full receipts: [gate-rust.log](gate-rust.log), [gate-native-js.log](gate-native-js.log), [gate-self-check.log](gate-self-check.log), [gate-biome.log](gate-biome.log).
+Command: `node_modules/.bin/tsx docs/plans/149-native-session-identity/native-resume-live.ts /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-round2-mi4r7sn_/live-green-final-artifact.json` — **exit0**.
 
-Compiled gates tail:
+| Leg | Stable address | Pane | New host pid | Original job / message | ACK |
+|---|---|---|---:|---|---|
+| same-window | `pij-tory-pig` | `%1` | 99994 | 1 / `9f8bb980-380b-48b2-bcf8-97ead76f2e6c` | reader-read |
+| new-window | `pij-tory-pig` | `%2` | 2137 | 2 / `e34f73da-4902-4177-adc4-b410029e70cc` | reader-read |
 
-```text
-running 0 tests
+Both jobs changed `pending`→`done`; actual native arrival and `reader-read` ACK were observed. New process and cleared tombstones were asserted via real `/v1/state`. Resume events were spine seq10 and17. Warmup persisted the native conversation before exit. New-window leg used canonical self-close after dry-run reap proved the owned pane absent; this proves deterministic tombstone revival, not automatic death-sweep timing. No remote inference claim. Original pre-feature live RED remains [live-red-final.json](live-red-final.json).
 
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+## Final gates
 
-    Checking pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-native-identity/crates/daemon)
-    Checking pij-cli v0.1.0 (/Users/jordanknight/pi-hacking/fs3-native-identity/crates/cli)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.40s
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.39s
-```
+All listed commands exited0. Inherited PATH preserved with Cargo prefixed; `RUST_TEST_THREADS=1`, `VITEST_MAX_WORKERS=1` change concurrency, not test selection.
 
-Native JS tail:
+| Command | Observed result |
+|---|---|
+| `cargo test --workspace` | 1088 passed,85 suites,8 ignored |
+| `cargo fmt --all --check` | clean, no output |
+| `cargo clippy --workspace --all-targets -- -D warnings` | zero warnings |
+| `cargo build -p pij-cli --bin pij-rs` | final exercised binary built |
+| `node --test .copilot/extensions/pij/*.test.mjs` |197 tests:194 passed,3 platform skips,0 failures |
+| `just self-check` |241 Vitest files passed,4 skipped;5306 passed,22 skipped; native tests,84 portable Windows tests, all11 smoke scenarios, report-only audit, snapshots and attribution all executed |
+| bare `node_modules/.bin/biome check` then `$?` | `BIOME_EXIT=0`;540 files;1 pre-existing schema-version info |
 
-```text
-✔ invalid semantic consent or native proof holds receiving without hiding outgoing (2.696375ms)
-ℹ tests 181
-ℹ suites 0
-ℹ pass 178
-ℹ fail 0
-ℹ cancelled 0
-ℹ skipped 3
-ℹ todo 0
-ℹ duration_ms 8351.727958
-```
-
-Self-check tail:
+Receipts: [gate-rust.log](gate-rust.log), [gate-native-js.log](gate-native-js.log), [gate-self-check.log](gate-self-check.log), [gate-biome.log](gate-biome.log). Closing canonical gate evidence:
 
 ```text
-
-⚠ REVIEW (report-only, not blocking): 1/4 entry flagged — aggregate fail
-  • git:github.com/ghoseb/pi-askuserquestion: fail (4 fail, 13 warn) — keep, or: npm run pkg disable git:github.com/ghoseb/pi-askuserquestion
-just snapshots-check
-npm run snapshots:check
-
-> pij@0.1.0 snapshots:check
-> tsx harness/scripts/snapshot-check.ts
-
 ✓ snapshot-check: briefing.md SHA matches snapshots (cdf5f5b25001...)
-just pij-commit-trailers
-node_modules/.bin/tsx harness/scripts/pij-commit-trailers.ts "$@"
-pij-commit-trailers: warn — 0 missing across 1 harness commit(s) since merge-base with main
-86855c61dc26551ac7339de61883c067433b9982: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime
+pij-commit-trailers: warn — 0 missing across 3 harness commit(s) since merge-base with main
 Advisory only: add derived trailers after a blank line alongside harness attribution; do not rewrite shared history automatically.
 ```
 
-## Report-and-continue audit findings
+Initial Clippy caught the adopt test module before production items; it was moved intact to file end and the full Rust gates rerun. Initial project gate failed only in unrelated flow-pair Git-fixture teardown (`ENOTEMPTY`,5305 other tests passed); retained `.git` contained only `ai/logs` and `ai/working_logs`. The fixture now reuses existing `removeTemporaryTree` with3 bounded native retries, still failing persistent cleanup errors. Its6 tests plus the helper's2 tests passed; then the complete canonical gate passed. No assertion, filter, hook or failure was suppressed. This is the only extra source path: `skills/flow-pair/test/identity.test.ts`. Failure tail: [red-round2-fixture-cleanup.log](red-round2-fixture-cleanup.log).
 
-The green exit does **not** mean every third-party package is safe. The unchanged manifest entry `git:github.com/ghoseb/pi-askuserquestion` reports **aggregate fail (score 58), 4 fail / 13 warn**: disallowed Microsoft-feed lockfile hosts; critical Vitest/coverage-istanbul findings; high nanoid and undici findings; moderate pi-coding-agent / Vitest mocker findings; no detected license. Full rule-level findings are retained in `gate-self-check.log`. Policy is report-and-continue: no package was removed or accepted on the user's behalf. Operator choice remains keep, or `npm run pkg disable git:github.com/ghoseb/pi-askuserquestion`.
+## Operational risks and closeout
 
-Attribution audit also flags only the pre-existing plan commit `86855c61dc26551ac7339de61883c067433b9982` as having unresolved Pij-Seat applicability, with **0 missing** trailers. No shared history was rewritten. Both implementation/evidence commits use native `pij-rs commit-trailers` output at commit time.
+- **External exclusivity dependency:** Copilot's `inuse.<pid>.lock` must allow only one live host per session. Pij does not prove incumbent death. Violation can leave an old long-poll while the new tuple takes the address, temporarily allowing two receivers. Adding incumbent liveness would defeat AC2; documentation, not a new probe, is the accepted fix.
+- Bearer plus verified executable/process is the existing machine-trust boundary, not per-seat cryptographic authentication. SQLite clears foreign provenance at rest; the synthetic guard would refuse if it were ever stored.
+- Multiple **live** duplicate addresses still409 and require closing the unwanted live address; historical queues are not merged. Explicit spawning is an intentional identity-policy exception, not transparent saved-mail migration.
+- Registry `seat.put` remains authoritative; descriptive resume/supersession events use existing EventBus persistence patterns, not a second identity store.
+- Audit remains report-and-continue: unchanged `git:github.com/ghoseb/pi-askuserquestion` reports aggregate **fail,score58,4 fail/13 warn** (critical Vitest/coverage findings, high nanoid/undici, disallowed lockfile hosts, no detected license). Nothing was removed or accepted on the user's behalf; operator may keep or `npm run pkg disable git:github.com/ghoseb/pi-askuserquestion`. Attribution warns on the three earlier harness/packet commits with0 missing trailers; shared history was not rewritten.
 
-## Closeout
+Harness observations DL-001/DL-002 are harvested here: fresh-roster tests missed historical production population; Git instrumentation repopulated a temporary `.git` during teardown. Encoded improvements are adversarial historical-roster regressions and adoption of the existing bounded fixture-cleanup helper. Suggested next harness improvement: run the retained focused native lifecycle scenario in the opt-in native smoke recipe. No push, PR, merge, production restart or production acceptance run. **No accepted finding refused.**
 
-All ACs have concrete transition/guard evidence; ambiguity of historically duplicated production ids remains explicitly unmerged. No push, PR, merge or production restart. Friction is harvested here from DL-001/DL-002; the focused native resume scenario is the encoded harness improvement. Next improvement offered to the parent: wire this focused scenario into the opt-in native smoke recipe so future lifecycle changes cannot miss same-window and tombstone revival coverage.
-
+One-off baseline/mutation/production-copy driver scripts were removed after evidence capture. Exact mutation patches and production request/response bodies remain in provenance; the permanent native lifecycle scenario remains executable.

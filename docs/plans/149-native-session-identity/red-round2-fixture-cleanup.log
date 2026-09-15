@@ -1,0 +1,63 @@
+COMMAND: just self-check (before fixture cleanup switched to existing removeTemporaryTree)
+EXIT: 1
+ROUND: 2; last60 output lines
+ ✓ .pi/extensions/pij/core/harness/copilot.test.ts (11 tests) 3ms
+ ✓ harness/scripts/vetters/aggregate.test.ts (8 tests) 3ms
+ ✓ .pi/extensions/pij/core/harness/badmodel.test.ts (16 tests) 3ms
+ ✓ .pi/extensions/pij/core/platform/dispatch.test.ts (3 tests) 2ms
+ ✓ .pi/extensions/pij/core/close.test.ts (15 tests) 2ms
+ ✓ .pi/extensions/pij/core/bind-health.test.ts (10 tests) 3ms
+ ✓ .pi/extensions/pij/core/context/gauge.test.ts (13 tests) 3ms
+ ✓ .pi/extensions/pij/core/receipts.test.ts (10 tests) 2ms
+stderr | harness/scripts/vetters/override-scope.test.ts > parseOverrides (FX001-1) > parses legacy free-text strings as { rules: [], reason: <text> } (fail-safe — accepts nothing)
+⚠ deprecated: vetted.overrides as a plain string accepts no rules; migrate to { rules: [<rule-slug>], reason: <text> }
+
+ ✓ harness/scripts/vetters/override-scope.test.ts (10 tests) 3ms
+ ✓ .pi/extensions/pij/core/events.test.ts (10 tests) 3ms
+ ✓ .pi/extensions/pij/adapters/tmux-keys.test.ts (11 tests) 2ms
+ ✓ .pi/extensions/pij/core/platform/allocation.test.ts (4 tests) 2ms
+ ✓ .pi/extensions/pij/core/commands.test.ts (6 tests) 3ms
+ ✓ .pi/extensions/pij/core/context/window.test.ts (8 tests) 2ms
+ ✓ .pi/extensions/minih-workbench/feed.test.ts (3 tests) 2ms
+ ✓ harness/scripts/vetters/audit-unmanifested.test.ts (5 tests) 2ms
+ ✓ .pi/extensions/pij/core/daemon/watchdog-scheduler-projection.test.ts (8 tests) 3ms
+ ✓ .pi/extensions/pij/core/orchestration/pa-target.test.ts (9 tests) 2ms
+ ✓ harness/scripts/vetters/resolve-path.test.ts (6 tests) 2ms
+ ✓ .pi/extensions/pij/core/daemon/source-staleness.test.ts (12 tests) 2ms
+ ✓ .pi/extensions/pij/core/harness/types.test.ts (11 tests) 3ms
+ ✓ harness/test-utils.test.ts (2 tests) 2ms
+ ✓ harness/scripts/vetters/npm-audit.test.ts (4 tests) 2ms
+ ✓ .pi/extensions/pij/core/daemon/process-staleness.test.ts (9 tests) 2ms
+ ✓ harness/scripts/vetters/scorecard.test.ts (7 tests) 2ms
+ ✓ .pi/extensions/pij/core/daemon/lock.test.ts (6 tests) 2ms
+ ✓ harness/scripts/snapshot-refresh.test.ts (7 tests) 2ms
+ ✓ harness/scripts/vetters/types.test.ts (9 tests) 2ms
+ ✓ skills/flow-pair/test/paths.test.ts (8 tests) 2ms
+ ✓ .pi/extensions/pij/core/models/match.test.ts (10 tests) 2ms
+ ✓ harness/scripts/cli-invocation.test.ts (3 tests) 2ms
+ ✓ .pi/extensions/pij/core/agents/paths.test.ts (7 tests) 2ms
+ ✓ harness/scripts/skill-link-policy.test.ts (3 tests) 2ms
+ ✓ .pi/extensions/pij/core/seat-label.test.ts (2 tests) 2ms
+ ✓ .pi/extensions/pij/core/invariant-guard.test.ts (2 tests) 2ms
+ ✓ .pi/extensions/pij/core/platform/fence.test.ts (3 tests) 2ms
+ ✓ .pi/extensions/pij/core/harness/pi.test.ts (3 tests) 1ms
+ ✓ .pi/extensions/pij/core/seq.test.ts (3 tests) 1ms
+ ↓ harness/driver.it.test.ts (2 tests | 2 skipped)
+ ↓ harness/scripts/vetters/agent.live.test.ts (2 tests | 2 skipped)
+ ↓ .pi/extensions/pij/core/agents/peer.live.test.ts (3 tests | 3 skipped)
+ ↓ .pi/extensions/pij/core/agents/adapters/adapters.live.test.ts (3 tests | 3 skipped)
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  skills/flow-pair/test/identity.test.ts > deriveRepoId > falls back to basename-hash when git has no remote
+Error: ENOTEMPTY: directory not empty, rmdir '/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/fp-test-BP1kEf/.git'
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 240 passed | 4 skipped (245)
+      Tests  1 failed | 5305 passed | 22 skipped (5328)
+   Start at  17:00:53
+   Duration  159.72s (transform 2.03s, setup 0ms, import 8.67s, tests 134.32s, environment 11ms)
+
+error: Recipe `test` failed on line 92 with exit code 1
+error: Recipe `self-check` failed on line 218 with exit code 1

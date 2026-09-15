@@ -1,3 +1,6 @@
+COMMAND: node --input-type=module (historical inline fixture; original fixture source not retained)
+EXIT: 1
+ROUND: 1 (historical); last 60 output lines
 file:///Users/jordanknight/pi-hacking/fs3-native-identity/.copilot/extensions/pij/store.mjs:95
 		throw new NativeError("Native process identity has conflicting seats or pane");
 		      ^
