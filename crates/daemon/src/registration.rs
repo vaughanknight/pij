@@ -286,24 +286,7 @@ impl RegistrationService {
             .list(SeatFilter::default())
             .await
             .map_err(RegistrationError::Runtime)?;
-        let prebind = seats
-            .iter()
-            .find(|seat| {
-                seat.harness == Harness::Copilot
-                    && !seat.relay
-                    && seat.tombstoned_at.is_none()
-                    && seat.proc.is_none()
-                    && seat.pane.is_some()
-                    && seat.pane == claim.pane
-                    && seat.spawn_id.as_deref().is_some_and(|spawn| {
-                        !spawn.is_empty() && claim.spawn_id.as_deref() == Some(spawn)
-                    })
-                    && seat
-                        .harness_session
-                        .as_deref()
-                        .is_none_or(|native| native == session)
-            })
-            .cloned();
+        let prebind = native_prebind(claim, session, &seats).cloned();
         let mut dead = Vec::new();
         for seat in seats {
             if seat.harness != Harness::Copilot
@@ -545,6 +528,10 @@ impl RegistrationService {
                 .filter(|seat| {
                     seat.harness == Harness::Copilot
                         && seat.harness_session.as_deref() == Some(session)
+                        && seat.tombstoned_at.is_none()
+                        && handoff
+                            .and_then(|proof| proof.prebind.as_ref())
+                            .is_none_or(|prebind| prebind.id != seat.id)
                 })
                 .count()
                 > 1
@@ -599,6 +586,22 @@ impl RegistrationService {
         }
         let claimed_id = SeatId::from(claim.id.clone());
         let existing = registration_target(&claim, native, harness_session.as_deref(), &seats);
+        // Explicit, verified spawn intent owns the new id and parent. Its saved
+        // conversation may be retired, but neither address's mail is moved.
+        let spawn_predecessor = handoff
+            .and_then(|proof| proof.prebind.as_ref())
+            .filter(|prebind| existing.is_some_and(|seat| seat.id == prebind.id))
+            .and_then(|prebind| {
+                seats.iter().find(|seat| {
+                    seat.id != prebind.id
+                        && seat.harness == Harness::Copilot
+                        && seat.harness_session == harness_session
+                        && seat.tombstoned_at.is_none()
+                        && seat.proc.is_some()
+                        && !seat.relay
+                        && seat.machine.is_none()
+                })
+            });
         // Native-only ownership is a harness invariant, not a live-process flag.
         // Relabeling a prebind or retired row would bypass inbox tuple checks.
         if existing.is_some_and(|seat| seat.harness == Harness::Copilot)
@@ -616,7 +619,7 @@ impl RegistrationService {
                 &seats,
                 existing,
                 dead_native,
-                handoff.and_then(|proof| proof.prebind.as_ref()),
+                spawn_predecessor,
             )?;
         } else if let Some(owner) = seats.iter().find(|seat| {
             seat.harness == Harness::Copilot
@@ -681,6 +684,7 @@ impl RegistrationService {
                     && (!native || seat.tombstoned_at.is_none())
                     && seat.id != claimed_id
                     && predecessor.as_ref().is_none_or(|prev| prev.id != seat.id)
+                    && spawn_predecessor.is_none_or(|previous| previous.id != seat.id)
             })
         });
         let bound = proc.is_some();
@@ -742,9 +746,7 @@ impl RegistrationService {
             descriptor.tombstoned_at = None;
             descriptor.tombstone_reason = None;
         }
-        if descriptor.spawn_id.is_none()
-            || (resuming && handoff.is_some_and(|proof| proof.prebind.is_some()))
-        {
+        if descriptor.spawn_id.is_none() {
             descriptor.spawn_id = claim.spawn_id;
         }
         if binds_spawned_incarnation && claim.actual_model_observed {
@@ -758,7 +760,7 @@ impl RegistrationService {
         if descriptor.effort.is_none() {
             descriptor.effort = claim.effort;
         }
-        if let Some(parent) = claim.parent.filter(|_| !resuming) {
+        if let Some(parent) = claim.parent.filter(|_| !native || existing.is_none()) {
             descriptor.parent = Some(parent);
         }
         descriptor.relay = claim.relay;
@@ -819,11 +821,12 @@ impl RegistrationService {
                 }
             }
         }
-        // Retire only a proven-dead native resource owner, never its queued work.
-        // Same-conversation resume updates its original address instead.
+        // Retirement authority is either an observed dead resource owner or
+        // explicit verified spawn intent for this same native conversation.
+        // The filters are brakes: removing them can only broaden retirement.
         for observed in dead_native
             .iter()
-            .chain(handoff.and_then(|proof| proof.prebind.as_ref()))
+            .chain(spawn_predecessor)
             .filter(|seat| seat.id != descriptor.id)
         {
             let mut retired = seats
@@ -841,6 +844,24 @@ impl RegistrationService {
                 .put(retired)
                 .await
                 .map_err(RegistrationError::Runtime)?;
+            if spawn_predecessor.is_some_and(|previous| previous.id == observed.id) {
+                self.event_bus
+                    .publish(Event {
+                        seq: None,
+                        v: wire::EVENT_VERSION,
+                        at: system_time_ms()?,
+                        kind: "seat.native-superseded".into(),
+                        seat: Some(observed.id.clone()),
+                        payload: serde_json::json!({
+                            "successor": descriptor.id,
+                            "spawn_id": descriptor.spawn_id,
+                            "reason": "native-spawn-prebind",
+                        })
+                        .to_string(),
+                    })
+                    .await
+                    .map_err(RegistrationError::Runtime)?;
+            }
         }
 
         if let Some(mut previous) = predecessor
@@ -965,19 +986,56 @@ fn paneless_target(
         .ok_or_else(|| paneless_refusal("memorable Pij ID space is exhausted"))
 }
 
+fn native_prebind<'a>(
+    claim: &Registration,
+    session: &str,
+    seats: &'a [SeatDescriptor],
+) -> Option<&'a SeatDescriptor> {
+    seats.iter().find(|seat| {
+        seat.harness == Harness::Copilot
+            && !seat.relay
+            && seat.tombstoned_at.is_none()
+            && seat.proc.is_none()
+            && seat.pane.is_some()
+            && seat.pane == claim.pane
+            && seat
+                .spawn_id
+                .as_deref()
+                .is_some_and(|spawn| !spawn.is_empty() && claim.spawn_id.as_deref() == Some(spawn))
+            && seat
+                .harness_session
+                .as_deref()
+                .is_none_or(|native| native == session)
+    })
+}
+
 fn registration_target<'a>(
     claim: &Registration,
     native: bool,
     session: Option<&str>,
     seats: &'a [SeatDescriptor],
 ) -> Option<&'a SeatDescriptor> {
-    if native
-        && let Some(session) = session
-        && let Some(seat) = seats.iter().find(|seat| {
-            seat.harness == Harness::Copilot && seat.harness_session.as_deref() == Some(session)
-        })
-    {
-        return Some(seat);
+    if native && let Some(session) = session {
+        if let Some(prebind) = native_prebind(claim, session, seats) {
+            return Some(prebind);
+        }
+        // Historical duplicates are not contenders. Prefer a live address, then
+        // the newest incarnation, with id only as a deterministic final tie.
+        if let Some(seat) = seats
+            .iter()
+            .filter(|seat| {
+                seat.harness == Harness::Copilot && seat.harness_session.as_deref() == Some(session)
+            })
+            .min_by_key(|seat| {
+                (
+                    seat.tombstoned_at.is_some(),
+                    std::cmp::Reverse(seat.proc.map(|proc| proc.proc_start)),
+                    &seat.id,
+                )
+            })
+        {
+            return Some(seat);
+        }
     }
     seats
         .iter()
@@ -1014,7 +1072,7 @@ fn check_native_roster(
     seats: &[SeatDescriptor],
     existing: Option<&SeatDescriptor>,
     dead_native: &[SeatDescriptor],
-    prebind: Option<&SeatDescriptor>,
+    spawn_predecessor: Option<&SeatDescriptor>,
 ) -> std::result::Result<(), RegistrationError> {
     let session = session.ok_or_else(|| native_refusal("requires a runtime native session"))?;
     let identity = identity.ok_or_else(|| native_refusal("requires a process identity"))?;
@@ -1088,7 +1146,6 @@ fn check_native_roster(
         && (spawn_id.is_empty()
             || existing
                 .filter(|seat| seat.spawn_id.as_deref() == Some(spawn_id))
-                .or(prebind)
                 .or(predecessor)
                 .and_then(|seat| seat.spawn_id.as_deref())
                 != Some(spawn_id))
@@ -1101,7 +1158,7 @@ fn check_native_roster(
         if existing.is_some_and(|existing| existing.id == seat.id)
             || predecessor.is_some_and(|previous| previous.id == seat.id)
             || dead_native.iter().any(|observed| observed.id == seat.id)
-            || prebind.is_some_and(|prebind| prebind.id == seat.id)
+            || spawn_predecessor.is_some_and(|previous| previous.id == seat.id)
         {
             continue;
         }
@@ -2644,6 +2701,112 @@ mod tests {
                 .0
                 .native_extension_delivery
         );
+    }
+
+    #[tokio::test]
+    async fn native_saved_resume_cannot_borrow_unrelated_spawn_intent() {
+        let mut saved = native_seat("pij-saved");
+        saved.proc = Some(OTHER_HOST);
+        saved.pane = None;
+        let mut unrelated = native_seat("pij-foreign-prebind");
+        unrelated.proc = None;
+        unrelated.pane = Some("%other-pane".into());
+        unrelated.harness_session = None;
+        unrelated.spawn_id = Some("unrelated-spawn".into());
+        unrelated.native_extension_delivery = false;
+        let (service, registry) =
+            native_service(vec![saved.clone(), unrelated.clone()], native_liveness()).await;
+        let before = registry.list(SeatFilter::default()).await.unwrap();
+        let mut claim = native_claim("");
+        claim.spawn_id = unrelated.spawn_id;
+        refused(attest(&service, claim, Some(SESSION), &native_tmux()).await);
+        assert_eq!(registry.list(SeatFilter::default()).await.unwrap(), before);
+    }
+
+    #[tokio::test]
+    async fn native_observed_owner_drift_returns_retryable_without_retirement() {
+        for change_prebind in [false, true] {
+            let old = native_seat("pij-observed-owner");
+            let mut prebind = native_seat("pij-observed-prebind");
+            prebind.proc = None;
+            prebind.harness_session = None;
+            prebind.native_extension_delivery = false;
+            prebind.spawn_id = Some("spawn-before-observation".into());
+            let liveness = Arc::new(PendingDeadOwner {
+                entered: Notify::new(),
+                release: Notify::new(),
+                fail: false,
+            });
+            let (service, registry) =
+                native_service(vec![old.clone(), prebind.clone()], liveness.clone()).await;
+            let mut claim = native_claim(prebind.id.as_str());
+            claim.pid = Some(OTHER_HOST.pid);
+            claim.proc_start = Some(OTHER_HOST.proc_start);
+            claim.spawn_id = prebind.spawn_id.clone();
+            let tmux = native_tmux();
+            let pending = attest(&service, claim, Some("next-session"), &tmux);
+            tokio::pin!(pending);
+            tokio::select! {
+                _ = liveness.entered.notified() => {}
+                result = &mut pending => panic!("death observation did not block: {result:?}"),
+            }
+            let mut changed = if change_prebind { prebind } else { old };
+            changed.spawn_id = Some("spawn-after-observation".into());
+            registry.put(changed).await.unwrap();
+            let before = registry.list(SeatFilter::default()).await.unwrap();
+            liveness.release.notify_one();
+            let result = pending.await;
+            assert!(
+                matches!(result, Err(RegistrationError::Retryable(_))),
+                "{result:?}"
+            );
+            assert_eq!(registry.list(SeatFilter::default()).await.unwrap(), before);
+        }
+    }
+
+    #[tokio::test]
+    async fn native_bootstrap_other_pane_refusal_identifies_conflicting_address() {
+        let mut saved = native_seat("pij-saved-session");
+        saved.proc = Some(OTHER_HOST);
+        saved.pane = None;
+        saved.tombstoned_at = Some(1);
+        let mut other_pane = native_seat("pij-bootstrap-other-pane");
+        other_pane.pane = Some("%other-pane".into());
+        other_pane.harness_session = Some("bootstrap".into());
+        let (service, registry) =
+            native_service(vec![saved.clone(), other_pane.clone()], native_liveness()).await;
+        let before = registry.list(SeatFilter::default()).await.unwrap();
+        let result = attest(&service, native_claim(""), Some(SESSION), &native_tmux()).await;
+        let Err(RegistrationError::Refused(reason)) = result else {
+            panic!("unrelated pane ownership must refuse: {result:?}");
+        };
+        // Report the address blocking admission, not an invented supersedes
+        // intent. This checks a dynamic identity, not fixed error prose.
+        assert!(reason.contains(other_pane.id.as_str()), "{reason}");
+        assert_eq!(registry.list(SeatFilter::default()).await.unwrap(), before);
+    }
+
+    #[tokio::test]
+    async fn native_historical_session_tie_uses_id_only_after_incarnation() {
+        let mut oldest = native_seat("pij-a-oldest");
+        oldest.tombstoned_at = Some(1);
+        let mut recent_z = oldest.clone();
+        recent_z.id = "pij-z-recent".into();
+        recent_z.proc.as_mut().unwrap().proc_start += 1;
+        let mut recent_y = recent_z.clone();
+        recent_y.id = "pij-y-recent".into();
+        let (service, registry) = native_service(
+            vec![recent_z.clone(), oldest.clone(), recent_y.clone()],
+            native_liveness(),
+        )
+        .await;
+        let resumed = attest(&service, native_claim(""), Some(SESSION), &native_tmux())
+            .await
+            .expect("historical duplicates do not compete");
+        assert_eq!(resumed.id, recent_y.id);
+        assert_eq!(resumed.tombstoned_at, None);
+        assert_eq!(registry.get(&oldest.id).await.unwrap(), Some(oldest));
+        assert_eq!(registry.get(&recent_z.id).await.unwrap(), Some(recent_z));
     }
 
     #[tokio::test]

@@ -3,10 +3,11 @@
 // Real tmp git fixtures per T001 task notes (no mocks).
 
 import { execSync } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { removeTemporaryTree } from "../../../harness/test-utils.js";
 import { deriveRepoId, type GitDeps } from "../lib/identity.js";
 
 describe("deriveRepoId", () => {
@@ -16,8 +17,8 @@ describe("deriveRepoId", () => {
 		tmpDir = await mkdtemp(join(tmpdir(), "fp-test-"));
 	});
 
-	afterEach(async () => {
-		await rm(tmpDir, { recursive: true, force: true });
+	afterEach(() => {
+		removeTemporaryTree(tmpDir);
 	});
 
 	it("derives host-owner-repo from HTTPS remote", () => {

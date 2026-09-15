@@ -81,21 +81,32 @@ export function chooseRegistration({ sessionId, host, folder, seats, env }) {
 	const requestedSpawn = env.PIJ_SPAWN_ID?.trim();
 	const prebind =
 		requestedId && requestedSpawn && host.pane
-			? live.find(
+			? seats.find(
 					(seat) =>
 						seat.id === requestedId &&
 						seat.harness === "copilot" &&
+						!seat.relay &&
+						seat.tombstoned_at == null &&
 						seat.proc == null &&
+						(seat.session == null || seat.session === sessionId) &&
 						samePane(seat, host) &&
 						seat.spawn_id === requestedSpawn,
 				)
 			: undefined;
-	const candidates = seats.filter((seat) => nativeSession(seat) && seat.session === sessionId);
-	if (candidates.length > 1)
+	const candidates = seats.filter(
+		(seat) => seat !== prebind && seat.harness === "copilot" && seat.session === sessionId,
+	);
+	if (candidates.filter((seat) => seat.tombstoned_at == null).length > 1)
 		throw new NativeError(
 			"Native session has multiple candidate Pij addresses; refreshing roster",
 			true,
 		);
+	candidates.sort(
+		(a, b) =>
+			Number(a.tombstoned_at != null) - Number(b.tombstoned_at != null) ||
+			(b.proc?.proc_start ?? -Infinity) - (a.proc?.proc_start ?? -Infinity) ||
+			(a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+	);
 	const exact = live.filter((seat) => sameProcess(seat, host));
 	if (
 		exact.length > 1 ||
@@ -116,22 +127,23 @@ export function chooseRegistration({ sessionId, host, folder, seats, env }) {
 		)
 	)
 		throw new NativeError("Pane belongs to a different process identity");
-	// Session nominates the durable address; only the daemon authorizes the new incarnation.
-	const prior = candidates[0] ?? exact[0] ?? prebind;
+	// A verified spawn allocation owns its id and parent; otherwise the session owns the address.
+	const prior = prebind ?? candidates[0] ?? exact[0];
+	// A same-process session rollover keeps its original launch environment on extension reload.
 	const correlatedSuccessor =
 		prior?.native_extension_delivery === true &&
 		requestedSpawn &&
 		prior.spawn_id === requestedSpawn &&
-		(sameProcess(prior, host) || prior.session === sessionId);
-	if (requestedId && (!prior || prior.id !== requestedId) && !correlatedSuccessor && !prebind)
+		sameProcess(prior, host);
+	if (requestedId && (!prior || prior.id !== requestedId) && !correlatedSuccessor)
 		throw new NativeError("Spawn prebind identity is not corroborated by the host process", !prior);
-	if (requestedSpawn && (!prior || prior.spawn_id !== requestedSpawn) && !prebind)
+	if (requestedSpawn && (!prior || prior.spawn_id !== requestedSpawn))
 		throw new NativeError("Spawn correlation does not match observed process identity");
 	const replacing = prior && nonempty(prior.session) && prior.session !== sessionId;
 	// New identities are allocated by the daemon's normal memorable-name allocator.
 	// Existing addresses, including older hash names, remain stable on resume.
 	const id = !replacing && prior ? prior.id : "";
-	const spawnId = prebind?.spawn_id ?? prior?.spawn_id;
+	const spawnId = prior?.spawn_id;
 	return Object.freeze({
 		id,
 		harness: "copilot",

@@ -100,6 +100,8 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			seats = [],
 			remoteSeats = [],
 			pane,
+			requestedId,
+			requestedSpawn,
 			rosters = [],
 			dropRegistrations = 0,
 			registerResponses = [],
@@ -146,6 +148,8 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 						session: body.harness_session,
 						folder: body.folder,
 						pane: body.pane ?? null,
+						parent: body.parent ?? null,
+						spawn_id: body.spawn_id ?? null,
 						proc: { pid: body.pid, proc_start: body.proc_start },
 						native_extension_delivery: true,
 						typing_grace_ms: 60000,
@@ -254,6 +258,8 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		for (const name of ["TMUX", "TMUX_PANE", "PIJ_SESSION_ID", "PIJ_SPAWN_ID", "PIJ_PARENT_ID"])
 			delete env[name];
 		if (pane !== undefined) env.TMUX_PANE = pane;
+		if (requestedId !== undefined) env.PIJ_SESSION_ID = requestedId;
+		if (requestedSpawn !== undefined) env.PIJ_SPAWN_ID = requestedSpawn;
 		const child = spawn(
 			process.execPath,
 			[
@@ -528,7 +534,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		});
 	}
 
-	test("ambiguous native roster refreshes without selecting until unique", async (t) => {
+	test("two-live native ambiguity refreshes until one live address remains beside tombstoned history", async (t) => {
 		const candidate = {
 			id: "pij-cold-candidate",
 			harness: "copilot",
@@ -537,7 +543,12 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			native_extension_delivery: true,
 		};
 		const ambiguous = [candidate, { ...candidate, id: "pij-other-candidate" }];
-		const f = await launch(t, { rosters: [ambiguous, ambiguous, [candidate]] });
+		const resolved = [
+			{ ...candidate, id: "pij-a-retired", tombstoned_at: 1 },
+			{ ...candidate, id: "pij-b-retired", tombstoned_at: 2 },
+			candidate,
+		];
+		const f = await launch(t, { rosters: [ambiguous, ambiguous, resolved] });
 		await f.waitFor("native-log");
 		assert.equal(f.requests.filter((r) => r.path === "/v1/register").length, 0);
 		assert.equal(f.events.filter((e) => e.kind === "native-send").length, 0);
@@ -546,6 +557,50 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		assert.equal(f.requests.filter((r) => r.path === "/v1/register").length, 1);
 		assert.equal(f.requests.find((r) => r.path === "/v1/register").body.id, candidate.id);
 		assert.equal(f.events.filter((e) => e.kind === "native-log").length, 1);
+		assert.equal(f.requests.find((r) => r.path === "/v1/inbox/ack").body.seat, candidate.id);
+		const exited = once(f.child, "exit");
+		f.child.stdin.end();
+		assert.equal((await exited)[0], 0);
+		assert.equal(f.stdout(), "");
+	});
+
+	test("spawned extension consumes and sends under allocated id and parent instead of saved session", async (t) => {
+		const saved = {
+			id: "pij-saved-session",
+			harness: "copilot",
+			session: "native-shell-137",
+			pane: "%1",
+			proc: { pid: process.pid + 1, proc_start: 20260905115900 },
+			spawn_id: "saved-spawn",
+			parent: "pij-saved-parent",
+			native_extension_delivery: true,
+		};
+		const prebind = {
+			id: "pij-allocated-child",
+			harness: "copilot",
+			session: null,
+			proc: null,
+			pane: "%2",
+			spawn_id: "allocated-spawn",
+			parent: "pij-allocated-parent",
+			native_extension_delivery: false,
+		};
+		const f = await launch(t, {
+			seats: [saved, prebind],
+			pane: prebind.pane,
+			requestedId: prebind.id,
+			requestedSpawn: prebind.spawn_id,
+		});
+		await f.waitFor("completion-wait");
+		const registered = f.requests.find((r) => r.path === "/v1/register").body;
+		assert.equal(registered.id, prebind.id);
+		assert.equal(registered.parent, prebind.parent);
+		assert.equal(registered.spawn_id, prebind.spawn_id);
+		assert.equal(f.requests.find((r) => r.path === "/v1/inbox/ack").body.seat, prebind.id);
+		assert.match(f.events.find((e) => e.kind === "native-send").input.prompt, /shell-137/);
+		f.child.stdin.write(`${JSON.stringify({ to: "pij-peer", message: "SPAWNED_CHILD_REPLY" })}\n`);
+		assert.equal((await f.waitFor("tool-result")).result.ok, true);
+		assert.equal(f.requests.find((r) => r.path === "/v1/send").body.from, prebind.id);
 		const exited = once(f.child, "exit");
 		f.child.stdin.end();
 		assert.equal((await exited)[0], 0);

@@ -1357,38 +1357,99 @@ for (const [label, change] of [
 	});
 }
 
-test("ambiguous native addresses and unverified native claims do not authorize resume", () => {
+test("two live native addresses remain retryable despite tombstoned history", () => {
+	const seats = [
+		{ ...descriptor, id: "pij-history", tombstoned_at: 1 },
+		descriptor,
+		{ ...descriptor, id: "pij-second-live", state: "dead" },
+	];
+	assert.throws(
+		() =>
+			chooseRegistration({
+				sessionId: descriptor.session,
+				host: { ...descriptor.proc, pid: 999 },
+				folder: "/work",
+				env: {},
+				seats,
+			}),
+		(error) => /multiple candidate/.test(error.message) && error.retryable === true,
+	);
+});
+
+test("live native address outranks newer tombstones in adversarial alphabetical order", () => {
+	const live = { ...descriptor, id: "pij-z-live", parent: "pij-live-parent" };
+	const selected = chooseRegistration({
+		sessionId: descriptor.session,
+		host: { pid: 999, proc_start: descriptor.proc.proc_start + 300, pane: "%new" },
+		folder: "/resumed",
+		env: {},
+		seats: [
+			{
+				...descriptor,
+				id: "pij-a-retired",
+				proc: { ...descriptor.proc, proc_start: descriptor.proc.proc_start + 200 },
+				tombstoned_at: 2,
+			},
+			{ ...descriptor, id: "pij-b-retired", tombstoned_at: 1 },
+			live,
+		],
+	});
+	assert.equal(selected.id, live.id);
+	assert.equal(selected.parent, live.parent);
+	assert.equal(selected.supersedes, undefined);
+});
+
+test("all-tombstoned native addresses select newest process with missing starts last and id tie break", () => {
+	const retired = { ...descriptor, tombstoned_at: 1, native_extension_delivery: false };
+	const newest = {
+		...retired,
+		id: "pij-y-newest",
+		proc: { ...descriptor.proc, proc_start: descriptor.proc.proc_start + 100 },
+	};
+	const seats = [
+		{ ...retired, id: "pij-a-missing", proc: null },
+		{ ...retired, id: "pij-b-older" },
+		{ ...newest, id: "pij-z-tied" },
+		newest,
+	];
+	for (const roster of [seats, [...seats].reverse()]) {
+		const selected = chooseRegistration({
+			sessionId: descriptor.session,
+			host: { pid: 999, proc_start: descriptor.proc.proc_start + 200 },
+			folder: "/resumed",
+			env: {},
+			seats: roster,
+		});
+		assert.equal(selected.id, newest.id);
+		assert.equal(selected.supersedes, undefined);
+	}
+});
+
+test("same-session nomination leaves missing historical process verification to the daemon", () => {
+	const selected = chooseRegistration({
+		sessionId: descriptor.session,
+		host: { pid: 999, proc_start: descriptor.proc.proc_start + 100 },
+		folder: "/resumed",
+		env: {},
+		seats: [{ ...descriptor, proc: null, tombstoned_at: 1 }],
+	});
+	assert.equal(selected.id, descriptor.id);
+	assert.equal(selected.supersedes, undefined);
+});
+
+test("foreign harness cannot nominate a native session or yield its occupied pane", () => {
 	const input = {
 		sessionId: descriptor.session,
 		host: { ...descriptor.proc, pid: 999 },
 		folder: "/work",
 		env: {},
+		seats: [{ ...descriptor, harness: "pi" }],
 	};
+	assert.equal(chooseRegistration(input).id, "");
 	assert.throws(
-		() =>
-			chooseRegistration({ ...input, seats: [descriptor, { ...descriptor, id: "other-address" }] }),
-		(error) => /multiple candidate/.test(error.message) && error.retryable === true,
+		() => chooseRegistration({ ...input, host: { ...input.host, pane: descriptor.pane } }),
+		/Pane belongs/,
 	);
-	for (const change of [
-		{ proc: null },
-		{ proc: { pid: descriptor.proc.pid } },
-		{ proc: { proc_start: descriptor.proc.proc_start } },
-		{ harness: "pi" },
-	]) {
-		assert.notEqual(
-			chooseRegistration({ ...input, seats: [{ ...descriptor, ...change }] }).id,
-			descriptor.id,
-		);
-		assert.throws(
-			() =>
-				chooseRegistration({
-					...input,
-					host: { ...input.host, pane: descriptor.pane },
-					seats: [{ ...descriptor, ...change }],
-				}),
-			/Pane belongs/,
-		);
-	}
 });
 
 test("same-process A to B to A restores the retired native address and accepted journal", async (t) => {
@@ -1507,12 +1568,13 @@ test("fresh native conversation nominates new address without retiring old pane 
 	}
 });
 
-test("same-session address precedes spawn preallocation and retains correlated parent", () => {
+test("verified spawn allocation retains its id and parent over a correlated session address", () => {
 	const host = { ...descriptor.proc, pid: 999, pane: descriptor.pane };
 	const candidate = { ...descriptor, spawn_id: "spawn-137", parent: "pij-parent" };
 	const prebind = {
 		...candidate,
 		id: "pij-preallocated",
+		parent: "pij-allocated-parent",
 		session: null,
 		proc: null,
 		native_extension_delivery: false,
@@ -1527,20 +1589,14 @@ test("same-session address precedes spawn preallocation and retains correlated p
 		...input,
 		env: { PIJ_SESSION_ID: prebind.id, PIJ_SPAWN_ID: candidate.spawn_id },
 	});
-	assert.equal(selected.id, candidate.id);
+	assert.equal(selected.id, prebind.id);
 	assert.equal(selected.supersedes, undefined);
-	assert.equal(selected.parent, candidate.parent);
-	const resumed = chooseRegistration({
-		...input,
-		seats: [candidate],
-		env: { PIJ_SESSION_ID: "old-spawn-address", PIJ_SPAWN_ID: candidate.spawn_id },
-	});
-	assert.equal(resumed.id, candidate.id);
-	assert.equal(resumed.spawn_id, candidate.spawn_id);
-	assert.equal(resumed.parent, candidate.parent);
+	assert.equal(selected.parent, prebind.parent);
 });
 
-test("fresh verified spawn correlation resumes a saved session without replacing its parent", () => {
+test("fresh verified spawn keeps its allocated identity and journal separate from the saved session", async (t) => {
+	const home = await mkdtemp(join(tmpdir(), "pij-native-prebind-"));
+	t.after(() => rm(home, { recursive: true, force: true }));
 	const saved = {
 		...descriptor,
 		pane: "%old",
@@ -1557,6 +1613,10 @@ test("fresh verified spawn correlation resumes a saved session without replacing
 		parent: "pij-new-parent",
 		native_extension_delivery: false,
 	};
+	const savedJournal = new FileJournal(home, { ...registration, id: saved.id });
+	const savedMessage = { ...claim.message, to: saved.id };
+	assert.equal(await savedJournal.begin(savedMessage), true);
+	await savedJournal.accept(savedMessage, "saved-acceptance");
 	const selected = chooseRegistration({
 		sessionId: saved.session,
 		host: { pid: 999, proc_start: 200, pane: prebind.pane },
@@ -1564,9 +1624,101 @@ test("fresh verified spawn correlation resumes a saved session without replacing
 		seats: [saved, prebind],
 		env: { PIJ_SESSION_ID: prebind.id, PIJ_SPAWN_ID: prebind.spawn_id },
 	});
-	assert.equal(selected.id, saved.id);
+	assert.equal(selected.id, prebind.id);
 	assert.equal(selected.spawn_id, prebind.spawn_id);
-	assert.equal(selected.parent, saved.parent);
+	assert.equal(selected.parent, prebind.parent);
+	assert.equal(selected.supersedes, undefined);
+	const spawnedJournal = new FileJournal(home, selected);
+	assert.equal(await spawnedJournal.load(savedMessage.msg_id), undefined);
+	const spawnedMessage = { ...savedMessage, to: prebind.id };
+	assert.equal(await spawnedJournal.begin(spawnedMessage), true);
+	await spawnedJournal.accept(spawnedMessage, "spawned-acceptance");
+	assert.equal((await savedJournal.load(savedMessage.msg_id)).nativeId, "saved-acceptance");
+	assert.equal((await spawnedJournal.load(spawnedMessage.msg_id)).nativeId, "spawned-acceptance");
+});
+
+test("verified spawn with a compatible saved session retains the allocated parent", () => {
+	const saved = { ...descriptor, parent: "pij-saved-parent" };
+	const prebind = {
+		...saved,
+		id: "pij-preallocated",
+		proc: null,
+		spawn_id: "spawn-137",
+		parent: "pij-allocated-parent",
+		native_extension_delivery: false,
+	};
+	const selected = chooseRegistration({
+		sessionId: saved.session,
+		host: { pid: 999, proc_start: descriptor.proc.proc_start + 100, pane: prebind.pane },
+		folder: "/work",
+		env: { PIJ_SESSION_ID: prebind.id, PIJ_SPAWN_ID: prebind.spawn_id },
+		seats: [saved, prebind],
+	});
+	assert.equal(selected.id, prebind.id);
+	assert.equal(selected.parent, prebind.parent);
+	assert.equal(selected.supersedes, undefined);
+});
+
+for (const [label, change] of [
+	["relay allocation", { relay: true }],
+	["different native session", { session: "another-native-session" }],
+	["tombstoned allocation", { tombstoned_at: 1 }],
+	["different pane", { pane: "%other" }],
+	["bound process", { proc: { pid: 500, proc_start: 100 } }],
+	["foreign harness", { harness: "pi" }],
+]) {
+	test(`spawn prebind cannot bypass ownership for ${label}`, () => {
+		const saved = { ...descriptor, pane: "%old", spawn_id: "old-spawn" };
+		const prebind = {
+			id: "pij-preallocated",
+			harness: "copilot",
+			proc: null,
+			session: null,
+			pane: "%new",
+			spawn_id: "new-spawn",
+			...change,
+		};
+		assert.throws(
+			() =>
+				chooseRegistration({
+					sessionId: saved.session,
+					host: { pid: 999, proc_start: descriptor.proc.proc_start + 100, pane: "%new" },
+					folder: "/work",
+					env: { PIJ_SESSION_ID: prebind.id, PIJ_SPAWN_ID: prebind.spawn_id },
+					seats: [saved, prebind],
+				}),
+			(error) => error.retryable === false,
+		);
+	});
+}
+
+test("same-process native successor reload corroborates immutable launch id by spawn correlation", () => {
+	const current = { ...descriptor, spawn_id: "spawn-137", parent: "pij-parent" };
+	const selected = chooseRegistration({
+		sessionId: current.session,
+		host: { ...current.proc, pane: current.pane },
+		folder: "/work",
+		env: { PIJ_SESSION_ID: "pij-bootstrap-address", PIJ_SPAWN_ID: current.spawn_id },
+		seats: [current],
+	});
+	assert.equal(selected.id, current.id);
+	assert.equal(selected.spawn_id, current.spawn_id);
+	assert.equal(selected.parent, current.parent);
+});
+
+test("saved native session alone cannot corroborate a wrong requested id with matching spawn", () => {
+	const saved = { ...descriptor, spawn_id: "spawn-137" };
+	assert.throws(
+		() =>
+			chooseRegistration({
+				sessionId: saved.session,
+				host: { pid: 999, proc_start: descriptor.proc.proc_start + 100 },
+				folder: "/work",
+				env: { PIJ_SESSION_ID: "pij-incorrect-request", PIJ_SPAWN_ID: saved.spawn_id },
+				seats: [saved],
+			}),
+		(error) => /not corroborated/.test(error.message) && error.retryable === false,
+	);
 });
 
 test("native session resolution precedes stale pane metadata and duplicate process candidates", () => {
@@ -1585,13 +1737,18 @@ test("native session resolution precedes stale pane metadata and duplicate proce
 	);
 });
 
-test("conflicting same-session addresses cannot hide behind an exact process or prebind", () => {
-	const retired = {
+test("two live same-session addresses cannot hide behind an exact process or verified prebind", () => {
+	const duplicate = {
 		...descriptor,
-		id: "pij-retired-native",
+		id: "pij-other-live",
 		proc: { pid: 999, proc_start: descriptor.proc.proc_start + 100 },
-		native_extension_delivery: false,
-		tombstoned_at: 1,
+	};
+	const prebind = {
+		id: "pij-preallocated",
+		harness: "copilot",
+		proc: null,
+		pane: descriptor.pane,
+		spawn_id: "spawn-137",
 	};
 	assert.throws(
 		() =>
@@ -1599,8 +1756,8 @@ test("conflicting same-session addresses cannot hide behind an exact process or 
 				sessionId: descriptor.session,
 				host: { ...descriptor.proc, pane: descriptor.pane },
 				folder: "/work",
-				env: { PIJ_SESSION_ID: descriptor.id },
-				seats: [descriptor, retired],
+				env: { PIJ_SESSION_ID: prebind.id, PIJ_SPAWN_ID: prebind.spawn_id },
+				seats: [descriptor, duplicate, prebind],
 			}),
 		(error) => error.retryable === true,
 	);
@@ -1617,6 +1774,34 @@ test("same-session nomination cannot corroborate an unrelated requested identity
 				seats: [descriptor],
 			}),
 		(error) => error.retryable === false,
+	);
+});
+
+test("exact native process cannot corroborate an incorrect requested id", () => {
+	assert.throws(
+		() =>
+			chooseRegistration({
+				sessionId: descriptor.session,
+				host: { ...descriptor.proc, pane: descriptor.pane },
+				folder: "/work",
+				env: { PIJ_SESSION_ID: "pij-incorrect-request" },
+				seats: [descriptor],
+			}),
+		(error) => /not corroborated/.test(error.message) && error.retryable === false,
+	);
+});
+
+test("correct requested id cannot corroborate an incorrect spawn correlation", () => {
+	assert.throws(
+		() =>
+			chooseRegistration({
+				sessionId: descriptor.session,
+				host: { pid: 999, proc_start: descriptor.proc.proc_start + 100 },
+				folder: "/work",
+				env: { PIJ_SESSION_ID: descriptor.id, PIJ_SPAWN_ID: "incorrect-spawn" },
+				seats: [{ ...descriptor, spawn_id: "allocated-spawn" }],
+			}),
+		(error) => /Spawn correlation/.test(error.message) && error.retryable === false,
 	);
 });
 
