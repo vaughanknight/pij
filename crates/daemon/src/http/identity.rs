@@ -604,7 +604,9 @@ pub(crate) async fn adopt(
         .await
     {
         return match error {
-            RegistrationError::Refused(reason) => refused(ADOPT, reason),
+            RegistrationError::Refused(reason) | RegistrationError::Retryable(reason) => {
+                refused(ADOPT, reason)
+            }
             RegistrationError::Runtime(error) => internal(ADOPT, error),
         };
     }

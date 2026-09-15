@@ -1275,6 +1275,7 @@ test("manual identity requests daemon allocation; exact process rollover superse
 				seats: [
 					{
 						...descriptor,
+						session: "different-native-session",
 						native_extension_delivery: false,
 						proc: { ...descriptor.proc, pid: 999 },
 					},
@@ -1339,6 +1340,23 @@ test("cold native resume nominates a unique attested address without trusting ro
 	}
 });
 
+for (const [label, change] of [
+	["tombstoned", { tombstoned_at: 1, state: "tombstoned" }],
+	["native delivery withdrawn", { native_extension_delivery: false }],
+]) {
+	test(`same native session nominates its durable address when ${label}`, () => {
+		const selected = chooseRegistration({
+			sessionId: descriptor.session,
+			host: { pid: 999, proc_start: descriptor.proc.proc_start + 100, pane: descriptor.pane },
+			folder: "/resumed",
+			env: {},
+			seats: [{ ...descriptor, ...change }],
+		});
+		assert.equal(selected.id, descriptor.id);
+		assert.equal(selected.supersedes, undefined);
+	});
+}
+
 test("ambiguous native addresses and unverified native claims do not authorize resume", () => {
 	const input = {
 		sessionId: descriptor.session,
@@ -1351,7 +1369,12 @@ test("ambiguous native addresses and unverified native claims do not authorize r
 			chooseRegistration({ ...input, seats: [descriptor, { ...descriptor, id: "other-address" }] }),
 		(error) => /multiple candidate/.test(error.message) && error.retryable === true,
 	);
-	for (const change of [{ native_extension_delivery: false }, { proc: null }, { harness: "pi" }]) {
+	for (const change of [
+		{ proc: null },
+		{ proc: { pid: descriptor.proc.pid } },
+		{ proc: { proc_start: descriptor.proc.proc_start } },
+		{ harness: "pi" },
+	]) {
 		assert.notEqual(
 			chooseRegistration({ ...input, seats: [{ ...descriptor, ...change }] }).id,
 			descriptor.id,
@@ -1368,7 +1391,7 @@ test("ambiguous native addresses and unverified native claims do not authorize r
 	}
 });
 
-test("explicit retirement reopens as fresh attachment, including same-process A to B to A", async (t) => {
+test("same-process A to B to A restores the retired native address and accepted journal", async (t) => {
 	const home = await mkdtemp(join(tmpdir(), "pij-native-retired-"));
 	t.after(() => rm(home, { recursive: true, force: true }));
 	const input = {
@@ -1408,19 +1431,27 @@ test("explicit retirement reopens as fresh attachment, including same-process A 
 	};
 	const current = { ...descriptor, id: next.id, session: next.harness_session };
 	const reopenedRequest = chooseRegistration({ ...input, seats: [retired, current] });
-	assert.equal(reopenedRequest.supersedes, next.id);
-	const reopened = await allocate(reopenedRequest, "pij-quiet-raven");
-	assert.notEqual(reopened.id, first.id);
+	assert.equal(reopenedRequest.id, first.id);
+	assert.equal(reopenedRequest.supersedes, undefined);
+	const reopened = await resolveRegistration(
+		{
+			request: async () => assert.fail("Durable native identity must not request a fresh address"),
+		},
+		reopenedRequest,
+		new AbortController().signal,
+	);
 	assert.notEqual(reopened.id, next.id);
-	assert.equal(reopened.supersedes, undefined);
-	assert.equal(await new FileJournal(home, reopened).load(message.msg_id), undefined);
+	assert.equal(
+		(await new FileJournal(home, reopened).load(message.msg_id)).nativeId,
+		"old-acceptance",
+	);
 	assert.equal((await oldJournal.load(message.msg_id)).nativeId, "old-acceptance");
 	const reopenedSeat = { ...firstSeat, id: reopened.id };
 	assert.equal(
 		chooseRegistration({
 			...input,
 			host: { ...input.host, pid: 999 },
-			seats: [retired, reopenedSeat],
+			seats: [reopenedSeat, current],
 		}).id,
 		reopened.id,
 	);
@@ -1429,7 +1460,7 @@ test("explicit retirement reopens as fresh attachment, including same-process A 
 		host: { ...input.host, pid: 999 },
 		seats: [retired],
 	});
-	assert.notEqual(coldReopen.id, retired.id);
+	assert.equal(coldReopen.id, retired.id);
 	assert.equal(coldReopen.supersedes, undefined);
 	assert.throws(
 		() =>
@@ -1438,9 +1469,9 @@ test("explicit retirement reopens as fresh attachment, including same-process A 
 				seats: [retired],
 				env: { PIJ_SESSION_ID: retired.id, PIJ_SPAWN_ID: "retired-launch" },
 			}),
-		/prebind|corroborat/,
+		(error) => error.retryable === false,
 	);
-	assert.notEqual(
+	assert.equal(
 		chooseRegistration({ ...input, seats: [{ ...retired, native_extension_delivery: true }] }).id,
 		retired.id,
 	);
@@ -1476,7 +1507,7 @@ test("fresh native conversation nominates new address without retiring old pane 
 	}
 });
 
-test("valid spawn preallocation precedes resume candidate; cold spawned successor retains correlation", () => {
+test("same-session address precedes spawn preallocation and retains correlated parent", () => {
 	const host = { ...descriptor.proc, pid: 999, pane: descriptor.pane };
 	const candidate = { ...descriptor, spawn_id: "spawn-137", parent: "pij-parent" };
 	const prebind = {
@@ -1496,7 +1527,9 @@ test("valid spawn preallocation precedes resume candidate; cold spawned successo
 		...input,
 		env: { PIJ_SESSION_ID: prebind.id, PIJ_SPAWN_ID: candidate.spawn_id },
 	});
-	assert.equal(selected.id, prebind.id);
+	assert.equal(selected.id, candidate.id);
+	assert.equal(selected.supersedes, undefined);
+	assert.equal(selected.parent, candidate.parent);
 	const resumed = chooseRegistration({
 		...input,
 		seats: [candidate],
@@ -1505,6 +1538,86 @@ test("valid spawn preallocation precedes resume candidate; cold spawned successo
 	assert.equal(resumed.id, candidate.id);
 	assert.equal(resumed.spawn_id, candidate.spawn_id);
 	assert.equal(resumed.parent, candidate.parent);
+});
+
+test("fresh verified spawn correlation resumes a saved session without replacing its parent", () => {
+	const saved = {
+		...descriptor,
+		pane: "%old",
+		spawn_id: "old-spawn",
+		parent: "pij-original-parent",
+	};
+	const prebind = {
+		id: "pij-new-prebind",
+		harness: "copilot",
+		session: null,
+		proc: null,
+		pane: "%new",
+		spawn_id: "new-spawn",
+		parent: "pij-new-parent",
+		native_extension_delivery: false,
+	};
+	const selected = chooseRegistration({
+		sessionId: saved.session,
+		host: { pid: 999, proc_start: 200, pane: prebind.pane },
+		folder: "/work",
+		seats: [saved, prebind],
+		env: { PIJ_SESSION_ID: prebind.id, PIJ_SPAWN_ID: prebind.spawn_id },
+	});
+	assert.equal(selected.id, saved.id);
+	assert.equal(selected.spawn_id, prebind.spawn_id);
+	assert.equal(selected.parent, saved.parent);
+});
+
+test("native session resolution precedes stale pane metadata and duplicate process candidates", () => {
+	const input = {
+		sessionId: descriptor.session,
+		host: { ...descriptor.proc, pane: "%moved" },
+		folder: "/work",
+		env: {},
+	};
+	const selected = chooseRegistration({ ...input, seats: [descriptor] });
+	assert.equal(selected.id, descriptor.id);
+	assert.equal(selected.pane, input.host.pane);
+	assert.throws(
+		() => chooseRegistration({ ...input, seats: [descriptor, { ...descriptor, id: "duplicate" }] }),
+		(error) => error.retryable === true,
+	);
+});
+
+test("conflicting same-session addresses cannot hide behind an exact process or prebind", () => {
+	const retired = {
+		...descriptor,
+		id: "pij-retired-native",
+		proc: { pid: 999, proc_start: descriptor.proc.proc_start + 100 },
+		native_extension_delivery: false,
+		tombstoned_at: 1,
+	};
+	assert.throws(
+		() =>
+			chooseRegistration({
+				sessionId: descriptor.session,
+				host: { ...descriptor.proc, pane: descriptor.pane },
+				folder: "/work",
+				env: { PIJ_SESSION_ID: descriptor.id },
+				seats: [descriptor, retired],
+			}),
+		(error) => error.retryable === true,
+	);
+});
+
+test("same-session nomination cannot corroborate an unrelated requested identity", () => {
+	assert.throws(
+		() =>
+			chooseRegistration({
+				sessionId: descriptor.session,
+				host: { pid: 999, proc_start: descriptor.proc.proc_start + 100 },
+				folder: "/work",
+				env: { PIJ_SESSION_ID: "pij-unrelated-prebind" },
+				seats: [descriptor],
+			}),
+		(error) => error.retryable === false,
+	);
 });
 
 test("process start uses daemon local C-locale packed stamp with calendar checks", () => {
@@ -1692,6 +1805,57 @@ test("HTTP client reloads key on every request, binds tuple, keeps bounded non-J
 			error.message.length < 5000 &&
 			!error.message.includes(key),
 	);
+});
+
+test("only typed HTTP 409 registration refusals permit retry", async () => {
+	const refusal = {
+		ok: false,
+		v: 2,
+		command: "pij register",
+		error: "refused",
+		details: { retryable: true },
+		meta: "registration temporarily unavailable",
+	};
+	for (const [label, path, status, envelope, retryable] of [
+		["typed refusal", "/v1/register", 409, refusal, true],
+		[
+			"legacy HTTP 400 text",
+			"/v1/register",
+			400,
+			{
+				...refusal,
+				details: undefined,
+				meta: "seat id belongs to a different process incarnation; retryable",
+			},
+			false,
+		],
+		["wrong HTTP status", "/v1/register", 400, refusal, false],
+		["wrong envelope version", "/v1/register", 409, { ...refusal, v: 1 }, false],
+		["wrong command", "/v1/register", 409, { ...refusal, command: "pij inbox" }, false],
+		["wrong error kind", "/v1/register", 409, { ...refusal, error: "retryable" }, false],
+		["security refusal", "/v1/register", 409, { ...refusal, details: { retryable: false } }, false],
+		["missing retry authorization", "/v1/register", 409, { ...refusal, details: undefined }, false],
+		[
+			"untyped retry authorization",
+			"/v1/register",
+			409,
+			{ ...refusal, details: { retryable: "true" } },
+			false,
+		],
+		["not a refusal", "/v1/register", 409, { ...refusal, ok: true }, false],
+		["different endpoint", "/v1/send", 409, refusal, false],
+	]) {
+		const client = new DaemonClient({
+			addr: "127.0.0.1:13700",
+			stateDir: "/isolated",
+			readKey: async () => "fixture-key",
+			fetch: async () => new Response(JSON.stringify(envelope), { status }),
+		});
+		await assert.rejects(client.request(path, registration), (error) => {
+			assert.equal(error.retryable, retryable, label);
+			return true;
+		});
+	}
 });
 
 async function deadlineHttpFixture(t, handler) {

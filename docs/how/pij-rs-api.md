@@ -49,6 +49,10 @@ Self or the target's **current recorded parent** may assert/unset its role; an u
 
 Sources: [`identity.rs`](../../crates/daemon/src/http/identity.rs), [`role.rs`](../../crates/daemon/src/http/role.rs), [`types.rs`](../../crates/daemon/src/http/types.rs), [`governance.rs`](../../crates/daemon/src/http/governance.rs).
 
+## Native Copilot registration
+
+For a verified native Copilot `/v1/register` claim, `harness_session` identifies the durable seat in this machine's registry before pane, process or spawn heuristics: restarting the same conversation in the same or a new window reuses its id, adopts the observed host tuple and pane, and clears any tombstone without waiting for the old process or death sweep. Queued jobs, parent, authoritative `seat_roles` assertion and Telegram reply binding keep that address; `pij state` reports the new process and no tombstone. A changed incarnation emits `seat.native-resumed` with `old_proc`, `new_proc`, `old_pane`, `new_pane` and `reason:"native-session-resume"`. Different sessions cannot claim an existing session's id; same-pane new conversations retain the new-id/supersede behavior, and foreign-machine rows cannot authorize local resume. Transient registration races return HTTP 409 with v2 `error:"refused"` and `details.retryable:true`; native clients refresh and retry without inventing an identity, while other ownership refusals remain terminal.
+
 ## Verified paneless external admission
 
 `pij inbox register --json` is served through Rust authority for external
