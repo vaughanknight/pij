@@ -581,6 +581,74 @@ async fn native_registration_preserves_claimed_host_and_reports_atomic_binding_t
 }
 
 #[tokio::test]
+async fn native_saved_session_accepts_spawn_from_auto_discovered_bootstrap() {
+    let host = HostFixture::spawn();
+    let process = host.identity().await;
+    let (mut saved, _) = contract_identity();
+    saved.proc = Some(ProcIdentity {
+        pid: process.pid,
+        proc_start: process.proc_start - 1,
+    });
+    saved.spawn_id = Some("saved-session-launch".into());
+    saved.tombstoned_at = Some(1);
+    saved.tombstone_reason = Some("previous host exited".into());
+    saved.native_extension_delivery = false;
+    let store = FreshStore::new();
+    let services = native_host_services(&store, &saved.folder, &["%149-bootstrap"]).await;
+    let registry = services.registry.clone();
+    registry.put(saved.clone()).await.unwrap();
+
+    let mut bootstrap = SeatDescriptor::new(
+        "pij-resume-bootstrap",
+        Harness::Copilot,
+        saved.folder.clone(),
+    );
+    bootstrap.pane = Some("%149-bootstrap".into());
+    bootstrap.spawn_id = Some("current-host-launch".into());
+    registry.put(bootstrap.clone()).await.unwrap();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    bootstrap.proc = Some(process);
+    bootstrap.harness_session = Some("temporary-bootstrap-session".into());
+    let mut claim = native_registration(&bootstrap);
+    claim["spawn_id"] = json!(bootstrap.spawn_id);
+    let bound = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/register"))
+            .json(&claim),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(bound["data"]["id"], bootstrap.id.as_str());
+
+    // --resume switches the now-bound host from its temporary conversation to
+    // the saved one. Its launch id belongs to the bootstrap, not the saved row.
+    // Omit supersedes: the daemon must discover that same-host/pane predecessor.
+    claim["id"] = json!("");
+    claim["harness_session"] = json!(saved.harness_session);
+    let resumed = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/register"))
+            .json(&claim),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(resumed["data"]["id"], saved.id.as_str());
+    assert_eq!(resumed["data"]["binding"], "rebound");
+    assert_eq!(resumed["data"]["spawn_id"], "saved-session-launch");
+    let current = registry.get(&saved.id).await.unwrap().unwrap();
+    assert_eq!(current.proc, Some(process));
+    assert_eq!(current.pane, bootstrap.pane);
+    assert!(current.tombstoned_at.is_none());
+    assert!(current.tombstone_reason.is_none());
+    assert!(current.native_extension_delivery);
+    let retired = registry.get(&bootstrap.id).await.unwrap().unwrap();
+    assert!(retired.tombstoned_at.is_some());
+    assert!(!retired.native_extension_delivery);
+    server.abort();
+}
+
+#[tokio::test]
 async fn native_sqlite_http_prebind_precedes_saved_session_without_retargeting_work() {
     let old_host = HostFixture::spawn();
     let new_host = HostFixture::spawn();

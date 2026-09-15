@@ -234,3 +234,45 @@ Initial Clippy caught the adopt test module before production items; it was move
 Harness observations DL-001/DL-002 are harvested here: fresh-roster tests missed historical production population; Git instrumentation repopulated a temporary `.git` during teardown. Encoded improvements are adversarial historical-roster regressions and adoption of the existing bounded fixture-cleanup helper. Suggested next harness improvement: run the retained focused native lifecycle scenario in the opt-in native smoke recipe. No push, PR, merge, production restart or production acceptance run. **No accepted finding refused.**
 
 One-off baseline/mutation/production-copy driver scripts were removed after evidence capture. Exact mutation patches and production request/response bodies remain in provenance; the permanent native lifecycle scenario remains executable.
+
+## Final R1 coverage correction
+
+Restored the lost positive witness without changing production code:
+`http::native_tests::native_saved_session_accepts_spawn_from_auto_discovered_bootstrap`.
+The test binds a real OS-observed inert host to its preallocated bootstrap address through
+HTTP, then resumes a seeded historical session without supplying `supersedes`. Its current
+launch id differs from the saved address's launch id. HTTP200, the saved address, rebound
+process/pane, cleared tombstone and retired bootstrap prove acceptance through the
+auto-discovered predecessor. This is HTTP/SQLite integration proof, not another native SDK run.
+
+Deleting only `.filter(|seat| seat.spawn_id.as_deref() == Some(spawn_id))` from `existing`
+produced **exit101, 0 passed / 1 failed**, not a compilation failure:
+
+```text
+assertion `left == right` failed: HTTP envelope: {"command":"pij register","error":"refused","meta":"native Copilot registration refused: spawn id has no matching pre-bind/current incarnation","ok":false,"v":2}
+  left: 400
+ right: 200
+```
+
+The clause was restored byte-for-byte. Full Rust gates then passed: formatter check,
+Clippy `--workspace --all-targets -- -D warnings`, CLI build, and workspace tests:
+**1089 passed across 85 suites, 8 ignored**. The new witness passed in that run.
+`RUST_TEST_THREADS=1` retained the reviewer's serial execution requirement.
+Initial formatter check requested a constructor wrap; `cargo fmt --all` applied it.
+
+Canonical `just self-check` also exited0: 241 Vitest files / 5306 tests passed,
+native JS 194 passed / 3 skipped, portable Windows 84 passed / 2 skipped.
+Closing snapshot check: `snapshot-check: briefing.md SHA matches snapshots (cdf5f5b25001...)`.
+Attribution reported 0 missing across 4 harness commits, with unresolved seat-applicability
+warnings; shared history was not rewritten. Package audit remains report-only as above.
+
+Receipts: [red-r1-spawn-filter.log](red-r1-spawn-filter.log),
+[gate-rust-r1.log](gate-rust-r1.log), [gate-self-check-r1.log](gate-self-check-r1.log).
+Earlier provenance remains the historical round2 tree, not the new test-file hash.
+Reviewer-owned `review.md` is unchanged by this correction.
+
+Harvested DL-001: refusal-only witnesses cannot detect acceptance-narrowing mutations.
+The new regression encodes the missing positive path in the existing suite; no new
+runner or production behavior was added. This is an acceptance-enabling fallback,
+not a destructive-action brake: deleting it refuses legitimate registration rather
+than admitting unsafe work.
