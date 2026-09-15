@@ -37,6 +37,8 @@ where
         .args(args)
         .env_remove("PIJ_SESSION_ID")
         .env_remove("TMUX_PANE")
+        .env_remove("COPILOT_AGENT_SESSION_ID")
+        .env_remove("HARNESS_SESSION_ID")
         .envs(envs)
         .output()
         .expect("run shipped CLI")
@@ -60,6 +62,8 @@ fn run_cli_with_stdin(
         .args(args)
         .env_remove("PIJ_SESSION_ID")
         .env_remove("TMUX_PANE")
+        .env_remove("COPILOT_AGENT_SESSION_ID")
+        .env_remove("HARNESS_SESSION_ID")
         .envs(envs.iter().copied())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -421,6 +425,108 @@ async fn shipped_spawn_revive_and_registration_do_not_attest_native_delivery() {
 
     server.abort();
     drop(dir);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shipped_cli_native_inbox_uses_pane_session_ladder_and_acknowledges() {
+    let dir = fresh_dir("pij-native-inbox-e2e");
+    std::fs::write(dir.join("daemon.key"), "native-inbox-key").unwrap();
+    let config = Config {
+        adapters: Adapters {
+            registry: AdapterChoice::Real,
+            spine: AdapterChoice::Real,
+            queue: AdapterChoice::Real,
+            ..Adapters::default()
+        },
+        store_path: dir.join("pij.sqlite").display().to_string(),
+        ..Config::default()
+    };
+    let mut services = pij_daemon::build_services(&config, &dir.join("pane-signals"))
+        .await
+        .unwrap();
+    let mut seat = SeatDescriptor::new("pij-native-reader", Harness::Copilot, "/abs/tree");
+    seat.pane = Some("%native-reader".into());
+    seat.proc = Some(ProcIdentity {
+        pid: 75739,
+        proc_start: 1234,
+    });
+    seat.harness_session = Some("native-cli-session".into());
+    seat.native_extension_delivery = true;
+    services.registry.put(seat.clone()).await.unwrap();
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(seat.proc.unwrap()));
+    let sent = services
+        .delivery
+        .send(
+            "pij-peer".into(),
+            seat.id.clone(),
+            "recover with the shipped CLI",
+        )
+        .await
+        .unwrap();
+    let queue = services.queue.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap().to_string();
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            router_with_config(
+                services,
+                HttpConfig {
+                    local_key: "native-inbox-key".into(),
+                    peer_keys: Vec::new(),
+                    machine_alias: "native-test".into(),
+                },
+            ),
+        )
+        .await
+        .unwrap();
+    });
+    let wrong = run_cli_with_env(
+        &dir,
+        &addr,
+        &["inbox"],
+        [
+            ("TMUX_PANE", "%native-reader"),
+            ("COPILOT_AGENT_SESSION_ID", "wrong-session"),
+        ],
+    );
+    assert!(
+        !wrong.status.success(),
+        "a different conversation cannot read this pane's mail"
+    );
+    let read = run_cli_with_env(
+        &dir,
+        &addr,
+        &["inbox"],
+        [
+            ("TMUX_PANE", "%native-reader"),
+            ("COPILOT_AGENT_SESSION_ID", "native-cli-session"),
+        ],
+    );
+    assert!(
+        read.status.success(),
+        "manual native inbox: {}",
+        String::from_utf8_lossy(&read.stdout)
+    );
+    let body: Envelope<Vec<Msg>> = serde_json::from_slice(&read.stdout).unwrap();
+    assert!(
+        body.ok && body.meta.is_none(),
+        "read must also acknowledge: {:?}",
+        body.meta
+    );
+    let messages = body.data.unwrap();
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].msg_id, sent.msg_id);
+    assert_eq!(messages[0].body, "recover with the shipped CLI");
+    assert!(
+        queue
+            .peek(&[pij_core::delivery::delivery_kind(&seat.id)])
+            .await
+            .unwrap()
+            .is_none()
+    );
+    server.abort();
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

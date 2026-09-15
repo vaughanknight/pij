@@ -1,5 +1,6 @@
 //! Runtime message delivery over the frozen registry, queue, transport, and spine ports.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -34,6 +35,7 @@ const OUTCOME_EVENT_KIND: &str = "delivery.outcome";
 /// found that nothing published this at all, so a client could observe that a
 /// message had been delivered to it without ever being able to read it.
 const PUSHED_EVENT_KIND: &str = "message.pushed";
+const NATIVE_RECEIVER_UNAVAILABLE: &str = "native-extension-unavailable";
 
 /// One claimed inbox row. Native clients acknowledge only after SDK acceptance;
 /// other readers acknowledge after decoding. Neither is evidence of model completion.
@@ -84,6 +86,19 @@ impl NativeInboxIdentity {
             !session.is_empty() && seat.harness_session.as_deref() == Some(session)
         })
     }
+}
+
+struct NativeReceiverLease {
+    identity: NativeInboxIdentity,
+    renewed_at: tokio::time::Instant,
+}
+
+/// Native receiver presence, not host liveness or acknowledgement of any message.
+#[derive(Debug, Serialize)]
+pub struct NativeReceiverHeartbeat {
+    state: &'static str,
+    lease_ms: u64,
+    renew_after_ms: u64,
 }
 
 /// A registered external pull seat, never an extension, relay, or pane consumer.
@@ -169,6 +184,10 @@ pub struct DeliveryService {
     next_id: AtomicU64,
     clock: Arc<Clock>,
     native_lock: Arc<tokio::sync::Mutex<()>>,
+    native_receivers: tokio::sync::Mutex<HashMap<SeatId, NativeReceiverLease>>,
+    native_started_at: tokio::time::Instant,
+    native_deadline_checked_at: tokio::sync::Mutex<tokio::time::Instant>,
+    native_receiver_changed: tokio::sync::Notify,
     extension_claim_lease_secs: u64,
     recovery_authority_shared: bool,
 }
@@ -230,6 +249,10 @@ impl DeliveryService {
             next_id: AtomicU64::new(0),
             clock: sources.clock,
             native_lock: Arc::new(tokio::sync::Mutex::new(())),
+            native_receivers: tokio::sync::Mutex::new(HashMap::new()),
+            native_started_at: tokio::time::Instant::now(),
+            native_deadline_checked_at: tokio::sync::Mutex::new(tokio::time::Instant::now()),
+            native_receiver_changed: tokio::sync::Notify::new(),
             extension_claim_lease_secs: std::env::var("PIJ_RS_EXT_CLAIM_LEASE_SECS")
                 .ok()
                 .and_then(|value| value.parse::<u64>().ok())
@@ -241,6 +264,149 @@ impl DeliveryService {
 
     pub(crate) fn native_lock(&self) -> Arc<tokio::sync::Mutex<()>> {
         Arc::clone(&self.native_lock)
+    }
+
+    /// Renew receiver presence independently of claims, Working, or Operator Hold.
+    /// The host tuple scopes the lease, but only receiver requests renew it.
+    pub async fn heartbeat_native_receiver(
+        &self,
+        seat: &SeatId,
+        identity: &NativeInboxIdentity,
+    ) -> Result<NativeReceiverHeartbeat> {
+        let _guard = self.native_lock.lock().await;
+        self.inbox_recipient(seat, identity)
+            .await?
+            .filter(|seat| seat.harness == Harness::Copilot && seat.native_extension_delivery)
+            .ok_or_else(|| {
+                native_refusal("native receiver heartbeat requires current native registration")
+            })?;
+        self.native_receivers.lock().await.insert(
+            seat.clone(),
+            NativeReceiverLease {
+                identity: identity.clone(),
+                renewed_at: tokio::time::Instant::now(),
+            },
+        );
+        self.native_receiver_changed.notify_one();
+        let lease_ms = self.extension_claim_lease_secs.saturating_mul(1_000);
+        Ok(NativeReceiverHeartbeat {
+            state: "live",
+            lease_ms,
+            renew_after_ms: lease_ms / 3,
+        })
+    }
+
+    async fn native_receiver_live(&self, seat: &SeatDescriptor) -> bool {
+        let receivers = self.native_receivers.lock().await;
+        let renewed_at = match receivers.get(&seat.id) {
+            Some(receiver) if receiver.identity.matches(seat) => receiver.renewed_at,
+            Some(_) => return false,
+            // A restarted daemon gives persisted registrations one lease to reconnect.
+            // This deadline is fixed at boot, never extended by a sender or host report.
+            None => self.native_started_at,
+        };
+        renewed_at.elapsed() < Duration::from_secs(self.extension_claim_lease_secs)
+    }
+
+    /// Wake at the earliest unchecked receiver lease, including the boot grace.
+    /// Register notification before reading deadlines so renewal cannot be lost.
+    pub(crate) async fn wait_native_receiver_deadline(&self) {
+        loop {
+            let changed = self.native_receiver_changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            let checked = *self.native_deadline_checked_at.lock().await;
+            let lease = Duration::from_secs(self.extension_claim_lease_secs);
+            let bootstrap = self
+                .native_started_at
+                .checked_add(lease)
+                .filter(|at| *at > checked);
+            let deadline = {
+                let receivers = self.native_receivers.lock().await;
+                receivers
+                    .values()
+                    .filter_map(|receiver| receiver.renewed_at.checked_add(lease))
+                    .filter(|at| *at > checked)
+                    .chain(bootstrap)
+                    .min()
+            };
+            match deadline {
+                Some(deadline) => tokio::select! {
+                    _ = tokio::time::sleep_until(deadline) => return,
+                    _ = &mut changed => {}
+                },
+                None => changed.await,
+            }
+        }
+    }
+
+    /// Reconcile native receiver leases on their deadline or ordinary delivery tick.
+    /// Working hosts and held/deferred bodies do not conceal an absent receiver.
+    pub(crate) async fn reconcile_native_receivers(&self) -> Result<usize> {
+        let mut guard = self.native_lock.clone().lock_owned().await;
+        // A failed attempt retries at the ordinary cadence instead of spinning
+        // on the same elapsed deadline. New renewals install new deadlines.
+        *self.native_deadline_checked_at.lock().await = tokio::time::Instant::now();
+        let seats = self.registry.list(Default::default()).await?;
+        self.native_receivers.lock().await.retain(|id, _| {
+            seats.iter().any(|seat| {
+                &seat.id == id
+                    && seat.harness == Harness::Copilot
+                    && seat.native_extension_delivery
+                    && seat.tombstoned_at.is_none()
+            })
+        });
+        let mut parked = 0;
+        for seat in seats.iter().filter(|seat| {
+            seat.harness == Harness::Copilot
+                && seat.native_extension_delivery
+                && seat.tombstoned_at.is_none()
+        }) {
+            if !self.native_receiver_live(seat).await {
+                let (count, next_guard) = self.park_native_receiver(&seat.id, guard).await?;
+                parked += count;
+                guard = next_guard;
+            }
+        }
+        Ok(parked)
+    }
+
+    async fn park_native_receiver(
+        &self,
+        seat: &SeatId,
+        mut guard: tokio::sync::OwnedMutexGuard<()>,
+    ) -> Result<(usize, tokio::sync::OwnedMutexGuard<()>)> {
+        let kinds = [delivery_kind(seat)];
+        let mut count = 0;
+        while let Some((job_id, job)) = self.queue.peek(&kinds).await? {
+            pij_core::delivery::require_recovery_authority(self.recovery_authority_shared)?;
+            let queue = self.queue.clone();
+            let spine = self.event_bus.raw_spine();
+            let seat = seat.clone();
+            let at = (self.clock)()?;
+            let (parked, next_guard) = self
+                .event_bus
+                .publish_committed_batch(async move {
+                    let evidence = pij_core::ports::ParkingEvidence {
+                        outcome: DeliveryFailure::NativeReceiverUnavailable,
+                        reason: NATIVE_RECEIVER_UNAVAILABLE,
+                        at,
+                    };
+                    let (parked, events) = queue
+                        .park_delivery(job_id, &seat, job.attempt, &evidence, spine.as_ref())
+                        .await?;
+                    Ok((events, (parked.is_some(), guard)))
+                })
+                .await?;
+            guard = next_guard;
+            // A manual CLI read owns its ordinary claim lease, not the native
+            // receiver lease. Leave that running head and its successors alone.
+            if !parked {
+                break;
+            }
+            count += 1;
+        }
+        Ok((count, guard))
     }
 
     fn queued_outcome(reason: Option<&str>, not_before_ms: u64) -> DeliveryOutcome {
@@ -363,6 +529,22 @@ impl DeliveryService {
                 seat: to.clone(),
                 store: "the daemon registry".to_string(),
             })?;
+        let native_guard = if recipient.harness == Harness::Copilot && msg.command.is_none() {
+            Some(self.native_lock.clone().lock_owned().await)
+        } else {
+            None
+        };
+        let recipient = if native_guard.is_some() {
+            self.registry
+                .get(&to)
+                .await?
+                .ok_or_else(|| PijError::NoRegistryEntry {
+                    seat: to.clone(),
+                    store: "the daemon registry".to_string(),
+                })?
+        } else {
+            recipient
+        };
 
         // Supplying `true` asks the pure policy only about registry facts. A
         // transport check is performed only when that policy says it matters.
@@ -391,6 +573,31 @@ impl DeliveryService {
             self.publish_outcome(&to, &receipt).await?;
             return Ok(receipt);
         }
+        let _native_guard = if recipient.native_extension_delivery
+            && recipient.harness == Harness::Copilot
+            && recipient.tombstoned_at.is_none()
+            && !self.native_receiver_live(&recipient).await
+        {
+            let (_, _guard) = self
+                .park_native_receiver(
+                    &to,
+                    native_guard.expect("native body admission is serialized"),
+                )
+                .await?;
+            let receipt = Receipt {
+                msg_id: msg.msg_id,
+                outcome: DeliveryOutcome::Refused {
+                    reason: format!(
+                        "{NATIVE_RECEIVER_UNAVAILABLE}: native receiver for {to} has not renewed its lease"
+                    ),
+                },
+                at,
+            };
+            self.publish_outcome(&to, &receipt).await?;
+            return Ok(receipt);
+        } else {
+            native_guard
+        };
         let mut publish_to_recipient = true;
         let mut _delivery_order = None;
         let outcome = match selected {
@@ -663,7 +870,7 @@ impl DeliveryService {
     /// Queue failures or a corrupt/misdirected delivery payload.
     pub async fn claim_inbox(&self, seat: &SeatId, wait: bool) -> Result<Vec<InboxClaim>> {
         Ok(self
-            .claim_inbox_inner(seat, wait, &NativeInboxIdentity::default(), None)
+            .claim_inbox_inner(seat, wait, &NativeInboxIdentity::default(), None, false)
             .await?
             .claims)
     }
@@ -675,7 +882,28 @@ impl DeliveryService {
         wait: bool,
         identity: &NativeInboxIdentity,
     ) -> Result<NativeInboxPage> {
-        self.claim_inbox_inner(seat, wait, identity, None).await
+        // One inbound request proves presence. A server-side long-poll wake does not.
+        if self
+            .registry
+            .get(seat)
+            .await?
+            .is_some_and(|seat| seat.harness == Harness::Copilot && seat.native_extension_delivery)
+        {
+            self.heartbeat_native_receiver(seat, identity).await?;
+        }
+        self.claim_inbox_inner(seat, wait, identity, None, false)
+            .await
+    }
+
+    /// The shim has resolved the pane/session ladder and derived this host tuple.
+    /// Manual recovery never attests that the native extension is receiving again.
+    pub(crate) async fn claim_manual_native_inbox(
+        &self,
+        seat: &SeatId,
+        identity: &NativeInboxIdentity,
+    ) -> Result<NativeInboxPage> {
+        self.claim_inbox_inner(seat, false, identity, None, true)
+            .await
     }
 
     /// Pull only from a verified paneless host. Subscribe before claiming and
@@ -690,7 +918,7 @@ impl DeliveryService {
     ) -> Result<NativeInboxPage> {
         if !wait {
             return self
-                .claim_inbox_inner(seat, false, identity, Some(liveness))
+                .claim_inbox_inner(seat, false, identity, Some(liveness), false)
                 .await;
         }
         let mut wake = self.event_bus.subscribe_live(
@@ -713,7 +941,7 @@ impl DeliveryService {
             .transpose()?;
         loop {
             let page = self
-                .claim_inbox_inner(seat, false, identity, Some(liveness))
+                .claim_inbox_inner(seat, false, identity, Some(liveness), false)
                 .await?;
             if !page.claims.is_empty() {
                 return Ok(page);
@@ -875,6 +1103,7 @@ impl DeliveryService {
         wait: bool,
         identity: &NativeInboxIdentity,
         pull_liveness: Option<&dyn LivenessPort>,
+        manual_native: bool,
     ) -> Result<NativeInboxPage> {
         let kinds = [delivery_kind(seat)];
         let mut wake = wait.then(|| {
@@ -885,7 +1114,7 @@ impl DeliveryService {
             // Native claims are queue ownership, not permission to inject. The
             // receiver owns native consent; typing is never a native gate.
             // Keep mutation excluded through handoff; no pane IO occurs here.
-            let native_guard = self.native_lock.clone().lock_owned().await;
+            let mut native_guard = self.native_lock.clone().lock_owned().await;
             let observed = self.inbox_recipient(seat, identity).await?;
             if let Some(liveness) = pull_liveness {
                 let recipient = observed.as_ref().filter(|seat| paneless_pull(seat))
@@ -914,6 +1143,44 @@ impl DeliveryService {
                     claims: Vec::new(),
                     held_reason: Some(reason),
                 });
+            }
+            if manual_native {
+                let recipient = observed
+                    .as_ref()
+                    .filter(|seat| {
+                        seat.harness == Harness::Copilot
+                            && seat.pane.is_some()
+                            && seat.native_extension_delivery
+                    })
+                    .ok_or_else(|| {
+                        native_refusal("manual native recovery requires a pane-bound native seat")
+                    })?;
+                if !self.native_receiver_live(recipient).await {
+                    let (_, guard) = self.park_native_receiver(seat, native_guard).await?;
+                    native_guard = guard;
+                }
+                if self.queue.peek(&kinds).await?.is_none()
+                    && let Some(parked) = self
+                        .queue
+                        .peek_parked(&kinds)
+                        .await?
+                        .into_iter()
+                        .find(|row| row.outcome == DeliveryFailure::NativeReceiverUnavailable)
+                {
+                    let payload: ClaimedPayload = serde_json::from_str(&parked.job.payload)
+                        .map_err(|error| native_refusal(format!("invalid parked body: {error}")))?;
+                    if let Some(reason) =
+                        native_target_mismatch(payload.native_target_session.as_deref(), identity)
+                    {
+                        return Ok(NativeInboxPage {
+                            claims: Vec::new(),
+                            held_reason: Some(reason),
+                        });
+                    }
+                    self.queue
+                        .recover_native_delivery(parked.job_id, seat)
+                        .await?;
+                }
             }
             let (claimed, native_guard) = if observed
                 .as_ref()
@@ -958,7 +1225,13 @@ impl DeliveryService {
                     .await?;
                 (result.claimed, native_guard)
             } else {
-                (self.queue.claim(&kinds, seat.as_str()).await?, native_guard)
+                let worker = manual_native.then(|| format!("native-cli:{seat}"));
+                (
+                    self.queue
+                        .claim(&kinds, worker.as_deref().unwrap_or(seat.as_str()))
+                        .await?,
+                    native_guard,
+                )
             };
             if let Some((job_id, job)) = claimed {
                 if let Some(recipient) = observed.as_ref().filter(|_| tuple_bound) {
@@ -3820,6 +4093,372 @@ mod tests {
         }
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn native_receiver_expiry_parks_pending_and_running_mail_despite_live_host() {
+        for held in [false, true] {
+            let fixture = fixture(FakeTransport::unreachable());
+            let mut seat = native_seat(Some("%137"));
+            seat.state = SystemState::Working;
+            register(&fixture, seat.clone()).await;
+            let first = fixture
+                .service
+                .send("pij-from".into(), seat.id.clone(), "first")
+                .await
+                .unwrap();
+            let claim = fixture
+                .service
+                .claim_native_inbox(&seat.id, false, &native_identity())
+                .await
+                .unwrap()
+                .claims
+                .remove(0);
+            let second = fixture
+                .service
+                .send("pij-from".into(), seat.id.clone(), "second")
+                .await
+                .unwrap();
+            let lease = Duration::from_secs(fixture.service.extension_claim_lease_secs);
+            if held {
+                fixture.queue.defer(claim.job_id, lease * 2).await.unwrap();
+                seat.semantic_state = Some(SemanticState::Hold);
+                fixture.registry.put(seat.clone()).await.unwrap();
+            }
+            tokio::time::advance(lease).await;
+            let refused = fixture
+                .service
+                .send("pij-from".into(), seat.id.clone(), "after death")
+                .await
+                .unwrap();
+            assert!(
+                matches!(&refused.outcome, DeliveryOutcome::Refused { reason }
+                    if reason.contains("native-extension-unavailable") && reason.contains(seat.id.as_str())),
+                "a live Copilot host cannot hide an expired receiver: {:?}",
+                refused.outcome
+            );
+            assert_eq!(
+                fixture.registry.get(&seat.id).await.unwrap(),
+                Some(seat.clone())
+            );
+            assert!(
+                fixture
+                    .queue
+                    .peek(&[delivery_kind(&seat.id)])
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
+            let parked = fixture.service.peek_inbox(&seat.id).await.unwrap();
+            assert_eq!(
+                parked
+                    .iter()
+                    .map(|row| row.message.msg_id.as_str())
+                    .collect::<Vec<_>>(),
+                vec![first.msg_id.as_str(), second.msg_id.as_str()]
+            );
+            for row in parked {
+                assert_eq!(row.state.as_deref(), Some("failed"));
+                assert_eq!(
+                    serde_json::to_value(row.outcome).unwrap(),
+                    "undelivered:native-receiver-unavailable"
+                );
+            }
+            assert!(
+                fixture
+                    .service
+                    .acknowledge_inbox(&seat.id, claim.job_id, &native_identity(), None)
+                    .await
+                    .is_err(),
+                "an expired running claim cannot manufacture consumption"
+            );
+            fixture
+                .service
+                .send("pij-from".into(), seat.id.clone(), "still dead")
+                .await
+                .unwrap();
+            let events = fixture.spine.tail(None, Seq(0)).await.unwrap();
+            let parked: Vec<Value> = events
+                .iter()
+                .filter(|event| event.kind == "delivery.parked")
+                .map(|event| serde_json::from_str(&event.payload).unwrap())
+                .collect();
+            assert_eq!(
+                parked.len(),
+                2,
+                "each retained body parks once; refused sends never queue"
+            );
+            for event in parked {
+                assert_eq!(event["recipient"], seat.id.as_str());
+                assert_eq!(event["reason"], "native-extension-unavailable");
+                assert_eq!(event["outcome"], "undelivered:native-receiver-unavailable");
+            }
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn native_receiver_renewal_preserves_busy_completion_and_hold() {
+        let fixture = fixture(FakeTransport::unreachable());
+        let mut seat = native_seat(Some("%137"));
+        seat.state = SystemState::Working;
+        register(&fixture, seat.clone()).await;
+        let identity = native_identity();
+        fixture
+            .service
+            .send("pij-from".into(), seat.id.clone(), "in flight")
+            .await
+            .unwrap();
+        let claim = fixture
+            .service
+            .claim_native_inbox(&seat.id, false, &identity)
+            .await
+            .unwrap()
+            .claims
+            .remove(0);
+        seat.semantic_state = Some(SemanticState::Hold);
+        fixture.registry.put(seat.clone()).await.unwrap();
+        for _ in 0..4 {
+            tokio::time::advance(Duration::from_millis(
+                fixture.service.extension_claim_lease_secs * 500,
+            ))
+            .await;
+            let page = fixture
+                .service
+                .claim_native_inbox(&seat.id, false, &identity)
+                .await
+                .unwrap();
+            assert!(page.claims.is_empty());
+            assert_eq!(page.held_reason.as_deref(), Some("semantic-hold"));
+        }
+        let queued = fixture
+            .service
+            .send("pij-from".into(), seat.id.clone(), "held successor")
+            .await
+            .unwrap();
+        assert!(matches!(queued.outcome, DeliveryOutcome::Queued { .. }));
+        fixture
+            .service
+            .acknowledge_inbox(&seat.id, claim.job_id, &identity, None)
+            .await
+            .unwrap();
+        seat.semantic_state = None;
+        fixture.registry.put(seat.clone()).await.unwrap();
+        let next = fixture
+            .service
+            .claim_native_inbox(&seat.id, false, &identity)
+            .await
+            .unwrap()
+            .claims
+            .remove(0);
+        assert_eq!(next.message.msg_id, queued.msg_id);
+        fixture
+            .service
+            .acknowledge_inbox(&seat.id, next.job_id, &identity, None)
+            .await
+            .unwrap();
+        assert!(
+            fixture
+                .service
+                .peek_inbox(&seat.id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn native_receiver_wrong_incarnation_cannot_renew_and_current_receiver_can_recover() {
+        let fixture = fixture(FakeTransport::unreachable());
+        let seat = native_seat(None);
+        register(&fixture, seat.clone()).await;
+        let identity = native_identity();
+        fixture
+            .service
+            .claim_native_inbox(&seat.id, false, &identity)
+            .await
+            .unwrap();
+        let half = Duration::from_millis(fixture.service.extension_claim_lease_secs * 500);
+        tokio::time::advance(half).await;
+        let wrong = NativeInboxIdentity {
+            proc_start: Some(1371),
+            ..identity.clone()
+        };
+        assert!(
+            fixture
+                .service
+                .claim_native_inbox(&seat.id, false, &wrong)
+                .await
+                .is_err()
+        );
+        tokio::time::advance(half).await;
+        assert!(matches!(
+            fixture
+                .service
+                .send("pij-from".into(), seat.id.clone(), "dead")
+                .await
+                .unwrap()
+                .outcome,
+            DeliveryOutcome::Refused { .. }
+        ));
+        fixture
+            .service
+            .claim_native_inbox(&seat.id, false, &identity)
+            .await
+            .unwrap();
+        let sent = fixture
+            .service
+            .send("pij-from".into(), seat.id.clone(), "reconnected")
+            .await
+            .unwrap();
+        let claim = fixture
+            .service
+            .claim_native_inbox(&seat.id, false, &identity)
+            .await
+            .unwrap()
+            .claims
+            .remove(0);
+        assert_eq!(claim.message.msg_id, sent.msg_id);
+        fixture
+            .service
+            .acknowledge_inbox(&seat.id, claim.job_id, &identity, None)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn native_cli_recovers_parked_mail_without_reviving_extension_presence() {
+        let fixture = fixture(FakeTransport::unreachable());
+        let seat = native_seat(Some("%137"));
+        register(&fixture, seat.clone()).await;
+        let identity = native_identity();
+        fixture
+            .service
+            .claim_native_inbox(&seat.id, false, &identity)
+            .await
+            .unwrap();
+        let sent = fixture
+            .service
+            .send("pij-from".into(), seat.id.clone(), "manual recovery")
+            .await
+            .unwrap();
+        let original = fixture
+            .queue
+            .peek(&[delivery_kind(&seat.id)])
+            .await
+            .unwrap()
+            .unwrap()
+            .0;
+        tokio::time::advance(Duration::from_secs(
+            fixture.service.extension_claim_lease_secs,
+        ))
+        .await;
+        assert_eq!(
+            fixture.service.reconcile_native_receivers().await.unwrap(),
+            1
+        );
+        let claimed = fixture
+            .service
+            .claim_manual_native_inbox(&seat.id, &identity)
+            .await
+            .unwrap();
+        assert_eq!(claimed.claims[0].job_id, original);
+        assert_eq!(claimed.claims[0].message.msg_id, sent.msg_id);
+        assert_eq!(claimed.claims[0].attempt, 1);
+        assert_eq!(
+            fixture.service.reconcile_native_receivers().await.unwrap(),
+            0
+        );
+        fixture
+            .service
+            .acknowledge_inbox(&seat.id, original, &identity, None)
+            .await
+            .unwrap();
+        assert!(
+            fixture
+                .service
+                .peek_inbox(&seat.id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(matches!(
+            fixture
+                .service
+                .send("pij-from".into(), seat.id.clone(), "receiver still absent")
+                .await
+                .unwrap()
+                .outcome,
+            DeliveryOutcome::Refused { .. }
+        ));
+        let events = fixture.spine.tail(None, Seq(0)).await.unwrap();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.kind == "delivery.parked")
+                .count(),
+            1
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn native_receiver_deadline_wakes_before_periodic_reconciliation() {
+        let fixture = fixture(FakeTransport::unreachable());
+        let seat = native_seat(Some("%137"));
+        register(&fixture, seat.clone()).await;
+        fixture
+            .service
+            .claim_native_inbox(&seat.id, false, &native_identity())
+            .await
+            .unwrap();
+        fixture
+            .service
+            .send("pij-from".into(), seat.id.clone(), "deadline body")
+            .await
+            .unwrap();
+        let mut parked = fixture
+            .service
+            .event_bus
+            .subscribe_live(EventFilter::kinds(["delivery.parked"]));
+        let lease = Duration::from_secs(fixture.service.extension_claim_lease_secs);
+        let tick = fixture.service.clone();
+        let wake = fixture.service.clone();
+        let scheduler = crate::lifecycle::TickLoop::start_validated_with_wake(
+            crate::lifecycle::TickInterval::new(lease * 2).unwrap(),
+            move || {
+                let service = tick.clone();
+                async move { service.reconcile_native_receivers().await.map(|_| ()) }
+            },
+            move || {
+                let service = wake.clone();
+                async move { service.wait_native_receiver_deadline().await }
+            },
+        );
+        tokio::task::yield_now().await;
+        tokio::time::advance(lease - Duration::from_millis(1)).await;
+        assert!(
+            fixture
+                .queue
+                .peek(&[delivery_kind(&seat.id)])
+                .await
+                .unwrap()
+                .is_some()
+        );
+        tokio::time::advance(Duration::from_millis(1)).await;
+        let event = tokio::time::timeout(Duration::from_millis(1), parked.next())
+            .await
+            .expect("receiver deadline must not wait for the later periodic tick")
+            .unwrap();
+        let payload: Value = serde_json::from_str(&event.payload).unwrap();
+        assert_eq!(payload["reason"], "native-extension-unavailable");
+        assert!(
+            fixture
+                .queue
+                .peek(&[delivery_kind(&seat.id)])
+                .await
+                .unwrap()
+                .is_none()
+        );
+        scheduler.shutdown().await.unwrap();
+    }
+
     #[tokio::test]
     async fn external_pull_claim_and_ack_preserve_native_tuple_without_extension_attestation() {
         for harness in [Harness::Claude, Harness::Copilot, Harness::Codex] {
@@ -4400,6 +5039,18 @@ mod tests {
             .put(replacement)
             .await
             .expect("replacement attested");
+        fixture
+            .service
+            .heartbeat_native_receiver(
+                &"pij-native".into(),
+                &super::NativeInboxIdentity {
+                    native_session: Some("native-138".into()),
+                    pid: Some(138),
+                    proc_start: Some(1380),
+                },
+            )
+            .await
+            .expect("replacement receiver connected");
         fixture
             .service
             .send("pij-from".into(), "pij-native".into(), "new session only")

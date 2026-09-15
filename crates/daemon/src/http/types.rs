@@ -209,14 +209,24 @@ pub struct SendRequest {
 // consults routing, tombstones and the transport, and publishes both events.
 // Found by u-extension at compose.
 
-/// Lease-only heartbeat for an unconsumed OMP/Pi body claim.
+/// Lease-only heartbeat for an OMP/Pi body claim or a native receiver.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InboxHeartbeatRequest {
-    /// Recipient that owns the current running body claim.
+    /// Recipient whose receiver or current running body claim is renewing.
     pub seat: SeatId,
-    /// Queue claim returned by `GET /v1/inbox`.
-    pub job_id: JobId,
+    /// Omit to renew native receiver presence independently of any message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_id: Option<JobId>,
+    /// Exact native host tuple; required when `job_id` is absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_session: Option<String>,
+    /// Harness host PID, not the extension child.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pid: Option<u32>,
+    /// Host process start stamp.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proc_start: Option<u64>,
 }
 
 /// Acknowledgement for the single inbox claim a client decoded.

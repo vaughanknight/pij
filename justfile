@@ -121,6 +121,10 @@ copilot-native-smoke *ARGS:
     node_modules/.bin/tsx harness/scripts/copilot-native-smoke.ts "$@"
 
 
+
+# Large native history, receiver death and manual inbox recovery on isolated services.
+copilot-native-memory-smoke *ARGS:
+    node_modules/.bin/tsx harness/scripts/copilot-native-memory-smoke.ts "$@"
 # Real-client draft-safety classifier; requires PIJ_STEP_ON_REAL=1 explicitly.
 step-on-probe *ARGS:
     node_modules/.bin/tsx harness/scripts/step-on-probe.ts "$@"

@@ -760,6 +760,21 @@ async fn register(
     };
     match registered {
         Ok((descriptor, report)) => {
+            if request.native_extension_delivery {
+                let identity = crate::delivery::NativeInboxIdentity {
+                    native_session: descriptor.harness_session.clone(),
+                    pid: descriptor.proc.map(|proc| proc.pid),
+                    proc_start: descriptor.proc.map(|proc| proc.proc_start),
+                };
+                if let Err(error) = state
+                    .services
+                    .delivery
+                    .heartbeat_native_receiver(&descriptor.id, &identity)
+                    .await
+                {
+                    return internal("pij register", error);
+                }
+            }
             let meta = descriptor.pane.is_none().then(|| {
                 format!(
                     "verified external shim callers resolve this paneless seat from their native host/session automatically; other clients must pass id {0} explicitly or export PIJ_SESSION_ID={0}",
@@ -1611,37 +1626,16 @@ async fn inbox(State(state): State<AppState>, Query(query): Query<InboxQuery>) -
             Err(error) => inbox_failure(error),
         };
     }
-    // Subscribe before claiming so both new sends and released holds wake readers.
-    let mut wake = query.wait.then(|| {
-        state.services.event_bus.subscribe_live(
-            EventFilter::kinds(["delivery.outcome", "delivery.released"])
-                .for_seat(query.seat.clone()),
-        )
-    });
     let identity = crate::delivery::NativeInboxIdentity {
         native_session: query.native_session,
         pid: query.pid,
         proc_start: query.proc_start,
     };
-    let result = loop {
-        let result = state
-            .services
-            .delivery
-            .claim_native_inbox(&query.seat, false, &identity)
-            .await;
-        if !result
-            .as_ref()
-            .is_ok_and(|page| page.claims.is_empty() && page.held_reason.is_none())
-        {
-            break result;
-        }
-        let Some(subscription) = wake.as_mut() else {
-            break result;
-        };
-        if subscription.next().await.is_none() {
-            break result;
-        }
-    };
+    let result = state
+        .services
+        .delivery
+        .claim_native_inbox(&query.seat, query.wait, &identity)
+        .await;
     match result {
         Ok(page) => native_inbox_response(page),
         Err(error) => inbox_failure(error),
@@ -2012,17 +2006,37 @@ async fn heartbeat_inbox(
     State(state): State<AppState>,
     Json(request): Json<InboxHeartbeatRequest>,
 ) -> Response {
+    let identity = crate::delivery::NativeInboxIdentity {
+        native_session: request.native_session,
+        pid: request.pid,
+        proc_start: request.proc_start,
+    };
+    let Some(job_id) = request.job_id else {
+        return match state
+            .services
+            .delivery
+            .heartbeat_native_receiver(&request.seat, &identity)
+            .await
+        {
+            Ok(heartbeat) => envelope(StatusCode::OK, &Envelope::ok("pij inbox", heartbeat)),
+            Err(error) => inbox_failure(error),
+        };
+    };
+    if identity.native_session.is_some() || identity.pid.is_some() || identity.proc_start.is_some()
+    {
+        return refused("pij inbox", "native receiver heartbeat must omit job_id");
+    }
     match state
         .services
         .delivery
-        .heartbeat_inbox(&request.seat, request.job_id)
+        .heartbeat_inbox(&request.seat, job_id)
         .await
     {
         Ok(job_state) => envelope(
             StatusCode::OK,
             &Envelope::ok(
                 "pij inbox",
-                serde_json::json!({"job_id": request.job_id, "state": job_state}),
+                serde_json::json!({"job_id": job_id, "state": job_state}),
             ),
         ),
         Err(error) => inbox_failure(error),

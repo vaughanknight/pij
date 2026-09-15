@@ -143,6 +143,26 @@ function fixture(overrides = {}) {
 		async getEvents() {
 			return history;
 		},
+		rpc: {
+			eventLog: {
+				async tail() {
+					const events = await native.getEvents();
+					if (!Array.isArray(events)) return undefined;
+					return { cursor: String(events.length) };
+				},
+				async read({ cursor = "0", max }) {
+					const history = await native.getEvents();
+					const events = history.slice(Number(cursor), Number(cursor) + max);
+					const next = Number(cursor) + events.length;
+					return {
+						events,
+						cursor: String(next),
+						hasMore: next < history.length,
+						cursorStatus: "ok",
+					};
+				},
+			},
+		},
 	};
 	const client = {
 		async consentSnapshot(consumer, signal) {
@@ -155,6 +175,8 @@ function fixture(overrides = {}) {
 			return { claims: await this.request(`/v1/inbox?${query}`, undefined, signal), hold: null };
 		},
 		async request(path, body, signal) {
+			if (path === "/v1/inbox/heartbeat")
+				return { state: "live", lease_ms: 60000, renew_after_ms: 20000 };
 			if (path === "/v1/register") {
 				trace.push("register");
 				return descriptor;
@@ -213,6 +235,7 @@ function discardedQueueFixture() {
 	const state = { processing: true, items: [], sends: 0, queueReads: 0, processingReads: 0 };
 	state.steeringMessages = [];
 	f.native.rpc = {
+		...f.native.rpc,
 		queue: {
 			pendingItems: async () => {
 				state.queueReads++;
@@ -384,7 +407,8 @@ test("native discard recovery: replayed historical boundary cannot authorize res
 test("native discard recovery: missing rpc holds visibly at a fresh boundary without ACK or resend", async (t) => {
 	const f = discardedQueueFixture();
 	t.after(() => f.bridge.stop());
-	delete f.native.rpc;
+	delete f.native.rpc.queue;
+	delete f.native.rpc.metadata;
 	const run = f.bridge.run();
 	await flush();
 	f.history.push({ type: "assistant.turn_end", id: "foreground-end", data: {} });
@@ -731,7 +755,7 @@ test("native consumption: missed callbacks recover consumption and final turn fr
 		},
 		{ type: "assistant.turn_end", id: "history-end", parentId: "history-answer", data: {} },
 	];
-	f.native.getEvents = async () => history;
+	f.native.getEvents = async () => (f.trace.includes("send") ? history : []);
 	const run = f.bridge.run();
 	await flush();
 	assert.equal(f.trace.includes("ack"), true);
@@ -887,7 +911,7 @@ test("native consumption: replayed tool turns and unrelated final turns cannot c
 		},
 		{ type: "abort", id: "global-abort", parentId: "tool-end", data: { reason: "user" } },
 	];
-	f.native.getEvents = async () => history;
+	f.native.getEvents = async () => (f.trace.includes("send") ? history : []);
 	const run = f.bridge.run();
 	await f.accepted.promise;
 	await flush();
@@ -2055,6 +2079,16 @@ async function deadlineHttpFixture(t, handler) {
 			body: raw ? JSON.parse(raw) : undefined,
 		};
 		requests.push(entry);
+		if (entry.url.pathname === "/v1/inbox/heartbeat") {
+			response.end(
+				JSON.stringify({
+					ok: true,
+					v: 2,
+					data: { state: "live", lease_ms: 60000, renew_after_ms: 20000 },
+				}),
+			);
+			return;
+		}
 		handler(entry, response);
 	});
 	t.after(
@@ -3613,3 +3647,57 @@ for (const snapshot of [
 		);
 	});
 }
+
+test("incremental history: expired cursor cannot acknowledge or retry from fallback events", async () => {
+	const f = discardedQueueFixture();
+	f.native.rpc.eventLog.read = async () => ({
+		events: [
+			{ type: "session.idle", id: "fallback-boundary", data: {} },
+			{ type: "user.message", id: "fallback-user", data: { messageId: "queued-native-1" } },
+		],
+		cursor: "rebased",
+		hasMore: false,
+		cursorStatus: "expired",
+	});
+	await f.bridge.run();
+	assert.equal(f.state.sends, 1);
+	assert.equal(f.trace.includes("ack"), false);
+	assert.equal(f.trace.includes("retry-intent"), false);
+	assert.ok(
+		f.reports.some(
+			({ kind, diagnostic }) => kind === "receive-held" && /cursor expired/.test(diagnostic),
+		),
+	);
+	f.bridge.stop();
+});
+
+test("incremental history: accepted recovery spans pages without skipping consumption ancestry", async (t) => {
+	const f = fixture({ delay: () => flush() });
+	t.after(() => f.bridge.stop());
+	f.records.set(claim.message.msg_id, {
+		state: "accepted",
+		message: claim.message,
+		nativeId: "paged-native",
+	});
+	f.history.push(
+		...Array.from({ length: 127 }, (_, i) => ({
+			type: "session.idle",
+			id: `historic-boundary-${i}`,
+			data: {},
+		})),
+		{ type: "user.message", id: "paged-user", data: { messageId: "paged-native" } },
+		{ type: "assistant.message", id: "paged-answer", parentId: "paged-user", data: {} },
+		{ type: "assistant.turn_end", id: "paged-end", parentId: "paged-answer", data: {} },
+	);
+	const run = f.bridge.run();
+	await f.accepted.promise;
+	await flush();
+	assert.equal(f.trace.includes("send"), false);
+	assert.equal(f.trace.filter((entry) => entry === "ack").length, 1);
+	assert.equal(f.trace.filter((entry) => entry === "claim").length, 2);
+	assert.ok(
+		f.reports.some(({ kind, eventId }) => kind === "native-completed" && eventId === "paged-end"),
+	);
+	f.bridge.stop();
+	await run;
+});

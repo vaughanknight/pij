@@ -64,12 +64,25 @@ if (input.stage === 'live') {
     const journal = new FileJournal(input.stateDir, registration);
     const acceptanceLog = join(input.stateDir, 'native-send-boundary.jsonl');
     const events = [];
+    const consumedEvent = { type: 'user.message', id: 'test-consumed-event',
+        data: { messageId: 'test-native-acceptance-not-model-completion' } };
+    const nativeHistory = input.stage === 'resume' ? [consumedEvent] : [];
     const native = {
+        rpc: { eventLog: {
+            async tail() { return { cursor: String(nativeHistory.length) }; },
+            async read({ cursor = '0', max }) {
+                const events = nativeHistory.slice(Number(cursor), Number(cursor) + max);
+                const next = Number(cursor) + events.length;
+                return { cursor: String(next), events, hasMore: next < nativeHistory.length, cursorStatus: 'ok' };
+            },
+        } },
+        on() { return () => {}; },
         async send(message) {
             assert.equal(input.stage, 'initial', 'accepted replay must never call native.send');
-            assert.equal(message.mode, 'enqueue');
+            assert.equal(message.mode, 'immediate');
             assert.ok(message.prompt.endsWith(input.body));
             await appendFile(acceptanceLog, JSON.stringify(message) + '\n', { mode: 0o600 });
+            nativeHistory.push(consumedEvent);
             return 'test-native-acceptance-not-model-completion';
         },
     };

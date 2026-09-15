@@ -501,7 +501,17 @@ pub(crate) async fn shim_inbox(State(state): State<AppState>, body: axum::body::
             "inbox --wait requires the registered native session and live host tuple",
         );
     }
-    let result = if pull && identity.native_session.is_some() {
+    let manual = match manual_native_identity(request.caller.as_ref(), &reader) {
+        Ok(identity) => identity,
+        Err(reason) => return refused(INBOX, reason),
+    };
+    let result = if let Some(identity) = manual {
+        state
+            .services
+            .delivery
+            .claim_manual_native_inbox(&reader.id, &identity)
+            .await
+    } else if pull && identity.native_session.is_some() {
         state
             .services
             .delivery
@@ -565,15 +575,15 @@ pub(crate) async fn shim_inbox_ack(
         Ok(reader) => reader,
         Err(response) => return *response,
     };
+    let identity = match manual_native_identity(request.caller.as_ref(), &reader) {
+        Ok(Some(identity)) => identity,
+        Ok(None) => inbox_identity(request.caller.as_ref(), &reader),
+        Err(reason) => return refused(INBOX, reason),
+    };
     match state
         .services
         .delivery
-        .acknowledge_inbox(
-            &reader.id,
-            request.job_id,
-            &inbox_identity(request.caller.as_ref(), &reader),
-            None,
-        )
+        .acknowledge_inbox(&reader.id, request.job_id, &identity, None)
         .await
     {
         Ok(acknowledged) => super::envelope(
@@ -683,6 +693,36 @@ fn inbox_identity(caller: Option<&CallerContext>, seat: &SeatDescriptor) -> Nati
         pid: caller.pid,
         proc_start: caller.proc_start,
     }
+}
+
+fn manual_native_identity(
+    caller: Option<&CallerContext>,
+    seat: &SeatDescriptor,
+) -> Result<Option<NativeInboxIdentity>, &'static str> {
+    if seat.harness != Harness::Copilot || seat.pane.is_none() || !seat.native_extension_delivery {
+        return Ok(None);
+    }
+    let caller =
+        caller.ok_or("manual native inbox requires the registered pane and Copilot session")?;
+    if caller.pane != seat.pane
+        || caller
+            .copilot_session
+            .as_ref()
+            .or(caller.harness_session.as_ref())
+            != seat.harness_session.as_ref()
+        || seat.harness_session.as_deref().is_none_or(str::is_empty)
+    {
+        return Err(
+            "native incarnation mismatch: manual inbox pane and Copilot session must match the registered seat",
+        );
+    }
+    // The shared ladder already verified the pane. The registry, never a
+    // self-asserted/diagnostic CLI PID, supplies the binding at claim and ACK.
+    Ok(Some(NativeInboxIdentity {
+        native_session: seat.harness_session.clone(),
+        pid: seat.proc.map(|proc| proc.pid),
+        proc_start: seat.proc.map(|proc| proc.proc_start),
+    }))
 }
 
 /// A decode's two answers.

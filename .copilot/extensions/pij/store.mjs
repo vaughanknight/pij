@@ -535,31 +535,33 @@ function sameMessage(left, right) {
 
 /** Consumption and completion belong to one accepted native message, including after restart. */
 class NativeCompletion {
-	constructor(msgId, recoveredNativeId) {
+	constructor(msgId, cursor, replay = false) {
 		this.msgId = msgId;
-		this.nativeId = recoveredNativeId;
-		this.live = recoveredNativeId === undefined;
+		this.live = !replay;
+		this.cursor = replay ? undefined : cursor;
+		this.replay = replay;
 		this.pending = [];
 		this.descendants = new Set();
 		this.finalMessages = new Set();
-		this.consumed = new Promise((resolve) => {
-			this.resolveConsumed = resolve;
-		});
-		this.done = new Promise((resolve) => {
-			this.resolve = resolve;
-		});
+		this.waiters = new Set();
 	}
-	trackBoundaries(events) {
-		this.boundaries = new Set(
-			events
-				.filter(
-					(event) =>
-						!event.agentId &&
-						nonempty(event.id) &&
-						["assistant.turn_end", "session.idle"].includes(event.type),
-				)
-				.map((event) => event.id),
-		);
+	notify() {
+		for (const wake of this.waiters) wake();
+	}
+	async wait(promise, terminal, signal) {
+		let wake;
+		const observed = new Promise((resolve) => {
+			wake = () => {
+				if (terminal ? this.terminal : this.consumption) resolve();
+			};
+			this.waiters.add(wake);
+			wake();
+		});
+		try {
+			return await abortable(Promise.race([promise, observed]), signal);
+		} finally {
+			this.waiters.delete(wake);
+		}
 	}
 	bind(nativeId) {
 		this.nativeId = nativeId;
@@ -571,17 +573,16 @@ class NativeCompletion {
 		finalMessage = event.type === "assistant.message" &&
 			(event.data?.toolRequests === undefined ||
 				(Array.isArray(event.data.toolRequests) && event.data.toolRequests.length === 0)),
+		fresh = true,
 	) {
 		if (this.terminal) return;
 		if (
-			this.boundaries &&
+			fresh &&
 			!this.consumption &&
 			!event.agentId &&
 			nonempty(event.id) &&
-			["assistant.turn_end", "session.idle"].includes(event.type) &&
-			!this.boundaries.has(event.id)
+			["assistant.turn_end", "session.idle"].includes(event.type)
 		) {
-			this.boundaries.add(event.id);
 			this.boundary = event.id;
 		}
 		if (!this.nativeId) {
@@ -605,7 +606,7 @@ class NativeCompletion {
 				if (nonempty(event.data.interactionId)) this.interactionId ??= event.data.interactionId;
 				if (!this.consumption) {
 					this.consumption = { eventId: event.id };
-					this.resolveConsumed(this.consumption);
+					this.notify();
 				}
 			}
 			return;
@@ -629,7 +630,7 @@ class NativeCompletion {
 			this.terminal = { type: event.type, eventId: event.id };
 			this.descendants.clear();
 			this.finalMessages.clear();
-			this.resolve(this.terminal);
+			this.notify();
 		}
 	}
 }
@@ -642,6 +643,7 @@ export class NativeBridge {
 		journal,
 		report,
 		delay = (ms, signal) => sleep(ms, undefined, { signal }),
+		heartbeatDelay = (ms, signal) => sleep(ms, undefined, { signal }),
 	}) {
 		this.registration = Object.freeze({ ...registration });
 		this.native = native;
@@ -649,6 +651,8 @@ export class NativeBridge {
 		this.journal = journal;
 		this.report = report;
 		this.delay = delay;
+		this.heartbeatDelay = heartbeatDelay;
+		this.heartbeatController = new AbortController();
 		this.controller = new AbortController();
 		this.registered = false;
 		this.running = undefined;
@@ -666,6 +670,7 @@ export class NativeBridge {
 	stop() {
 		this.registered = false;
 		this.controller.abort();
+		this.heartbeatController.abort();
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
 	}
@@ -693,6 +698,43 @@ export class NativeBridge {
 				pane: registration.pane ?? null,
 			});
 		}
+		if (!this.heartbeat) this.heartbeat = this.keepReceiverAlive();
+	}
+	async keepReceiverAlive() {
+		const signal = this.heartbeatController.signal;
+		let retry = INITIAL_RETRY_MS;
+		let unavailable = false;
+		while (!signal.aborted) {
+			try {
+				const lease = await this.client.request("/v1/inbox/heartbeat", this.tuple(), signal);
+				throwIfStopped(signal);
+				if (
+					lease?.state !== "live" ||
+					!positiveInteger(lease.lease_ms) ||
+					!positiveInteger(lease.renew_after_ms) ||
+					lease.renew_after_ms >= lease.lease_ms
+				)
+					throw new NativeError("Native receiver lease response is malformed; receiving held");
+				unavailable = false;
+				retry = INITIAL_RETRY_MS;
+				await this.heartbeatDelay(lease.renew_after_ms, signal);
+			} catch (error) {
+				if (signal.aborted) return;
+				if (!unavailable)
+					this.emit("receiver-lease-unavailable", {
+						safeDiagnostic:
+							error instanceof NativeError ? error.safeDiagnostic : "lease renewal failed",
+					});
+				unavailable = true;
+				// The daemon independently expires the lease if it cannot be renewed.
+				try {
+					await this.heartbeatDelay(retry, signal);
+				} catch {
+					return;
+				}
+				retry = Math.min(retry * 2, MAX_RETRY_MS);
+			}
+		}
 	}
 	tuple() {
 		const r = this.registration;
@@ -704,9 +746,12 @@ export class NativeBridge {
 		let failureEpisode = false;
 		try {
 			throwIfStopped(signal);
-			if (typeof this.native.getEvents !== "function")
+			if (
+				typeof this.native.rpc?.eventLog?.tail !== "function" ||
+				typeof this.native.rpc?.eventLog?.read !== "function"
+			)
 				throw new NativeError(
-					"Native history API getEvents is unavailable; receiving held without acknowledgement",
+					"Native incremental history API eventLog.tail/read is unavailable; receiving held without acknowledgement",
 				);
 			this.unsubscribe = this.native.on((event) => {
 				if (signal.aborted) return;
@@ -802,6 +847,7 @@ export class NativeBridge {
 						"Inspect native history and durable acceptance before recovery; do not blindly resend or acknowledge.",
 				});
 		} finally {
+			this.heartbeatController.abort();
 			this.unsubscribe?.();
 			this.unsubscribe = undefined;
 			this.completion = undefined;
@@ -822,35 +868,60 @@ export class NativeBridge {
 			grade: "observed-native-terminal-not-model-success",
 		});
 	}
+	async readEvents(completion) {
+		// One outstanding SDK read per delivery; racing a callback must not fan out
+		// uncancellable requests or retain full response bodies on a pending promise.
+		if (!completion.reading) {
+			completion.reading = (async () => {
+				const page = await abortable(
+					this.native.rpc.eventLog.read({
+						cursor: completion.cursor,
+						max: 128,
+						includeEphemeral: false,
+					}),
+					this.controller.signal,
+				);
+				throwIfStopped(this.controller.signal);
+				if (
+					!Array.isArray(page?.events) ||
+					page.events.length > 128 ||
+					typeof page.cursor !== "string" ||
+					typeof page.hasMore !== "boolean" ||
+					page.cursorStatus !== "ok" ||
+					(page.hasMore && page.cursor === completion.cursor)
+				)
+					throw new NativeError(
+						"Native incremental history cursor expired or page malformed; receiving held without reinjection",
+					);
+				for (const event of page.events) completion.observe(event, undefined, !completion.replay);
+				completion.cursor = page.cursor;
+				completion.hasMore = page.hasMore;
+				if (!page.hasMore) completion.replay = false;
+			})().finally(() => {
+				completion.reading = undefined;
+			});
+		}
+		return completion.reading;
+	}
 	async waitForObservation(completion, terminal = false, message) {
 		const signal = this.controller.signal;
-		const observed = terminal ? completion.done : completion.consumed;
 		let retry = INITIAL_RETRY_MS;
 		while (!(terminal ? completion.terminal : completion.consumption)) {
 			throwIfStopped(signal);
-			let events;
 			try {
-				events = await abortable(
-					Promise.race([this.native.getEvents(), observed.then(() => undefined)]),
-					signal,
-				);
+				await completion.wait(this.readEvents(completion), terminal, signal);
 			} catch (error) {
-				if (signal.aborted) throw error;
+				if (signal.aborted || error instanceof NativeError) throw error;
 				throw new NativeError(
-					"Native history could not be read; accepted delivery held without reinjection or unproven acknowledgement",
+					"Native incremental history could not be read; accepted delivery held without reinjection or unproven acknowledgement",
 				);
 			}
 			throwIfStopped(signal);
-			if (events === undefined && (terminal ? completion.terminal : completion.consumption)) return;
-			if (!Array.isArray(events))
-				throw new NativeError(
-					"Native history returned malformed events; receiving held for recovery",
-				);
-			for (const event of events) completion.observe(event);
 			if (terminal ? completion.terminal : completion.consumption) return;
+			if (completion.hasMore) continue;
 			if (message && completion.boundary && (await this.canRetryDiscarded(completion, message)))
 				return true;
-			await abortable(Promise.race([this.delay(retry, signal), observed]), signal);
+			await completion.wait(this.delay(retry, signal), terminal, signal);
 			retry = Math.min(retry * 2, MAX_RETRY_MS);
 		}
 	}
@@ -895,12 +966,11 @@ export class NativeBridge {
 					"Native discard recovery received malformed processing snapshot; receiving held",
 				);
 			if (state.processing) return false;
-			// Queue and processing snapshots precede a fresh history read so a just-consumed item wins.
-			const events = await abortable(this.native.getEvents(), signal);
-			throwIfStopped(signal);
-			if (!Array.isArray(events))
-				throw new NativeError("Native discard recovery received malformed history; receiving held");
-			for (const event of events) completion.observe(event);
+			// A fresh cursor read after both snapshots catches consumption whose
+			// live callback was omitted. Drain pages before concluding absence.
+			do {
+				await this.readEvents(completion);
+			} while (completion.hasMore && !completion.consumption);
 			return !completion.consumption;
 		} catch (error) {
 			if (signal.aborted || error instanceof NativeError) throw error;
@@ -909,24 +979,20 @@ export class NativeBridge {
 			);
 		}
 	}
-	async newCompletion(msgId) {
-		const completion = new NativeCompletion(msgId);
-		let events;
+	async newCompletion(msgId, replay = false) {
+		let tail;
 		try {
-			events = await abortable(this.native.getEvents(), this.controller.signal);
+			tail = await abortable(this.native.rpc.eventLog.tail(), this.controller.signal);
 		} catch (error) {
 			if (this.controller.signal.aborted) throw error;
 			throw new NativeError(
-				"Native history baseline is unavailable; receiving held without injection",
+				"Native incremental history baseline is unavailable; receiving held without injection",
 			);
 		}
 		throwIfStopped(this.controller.signal);
-		if (!Array.isArray(events))
-			throw new NativeError(
-				"Native discard recovery history baseline is malformed; receiving held",
-			);
-		completion.trackBoundaries(events);
-		return completion;
+		if (typeof tail?.cursor !== "string")
+			throw new NativeError("Native incremental history baseline is malformed; receiving held");
+		return new NativeCompletion(msgId, tail.cursor, replay);
 	}
 	async enqueue(message, completion) {
 		const signal = this.controller.signal;
@@ -1000,8 +1066,7 @@ export class NativeBridge {
 				"Previous native send is ambiguous; held without reinjection or acknowledgement",
 			);
 		if (this.completion?.msgId !== message.msg_id || this.completion.nativeId !== record.nativeId) {
-			this.completion = await this.newCompletion(message.msg_id);
-			this.completion.live = false;
+			this.completion = await this.newCompletion(message.msg_id, true);
 			this.completion.bind(record.nativeId);
 		}
 		while (await this.waitForObservation(this.completion, false, message)) {

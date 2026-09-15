@@ -272,8 +272,14 @@ pub trait Queue: Send + Sync {
     /// Inspect terminal recovery rows; these are never claimable.
     async fn peek_parked(&self, kinds: &[String]) -> Result<Vec<ParkedDelivery>>;
 
-    /// Park only the named running live head at the observed attempt.
-    /// A completion, reclaim, or successor race returns None without mutation.
+    /// Explicit manual recovery of a native-receiver-unavailable body only.
+    /// Preserves its id/history, increments the attempt, and releases to pending.
+    /// Other outcomes, a foreign recipient, or a conflicting live row return false.
+    async fn recover_native_delivery(&self, job: JobId, recipient: &SeatId) -> Result<bool>;
+
+    /// Park only the named live head at the observed attempt. Native receiver
+    /// unavailability may also park an unclaimed/deferred head; other outcomes
+    /// require a running claim. Completion/reclaim races return None unchanged.
     async fn park_delivery(
         &self,
         job: JobId,

@@ -119,6 +119,9 @@ impl Queue for FailFirstClaim {
     async fn release_deferred(&self, job: JobId) -> Result<pij_core::ports::ReleaseOutcome> {
         self.inner.release_deferred(job).await
     }
+    async fn recover_native_delivery(&self, job: JobId, recipient: &SeatId) -> Result<bool> {
+        self.inner.recover_native_delivery(job, recipient).await
+    }
     async fn claim_extension(
         &self,
         kinds: &[String],
@@ -640,6 +643,9 @@ impl Queue for RefuseFirstDelivery {
     }
     async fn release_deferred(&self, job: JobId) -> Result<pij_core::ports::ReleaseOutcome> {
         self.inner.release_deferred(job).await
+    }
+    async fn recover_native_delivery(&self, job: JobId, recipient: &SeatId) -> Result<bool> {
+        self.inner.recover_native_delivery(job, recipient).await
     }
     async fn claim_extension(
         &self,

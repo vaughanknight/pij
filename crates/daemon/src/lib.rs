@@ -452,23 +452,36 @@ fn needs_store(config: &Config) -> bool {
 
 fn start_resilient_delivery_drain(
     drain: Arc<pointer::DrainWorker>,
+    delivery: Arc<delivery::DeliveryService>,
     interval: lifecycle::TickInterval,
 ) -> lifecycle::TickLoop {
-    lifecycle::TickLoop::start_validated(interval, move || {
-        let drain = Arc::clone(&drain);
-        async move {
-            // SURVIVE errors, for the same reason the federation worker does
-            // (review F2). TickLoop terminates on an Err, and a seat exiting
-            // with queued mail is ROUTINE: one dead pane between the registry
-            // read and the submit would have ended all below-socket delivery
-            // for the daemon's lifetime — no pointers, no commands, no socket
-            // bodies — silently, until someone restarted it.
-            if let Err(error) = drain.drain_once().await {
-                eprintln!("pij-rs drain: {error}");
+    let deadlines = Arc::clone(&delivery);
+    lifecycle::TickLoop::start_validated_with_wake(
+        interval,
+        move || {
+            let drain = Arc::clone(&drain);
+            let delivery = Arc::clone(&delivery);
+            async move {
+                // SURVIVE errors, for the same reason the federation worker does
+                // (review F2). TickLoop terminates on an Err, and a seat exiting
+                // with queued mail is ROUTINE: one dead pane between the registry
+                // read and the submit would have ended all below-socket delivery
+                // for the daemon's lifetime — no pointers, no commands, no socket
+                // bodies — silently, until someone restarted it.
+                if let Err(error) = delivery.reconcile_native_receivers().await {
+                    eprintln!("pij-rs native receiver reconciliation: {error}");
+                }
+                if let Err(error) = drain.drain_once().await {
+                    eprintln!("pij-rs drain: {error}");
+                }
+                Ok(())
             }
-            Ok(())
-        }
-    })
+        },
+        move || {
+            let delivery = Arc::clone(&deadlines);
+            async move { delivery.wait_native_receiver_deadline().await }
+        },
+    )
 }
 
 fn start_resilient_claude_binder(
@@ -742,7 +755,8 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     let pane_observer = pane_observer.start();
     let federation_worker = Arc::clone(&federation).start();
     let claude_bind_loop = start_resilient_claude_binder(claude_binder, delivery_interval);
-    let drain_loop = start_resilient_delivery_drain(drain, delivery_interval);
+    let drain_loop =
+        start_resilient_delivery_drain(drain, Arc::clone(&services.delivery), delivery_interval);
     // Infallible by construction: every refusal happened in step 8b.
     let sidecars = sidecars.start()?;
     let background = Arc::clone(&services.background);

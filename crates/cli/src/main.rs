@@ -1018,7 +1018,9 @@ async fn run(cli: Cli) -> ExitCode {
             if peek {
                 emit(&client.peek_inbox(&target).await, cli.json)
             } else {
-                emit(&client.inbox(&target, wait).await, cli.json)
+                let mut caller = caller_context();
+                caller.session_id = Some(target.to_string());
+                emit(&client.inbox(&target, wait, &caller).await, cli.json)
             }
         }
 
