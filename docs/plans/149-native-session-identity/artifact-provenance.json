@@ -1,0 +1,17 @@
+{
+  "binary_sha256": "8aa55b57dd3ad37165301b203c335006f0c1af53249494306dc33e2c2c78bade",
+  "files_sha256": {
+    "crates/daemon/src/registration.rs": "58da8d3b42330f6d926258732e6b0918d9d1ff3df66000c4f54b91a90b86a37c",
+    "crates/daemon/src/http/mod.rs": "dc28d6590ec46fb6f059eb2a110b212a9d154ef54e9d76ea4c9e866b187ce5fe",
+    "crates/daemon/src/http/identity.rs": "5115ffbbf64b81a8c490e3f721cc2495ca7d7a69c7291e2744b6f1aa697e70c2",
+    "crates/daemon/src/http/native_tests.rs": "511d05c656290258842c06ab733ee66216e7d7ef119569903dce5c7d32addc25",
+    ".copilot/extensions/pij/store.mjs": "fe371e64539aaa4285139ab55b174fdd032ef743a2d5ff983fa66b3266635e29",
+    ".copilot/extensions/pij/store.test.mjs": "aa4658d5b3352e5e79620012ee997cac768efd39d540113a698e1d23af78e8be",
+    ".copilot/extensions/pij/extension.test.mjs": "8b6ab270646bb2868f9d2d0f29f046d310719c8c8da78b150eeeeacc6059131a",
+    "docs/how/pij-rs-api.md": "9aa44e76119848bb645d70c727a7f3db111958781512f1e31e75d083abcc4400",
+    "docs/plans/149-native-session-identity/native-resume-live.ts": "342c134ae3bd55ba16031e977f23077bad9ef9a8f4f116061b05eeb14965f4e0"
+  },
+  "live_receipt": "live-green-release.json",
+  "baseline": "86855c61dc26551ac7339de61883c067433b9982",
+  "source_commit": "7f9e1cb2e88adc00c4b570683be7d649d34a78eb"
+}

@@ -1,0 +1,470 @@
+{
+  "run": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-live-rBxTaG",
+  "addr": "127.0.0.1:52395",
+  "home": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-live-rBxTaG/home",
+  "state": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-live-rBxTaG/state",
+  "socket": "pij-149-fad09fae-a502-4a62-a690-486f2a0065d5",
+  "claudeHome": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-live-rBxTaG/home/.claude-private",
+  "provider": "local deterministic provider; real installed Copilot CLI, real daemon, real tmux",
+  "stages": [
+    {
+      "kind": "spawn",
+      "seat": {
+        "id": "pij-better-ifechi",
+        "machine": "JordansacStudio.localdomain",
+        "harness": "copilot",
+        "session": "f010da4e-09a9-4270-8ee2-eb3f8b43ae63",
+        "extension_build": null,
+        "extension_path": null,
+        "pane": "%1",
+        "proc": {
+          "pid": 84354,
+          "proc_start": 20260915161126
+        },
+        "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-live-rBxTaG/workspace",
+        "state": "idle",
+        "semantic_state": null,
+        "role": null,
+        "parent": null,
+        "relay": false,
+        "cross_session_inbound_accept": false,
+        "native_extension_delivery": true,
+        "spawn_id": "s-ce9e7c0f33a8794f11331f11cb4b018f",
+        "generation": "rs"
+      }
+    },
+    {
+      "kind": "same-window",
+      "before": {
+        "id": "pij-better-ifechi",
+        "machine": "JordansacStudio.localdomain",
+        "harness": "copilot",
+        "session": "f010da4e-09a9-4270-8ee2-eb3f8b43ae63",
+        "extension_build": null,
+        "extension_path": null,
+        "pane": "%1",
+        "proc": {
+          "pid": 84354,
+          "proc_start": 20260915161126
+        },
+        "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-live-rBxTaG/workspace",
+        "state": "idle",
+        "semantic_state": null,
+        "role": null,
+        "parent": null,
+        "relay": false,
+        "cross_session_inbound_accept": false,
+        "native_extension_delivery": true,
+        "spawn_id": "s-ce9e7c0f33a8794f11331f11cb4b018f",
+        "generation": "rs"
+      },
+      "control": {
+        "kind": "native-lifecycle-human-control",
+        "pane": "%1",
+        "action": "exit",
+        "command": "/exit",
+        "status": "submitted-not-yet-lifecycle-proven",
+        "before": "Current   Sessions   Issues   Pull requests   Gists \n\n  ╭─╮╭─╮\n  ╰─╯╰─╯  Copilot v1.0.84-8 uses AI.\n  █ ▘▝ █  Check for mistakes.\n   ▔▔▔▔   /experimental\n\n ● Tip: /app\n   └ Prefer a visual workspace? Try out the GitHub Copilot desktop app\n      https://github.com/features/ai/github-app \n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens \n   (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help providers  for configuration details.\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ PIJ_149_WARMUP_578bf773-9034-48aa-8962-30d5854def2b                                                                                                16:11  \n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-live-rBxTaG/workspace\n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃  \n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ← open sidebar · / commands · ? help · tab next tab                                                                                         pij-native-fixture",
+        "staged": "  Current   Sessions   Issues   Pull requests   Gists\n\n  ╭─╮╭─╮\n  ╰─╯╰─╯  Copilot v1.0.84-8 uses AI.\n  █ ▘▝ █  Check for mistakes.\n   ▔▔▔▔   /experimental\n\n ● Tip: /app\n   └ Prefer a visual workspace? Try out the GitHub Copilot desktop app\n      https://github.com/features/ai/github-app \n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens\n   (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help providers  for configuration details.\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ PIJ_149_WARMUP_578bf773-9034-48aa-8962-30d5854def2b                                                                                                16:11\n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  ❯ /exit\n    /exit print  Print the session after exiting\n\n\n\n\n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃ /exit [print]\n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n @ files · # issues                                                                                                                          pij-native-fixture\n",
+        "staged_pane_capture": {
+          "pane": "%1",
+          "captured_at_ms": 1789452690322,
+          "terminal": "  Current   Sessions   Issues   Pull requests   Gists\n\n  ╭─╮╭─╮\n  ╰─╯╰─╯  Copilot v1.0.84-8 uses AI.\n  █ ▘▝ █  Check for mistakes.\n   ▔▔▔▔   /experimental\n\n ● Tip: /app\n   └ Prefer a visual workspace? Try out the GitHub Copilot desktop app\n      https://github.com/features/ai/github-app \n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens\n   (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help providers  for configuration details.\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ PIJ_149_WARMUP_578bf773-9034-48aa-8962-30d5854def2b                                                                                                16:11\n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  ❯ /exit\n    /exit print  Print the session after exiting\n\n\n\n\n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃ /exit [print]\n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n @ files · # issues                                                                                                                          pij-native-fixture\n",
+          "metadata_raw": "7\t45\t160\t48",
+          "cursor_x": 7,
+          "cursor_y": 45,
+          "pane_width": 160,
+          "pane_height": 48
+        },
+        "before_submit": "  Current   Sessions   Issues   Pull requests   Gists\n\n  ╭─╮╭─╮\n  ╰─╯╰─╯  Copilot v1.0.84-8 uses AI.\n  █ ▘▝ █  Check for mistakes.\n   ▔▔▔▔   /experimental\n\n ● Tip: /app\n   └ Prefer a visual workspace? Try out the GitHub Copilot desktop app\n      https://github.com/features/ai/github-app \n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens\n   (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help providers  for configuration details.\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ PIJ_149_WARMUP_578bf773-9034-48aa-8962-30d5854def2b                                                                                                16:11\n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  ❯ /exit\n    /exit print  Print the session after exiting\n\n\n\n\n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃ /exit [print]\n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n @ files · # issues                                                                                                                          pij-native-fixture\n",
+        "before_submit_pane_capture": {
+          "pane": "%1",
+          "captured_at_ms": 1789452690327,
+          "terminal": "  Current   Sessions   Issues   Pull requests   Gists\n\n  ╭─╮╭─╮\n  ╰─╯╰─╯  Copilot v1.0.84-8 uses AI.\n  █ ▘▝ █  Check for mistakes.\n   ▔▔▔▔   /experimental\n\n ● Tip: /app\n   └ Prefer a visual workspace? Try out the GitHub Copilot desktop app\n      https://github.com/features/ai/github-app \n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens\n   (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help providers  for configuration details.\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ PIJ_149_WARMUP_578bf773-9034-48aa-8962-30d5854def2b                                                                                                16:11\n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  ❯ /exit\n    /exit print  Print the session after exiting\n\n\n\n\n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃ /exit [print]\n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n @ files · # issues                                                                                                                          pij-native-fixture\n",
+          "metadata_raw": "7\t45\t160\t48",
+          "cursor_x": 7,
+          "cursor_y": 45,
+          "pane_width": 160,
+          "pane_height": 48
+        },
+        "submit_keys": [
+          "Enter"
+        ],
+        "command_submitted": true,
+        "after": "Current   Sessions   Issues   Pull requests   Gists \n\n  ╭─╮╭─╮\n  ╰─╯╰─╯  Copilot v1.0.84-8 uses AI.\n  █ ▘▝ █  Check for mistakes.\n   ▔▔▔▔   /experimental\n\n ● Tip: /app\n   └ Prefer a visual workspace? Try out the GitHub Copilot desktop app\n      https://github.com/features/ai/github-app \n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens \n   (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help providers  for configuration details.\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ PIJ_149_WARMUP_578bf773-9034-48aa-8962-30d5854def2b                                                                                                16:11  \n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  ❯ /exit\n    /exit print  Print the session after exiting\n \n \n \n                                                                                       \n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃ /exit [print]\n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n @ files · # issues                                                                                                                          pij-native-fixture"
+      },
+      "msgId": "6637af55-7a65-4045-933c-370bdf6db389",
+      "nonce": "PIJ_149_GAP_78879e3a-5a75-4b74-8070-417830caecd1",
+      "send": {
+        "msg_id": "6637af55-7a65-4045-933c-370bdf6db389",
+        "outcome": {
+          "outcome": "queued",
+          "reason": "extension-stream",
+          "next_retry_at": 0
+        },
+        "at": 1789452692472
+      },
+      "jobs_before": [
+        {
+          "id": 1,
+          "state": "pending",
+          "payload": "{\"from\":\"pij-149-proof\",\"to\":\"pij-better-ifechi\",\"body\":\"PIJ_149_GAP_78879e3a-5a75-4b74-8070-417830caecd1\",\"msg_id\":\"6637af55-7a65-4045-933c-370bdf6db389\",\"native_target_session\":\"f010da4e-09a9-4270-8ee2-eb3f8b43ae63\"}"
+        }
+      ],
+      "after": {
+        "id": "pij-better-ifechi",
+        "machine": "JordansacStudio.localdomain",
+        "harness": "copilot",
+        "session": "f010da4e-09a9-4270-8ee2-eb3f8b43ae63",
+        "extension_build": null,
+        "extension_path": null,
+        "pane": "%1",
+        "proc": {
+          "pid": 87580,
+          "proc_start": 20260915161132
+        },
+        "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-live-rBxTaG/workspace",
+        "state": "idle",
+        "semantic_state": null,
+        "role": null,
+        "parent": null,
+        "relay": false,
+        "cross_session_inbound_accept": false,
+        "native_extension_delivery": true,
+        "spawn_id": "s-ce9e7c0f33a8794f11331f11cb4b018f",
+        "generation": "rs"
+      },
+      "ack": {
+        "recipient": "pij-better-ifechi",
+        "msg_id": "6637af55-7a65-4045-933c-370bdf6db389",
+        "origin": "reader-read"
+      },
+      "jobs_after": [
+        {
+          "id": 1,
+          "state": "done",
+          "payload": "{\"from\":\"pij-149-proof\",\"to\":\"pij-better-ifechi\",\"body\":\"PIJ_149_GAP_78879e3a-5a75-4b74-8070-417830caecd1\",\"msg_id\":\"6637af55-7a65-4045-933c-370bdf6db389\",\"native_target_session\":\"f010da4e-09a9-4270-8ee2-eb3f8b43ae63\"}"
+        }
+      ],
+      "state": {
+        "id": "pij-better-ifechi",
+        "state": "idle",
+        "liveness": "active",
+        "pid": 87580,
+        "procStart": 20260915161132,
+        "cwd": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-live-rBxTaG/workspace",
+        "harness": "copilot",
+        "extension_build": null,
+        "extension_path": null,
+        "role": null,
+        "parent": null,
+        "boundModel": null,
+        "effort": null,
+        "pane": "%1",
+        "provider": null,
+        "semanticState": null,
+        "machine": "JordansacStudio.localdomain",
+        "tombstonedAt": null,
+        "tombstoneReason": null,
+        "statusPrev": null,
+        "statusNext": null,
+        "statusAt": null,
+        "statusSeq": null,
+        "statusStale": null,
+        "stateNote": null,
+        "assignment_id": null,
+        "refs": [],
+        "held": [],
+        "unsupported": [
+          {
+            "field": "lifecycle",
+            "why": "rs seats have no pending/bound/dissolved lifecycle field; binding evidence lives in `proc` and is reported through `liveness`"
+          },
+          {
+            "field": "activity",
+            "why": "the done-vs-idle split needs `lastEventAt`, which the rs descriptor does not carry; `state` reports the working/idle half"
+          },
+          {
+            "field": "lastEventAt",
+            "why": "not on the rs descriptor — deriving it needs a full spine scan per read"
+          },
+          {
+            "field": "ageMs",
+            "why": "derived from `lastEventAt`, which rs does not carry"
+          },
+          {
+            "field": "liveness:stale",
+            "why": "TS reports `stale` for a seat that claims to be working and has gone quiet; that needs event age. An rs `active` therefore covers BOTH the TS `active` and the TS `stale` case — it is a weaker claim, not the same one"
+          },
+          {
+            "field": "daemonLastTickAt",
+            "why": "no per-seat daemon tick is recorded in the rs store"
+          },
+          {
+            "field": "daemonTickAgeMs",
+            "why": "derived from the tick rs does not record"
+          },
+          {
+            "field": "daemonTickStale",
+            "why": "derived from the tick rs does not record"
+          },
+          {
+            "field": "failureReason",
+            "why": "rs records no per-seat failure reason on the descriptor"
+          },
+          {
+            "field": "bindHealth",
+            "why": "the TS pre-bind health classifier has no rs counterpart"
+          },
+          {
+            "field": "degraded",
+            "why": "derived from `bindHealth`"
+          },
+          {
+            "field": "degradedReason",
+            "why": "derived from `bindHealth`"
+          },
+          {
+            "field": "terminal",
+            "why": "rs records termination as `tombstonedAt` + `tombstoneReason`, which this card DOES carry — a different shape, not a missing fact"
+          },
+          {
+            "field": "watchdog",
+            "why": "rs has no watchdog block on the seat row"
+          }
+        ],
+        "session": "f010da4e-09a9-4270-8ee2-eb3f8b43ae63",
+        "generation": "rs"
+      },
+      "terminal": "Current   Sessions   Issues   Pull requests   Gists \n\n  ╭─╮╭─╮\n  ╰─╯╰─╯  Copilot v1.0.84-8 uses AI.\n  █ ▘▝ █  Check for mistakes.\n   ▔▔▔▔   /experimental\n\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ PIJ_149_WARMUP_578bf773-9034-48aa-8962-30d5854def2b                                                                                                16:11  \n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens \n   (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help providers  for configuration details.\n\n ● Tip: /permissions\n   └ Switch between permission modes\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-live-rBxTaG/workspace\n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃  \n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ← open sidebar · / commands · ? help · tab next tab                                                                                         pij-native-fixture"
+    },
+    {
+      "kind": "new-window",
+      "before": {
+        "id": "pij-better-ifechi",
+        "machine": "JordansacStudio.localdomain",
+        "harness": "copilot",
+        "session": "f010da4e-09a9-4270-8ee2-eb3f8b43ae63",
+        "extension_build": null,
+        "extension_path": null,
+        "pane": "%1",
+        "proc": {
+          "pid": 87580,
+          "proc_start": 20260915161132
+        },
+        "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-live-rBxTaG/workspace",
+        "state": "idle",
+        "semantic_state": null,
+        "role": null,
+        "parent": null,
+        "relay": false,
+        "cross_session_inbound_accept": false,
+        "native_extension_delivery": true,
+        "spawn_id": "s-ce9e7c0f33a8794f11331f11cb4b018f",
+        "generation": "rs"
+      },
+      "control": {
+        "kind": "native-lifecycle-human-control",
+        "pane": "%1",
+        "action": "exit",
+        "command": "/exit",
+        "status": "submitted-not-yet-lifecycle-proven",
+        "before": "Current   Sessions   Issues   Pull requests   Gists \n\n  ╭─╮╭─╮\n  ╰─╯╰─╯  Copilot v1.0.84-8 uses AI.\n  █ ▘▝ █  Check for mistakes.\n   ▔▔▔▔   /experimental\n\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ PIJ_149_WARMUP_578bf773-9034-48aa-8962-30d5854def2b                                                                                                16:11  \n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens \n   (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help providers  for configuration details.\n\n ● Tip: /permissions\n   └ Switch between permission modes\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-live-rBxTaG/workspace\n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃  \n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ← open sidebar · / commands · ? help · tab next tab                                                                                         pij-native-fixture",
+        "staged": "  Current   Sessions   Issues   Pull requests   Gists\n\n  ╭─╮╭─╮\n  ╰─╯╰─╯  Copilot v1.0.84-8 uses AI.\n  █ ▘▝ █  Check for mistakes.\n   ▔▔▔▔   /experimental\n\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ PIJ_149_WARMUP_578bf773-9034-48aa-8962-30d5854def2b                                                                                                16:11\n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens\n   (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help providers  for configuration details.\n\n ● Tip: /permissions\n   └ Switch between permission modes\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ [pij from \"pij-149-proof\"; msg_id=\"6637af55-7a65-4045-933c-370bdf6db389\"]                                                                          16:11\n    PIJ_149_GAP_78879e3a-5a75-4b74-8070-417830caecd1\n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  ❯ /exit\n    /exit print  Print the session after exiting\n\n\n\n\n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃ /exit [print]\n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n @ files · # issues                                                                                                                          pij-native-fixture\n",
+        "staged_pane_capture": {
+          "pane": "%1",
+          "captured_at_ms": 1789452693588,
+          "terminal": "  Current   Sessions   Issues   Pull requests   Gists\n\n  ╭─╮╭─╮\n  ╰─╯╰─╯  Copilot v1.0.84-8 uses AI.\n  █ ▘▝ █  Check for mistakes.\n   ▔▔▔▔   /experimental\n\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ PIJ_149_WARMUP_578bf773-9034-48aa-8962-30d5854def2b                                                                                                16:11\n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens\n   (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help providers  for configuration details.\n\n ● Tip: /permissions\n   └ Switch between permission modes\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ [pij from \"pij-149-proof\"; msg_id=\"6637af55-7a65-4045-933c-370bdf6db389\"]                                                                          16:11\n    PIJ_149_GAP_78879e3a-5a75-4b74-8070-417830caecd1\n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  ❯ /exit\n    /exit print  Print the session after exiting\n\n\n\n\n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃ /exit [print]\n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n @ files · # issues                                                                                                                          pij-native-fixture\n",
+          "metadata_raw": "7\t45\t160\t48",
+          "cursor_x": 7,
+          "cursor_y": 45,
+          "pane_width": 160,
+          "pane_height": 48
+        },
+        "before_submit": "  Current   Sessions   Issues   Pull requests   Gists\n\n  ╭─╮╭─╮\n  ╰─╯╰─╯  Copilot v1.0.84-8 uses AI.\n  █ ▘▝ █  Check for mistakes.\n   ▔▔▔▔   /experimental\n\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ PIJ_149_WARMUP_578bf773-9034-48aa-8962-30d5854def2b                                                                                                16:11\n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens\n   (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help providers  for configuration details.\n\n ● Tip: /permissions\n   └ Switch between permission modes\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ [pij from \"pij-149-proof\"; msg_id=\"6637af55-7a65-4045-933c-370bdf6db389\"]                                                                          16:11\n    PIJ_149_GAP_78879e3a-5a75-4b74-8070-417830caecd1\n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  ❯ /exit\n    /exit print  Print the session after exiting\n\n\n\n\n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃ /exit [print]\n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n @ files · # issues                                                                                                                          pij-native-fixture\n",
+        "before_submit_pane_capture": {
+          "pane": "%1",
+          "captured_at_ms": 1789452693594,
+          "terminal": "  Current   Sessions   Issues   Pull requests   Gists\n\n  ╭─╮╭─╮\n  ╰─╯╰─╯  Copilot v1.0.84-8 uses AI.\n  █ ▘▝ █  Check for mistakes.\n   ▔▔▔▔   /experimental\n\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ PIJ_149_WARMUP_578bf773-9034-48aa-8962-30d5854def2b                                                                                                16:11\n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens\n   (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help providers  for configuration details.\n\n ● Tip: /permissions\n   └ Switch between permission modes\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ [pij from \"pij-149-proof\"; msg_id=\"6637af55-7a65-4045-933c-370bdf6db389\"]                                                                          16:11\n    PIJ_149_GAP_78879e3a-5a75-4b74-8070-417830caecd1\n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  ❯ /exit\n    /exit print  Print the session after exiting\n\n\n\n\n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃ /exit [print]\n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n @ files · # issues                                                                                                                          pij-native-fixture\n",
+          "metadata_raw": "7\t45\t160\t48",
+          "cursor_x": 7,
+          "cursor_y": 45,
+          "pane_width": 160,
+          "pane_height": 48
+        },
+        "submit_keys": [
+          "Enter"
+        ],
+        "command_submitted": true,
+        "after": "Current   Sessions   Issues   Pull requests   Gists \n\n  ╭─╮╭─╮\n  ╰─╯╰─╯  Copilot v1.0.84-8 uses AI.\n  █ ▘▝ █  Check for mistakes.\n   ▔▔▔▔   /experimental\n\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ PIJ_149_WARMUP_578bf773-9034-48aa-8962-30d5854def2b                                                                                                16:11  \n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens \n   (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help providers  for configuration details.\n\n ● Tip: /permissions\n   └ Switch between permission modes\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ [pij from \"pij-149-proof\"; msg_id=\"6637af55-7a65-4045-933c-370bdf6db389\"]                                                                          16:11  \n    PIJ_149_GAP_78879e3a-5a75-4b74-8070-417830caecd1                                                                                                          \n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  ❯ /exit\n    /exit print  Print the session after exiting\n \n \n \n                                                                                       \n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃ /exit [print]\n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n @ files · # issues                                                                                                                          pij-native-fixture"
+      },
+      "msgId": "25a11faf-e2ad-4bdd-a1de-ebe6ab46ee07",
+      "nonce": "PIJ_149_GAP_1f14673b-a4d2-4353-9dbb-fc1bc9baea3a",
+      "send": {
+        "msg_id": "25a11faf-e2ad-4bdd-a1de-ebe6ab46ee07",
+        "outcome": {
+          "outcome": "queued",
+          "reason": "extension-stream",
+          "next_retry_at": 0
+        },
+        "at": 1789452693728
+      },
+      "jobs_before": [
+        {
+          "id": 2,
+          "state": "pending",
+          "payload": "{\"from\":\"pij-149-proof\",\"to\":\"pij-better-ifechi\",\"body\":\"PIJ_149_GAP_1f14673b-a4d2-4353-9dbb-fc1bc9baea3a\",\"msg_id\":\"25a11faf-e2ad-4bdd-a1de-ebe6ab46ee07\",\"native_target_session\":\"f010da4e-09a9-4270-8ee2-eb3f8b43ae63\"}"
+        }
+      ],
+      "reap": {
+        "dry_run": true,
+        "before": 1,
+        "after": 1,
+        "candidates": [
+          {
+            "seat": "pij-better-ifechi",
+            "process": "dead",
+            "pane": "absent",
+            "reason": "process-dead-and-pane-absent"
+          }
+        ],
+        "reaped": [],
+        "unverifiable": []
+      },
+      "retired": {
+        "seat": "pij-better-ifechi",
+        "tombstoned_at": 1789452693744,
+        "reason": "149-owned-exited-native-proof",
+        "seq": 15
+      },
+      "after": {
+        "id": "pij-better-ifechi",
+        "machine": "JordansacStudio.localdomain",
+        "harness": "copilot",
+        "session": "f010da4e-09a9-4270-8ee2-eb3f8b43ae63",
+        "extension_build": null,
+        "extension_path": null,
+        "pane": "%2",
+        "proc": {
+          "pid": 88468,
+          "proc_start": 20260915161133
+        },
+        "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-live-rBxTaG/workspace",
+        "state": "idle",
+        "semantic_state": null,
+        "role": null,
+        "parent": null,
+        "relay": false,
+        "cross_session_inbound_accept": false,
+        "native_extension_delivery": true,
+        "spawn_id": "s-ce9e7c0f33a8794f11331f11cb4b018f",
+        "generation": "rs"
+      },
+      "ack": {
+        "recipient": "pij-better-ifechi",
+        "msg_id": "25a11faf-e2ad-4bdd-a1de-ebe6ab46ee07",
+        "origin": "reader-read"
+      },
+      "jobs_after": [
+        {
+          "id": 2,
+          "state": "done",
+          "payload": "{\"from\":\"pij-149-proof\",\"to\":\"pij-better-ifechi\",\"body\":\"PIJ_149_GAP_1f14673b-a4d2-4353-9dbb-fc1bc9baea3a\",\"msg_id\":\"25a11faf-e2ad-4bdd-a1de-ebe6ab46ee07\",\"native_target_session\":\"f010da4e-09a9-4270-8ee2-eb3f8b43ae63\"}"
+        }
+      ],
+      "state": {
+        "id": "pij-better-ifechi",
+        "state": "idle",
+        "liveness": "active",
+        "pid": 88468,
+        "procStart": 20260915161133,
+        "cwd": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-live-rBxTaG/workspace",
+        "harness": "copilot",
+        "extension_build": null,
+        "extension_path": null,
+        "role": null,
+        "parent": null,
+        "boundModel": null,
+        "effort": null,
+        "pane": "%2",
+        "provider": null,
+        "semanticState": null,
+        "machine": "JordansacStudio.localdomain",
+        "tombstonedAt": null,
+        "tombstoneReason": null,
+        "statusPrev": null,
+        "statusNext": null,
+        "statusAt": null,
+        "statusSeq": null,
+        "statusStale": null,
+        "stateNote": null,
+        "assignment_id": null,
+        "refs": [],
+        "held": [],
+        "unsupported": [
+          {
+            "field": "lifecycle",
+            "why": "rs seats have no pending/bound/dissolved lifecycle field; binding evidence lives in `proc` and is reported through `liveness`"
+          },
+          {
+            "field": "activity",
+            "why": "the done-vs-idle split needs `lastEventAt`, which the rs descriptor does not carry; `state` reports the working/idle half"
+          },
+          {
+            "field": "lastEventAt",
+            "why": "not on the rs descriptor — deriving it needs a full spine scan per read"
+          },
+          {
+            "field": "ageMs",
+            "why": "derived from `lastEventAt`, which rs does not carry"
+          },
+          {
+            "field": "liveness:stale",
+            "why": "TS reports `stale` for a seat that claims to be working and has gone quiet; that needs event age. An rs `active` therefore covers BOTH the TS `active` and the TS `stale` case — it is a weaker claim, not the same one"
+          },
+          {
+            "field": "daemonLastTickAt",
+            "why": "no per-seat daemon tick is recorded in the rs store"
+          },
+          {
+            "field": "daemonTickAgeMs",
+            "why": "derived from the tick rs does not record"
+          },
+          {
+            "field": "daemonTickStale",
+            "why": "derived from the tick rs does not record"
+          },
+          {
+            "field": "failureReason",
+            "why": "rs records no per-seat failure reason on the descriptor"
+          },
+          {
+            "field": "bindHealth",
+            "why": "the TS pre-bind health classifier has no rs counterpart"
+          },
+          {
+            "field": "degraded",
+            "why": "derived from `bindHealth`"
+          },
+          {
+            "field": "degradedReason",
+            "why": "derived from `bindHealth`"
+          },
+          {
+            "field": "terminal",
+            "why": "rs records termination as `tombstonedAt` + `tombstoneReason`, which this card DOES carry — a different shape, not a missing fact"
+          },
+          {
+            "field": "watchdog",
+            "why": "rs has no watchdog block on the seat row"
+          }
+        ],
+        "session": "f010da4e-09a9-4270-8ee2-eb3f8b43ae63",
+        "generation": "rs"
+      },
+      "terminal": "Current   Sessions   Issues   Pull requests   Gists \n\n  ╭─╮╭─╮\n  ╰─╯╰─╯  Copilot v1.0.84-8 uses AI.\n  █ ▘▝ █  Check for mistakes.\n   ▔▔▔▔   /experimental\n\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ PIJ_149_WARMUP_578bf773-9034-48aa-8962-30d5854def2b                                                                                                16:11  \n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ [pij from \"pij-149-proof\"; msg_id=\"6637af55-7a65-4045-933c-370bdf6db389\"]                                                                          16:11  \n    PIJ_149_GAP_78879e3a-5a75-4b74-8070-417830caecd1                                                                                                          \n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens \n   (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help providers  for configuration details.\n\n ● Tip: /skills\n   └ Manage skills for enhanced capabilities\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ [pij from \"pij-149-proof\"; msg_id=\"25a11faf-e2ad-4bdd-a1de-ebe6ab46ee07\"]                                                                          16:11  \n    PIJ_149_GAP_1f14673b-a4d2-4353-9dbb-fc1bc9baea3a                                                                                                          \n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-live-rBxTaG/workspace\n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃  \n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ← open sidebar · / commands · ? help · tab next tab                                                                                         pij-native-fixture"
+    }
+  ],
+  "status": "passed",
+  "daemonLog": "pij-rs claude inbound: /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-live-rBxTaG/home/.claude-private=touched\npij-rs claude hook: /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-live-rBxTaG/home/.claude-private=touched\npij-rs claude statusline: /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-live-rBxTaG/home/.claude-private=touched\npij-rs daemon: listening on 127.0.0.1:52395 · key /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-live-rBxTaG/state/daemon.key (0600) · offline=false\n"
+}

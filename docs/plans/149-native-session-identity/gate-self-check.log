@@ -1,0 +1,770 @@
+just local-path-check
+node_modules/.bin/tsx harness/scripts/local-path-check.ts
+local-path-check: no user-specific absolute home paths in operational files.
+just lockfile-allowlist
+node_modules/.bin/tsx harness/scripts/lockfile-allowlist.ts
+lockfile-allowlist: ok — 564 resolved source(s), all allowlisted.
+just typecheck
+npm run typecheck
+
+> pij@0.1.0 typecheck
+> tsc --noEmit
+
+just lint
+npm run lint
+
+> pij@0.1.0 lint
+> biome check .
+
+biome.json:2:13 deserialize ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  i The configuration schema version does not match the CLI version 2.4.14
+  
+    1 │ {
+  > 2 │ 	"$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
+      │ 	           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    3 │ 	"files": {
+    4 │ 		"includes": [
+  
+  i   Expected:                     2.4.14
+      Found:                        2.0.0
+  
+  
+  i Run the command biome migrate to migrate the configuration file.
+  
+
+Checked 540 files in 232ms. No fixes applied.
+Found 1 info.
+just test
+npm run test -- "$@"
+
+> pij@0.1.0 test
+> vitest run
+
+(node:96082) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-native-identity
+
+(node:96182) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ harness/scripts/copilot-native-smoke.test.ts (209 tests) 15627ms
+     ✓ waits through welcome and incomplete repaint before two exact confirmations  757ms
+     ✓ times out without a modal and never resends approval if dismissal stalls  505ms
+       ✓ never approves active or incomplete modal on preauthorized path  505ms
+ ✓ .pi/extensions/pij/cli.integration.test.ts (66 tests) 11582ms
+     ✓ forwards exact streams and exit without HTTP or JSON wrapping: {"json":false,"code":0}  514ms
+     ✓ forwards exact streams and exit without HTTP or JSON wrapping: {"json":true,"code":0}  461ms
+     ✓ forwards exact streams and exit without HTTP or JSON wrapping: {"json":false,"code":23}  454ms
+     ✓ forwards exact streams and exit without HTTP or JSON wrapping: {"json":true,"code":23}  453ms
+     ✓ forwards native --help to the child instead of rendering shim help  457ms
+     ✓ forwards direct wrapper 'SIGTERM' to the native child and waits for inherited pipes to close  527ms
+     ✓ forwards direct wrapper 'SIGINT' to the native child and waits for inherited pipes to close  755ms
+ ✓ .pi/extensions/pij/cli.inbox.integration.test.ts (17 tests) 14825ms
+     ✓ runs whoami from a live external host without PIJ_SESSION_ID or tmux  1235ms
+     ✓ delivers literal raw text and correlated replies through public CLI inbox reads  2088ms
+     ✓ 'Claude' ambient registration binds the host idempotently and finite wait returns v2 JSON  1084ms
+     ✓ 'Copilot' ambient registration binds the host idempotently and finite wait returns v2 JSON  1080ms
+     ✓ 'Codex' ambient registration binds the host idempotently and finite wait returns v2 JSON  1085ms
+     ✓ keeps bare finite inbox waits available to external pull seats  604ms
+     ✓ refuses an infinite inbox wait for a paned pushed-delivery compatibility seat  373ms
+     ✓ inbox register returns pure whoami for an already-bound Claude pane without ambient identity  480ms
+     ✓ inbox register preserves self-registered pi pane compatibility and human guidance  575ms
+     ✓ inbox register preserves self-registered omp pane compatibility and human guidance  600ms
+     ✓ repairs stale PIJ_SESSION_ID without replacing authoritative native identity  760ms
+     ✓ refuses conflicting native session evidence observed in the host argv  733ms
+     ✓ refuses ambiguous ambient identities rather than selecting a harness  310ms
+     ✓ refuses ambient-only registration without a matching real host ancestor  398ms
+     ✓ round-trips concurrent wait, send, output acknowledgement and a correlated reply exactly once  2949ms
+ ✓ .pi/extensions/pij/core/chores/drive.test.ts (98 tests) 12931ms
+ ✓ harness/scripts/governance-branch.test.ts (20 tests) 9347ms
+     ✓ dry-runs without changing any files or refs or contacting attribution  334ms
+     ✓ prepares a single attributed orphan with the exact tree without touching the standing checkout or source  978ms
+     ✓ refuses an existing refs/heads/prime-governance-orphan-2026-09-07 without clobbering any ref  308ms
+     ✓ refuses a source that advances during attribution without creating backup or candidate refs  842ms
+     ✓ fails closed when attribution is unavailable  668ms
+     ✓ hands off safely from a checked-out branch and preserves the standing files  1605ms
+     ✓ refuses a dirty worktree at prime handoff without resetting it  867ms
+     ✓ refuses a advanced worktree at prime handoff without resetting it  765ms
+     ✓ refuses a detached worktree at prime handoff without resetting it  762ms
+ ✓ harness/driver/compact-assert.test.ts (17 tests) 7585ms
+     ✓ case (a): pre + postCompact + postReload all match → ok: true, no divergences  1510ms
+     ✓ case (b): postCompact diverges (D-005 confirmed shape) → ok: false, phase=compact  1511ms
+     ✓ case (c): includeReloadCheck=false omits postReload entirely  1009ms
+     ✓ case (d): timeouts plumb through (small compact/reload/status timeouts accepted on idle)  1514ms
+     ✓ case (e) — F004 regression: stale pre JSON in scrollback does NOT pass when post emits no fresh JSON  1010ms
+     ✓ case (e2) — F004 regression: malformed post JSON also throws (no silent {} pass)  1006ms
+ ✓ .pi/extensions/pij/daemon-push.test.ts (21 tests | 2 skipped) 4653ms
+     ✓ DOES push stalled when the pane is byte-STABLE past the window (genuine stall)  357ms
+     ✓ pushes only once for a dead session (latch)  306ms
+     ✓ does NOT push yet for an idle pid-alive bound session with fresh activity  313ms
+     ✓ pushes only ONCE per provider-failure (latch)  576ms
+ ✓ .pi/extensions/pij/daemon.test.ts (62 tests | 2 skipped) 4488ms
+     ✓ coalesces repeated watchdog intervals while the composer hold is active  330ms
+     ✓ AC-03: still exactly one persist with 50 owned descriptors  673ms
+ ✓ harness/scripts/release-age-policy.test.ts (11 tests) 813ms
+     ✓ propagates governed values through the fail-closed runner and preserves child status  446ms
+     ✓ restores the Windows caller environment even when a governed command fails  306ms
+ ✓ harness/scripts/worktree-deps.test.ts (18 tests) 2703ms
+     ✓ links unscoped/scoped packages and executable bins without copying or nesting node_modules  306ms
+ ✓ .pi/extensions/pij/body-file.integration.test.ts (24 tests) 4516ms
+     ✓ forwards file text literally, leaving body admission to the daemon: "--wait 500 this line must arrive as TEXT, not as a flag value\nbackticks: `echo pwned` and substitution: $(echo pwned) and ${HOME}\nquotes: 'single' \"double\" and a semicolon ; here\n--json is also not a flag when it lives in the body\ntrailing spaces follow this arrow →   \n\n"  309ms
+     ✓ forwards file text literally, leaving body admission to the daemon: "   hello   \n\n"  556ms
+     ✓ forwards file text literally, leaving body admission to the daemon: "  \n\n"  609ms
+ ✓ harness/scripts/bounce-daemon.test.ts (3 tests) 2860ms
+     ✓ fetches and refuses a canonical checkout behind origin/main before stopping  1410ms
+     ✓ refuses daemon-relevant dirt unless --force is explicit  545ms
+     ✓ announces, gracefully stops, restarts the captured invocation, and verifies health  904ms
+ ✓ harness/scripts/npm-resolution-policy.integration.test.ts (1 test) 2884ms
+     ✓ revalidates stale metadata, fails closed on proxy gaps, enforces age, and never falls back  2884ms
+ ✓ .pi/extensions/pij/adapters/spine-store.test.ts (21 tests) 2493ms
+     ✓ a held (fresh) events.lock makes append err E-NOREG after the acquisition budget  2001ms
+ ✓ .pi/extensions/pij/orchestration-notice.integration.test.ts (8 tests) 2602ms
+     ✓ 'queued for an idle live pi target unt…'  317ms
+     ✓ 'queued for a working live pi target'  301ms
+     ✓ 'unverified for a stale native incarna…'  313ms
+     ✓ 'unverified for a dead target'  307ms
+     ✓ 'no notice or send for a missing target'  348ms
+     ✓ 'no notice or send for a dissolved pul…'  334ms
+     ✓ 'queued with one native notice for a l…'  382ms
+ ✓ .pi/extensions/pij/daemon.bootstrap.test.ts (27 tests) 2445ms
+ ✓ skills/flow-pair/test/observe.test.ts (17 tests) 2249ms
+ ✓ skills/flow-pair/test/cli-review.test.ts (6 tests) 2184ms
+     ✓ review: stdout = exactly 'verdict: FIX_REQUIRED' (missing log), exit 0  310ms
+     ✓ review --json: stdout parses as JSON with verdict field and findings array  312ms
+     ✓ review: missing required arg → non-zero exit + stderr message  312ms
+     ✓ fix --json: fix packet has allowedFiles array and pointerMsg  622ms
+     ✓ fix rejects traversal runId before reading escaped review records  312ms
+     ✓ fix rejects traversal reviewId before reading outside reviews/  316ms
+ ✓ harness/scripts/link-global.test.ts (33 tests) 1986ms
+     ✓ keeps the absent CLI outcome distinct from strict doctor  357ms
+     ✓ keeps the present CLI outcome distinct from strict doctor  852ms
+     ✓ keeps the broken CLI outcome distinct from strict doctor  494ms
+ ✓ .pi/extensions/pij/adapters/fs-registry.test.ts (41 tests | 1 skipped) 1701ms
+     ✓ overlapping processes claiming one free native identity all converge on attempt zero  784ms
+     ✓ overlapping processes skip an unowned legacy attempt zero without changing its bytes  826ms
+ ✓ harness/scripts/packages-bootstrap.test.ts (2 tests) 1532ms
+     ✓ attempts every install and exits nonzero after execution failures  770ms
+     ✓ keeps stale fail vet verdicts report-only when installs succeed  761ms
+ ✓ .pi/extensions/pij/adapters/daemon-http.test.ts (20 tests) 1432ms
+     ✓ caps reconnect backoff after exponential growth  366ms
+ ✓ .pi/extensions/pij/adapters/rust-runtime.test.ts (99 tests) 1538ms
+     ✓ re-attaches after key rotation, preserves seat continuity, and consumes replay once (seat known: false)  310ms
+ ✓ skills/flow-pair/test/cli-observe.test.ts (3 tests) 1346ms
+     ✓ success: stdout = exactly 'diffId: diff-NNNN' (one line, exit 0)  447ms
+     ✓ --json: stdout parses as full ObserveResult shape (exit 0)  480ms
+     ✓ error: invalid --run-id → stderr + exit 2  418ms
+stderr | harness/scripts/smoke.test.ts > runWatchdogSmoke > refuses real watchdog mutation under both routing modes without changing private authority
+{"smoke":"watchdog-refusal","code":"E-RS-UNPORTED","cursor":4,"forcedLegacy":"refused","mutation":"none"}
+
+ ✓ harness/scripts/smoke.test.ts (9 tests) 474ms
+     ✓ refuses real watchdog mutation under both routing modes without changing private authority  467ms
+ ✓ .pi/extensions/pij/core/memorable-id.test.ts (12 tests) 1024ms
+       ✓ walks the full space from a SHIP start too, not only a pair start  536ms
+     ✓ walks the full space without repeating (pairs + ships)  477ms
+ ✓ .pi/extensions/pij/index.test.ts (24 tests) 965ms
+     ✓ reasserts immediately on the first turn when startup publication missed  317ms
+     ✓ cancels a stale retry window on session shutdown  316ms
+ ✓ skills/flow-pair/test/cli-learning.test.ts (3 tests) 948ms
+     ✓ learn: stdout = exactly 'learning: learn-0001' and writes implement-code candidate  318ms
+     ✓ learn --json: stdout includes candidatePath and cluster  315ms
+     ✓ learn invalid cluster exits 2 and writes no candidate  315ms
+ ✓ .pi/extensions/pij/cli.background.integration.test.ts (2 tests) 934ms
+     ✓ prints the shared native envelope with --json before or after the leaf, and data.line for humans  740ms
+ ✓ .pi/extensions/pij/core/worktree.test.ts (7 tests) 768ms
+ ✓ .pi/extensions/pij/adapters/extension-build.test.ts (13 tests) 752ms
+ ✓ harness/driver.test.ts (26 tests) 803ms
+     ✓ Session.run() throws DriverAssertionError when expect never matches  608ms
+ ✓ .pi/extensions/pij/telegram/bridge.test.ts (71 tests | 1 skipped) 705ms
+ ✓ .pi/extensions/pij/adapters/tmux.test.ts (6 tests) 704ms
+     ✓ kills a newly created pane when title assignment fails  355ms
+     ✓ kills a newly split pane when title assignment fails  347ms
+ ✓ .pi/extensions/pij/core/cli.test.ts (459 tests) 670ms
+ ✓ .pi/extensions/pij/core/agents/cli-verbs.test.ts (25 tests) 631ms
+ ✓ .pi/extensions/pij/core/daemon/watchdog-manager.test.ts (75 tests) 499ms
+ ✓ .pi/extensions/pij/telegram/index.test.ts (20 tests | 1 skipped) 474ms
+     ✓ shares successful outbound speech with numeric inbound chat ids and isolates other chats  325ms
+ ✓ .pi/extensions/pij/daemon.durability.test.ts (7 tests) 476ms
+ ✓ .pi/extensions/pij/daemon.delivery.test.ts (8 tests) 381ms
+ ✓ harness/scripts/vetters/agent.test.ts (3 tests) 339ms
+     ✓ returns fail Verdict when packagePath missing (with PIJ_VET_SKIP_AGENT unset)  337ms
+ ✓ skills/flow-pair/test/cli-dispatch.test.ts (2 tests) 318ms
+     ✓ stdout is EXACTLY the pointer line — one line, no prefix, no metadata  313ms
+ ✓ .pi/extensions/pij/adapters/channel.test.ts (14 tests | 1 skipped) 319ms
+ ✓ .pi/extensions/pij/core/agents/inline.test.ts (8 tests) 318ms
+ ✓ .pi/extensions/pij/core/agents/runner.test.ts (13 tests) 213ms
+ ✓ .pi/extensions/pij/acceptance-sweep.test.ts (14 tests) 298ms
+ ✓ .pi/extensions/pij/adapters/git-repository.test.ts (3 tests) 283ms
+ ✓ .pi/extensions/pij/core/agents/contract.test.ts (2 tests) 195ms
+ ✓ harness/scripts/pij-commit-trailers.test.ts (15 tests) 209ms
+ ✓ .pi/extensions/pij/adapters/platform-stores.contract.test.ts (103 tests) 206ms
+ ✓ skills/flow-pair/test/identity.test.ts (6 tests) 197ms
+ ✓ harness/scripts/copilot-models.test.ts (1 test) 83ms
+ ✓ .pi/extensions/pij/core/usage-flags.test.ts (3 tests) 136ms
+ ✓ .pi/extensions/pij/adapters/platform-write-lock.test.ts (6 tests) 139ms
+ ✓ .pi/extensions/file-watch-notify/index.test.ts (14 tests) 133ms
+ ✓ .pi/extensions/pij/core/agents/builtin-flowspace.test.ts (3 tests) 114ms
+ ✓ .pi/extensions/pij/core/registry-write-law.test.ts (4 tests) 100ms
+ ✓ .pi/extensions/pij/adapters/process.test.ts (8 tests) 86ms
+ ✓ .pi/extensions/pij/adapters/fs-registry.overlay.test.ts (44 tests) 84ms
+ ✓ skills/flow-pair/test/learning.test.ts (11 tests) 69ms
+ ✓ .pi/extensions/pij/core/agent-peer.test.ts (26 tests) 74ms
+ ✓ .pi/extensions/pij/core/daemon/watch.test.ts (13 tests) 66ms
+ ✓ .pi/extensions/pij/daemon-real-adapter.test.ts (5 tests) 78ms
+ ✓ .pi/extensions/pij/adapters/fs-registry.archive.test.ts (29 tests) 64ms
+ ✓ skills/flow-pair/test/review.test.ts (21 tests) 76ms
+ ✓ .pi/extensions/pij/daemon.archive.test.ts (13 tests) 46ms
+ ✓ .pi/extensions/pij/core/daemon/death-reconciler.snapshot.test.ts (5 tests) 46ms
+ ✓ harness/scripts/local-path-check.test.ts (4 tests) 47ms
+ ✓ .pi/extensions/pij/core/message.test.ts (31 tests) 39ms
+ ✓ .pi/extensions/pij/core/agents/report.test.ts (5 tests) 41ms
+ ✓ .pi/extensions/pij/core/identity-selfheal.test.ts (16 tests) 40ms
+ ✓ .pi/extensions/pij/core/focus.test.ts (15 tests) 36ms
+ ✓ skills/flow-pair/test/context-pack-compile.test.ts (15 tests) 38ms
+ ✓ .pi/extensions/pij/adapters/op-journal.test.ts (20 tests) 33ms
+(node:88099) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ .pi/extensions/session-sql/store.test.ts (40 tests) 32ms
+ ✓ .pi/extensions/pij/adapters/generation-router.test.ts (67 tests) 25ms
+ ✓ .pi/extensions/pij/adapters/generation-cutover.test.ts (83 tests) 26ms
+ ✓ skills/flow-pair/test/packet-write.test.ts (13 tests) 25ms
+ ✓ .pi/extensions/pij/core/tree.test.ts (24 tests) 24ms
+ ✓ .pi/extensions/pij/adapters/project-store.test.ts (10 tests) 22ms
+ ✓ .pi/extensions/pij/daemon.wiring.test.ts (3 tests) 21ms
+ ✓ .pi/extensions/minih-workbench/minih-adapter.test.ts (11 tests) 22ms
+ ✓ .pi/extensions/pij/core/liveness-cost.test.ts (13 tests) 21ms
+ ✓ .pi/extensions/file-watch-notify/watcher.test.ts (9 tests) 21ms
+ ✓ .pi/extensions/pij/adapters/assignment-store.test.ts (12 tests) 19ms
+ ✓ .pi/extensions/pij/adapters/generation-seam.test.ts (47 tests) 19ms
+ ✓ skills/flow-pair/test/ledger-run.test.ts (10 tests) 18ms
+ ✓ .pi/extensions/pij/core/orchestration/role.integration.test.ts (13 tests) 16ms
+⚠️  tmux GONE: pane %42 does not exist — the binding is stale, not the send; message left unconsumed in the mailbox and this pane will no longer be targeted — can't find pane: %42
+⚠️  tmux FAILED: send to pane %42 threw before submission — nothing reliably landed; the message stays queued — error connecting to /private/tmp/tmux-501/default (No such file or directory)
+⚠️  copilot UNVERIFIED: send to pane %42 (pid ?) lacked positive submission confirmation; payload was typed once — text tail «…lztp8] (pij delivery diagnostic — please ignore)».
+⚠️  copilot UNVERIFIED: send to pane %42 (pid ?) lacked positive submission confirmation; payload was typed once — text tail «…lztp8] (pij delivery diagnostic — please ignore)».
+⚠️  copilot UNVERIFIED: send to pane %42 (pid ?) lacked positive submission confirmation; payload was typed once — text tail «…lztp8] (pij delivery diagnostic — please ignore)».
+⚠️  tmux GONE: pane %99999999 does not exist — the binding is stale, not the send; message left unconsumed in the mailbox and this pane will no longer be targeted — Command failed: tmux send-keys -t %99999999 -l x
+can't find pane: %99999999
+
+ ✓ .pi/extensions/pij/adapters/daemon-tmux.test.ts (32 tests) 15ms
+ ✓ .pi/extensions/pij/core/daemon/death-reconciler.test.ts (36 tests) 15ms
+ ✓ skills/flow-pair/test/ledger-records.test.ts (7 tests) 15ms
+(node:89027) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ .pi/extensions/todo/store.test.ts (20 tests) 14ms
+ ✓ skills/flow-pair/test/packet-render.test.ts (14 tests) 15ms
+(node:89101) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ harness/scripts/step-on-probe.test.ts (18 tests | 4 skipped) 15ms
+ ✓ .pi/extensions/pij/adapters/fence-store.test.ts (4 tests) 14ms
+ ✓ .pi/extensions/pij/core/watchdog.test.ts (54 tests) 14ms
+ ✓ .pi/extensions/pij/adapters/dispatch-store.test.ts (3 tests) 12ms
+ ✓ skills/flow-pair/test/context-pack-extract.test.ts (11 tests) 18ms
+ ✓ harness/scripts/sync-models.test.ts (8 tests) 11ms
+ ✓ .pi/extensions/minih-workbench/store.test.ts (23 tests) 11ms
+ ✓ .pi/extensions/pij/core/daemon/loop.test.ts (67 tests) 11ms
+ ✓ .pi/extensions/pij/core/spawn.test.ts (159 tests) 11ms
+ ✓ .pi/extensions/pij/core/agents/pack.test.ts (8 tests) 11ms
+ ✓ .pi/extensions/pij/core/daemon/tick-heartbeat.test.ts (33 tests) 10ms
+ ✓ .pi/extensions/pij/adapters/event-log.test.ts (8 tests) 10ms
+ ✓ .pi/extensions/pij/core/chores/resolve.test.ts (4 tests) 10ms
+ ✓ .pi/extensions/pi-peacock/ui.test.ts (13 tests) 9ms
+ ✓ .pi/extensions/pij/core/session.test.ts (53 tests) 9ms
+ ✓ harness/scripts/omp-install-policy.test.ts (8 tests) 9ms
+ ✓ skills/flow-pair/test/ledger-p9.test.ts (9 tests) 10ms
+ ✓ .pi/extensions/pij/adapters/process-states.test.ts (14 tests) 9ms
+ ✓ .pi/extensions/pij/core/anomalies.test.ts (82 tests) 9ms
+ ✓ harness/scripts/vetters/audit-writeback.test.ts (6 tests) 10ms
+ ✓ .pi/extensions/pij/adapters/baton-store.test.ts (5 tests) 9ms
+ ✓ .pi/extensions/pij/core/orchestration/pa-capability.test.ts (33 tests) 9ms
+ ✓ .pi/extensions/pij/core/revive.test.ts (60 tests) 8ms
+ ✓ .pi/extensions/pij/core/platform/journal.test.ts (46 tests) 9ms
+ ✓ .pi/extensions/ralph-loop/store.test.ts (65 tests) 8ms
+ ✓ .pi/extensions/pij/core/platform/types.test.ts (152 tests) 8ms
+ ✓ .pi/extensions/pij/core/state.test.ts (74 tests) 8ms
+ ✓ .pi/extensions/pij/core/daemon/pane-signals.test.ts (39 tests) 7ms
+ ✓ .pi/extensions/pij/core/orchestration/baton.test.ts (30 tests) 8ms
+ ✓ .pi/extensions/pij/adapters/chore-store.test.ts (6 tests) 8ms
+ ✓ .pi/extensions/pij/core/models/registry.test.ts (49 tests) 7ms
+ ✓ .pi/extensions/pij/core/generation-routing.test.ts (45 tests) 7ms
+ ✓ .pi/extensions/pij/telegram/lockfile.test.ts (12 tests) 12ms
+ ✓ .pi/extensions/pij/telegram/config.test.ts (8 tests) 6ms
+ ✓ .pi/extensions/pij/core/orchestration/cli.test.ts (55 tests) 7ms
+ ✓ .pi/extensions/pij/core/chores/boundary.test.ts (12 tests) 7ms
+ ✓ .pi/extensions/pij/core/platform/assignment.test.ts (39 tests) 6ms
+ ✓ .pi/extensions/pij/core/orchestration/role.test.ts (31 tests) 7ms
+ ✓ .pi/extensions/minih-workbench/index.test.ts (2 tests) 7ms
+ ✓ .pi/extensions/pij/core/models/cli-models.test.ts (24 tests) 6ms
+ ✓ .pi/extensions/file-watch-notify/store.test.ts (25 tests) 6ms
+ ✓ .pi/extensions/pij/core/chores/reduce.test.ts (12 tests) 7ms
+ ✓ .pi/extensions/pij/core/daemon/anomaly-sweep.test.ts (14 tests) 6ms
+ ✓ .pi/extensions/pij/adapters/allocation-store.test.ts (4 tests) 7ms
+ ✓ .pi/extensions/minih-workbench/ui.test.ts (7 tests) 6ms
+ ✓ .pi/extensions/pij/core/platform/project.test.ts (43 tests) 6ms
+ ✓ .pi/extensions/pij/core/watch-subscription.test.ts (17 tests) 5ms
+ ✓ .pi/extensions/pij/core/platform/boundary.test.ts (46 tests) 6ms
+ ✓ .pi/extensions/pij/core/inbox.test.ts (17 tests) 7ms
+ ✓ .pi/extensions/pij/core/daemon/runtime-axis.test.ts (10 tests) 5ms
+ ✓ .pi/extensions/pij/core/daemon/typing-guard-contract.test.ts (32 tests) 6ms
+ ✓ .pi/extensions/pij/core/agents/peer-packet.test.ts (5 tests) 5ms
+ ✓ .pi/extensions/pij/core/generation-skill-coverage.test.ts (4 tests) 5ms
+ ✓ .pi/extensions/pij/core/stream.test.ts (7 tests) 5ms
+ ✓ .pi/extensions/pi-peacock/index.test.ts (3 tests) 5ms
+ ✓ .pi/extensions/pij/core/binding.test.ts (37 tests) 5ms
+ ✓ .pi/extensions/pij/adapters/pi-runtime.test.ts (17 tests) 5ms
+ ✓ .pi/extensions/pij/adapters/context-reader.test.ts (7 tests) 6ms
+ ✓ .pi/extensions/pij/telegram/init.test.ts (10 tests) 5ms
+ ✓ .pi/extensions/pij/core/platform/spine.test.ts (20 tests) 5ms
+ ✓ .pi/extensions/pij/adapters/focus-store.test.ts (3 tests) 5ms
+ ✓ .pi/extensions/pij/core/agents/boundary.test.ts (31 tests) 5ms
+ ✓ .pi/extensions/pij/index.send-schema.test.ts (8 tests) 5ms
+ ✓ .pi/extensions/pij/core/session-join.test.ts (16 tests) 5ms
+ ✓ .pi/extensions/pij/core/daemon/router.test.ts (22 tests) 4ms
+ ✓ .pi/extensions/pij/telegram/commands.test.ts (17 tests) 4ms
+ ✓ .pi/extensions/pij/adapters/atomic-file.test.ts (4 tests) 5ms
+ ✓ .pi/extensions/pij/adapters/watchdog-global-store.test.ts (4 tests) 5ms
+ ✓ .pi/extensions/pij/adapters/fakes.test.ts (14 tests) 4ms
+ ✓ .pi/extensions/pij/core/daemon-wire.test.ts (23 tests) 4ms
+ ✓ harness/scripts/lockfile-allowlist.test.ts (6 tests) 5ms
+ ✓ .pi/extensions/pij/core/archive.test.ts (38 tests) 4ms
+ ✓ .pi/extensions/pij/core/daemon/lifecycle.test.ts (26 tests) 4ms
+ ✓ .pi/extensions/pij/core/daemon/tap-retention.test.ts (12 tests) 4ms
+ ✓ .pi/extensions/pij/core/bg.test.ts (24 tests) 4ms
+ ✓ .pi/extensions/pij/core/interstitial.test.ts (13 tests) 4ms
+ ✓ .pi/extensions/pij/core/daemon/baton-sweep.test.ts (5 tests) 4ms
+ ✓ .pi/extensions/pij/core/discovery.test.ts (32 tests) 4ms
+ ✓ .pi/extensions/pij/core/harness/transcript.test.ts (9 tests) 4ms
+ ✓ .pi/extensions/pij/core/agents/cli-args.test.ts (42 tests) 4ms
+ ✓ .pi/extensions/pi-peacock/store.test.ts (10 tests) 4ms
+ ✓ .pi/extensions/ralph-loop/runner.test.ts (8 tests) 4ms
+ ✓ .pi/extensions/pij/adapters/spawn-expectation-store.test.ts (1 test) 3ms
+ ✓ .pi/extensions/pij/core/registry-write.test.ts (18 tests) 3ms
+ ✓ .pi/extensions/pij/core/types.test.ts (49 tests) 3ms
+ ✓ .pi/extensions/pij/core/harness/claude.test.ts (19 tests) 3ms
+ ✓ .pi/extensions/pij/core/agents/adapters/codex.test.ts (11 tests) 4ms
+ ✓ .pi/extensions/pij/core/orchestration/prime.test.ts (10 tests) 3ms
+ ✓ .pi/extensions/image-see/store.test.ts (14 tests) 3ms
+ ✓ .pi/extensions/file-watch-notify/inject.test.ts (13 tests) 3ms
+ ✓ .pi/extensions/pij/core/models/validate.test.ts (38 tests) 3ms
+ ✓ .pi/extensions/pij/core/current-session.test.ts (13 tests) 3ms
+ ✓ .pi/extensions/pij/core/platform/render-spine-md.test.ts (21 tests) 3ms
+ ✓ .pi/extensions/pij/core/agents/adapters/claude.test.ts (9 tests) 3ms
+ ✓ .pi/extensions/pij/core/harness/codex.test.ts (17 tests) 3ms
+ ✓ .pi/extensions/pij/core/canary.test.ts (12 tests) 3ms
+ ✓ .pi/extensions/pij/core/readiness.test.ts (17 tests) 3ms
+ ✓ .pi/extensions/pij/core/death-reason.test.ts (20 tests) 3ms
+ ✓ .pi/extensions/pij/core/daemon/index-state.test.ts (7 tests) 3ms
+ ✓ .pi/extensions/pij/core/status-nudge.test.ts (9 tests) 3ms
+ ✓ .pi/extensions/pij/core/bind-health.test.ts (10 tests) 3ms
+ ✓ .pi/extensions/skill-runner/store.test.ts (14 tests) 3ms
+ ✓ .pi/extensions/pij/core/platform/time.test.ts (8 tests) 3ms
+ ✓ .pi/extensions/pij/core/session-name.test.ts (8 tests) 3ms
+ ✓ .pi/extensions/pij/core/harness/copilot.test.ts (11 tests) 3ms
+ ✓ .pi/extensions/pij/core/harness/badmodel.test.ts (16 tests) 3ms
+stderr | harness/scripts/vetters/override-scope.test.ts > parseOverrides (FX001-1) > parses legacy free-text strings as { rules: [], reason: <text> } (fail-safe — accepts nothing)
+⚠ deprecated: vetted.overrides as a plain string accepts no rules; migrate to { rules: [<rule-slug>], reason: <text> }
+
+ ✓ harness/scripts/vetters/override-scope.test.ts (10 tests) 3ms
+ ✓ .pi/extensions/pij/telegram/media.test.ts (19 tests) 3ms
+ ✓ .pi/extensions/pij/core/models/spawn-validation.test.ts (14 tests) 3ms
+ ✓ .pi/extensions/pij/core/agents/adapters/copilot.test.ts (3 tests) 3ms
+ ✓ harness/scripts/vetters/aggregate.test.ts (8 tests) 3ms
+ ✓ .pi/extensions/pij/core/events.test.ts (10 tests) 2ms
+ ✓ .pi/extensions/pij/core/daemon/watchdog-scheduler-projection.test.ts (8 tests) 2ms
+ ✓ .pi/extensions/pij/telegram/chunk.test.ts (9 tests) 3ms
+ ✓ .pi/extensions/minih-workbench/session-persistence.test.ts (5 tests) 3ms
+ ✓ .pi/extensions/pij/core/close.test.ts (15 tests) 3ms
+ ✓ harness/scripts/vetters/resolve-path.test.ts (6 tests) 2ms
+ ✓ .pi/extensions/pij/telegram/match.test.ts (13 tests) 3ms
+ ✓ .pi/extensions/pij/core/platform/dispatch.test.ts (3 tests) 3ms
+ ✓ harness/scripts/vetters/audit-unmanifested.test.ts (5 tests) 2ms
+ ✓ .pi/extensions/pij/core/context/gauge.test.ts (13 tests) 3ms
+ ✓ .pi/extensions/pij/core/spawn-expectation.test.ts (4 tests) 3ms
+ ✓ .pi/extensions/pij/core/receipts.test.ts (10 tests) 3ms
+ ✓ .pi/extensions/pij/adapters/tmux-keys.test.ts (11 tests) 2ms
+ ✓ .pi/extensions/pij/core/orchestration/pa-target.test.ts (9 tests) 2ms
+ ✓ .pi/extensions/pij/core/platform/allocation.test.ts (4 tests) 2ms
+ ✓ .pi/extensions/pij/core/context/window.test.ts (8 tests) 2ms
+ ✓ .pi/extensions/pij/core/daemon/source-staleness.test.ts (12 tests) 2ms
+ ✓ .pi/extensions/pij/core/harness/types.test.ts (11 tests) 2ms
+ ✓ .pi/extensions/pij/core/commands.test.ts (6 tests) 2ms
+ ✓ harness/test-utils.test.ts (2 tests) 2ms
+ ✓ .pi/extensions/minih-workbench/feed.test.ts (3 tests) 2ms
+ ✓ harness/scripts/cli-invocation.test.ts (3 tests) 2ms
+ ✓ harness/scripts/snapshot-refresh.test.ts (7 tests) 2ms
+ ✓ .pi/extensions/pij/core/models/match.test.ts (10 tests) 2ms
+ ✓ harness/scripts/vetters/scorecard.test.ts (7 tests) 2ms
+ ✓ harness/scripts/vetters/npm-audit.test.ts (4 tests) 2ms
+ ✓ .pi/extensions/pij/core/daemon/process-staleness.test.ts (9 tests) 2ms
+ ✓ .pi/extensions/pij/core/daemon/lock.test.ts (6 tests) 2ms
+ ✓ harness/scripts/vetters/types.test.ts (9 tests) 2ms
+ ✓ skills/flow-pair/test/paths.test.ts (8 tests) 2ms
+ ✓ .pi/extensions/pij/core/agents/paths.test.ts (7 tests) 2ms
+ ✓ harness/scripts/skill-link-policy.test.ts (3 tests) 2ms
+ ✓ .pi/extensions/pij/core/invariant-guard.test.ts (2 tests) 2ms
+ ✓ .pi/extensions/pij/core/platform/fence.test.ts (3 tests) 2ms
+ ✓ .pi/extensions/pij/core/seat-label.test.ts (2 tests) 2ms
+ ✓ .pi/extensions/pij/core/harness/pi.test.ts (3 tests) 1ms
+ ✓ .pi/extensions/pij/core/seq.test.ts (3 tests) 1ms
+ ↓ harness/driver.it.test.ts (2 tests | 2 skipped)
+ ↓ harness/scripts/vetters/agent.live.test.ts (2 tests | 2 skipped)
+ ↓ .pi/extensions/pij/core/agents/peer.live.test.ts (3 tests | 3 skipped)
+ ↓ .pi/extensions/pij/core/agents/adapters/adapters.live.test.ts (3 tests | 3 skipped)
+
+ Test Files  241 passed | 4 skipped (245)
+      Tests  5306 passed | 22 skipped (5328)
+   Start at  16:11:49
+   Duration  157.66s (transform 1.97s, setup 0ms, import 8.16s, tests 133.22s, environment 11ms)
+
+just copilot-native-test
+node --test .copilot/extensions/pij/*.test.mjs
+✔ actual extension shell joins, registers, receives and exposes immutable outgoing tool (102.143458ms)
+﹣ Linux native host uses the kernel executable when comm is MainThread (0.08725ms) # SKIP
+﹣ Linux native host rejects a copilot task name on another executable (0.042209ms) # SKIP
+﹣ Linux replaced host reaches native registration and message acknowledgement (0.032708ms) # SKIP
+✔ actual shell discovers local seats without remote pane collisions (91.289666ms)
+✔ actual extension shell acknowledges then waits for native completion before second delivery (102.177041ms)
+✔ actual extension shell delivers during recent human typing without a typing hold (80.796167ms)
+✔ actual extension shell delivers during unavailable typing sensor without a typing hold (77.732208ms)
+✔ actual HTTP target-session hold stops claims and ack with actionable native diagnostic (410.459458ms)
+✔ actual HTTP empty page differs from human-consent hold and release delivers without another send (839.952084ms)
+✔ actual HTTP empty page differs from native-pane-changed hold and release delivers without another send (845.535ms)
+✔ actual HTTP empty page differs from semantic-hold hold and release delivers without another send (840.371625ms)
+✔ ambiguous native roster refreshes without selecting until unique (839.748083ms)
+✔ retired native attachment retains its durable id across dropped registration response (333.699ms)
+✔ actual HTTP 409 registration retry retains the native id and later consumes queued work (833.802292ms)
+✔ actual HTTP native-unavailable refusal re-registers and consumes queued work (331.417625ms)
+✔ actual HTTP stale native refusal stays held without reregister or acknowledgement (410.8135ms)
+✔ actual native rollover registers a new seat and consumes successor-targeted work (76.679667ms)
+✔ terminal bootstrap refusal names safe failure and restart without exposing remote text (76.305375ms)
+✔ actual shell cold resume nomination retains address through HTTP (75.639791ms)
+✔ actual shell cold resume nomination respects registration refusal (78.554792ms)
+✔ absent key does not block joined native tools and emits one native timeline diagnostic (893.338625ms)
+✔ absent daemon with readable key stays callable and quiet across network retries (898.736291ms)
+✔ prejoin rejection emits once to stderr without claiming native timeline visibility (45.783917ms)
+✔ native diagnostic sink counts one call per failure episode and never logs raw remote secrets (0.320875ms)
+✔ host is verified Copilot ancestor, not extension loader or pane shell (1.084708ms)
+✔ paneless native host remains truthful without inventing a pane (0.070292ms)
+✔ a pane not in actual ancestry refuses instead of hiding pane metadata (0.261166ms)
+✔ absence of native ancestor is explicit unsupported identity (0.075541ms)
+✔ PID reuse during observation refuses stale host incarnation (0.092ms)
+✔ kernel executable normalization strips only the exact trailing deletion marker (0.088167ms)
+✔ replaced Copilot host resolves even when the kernel marker changes between observations (0.0935ms)
+✔ a replaced executable with a lookalike basename still refuses (0.08475ms)
+✔ a replaced host with a changed ppid still refuses incarnation reuse (0.100959ms)
+✔ a replaced host with a changed proc_start still refuses incarnation reuse (0.089334ms)
+✔ native discard recovery: discarded enqueue resends once after the foreground idle boundary (6.752666ms)
+✔ native discard recovery: no resend while a potentially consuming turn is still processing (0.583584ms)
+✔ native discard recovery: queued item matched by native ID waits for later consumption (0.545541ms)
+✔ native discard recovery: queued item matched by exact display prefix waits for later consumption (0.35825ms)
+✔ native discard recovery: fresh consumption proof wins over empty queue and ACKs once (0.517958ms)
+✔ native discard recovery: replayed historical boundary cannot authorize resend (0.780125ms)
+✔ native discard recovery: missing rpc holds visibly at a fresh boundary without ACK or resend (0.581708ms)
+✔ native discard recovery: steering prefix vetoes duplicate injection (0.588375ms)
+✔ native discard recovery: inflight count vetoes duplicate injection (0.348834ms)
+✔ native discard recovery: successful retry notice uses native timeline without message content (0.165084ms)
+✔ terminal registration failure replaces retry advice without exposing raw diagnostics (0.160416ms)
+✔ terminal registration failure without safe identity detail never projects an arbitrary error (0.06825ms)
+✔ terminal banner projects only structured host refusal and redacts the daemon key (1.600958ms)
+✔ native discard recovery: a substring in another queued item does not claim ownership (0.96225ms)
+✔ native discard recovery: fresh history catches consumption during queue inspection (0.369041ms)
+✔ native discard recovery: stop during queue snapshot cannot rearm or send (1.163208ms)
+✔ native discard recovery: consumption during journal rearm restores acceptance without resend (0.434708ms)
+✔ native discard recovery: malformed inflight count -1 holds (0.354125ms)
+✔ native discard recovery: malformed inflight count 0.5 holds (0.34425ms)
+✔ native discard recovery: malformed inflight count "1" holds (0.268666ms)
+✔ native discard recovery: malformed inflight count null holds (0.235583ms)
+✔ native discard recovery: missing queue API never authorizes resend (0.343ms)
+✔ native discard recovery: missing processing API never authorizes resend (0.288667ms)
+✔ native discard recovery: malformed queue never authorizes resend (0.332542ms)
+✔ native discard recovery: malformed processing never authorizes resend (0.458208ms)
+✔ native discard recovery: queue error never authorizes resend (0.505541ms)
+✔ native discard recovery: processing error never authorizes resend (0.380209ms)
+✔ native discard recovery: concurrent journal rearm preserves one exclusive retry intent (70.871791ms)
+✔ native consumption: accepted send stays unacknowledged until matching user message (0.642666ms)
+✔ native consumption: missed callbacks recover consumption and final turn from history (0.39925ms)
+✔ native consumption: unrelated history and idle cannot acknowledge acceptance (0.365708ms)
+✔ native consumption: accepted duplicate recovers history without native resend (0.343791ms)
+✔ native consumption: accepted duplicate without matching history stays unacknowledged (0.257792ms)
+✔ native consumption: history polling backs off and stops after correlated final completion (1.637792ms)
+✔ native consumption: replayed tool turns and unrelated final turns cannot complete owned work (0.579333ms)
+✔ native consumption: stop during history read ignores late proof without ACK or resend (0.289083ms)
+✔ native consumption: callbacks can prove consumption during an outstanding history read (0.183459ms)
+✔ native consumption: missing history API holds without ACK (0.073542ms)
+✔ native consumption: rejected history API holds without ACK (0.083667ms)
+✔ native consumption: malformed history API holds without ACK (0.087416ms)
+✔ acceptance is persisted before tuple-bound acknowledgement, not model completion (0.090625ms)
+✔ busy native turn consumes immediate steering and journals its returned message ID (0.634458ms)
+✔ accepted duplicate after restart only acknowledges, never reinjects (0.082375ms)
+✔ ambiguous prior send holds without native send or ack; outgoing remains available (0.127208ms)
+✔ recipient mismatch holds without native send or ack; outgoing remains available (0.086583ms)
+✔ unsupported command holds without native send or ack; outgoing remains available (0.059625ms)
+✔ multiple claims holds without native send or ack; outgoing remains available (0.062833ms)
+✔ storage failure holds without native send or ack; outgoing remains available (0.07725ms)
+✔ duplicate id with changed body holds without native send or ack; outgoing remains available (0.060125ms)
+✔ send rejection is ambiguous and never acknowledged or retried (0.096208ms)
+✔ native acceptance followed by failed persistence stays unacknowledged (0.085458ms)
+✔ late native completion after stop cannot acknowledge another generation (0.08175ms)
+✔ two run calls share a single consumer; buffered events never forward replies (0.091833ms)
+✔ outgoing tool ignores spoofed from, mints unique ids and returns queue grade (0.2645ms)
+✔ registration readback refuses {"native_extension_delivery":false} (0.062791ms)
+✔ registration readback refuses {"harness":"omp"} (0.031167ms)
+✔ registration readback refuses {"id":"another"} (0.028959ms)
+✔ registration readback refuses {"session":"another-native"} (0.029792ms)
+✔ registration readback refuses {"proc":{"pid":138,"proc_start":20260905120000}} (0.029333ms)
+✔ registration readback refuses {"pane":"%138"} (0.030708ms)
+✔ registration tolerates additive plan135 binding metadata (0.083875ms)
+✔ manual identity requests daemon allocation; exact process rollover supersedes predecessor (0.404959ms)
+✔ spawn binding requires exact process, pane and correlation (0.089958ms)
+✔ cold native resume nominates a unique attested address without trusting roster state (0.048042ms)
+✔ same native session nominates its durable address when tombstoned (0.034333ms)
+✔ same native session nominates its durable address when native delivery withdrawn (0.023334ms)
+✔ ambiguous native addresses and unverified native claims do not authorize resume (0.142625ms)
+✔ same-process A to B to A restores the retired native address and accepted journal (22.255875ms)
+✔ fresh native conversation nominates new address without retiring old pane owner locally (0.109125ms)
+✔ same-session address precedes spawn preallocation and retains correlated parent (0.0755ms)
+✔ fresh verified spawn correlation resumes a saved session without replacing its parent (0.055125ms)
+✔ native session resolution precedes stale pane metadata and duplicate process candidates (0.065416ms)
+✔ conflicting same-session addresses cannot hide behind an exact process or prebind (0.056542ms)
+✔ same-session nomination cannot corroborate an unrelated requested identity (0.045333ms)
+✔ process start uses daemon local C-locale packed stamp with calendar checks (0.2255ms)
+✔ real filesystem journal survives restart and hashes opaque ids with private modes (26.953292ms)
+✔ real chooseRegistration and filesystem preserve accepted-before-ack across changed host (27.5455ms)
+✔ HTTP client reloads key on every request, binds tuple, keeps bounded non-JSON diagnostic (0.641083ms)
+✔ only typed HTTP 409 registration refusals permit retry (0.966375ms)
+✔ own inbox wait deadlines renew with bounded delay without re-registering or outage logs (1236.098375ms)
+✔ inbox wait renewal does not reset an existing outage episode (161.546625ms)
+✔ HTTP non-wait deadlines, body stalls and connection failures remain retryable (913.037334ms)
+✔ foreign TimeoutError remains retryable even after the own inbox deadline (152.455292ms)
+✔ external inbox abort is cancellation even with a TimeoutError reason (1.353917ms)
+✔ shutdown during inbox renewal delay does not claim or re-register (152.352292ms)
+✔ accepted-but-unacked reconnect reclaims and acknowledges without second native send (0.368959ms)
+✔ empty inbox waits back off with a ceiling rather than busy-loop (0.103208ms)
+✔ consent inbox holds back off with a ceiling rather than busy-loop (0.0625ms)
+✔ user-driven native shutdown cancels the blocked inbox consumer (0.108125ms)
+✔ late stale claim after stop cannot reach native send (0.06125ms)
+✔ native success without native message ID is not accepted (0.09625ms)
+✔ daemon stale-incarnation refusal holds without transport fallback (0.07725ms)
+✔ HTTP skew and refused envelopes are never treated as successful claims (0.275209ms)
+✔ native consumer proof rejects undefined before injection and ack (0.082708ms)
+✔ native consumer proof rejects {"native_session":"stale-session","pid":137,"proc_start":20260905120000} before injection and ack (0.040875ms)
+✔ native consumer proof rejects {"native_session":"native-137","pid":999,"proc_start":20260905120000} before injection and ack (0.03875ms)
+✔ native consumer proof rejects {"native_session":"native-137","pid":137,"proc_start":1} before injection and ack (0.041041ms)
+✔ spawned native rollover preserves correlation across extension reload (0.066ms)
+✔ outage emits one actionable reconnect diagnostic per failure episode (0.251125ms)
+✔ consent hold release delivers the queued claim without a second message (0.206ms)
+✔ native-event diagnostics retain pre-observe ancestry for healthy session.idle (2.131917ms)
+✔ native-event diagnostics retain pre-observe ancestry for healthy session.error (0.579792ms)
+✔ native-event diagnostics identify rejected idle without declaring a stall (0.512375ms)
+✔ native-event diagnostics expose only scalar IDs and never callback or buffered bodies (0.28475ms)
+✔ post-ack barrier blocks next claim until current native completion, not outgoing (0.398958ms)
+✔ post-ack barrier retains session.idle before native send resolves (0.228875ms)
+✔ post-ack barrier retains session.error before native send resolves (0.170333ms)
+✔ post-ack barrier captures idle during acknowledgement but cannot overtake ack (0.234708ms)
+✔ post-ack barrier cannot release a later send from earlier generation events (0.480541ms)
+✔ post-ack barrier completes the owned final turn before a following foreground user (0.32875ms)
+✔ post-ack barrier rejects unproven foreground transition {"parentId":"unrelated-end"} (0.297875ms)
+✔ post-ack barrier rejects unproven foreground transition {"parentId":"owned-user"} (0.262125ms)
+✔ post-ack barrier rejects unproven foreground transition {"agentId":"subagent"} (0.276292ms)
+✔ post-ack barrier rejects unproven foreground transition {"data":{"messageId":"next-native"}} (0.36225ms)
+✔ post-ack barrier keeps accepted duplicate pending without completion evidence (0.310916ms)
+✔ post-ack barrier survives failed ack before reclaiming accepted duplicate (0.303791ms)
+✔ post-ack barrier shutdown disposes subscription and ignores late completion (0.251917ms)
+✔ post-ack barrier follows real native PoC ancestry with sibling ephemeral idles (0.346ms)
+✔ post-ack interaction anchor repairs the direct product permission gap without inferring idle (0.285666ms)
+✔ post-ack interaction anchor accepts only the matched foreground assistant.turn_start (0.416958ms)
+✔ post-ack interaction anchor accepts only the matched foreground assistant.message (0.299667ms)
+✔ post-ack interaction anchor accepts only the matched foreground tool.execution_complete (1.560375ms)
+✔ post-ack interaction anchor rejects absent or blank binding undefined (0.4605ms)
+✔ post-ack interaction anchor rejects absent or blank binding "" (0.332792ms)
+✔ post-ack interaction anchor rejects absent or blank binding "   " (0.226042ms)
+✔ post-ack interaction anchor retains correlation before send acceptance (0.244167ms)
+✔ claim page preserves typed target and transient hold metadata without changing request data (0.558917ms)
+✔ malformed claim hold metadata is not silently downgraded to an empty inbox (0.083084ms)
+✔ only the exact native-unavailable inbox refusal is retryable (0.691333ms)
+✔ native-unavailable retries re-register with bounded backoff and stop cleanly (0.63275ms)
+✔ semantic consent preflight binds exact tuple and current bearer key over real HTTP (2.295791ms)
+✔ semantic consent rejects malformed hold and mismatched native identity over HTTP (5.162833ms)
+✔ semantic consent ignores typing metadata and needs only identity and operator Hold (2.410958ms)
+✔ new native send waits for semantic consent before creating durable intent (0.362542ms)
+✔ native delivery proceeds during recent human typing without submitting the human draft (0.41725ms)
+✔ native delivery proceeds during unavailable typing sensor without submitting the human draft (0.260584ms)
+✔ native delivery retains human-consent while the human is typing (0.167ms)
+✔ native delivery retains semantic-hold while the human is typing (0.065042ms)
+✔ native delivery retains native-target-session:original-native while the human is typing (0.063041ms)
+✔ semantic Hold survives observed typing and requires a fresh claim after clearance (0.530208ms)
+✔ semantic Hold survives unavailable typing and requires a fresh claim after clearance (0.243292ms)
+✔ shutdown during consent snapshot cancels old-context work without intent send or ACK (0.359ms)
+✔ shutdown during consent semantic hold delay cancels old-context work without intent send or ACK (0.327333ms)
+✔ semantic consent HTTP wait is externally abortable and its deadline is not inbox renewal (152.412709ms)
+✔ invalid semantic consent or native proof holds receiving without hiding outgoing (3.347583ms)
+✔ invalid semantic consent or native proof holds receiving without hiding outgoing (2.721ms)
+ℹ tests 181
+ℹ suites 0
+ℹ pass 178
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 3
+ℹ todo 0
+ℹ duration_ms 8337.773917
+just windows-compat
+npm run windows:check
+
+> pij@0.1.0 windows:check
+> tsx harness/scripts/windows-compat.ts
+
+
+=== windows-compat: typecheck ===
+
+> pij@0.1.0 typecheck
+> tsc --noEmit
+
+
+=== windows-compat: lint ===
+
+> pij@0.1.0 lint
+> biome check .
+
+biome.json:2:13 deserialize ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  i The configuration schema version does not match the CLI version 2.4.14
+  
+    1 │ {
+  > 2 │ 	"$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
+      │ 	           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    3 │ 	"files": {
+    4 │ 		"includes": [
+  
+  i   Expected:                     2.4.14
+      Found:                        2.0.0
+  
+  
+  i Run the command biome migrate to migrate the configuration file.
+  
+
+Checked 540 files in 304ms. No fixes applied.
+Found 1 info.
+
+=== windows-compat: focused-tests ===
+
+> pij@0.1.0 test
+> vitest run .pi/extensions/pij/adapters/channel.test.ts .pi/extensions/pij/adapters/fakes.test.ts .pi/extensions/pij/adapters/fs-registry.test.ts .pi/extensions/pij/cli.inbox.integration.test.ts
+
+(node:99612) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-native-identity
+
+ ✓ .pi/extensions/pij/cli.inbox.integration.test.ts (17 tests) 14426ms
+     ✓ runs whoami from a live external host without PIJ_SESSION_ID or tmux  602ms
+     ✓ delivers literal raw text and correlated replies through public CLI inbox reads  2056ms
+     ✓ 'Claude' ambient registration binds the host idempotently and finite wait returns v2 JSON  1095ms
+     ✓ 'Copilot' ambient registration binds the host idempotently and finite wait returns v2 JSON  1086ms
+     ✓ 'Codex' ambient registration binds the host idempotently and finite wait returns v2 JSON  1075ms
+     ✓ keeps bare finite inbox waits available to external pull seats  602ms
+     ✓ refuses an infinite inbox wait for a paned pushed-delivery compatibility seat  390ms
+     ✓ inbox register returns pure whoami for an already-bound Claude pane without ambient identity  466ms
+     ✓ inbox register preserves self-registered pi pane compatibility and human guidance  581ms
+     ✓ inbox register preserves self-registered omp pane compatibility and human guidance  578ms
+     ✓ repairs stale PIJ_SESSION_ID without replacing authoritative native identity  787ms
+     ✓ refuses conflicting native session evidence observed in the host argv  741ms
+     ✓ refuses ambiguous ambient identities rather than selecting a harness  312ms
+     ✓ refuses ambient-only registration without a matching real host ancestor  476ms
+     ✓ round-trips concurrent wait, send, output acknowledgement and a correlated reply exactly once  3121ms
+ ✓ .pi/extensions/pij/adapters/fs-registry.test.ts (41 tests | 1 skipped) 1746ms
+     ✓ overlapping processes claiming one free native identity all converge on attempt zero  825ms
+     ✓ overlapping processes skip an unowned legacy attempt zero without changing its bytes  833ms
+ ✓ .pi/extensions/pij/adapters/channel.test.ts (14 tests | 1 skipped) 308ms
+ ✓ .pi/extensions/pij/adapters/fakes.test.ts (14 tests) 4ms
+
+ Test Files  4 passed (4)
+      Tests  84 passed | 2 skipped (86)
+   Start at  16:14:38
+   Duration  16.91s (transform 120ms, setup 0ms, import 170ms, tests 16.48s, environment 0ms)
+
+
+windows-compat: all portable stages passed.
+just smoke
+npm run smoke
+
+> pij@0.1.0 smoke
+> tsx harness/scripts/smoke.ts
+
+smoke: pij-team-scaffold ... {"smoke":"paneless-external","from":"pij-vicarious-centipede","to":"pij-fantastic-ikrie","senderHost":{"pid":20558,"proc_start":20260915161457},"recipientHost":{"pid":20591,"proc_start":20260915161457},"sent":"efc22cb1f2549856-0000000000000000","reply":"efc22cb1f2549856-0000000000000001","modelCanary":"unproven-protocol-hosts"}
+{"smoke":"private-team","parent":"pij-youthful-indiscretion","worker":"pij-ministerial-petra","project":"private-team-smoke","stream":"private-team-smoke:workflow","dispatch":"dispatch-adde2fcfdc203d0ad9b15e71ffa8bf7f","packetSha":"78b700cd31ea883a22a92d589df947de539d564db335e9b0d95413f6788c91c8","cursor":21,"modelCanary":"unproven-inert-hosts"}
+✓
+smoke: pij-watchdog ... {"smoke":"watchdog-refusal","code":"E-RS-UNPORTED","cursor":4,"forcedLegacy":"refused","mutation":"none"}
+✓
+smoke: file-watch-notify ... ✓
+smoke: image-see ... ✓
+smoke: minih-workbench ... ✓
+smoke: pi-peacock ... ✓
+smoke: pij ... ✓
+smoke: ralph-loop_compact-survival ... ✓
+smoke: session-sql ... ✓
+smoke: skill-runner ... ✓
+smoke: todo ... ✓
+PIJ_VET_SKIP_AGENT=1 just pkg audit
+npm run pkg -- "$@"
+
+> pij@0.1.0 pkg
+> tsx harness/scripts/packages.ts audit
+
+
+=== git:https://github.com/hasit/pi-community-themes@v0.3.0 ===
+✓ aggregate: ok (score=100, findings=3, 3171ms)
+  · github-trust:no-token: GH_TOKEN unset — rate-limit at 60/hr may cause failures
+  · scorecard:not-found: no Scorecard data for github.com/hasit/pi-community-themes (404)
+  · vetter:meta: agent skipped: PIJ_VET_SKIP_AGENT=1
+
+=== git:github.com/ghoseb/pi-askuserquestion ===
+✗ aggregate: fail (score=58, findings=20, 4648ms)
+  ⚠ lockfile-lint:policy: detected invalid host(s) for package: @anthropic-ai/sdk@0.91.1-a113c2e43a33c2a793dcf0014a78d1b20c6f41b3
+  ⚠ lockfile-lint:policy: expected: registry.npmjs.org
+  ⚠ lockfile-lint:policy: actual: ms-feed-17.pkgs.visualstudio.com
+  ⚠ lockfile-lint:policy: detected invalid host(s) for package: @aws-crypto/sha256-browser@5.2.0-d309a676248f5b245e4e857478c41f3f115a3f54
+  ⚠ lockfile-lint:policy: expected: registry.npmjs.org
+  ⚠ lockfile-lint:policy: actual: ms-feed-12.pkgs.visualstudio.com
+  ⚠ lockfile-lint:policy: detected invalid host(s) for package: @aws-crypto/sha256-js@5.2.0-8404ac4e69d84201343904e59dc6befb20f0e370
+  ⚠ lockfile-lint:policy: expected: registry.npmjs.org
+  ⚠ lockfile-lint:policy: actual: ms-feed-17.pkgs.visualstudio.com
+  ⚠ lockfile-lint:policy: detected invalid host(s) for package: @aws-crypto/supports-web-crypto@5.2.0-cf4f24af8ae3c92df7b08047263f09667856b64c
+  ⚠ npm-audit:@earendil-works/pi-coding-agent: @earendil-works/pi-coding-agent: moderate (undici)
+  ✗ npm-audit:@vitest/coverage-istanbul: @vitest/coverage-istanbul: critical (vitest)
+  ⚠ npm-audit:@vitest/mocker: @vitest/mocker: moderate (Vitest: Path Traversal / Arbitrary File Read via @vitest/mocker Redirect Mock)
+  ✗ npm-audit:nanoid: nanoid: high (nanoid: custom generators can loop indefinitely when size is zero)
+  ✗ npm-audit:undici: undici: high (undici vulnerable to downstream response desynchronization via retry interceptor; undici vulnerable to cross-user information disclosure and parse-time crash via degenerate private cache directives; undici vulnerable to CRLF Injection via blob-like body 'type' property)
+  ✗ npm-audit:vitest: vitest: critical (@vitest/mocker; When Vitest UI server is listening, arbitrary file can be read and executed; Vitest: Path Traversal / Arbitrary File Read via @vitest/mocker Redirect Mock)
+  · github-trust:no-token: GH_TOKEN unset — rate-limit at 60/hr may cause failures
+  ⚠ github-trust:no-license: ghoseb/pi-askuserquestion has no detected LICENSE
+  · scorecard:not-found: no Scorecard data for github.com/ghoseb/pi-askuserquestion (404)
+  · vetter:meta: agent skipped: PIJ_VET_SKIP_AGENT=1
+
+=== npm:pi-smart-fetch ===
+✓ aggregate: ok (score=100, findings=4, 163ms)
+  · lockfile-lint:no-lockfile: no package-lock.json — skipping lockfile-lint
+  · github-trust:not-github: source 'npm:pi-smart-fetch' is not a GitHub repo — skipping
+  · scorecard:not-found: no Scorecard data for npm/pi-smart-fetch (404)
+  · vetter:meta: agent skipped: PIJ_VET_SKIP_AGENT=1
+
+=== npm:@tintinweb/pi-subagents ===
+✓ aggregate: ok (score=100, findings=4, 163ms)
+  · lockfile-lint:no-lockfile: no package-lock.json — skipping lockfile-lint
+  · github-trust:not-github: source 'npm:@tintinweb/pi-subagents' is not a GitHub repo — skipping
+  · scorecard:not-found: no Scorecard data for npm/%40tintinweb%2Fpi-subagents (404)
+  · vetter:meta: agent skipped: PIJ_VET_SKIP_AGENT=1
+
+⚠ REVIEW (report-only, not blocking): 1/4 entry flagged — aggregate fail
+  • git:github.com/ghoseb/pi-askuserquestion: fail (4 fail, 13 warn) — keep, or: npm run pkg disable git:github.com/ghoseb/pi-askuserquestion
+just snapshots-check
+npm run snapshots:check
+
+> pij@0.1.0 snapshots:check
+> tsx harness/scripts/snapshot-check.ts
+
+✓ snapshot-check: briefing.md SHA matches snapshots (cdf5f5b25001...)
+just pij-commit-trailers
+node_modules/.bin/tsx harness/scripts/pij-commit-trailers.ts "$@"
+pij-commit-trailers: warn — 0 missing across 1 harness commit(s) since merge-base with main
+86855c61dc26551ac7339de61883c067433b9982: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime
+Advisory only: add derived trailers after a blank line alongside harness attribution; do not rewrite shared history automatically.

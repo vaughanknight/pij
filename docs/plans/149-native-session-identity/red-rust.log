@@ -1,0 +1,53 @@
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-native-identity/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 16.68s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-043514ab0ddb16b1)
+
+running 7 tests
+
+thread 'registration::tests::native_session_resume_lifts_tombstone_and_publishes_incarnation_change' (9598247) panicked at crates/daemon/src/registration.rs:1540:9:
+assertion `left == right` failed
+  left: SeatId("pij-mild-elisabet")
+ right: SeatId("pij-durable")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'registration::tests::native_session_cannot_resume_a_row_from_another_machine' (9598245) panicked at crates/daemon/src/registration.rs:1520:9:
+Ok(SeatDescriptor { id: SeatId("pij-remote-native"), machine: Some("another-machine"), harness: Copilot, harness_session: Some("00000000-0000-4000-8000-000000000137"), extension_build: None, extension_path: None, pane: Some("%137"), proc: Some(ProcIdentity { pid: 4242, proc_start: 126 }), folder: "/isolated/native-registration", state: Idle, semantic_state: None, role: None, parent: None, relay: false, tombstoned_at: None, tombstone_reason: None, cross_session_inbound_accept: None, native_extension_delivery: true, spawn_id: None, model: None, provider: None, effort: None })
+test registration::tests::native_session_cannot_resume_a_row_from_another_machine ... FAILED
+test registration::tests::native_session_resume_lifts_tombstone_and_publishes_incarnation_change ... FAILED
+test http::tests::a_native_session_boundary_supersedes_its_own_seat_but_never_another ... ok
+
+thread 'registration::tests::native_session_fast_restart_does_not_consult_old_process' (9598246) panicked at crates/daemon/src/registration.rs:1572:20:
+resume must not await the old incarnation sensor: Elapsed(())
+test registration::tests::native_session_fast_restart_does_not_consult_old_process ... FAILED
+
+thread 'http::native_tests::native_session_resume_preserves_queued_mail' (9598242) panicked at crates/daemon/src/http/native_tests.rs:293:5:
+assertion `left == right` failed: mail: durable address
+  left: String("pij-mild-elisabet")
+ right: "pij-copilot-fixture"
+
+thread 'http::native_tests::native_session_resume_preserves_parent_role_and_telegram_binding' (9598241) panicked at crates/daemon/src/http/native_tests.rs:293:5:
+assertion `left == right` failed: bindings: durable address
+  left: String("pij-mild-elisabet")
+ right: "pij-copilot-fixture"
+
+thread 'http::native_tests::native_session_resume_state_shows_new_process_and_no_tombstone' (9598243) panicked at crates/daemon/src/http/native_tests.rs:293:5:
+assertion `left == right` failed: state: durable address
+  left: String("pij-mild-elisabet")
+ right: "pij-copilot-fixture"
+test http::native_tests::native_session_resume_preserves_queued_mail ... FAILED
+test http::native_tests::native_session_resume_preserves_parent_role_and_telegram_binding ... FAILED
+test http::native_tests::native_session_resume_state_shows_new_process_and_no_tombstone ... FAILED
+
+failures:
+
+failures:
+    http::native_tests::native_session_resume_preserves_parent_role_and_telegram_binding
+    http::native_tests::native_session_resume_preserves_queued_mail
+    http::native_tests::native_session_resume_state_shows_new_process_and_no_tombstone
+    registration::tests::native_session_cannot_resume_a_row_from_another_machine
+    registration::tests::native_session_fast_restart_does_not_consult_old_process
+    registration::tests::native_session_resume_lifts_tombstone_and_publishes_incarnation_change
+
+test result: FAILED. 1 passed; 6 failed; 0 ignored; 0 measured; 367 filtered out; finished in 0.30s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

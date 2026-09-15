@@ -1,0 +1,16 @@
+file:///Users/jordanknight/pi-hacking/fs3-native-identity/.copilot/extensions/pij/store.mjs:122
+		throw new NativeError("Spawn prebind identity is not corroborated by the host process", !prior);
+		      ^
+
+NativeError: Spawn prebind identity is not corroborated by the host process
+    at chooseRegistration (file:///Users/jordanknight/pi-hacking/fs3-native-identity/.copilot/extensions/pij/store.mjs:122:9)
+    at file:///Users/jordanknight/pi-hacking/fs3-native-identity/[eval1]:5:16
+    at ModuleJob.run (node:internal/modules/esm/module_job:371:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:273:26)
+    at async ModuleLoader.executeModuleJob (node:internal/modules/esm/loader:270:20)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {
+  retryable: false,
+  safeDiagnostic: 'Spawn prebind identity is not corroborated by the host process'
+}
+
+Node.js v24.7.0
