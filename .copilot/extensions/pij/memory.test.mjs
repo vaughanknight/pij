@@ -8,7 +8,7 @@ import { NativeBridge } from "./store.mjs";
 // Run the real bridge in a constrained, GC-observable process. The native seam
 // stores history as wire bytes, not parsed objects artificially kept by the test.
 if (!process.env.PIJ_NATIVE_MEMORY_CHILD) {
-	test("50 deliveries over 60 MB history retain less than 32 MiB of heap", () => {
+	test("50 deliveries and a 20k-event accepted replay over 60 MB history retain less than 32 MiB", () => {
 		const env = { ...process.env, PIJ_NATIVE_MEMORY_CHILD: "1" };
 		delete env.NODE_TEST_CONTEXT;
 		const result = spawnSync(
@@ -186,5 +186,185 @@ if (!process.env.PIJ_NATIVE_MEMORY_CHILD) {
 			Math.max(...samples) - baseline < 32 * 1024 * 1024,
 			"retained history grew beyond 32 MiB",
 		);
+	});
+
+	test("accepted-journal replay bounds forced-GC peak across every history page", async (t) => {
+		const historyEvents = 20000;
+		const body =
+			"A realistic tool result line describing a source file and its diagnostics.\n".repeat(47);
+		const historicEvent = (i) => ({
+			type: "tool.execution_complete",
+			id: `historic-${i}`,
+			parentId: `historic-${i - 1}`,
+			data: { toolCallId: `tool-${i}`, result: { content: `${i}: ${body}` } },
+		});
+		let historyBytes = 0;
+		for (let i = 0; i < historyEvents; i++)
+			historyBytes += Buffer.byteLength(JSON.stringify(historicEvent(i)));
+		assert.ok(historyBytes >= 60 * 1024 * 1024);
+		const registration = {
+			id: "pij-memory",
+			harness: "copilot",
+			harness_session: "memory-session",
+			pid: 150,
+			proc_start: 150,
+		};
+		const message = {
+			msg_id: "message-replayed",
+			from: "pij-sender",
+			to: registration.id,
+			body: "accepted before restart",
+		};
+		const record = { state: "accepted", message, nativeId: "native-replayed" };
+		const proof = [
+			{ type: "user.message", id: "replayed-user", data: { messageId: record.nativeId } },
+			{ type: "session.idle", id: "replayed-idle", parentId: "replayed-user", data: {} },
+		];
+		let pages = 0;
+		let eventsRead = 0;
+		let sends = 0;
+		let acknowledgements = 0;
+		let fullReads = 0;
+		let gcSamples = 0;
+		const reports = [];
+		await flush();
+		global.gc();
+		const baseline = process.memoryUsage().heapUsed;
+		let peak = baseline;
+		const sample = () => {
+			global.gc();
+			gcSamples++;
+			peak = Math.max(peak, process.memoryUsage().heapUsed);
+		};
+		const native = {
+			on() {
+				return () => {};
+			},
+			async getEvents() {
+				fullReads++;
+				throw new Error("accepted replay must use bounded eventLog pages");
+			},
+			async send() {
+				sends++;
+				throw new Error("accepted replay must not reinject");
+			},
+			rpc: {
+				eventLog: {
+					async tail() {
+						return { cursor: String(historyEvents + proof.length) };
+					},
+					async read({ cursor, max }) {
+						// Drain can stay in microtasks throughout: a timer cannot measure its peak.
+						// Sample before allocation to catch pages retained by the previous read,
+						// and after allocation to include the current RPC window.
+						sample();
+						const from = cursor === undefined ? 0 : Number(cursor);
+						assert.equal(from, eventsRead, "replay must neither skip nor rewind history");
+						assert.ok(Number.isSafeInteger(max) && max > 0 && max <= 128);
+						const count = Math.min(max, historyEvents - from);
+						const events = JSON.parse(
+							JSON.stringify(
+								from < historyEvents
+									? Array.from({ length: count }, (_, i) => historicEvent(from + i))
+									: proof,
+							),
+						);
+						pages++;
+						eventsRead += events.length;
+						sample();
+						return {
+							events,
+							cursor: String(eventsRead),
+							hasMore: eventsRead < historyEvents + proof.length,
+							cursorStatus: "ok",
+						};
+					},
+				},
+			},
+		};
+		let claims = 0;
+		const bridge = new NativeBridge({
+			registration,
+			native,
+			journal: {
+				async load(id) {
+					assert.equal(id, message.msg_id);
+					return record;
+				},
+				async begin() {
+					throw new Error("accepted replay must not create another send intent");
+				},
+				async accept() {
+					throw new Error("accepted replay must not replace durable acceptance");
+				},
+			},
+			client: {
+				async claimInbox() {
+					if (claims++ > 0) {
+						bridge.stop();
+						return { claims: [], hold: null };
+					}
+					return {
+						claims: [
+							{
+								job_id: 150,
+								message,
+								native_consumer: {
+									native_session: registration.harness_session,
+									pid: registration.pid,
+									proc_start: registration.proc_start,
+								},
+							},
+						],
+						hold: null,
+					};
+				},
+				async request(path, input) {
+					if (path === "/v1/inbox/heartbeat")
+						return { state: "live", lease_ms: 60000, renew_after_ms: 20000 };
+					if (path === "/v1/register")
+						return {
+							...registration,
+							session: registration.harness_session,
+							proc: { pid: registration.pid, proc_start: registration.proc_start },
+							native_extension_delivery: true,
+						};
+					assert.equal(path, "/v1/inbox/ack");
+					assert.equal(input.job_id, 150);
+					acknowledgements++;
+					return input.job_id;
+				},
+			},
+			report: (event) => reports.push(event),
+			async delay() {
+				throw new Error("replay stopped paging before consumption and completion");
+			},
+		});
+		t.after(() => bridge.stop());
+		await bridge.run();
+		sample();
+		console.log(
+			JSON.stringify({
+				historyEvents,
+				historyBytes,
+				pages,
+				eventsRead,
+				gcSamples,
+				acknowledgements,
+				sends,
+				fullReads,
+				baseline,
+				peak,
+				finalHeap: process.memoryUsage().heapUsed,
+				growth: peak - baseline,
+			}),
+		);
+		assert.equal(reports.filter(({ kind }) => kind === "receive-held").length, 0);
+		assert.equal(eventsRead, historyEvents + proof.length);
+		assert.ok(pages >= Math.ceil(historyEvents / 128) + 1);
+		assert.equal(acknowledgements, 1);
+		assert.equal(sends, 0);
+		assert.equal(fullReads, 0);
+		assert.ok(peak - baseline < 32 * 1024 * 1024, "paged replay retained more than 32 MiB");
 	});
 }

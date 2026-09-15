@@ -464,6 +464,7 @@ async fn shipped_cli_native_inbox_uses_pane_session_ladder_and_acknowledges() {
         .await
         .unwrap();
     let queue = services.queue.clone();
+    let delivery = services.delivery.clone();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap().to_string();
     let server = tokio::spawn(async move {
@@ -524,6 +525,57 @@ async fn shipped_cli_native_inbox_uses_pane_session_ladder_and_acknowledges() {
             .await
             .unwrap()
             .is_none()
+    );
+    delivery
+        .heartbeat_native_receiver(
+            &seat.id,
+            &pij_daemon::delivery::NativeInboxIdentity {
+                native_session: seat.harness_session.clone(),
+                pid: seat.proc.map(|proc| proc.pid),
+                proc_start: seat.proc.map(|proc| proc.proc_start),
+            },
+        )
+        .await
+        .unwrap();
+    delivery
+        .send(
+            "pij-peer".into(),
+            seat.id.clone(),
+            "live receiver owns this",
+        )
+        .await
+        .unwrap();
+    let before = queue
+        .peek(&[pij_core::delivery::delivery_kind(&seat.id)])
+        .await
+        .unwrap();
+    let live = run_cli_with_env(
+        &dir,
+        &addr,
+        &["inbox"],
+        [
+            ("TMUX_PANE", "%native-reader"),
+            ("COPILOT_AGENT_SESSION_ID", "native-cli-session"),
+        ],
+    );
+    assert!(
+        !live.status.success(),
+        "manual CLI cannot compete with a live receiver"
+    );
+    let refusal: serde_json::Value = serde_json::from_slice(&live.stdout).unwrap();
+    assert_eq!(refusal["ok"], false);
+    assert_eq!(refusal["details"]["retryable"], true);
+    assert!(
+        refusal["details"]["expires_in_ms"]
+            .as_u64()
+            .is_some_and(|ms| ms > 0)
+    );
+    assert_eq!(
+        queue
+            .peek(&[pij_core::delivery::delivery_kind(&seat.id)])
+            .await
+            .unwrap(),
+        before
     );
     server.abort();
     std::fs::remove_dir_all(dir).unwrap();

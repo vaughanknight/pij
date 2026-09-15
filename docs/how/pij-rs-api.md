@@ -171,10 +171,35 @@ The failed row and both sender events commit together before live publication.
 A real queue paired with a fake spine refuses terminal recovery with
 `E-RS-INBOX-AUTHORITY-SPLIT`, rather than emitting cursors from another store;
 ordinary reads and successful acknowledgements remain supported.
-The sender sees a warning naming the undelivered id and recipient. The recipient
+The Pi/OMP sender sees a warning naming the undelivered id and recipient. The recipient
 clears that message from its pending badge and visibly names the parked id once.
 The badge counts only unconsumed messages not recently resent; it is not a count
 of successful delivery or model completion.
+
+### Native Copilot receiver lease and manual recovery
+
+Native Copilot renews `/v1/inbox/heartbeat` with
+`{seat,native_session,pid,proc_start}` (no `job_id`), independently of Working,
+completion and operator Hold. Its successful envelope contains
+`data:{state:"live",lease_ms:60000,renew_after_ms:20000}` by default; the existing
+`PIJ_RS_EXT_CLAIM_LEASE_SECS` changes the duration. Host presence does not renew it.
+Expiry parks native bodies with `undelivered:native-receiver-unavailable`, publishes
+sender-addressed `delivery.parked`, and refuses subsequent sends.
+
+From the same Copilot pane/session, `pij inbox --json` uses the normal identity
+ladder and registry host tuple. While the receiver lease is live it refuses
+without claiming or parking anything: HTTP 409, `ok:false`, `error:"refused"`,
+`details:{code:"native-receiver-lease-live",retryable:true,expires_in_ms:<remaining>}`.
+The reason names the lease and remaining milliseconds. After the extension dies,
+already-claimed mail remains unreachable for **up to the remaining lease**
+(60 seconds by default); retry after the reported interval. No `--take-over`
+override exists: bypassing the wait could race an accepted but unobserved message.
+
+An expired or absent receiver lease admits explicit recovery once operator Hold
+is cleared. Pending/running native bodies are parked first; only
+receiver-unavailable parked bodies are restored, preserving job/message identity
+and parking history. Manual pull/ACK never renews receiver presence. A wrong
+pane/session still refuses; paneless readers retain their exact host tuple checks.
 
 ## Seat roster rows and absence
 

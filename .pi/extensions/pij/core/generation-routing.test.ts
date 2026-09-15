@@ -97,6 +97,24 @@ describe("the explicit rs routing inventory", () => {
 			"json-refused",
 		);
 	});
+
+	it("human send receipts expose native receiver refusal reasons", () => {
+		const reason =
+			"native-extension-unavailable: native receiver for pij-copilot has not renewed its lease";
+		const rendered = renderRsAnswer(
+			findRoute("send", undefined),
+			{
+				msg_id: "native-refused",
+				outcome: { outcome: "refused", reason },
+			},
+			["send", "pij-copilot", "hello"],
+		);
+		expect(rendered.kind).toBe("rendered");
+		if (rendered.kind !== "rendered") throw new Error("send receipt was not rendered");
+		expect(rendered.text).toContain("native-refused");
+		expect(rendered.text).toContain("refused");
+		expect(rendered.text).toContain(reason);
+	});
 });
 
 describe("the tail false friend remains refused", () => {

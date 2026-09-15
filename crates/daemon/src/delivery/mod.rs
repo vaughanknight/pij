@@ -268,6 +268,8 @@ impl DeliveryService {
 
     /// Renew receiver presence independently of claims, Working, or Operator Hold.
     /// The host tuple scopes the lease, but only receiver requests renew it.
+    /// Presence is attested by tuple knowledge under the machine bearer, not
+    /// process possession; the same authority already permits native claims.
     pub async fn heartbeat_native_receiver(
         &self,
         seat: &SeatId,
@@ -1135,15 +1137,6 @@ impl DeliveryService {
                 .as_ref()
                 .is_some_and(|seat| seat.harness == Harness::Copilot);
             let tuple_bound = native || identity.supplied();
-            if let Some(reason) = self
-                .revalidate_inbox_observation(seat, identity, observed.as_ref())
-                .await?
-            {
-                return Ok(NativeInboxPage {
-                    claims: Vec::new(),
-                    held_reason: Some(reason),
-                });
-            }
             if manual_native {
                 let recipient = observed
                     .as_ref()
@@ -1155,10 +1148,41 @@ impl DeliveryService {
                     .ok_or_else(|| {
                         native_refusal("manual native recovery requires a pane-bound native seat")
                     })?;
-                if !self.native_receiver_live(recipient).await {
-                    let (_, guard) = self.park_native_receiver(seat, native_guard).await?;
-                    native_guard = guard;
+                // This is an admission brake: removing it permits competing
+                // manual claims. Hold and host state never override a live lease.
+                // Boot grace is not receiver attestation: an absent lease allows
+                // explicit recovery, without waiting for background reconciliation.
+                let receivers = self.native_receivers.lock().await;
+                if let Some(receiver) = receivers
+                    .get(seat)
+                    .filter(|receiver| receiver.identity.matches(recipient))
+                {
+                    let remaining = Duration::from_secs(self.extension_claim_lease_secs)
+                        .saturating_sub(receiver.renewed_at.elapsed());
+                    if !remaining.is_zero() {
+                        return Err(PijError::NativeReceiverLive {
+                            seat: seat.clone(),
+                            expires_in_ms: remaining
+                                .as_nanos()
+                                .div_ceil(1_000_000)
+                                .min(u128::from(u64::MAX))
+                                as u64,
+                        });
+                    }
                 }
+            }
+            if let Some(reason) = self
+                .revalidate_inbox_observation(seat, identity, observed.as_ref())
+                .await?
+            {
+                return Ok(NativeInboxPage {
+                    claims: Vec::new(),
+                    held_reason: Some(reason),
+                });
+            }
+            if manual_native {
+                let (_, guard) = self.park_native_receiver(seat, native_guard).await?;
+                native_guard = guard;
                 if self.queue.peek(&kinds).await?.is_none()
                     && let Some(parked) = self
                         .queue
@@ -4321,6 +4345,128 @@ mod tests {
             .acknowledge_inbox(&seat.id, claim.job_id, &identity, None)
             .await
             .unwrap();
+    }
+
+    // Regression from the reviewer's live-receiver theft and dead-window probes.
+    #[tokio::test(start_paused = true)]
+    async fn native_cli_live_lease_refuses_without_stealing_then_expiry_recovers_running_mail() {
+        let fixture = fixture(FakeTransport::unreachable());
+        let mut seat = native_seat(Some("%137"));
+        register(&fixture, seat.clone()).await;
+        let identity = native_identity();
+        fixture
+            .service
+            .heartbeat_native_receiver(&seat.id, &identity)
+            .await
+            .unwrap();
+        let sent = fixture
+            .service
+            .send("pij-from".into(), seat.id.clone(), "extension owns this")
+            .await
+            .unwrap();
+        let before = fixture
+            .queue
+            .peek(&[delivery_kind(&seat.id)])
+            .await
+            .unwrap();
+        let lease_ms = fixture.service.extension_claim_lease_secs * 1_000;
+        assert_eq!(
+            fixture
+                .service
+                .claim_manual_native_inbox(&seat.id, &identity)
+                .await
+                .unwrap_err(),
+            PijError::NativeReceiverLive {
+                seat: seat.id.clone(),
+                expires_in_ms: lease_ms
+            },
+        );
+        assert_eq!(
+            fixture
+                .queue
+                .peek(&[delivery_kind(&seat.id)])
+                .await
+                .unwrap(),
+            before
+        );
+        assert!(
+            !fixture
+                .spine
+                .tail(None, Seq(0))
+                .await
+                .unwrap()
+                .iter()
+                .any(|event| event.kind == "delivery.parked")
+        );
+
+        let extension = fixture
+            .service
+            .claim_native_inbox(&seat.id, false, &identity)
+            .await
+            .unwrap();
+        let claim = &extension.claims[0];
+        assert_eq!(
+            claim.message.msg_id, sent.msg_id,
+            "manual refusal must not starve the extension"
+        );
+        // A dead receiver's running claim is inaccessible until its lease expires.
+        // Operator Hold must not turn a live-lease refusal into an empty success.
+        seat.semantic_state = Some(SemanticState::Hold);
+        fixture.registry.put(seat.clone()).await.unwrap();
+        for step in 1..=3 {
+            tokio::time::advance(Duration::from_millis(lease_ms / 4)).await;
+            assert_eq!(
+                fixture
+                    .service
+                    .claim_manual_native_inbox(&seat.id, &identity)
+                    .await
+                    .unwrap_err(),
+                PijError::NativeReceiverLive {
+                    seat: seat.id.clone(),
+                    expires_in_ms: lease_ms - (lease_ms / 4) * step,
+                },
+            );
+        }
+        assert!(
+            fixture
+                .queue
+                .claimed_delivery(claim.job_id)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            !fixture
+                .spine
+                .tail(None, Seq(0))
+                .await
+                .unwrap()
+                .iter()
+                .any(|event| event.kind == "delivery.parked")
+        );
+        seat.semantic_state = None;
+        fixture.registry.put(seat.clone()).await.unwrap();
+        tokio::time::advance(Duration::from_millis(lease_ms - (lease_ms / 4) * 3)).await;
+        let recovered = fixture
+            .service
+            .claim_manual_native_inbox(&seat.id, &identity)
+            .await
+            .unwrap();
+        assert_eq!(recovered.claims.len(), 1);
+        assert_eq!(recovered.claims[0].job_id, claim.job_id);
+        assert_eq!(recovered.claims[0].message.msg_id, sent.msg_id);
+        assert_eq!(recovered.claims[0].attempt, claim.attempt + 1);
+        assert_eq!(
+            fixture
+                .spine
+                .tail(None, Seq(0))
+                .await
+                .unwrap()
+                .iter()
+                .filter(|event| event.kind == "delivery.parked")
+                .count(),
+            1
+        );
     }
 
     #[tokio::test(start_paused = true)]

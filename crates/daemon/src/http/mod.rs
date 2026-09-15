@@ -1681,6 +1681,16 @@ fn native_inbox_response(page: crate::delivery::NativeInboxPage) -> Response {
 
 fn inbox_failure(error: PijError) -> Response {
     match &error {
+        PijError::NativeReceiverLive { expires_in_ms, .. } => {
+            let mut answer: Envelope<serde_json::Value> =
+                Envelope::refused("pij inbox", ErrorKind::Refused, error.to_string());
+            answer.details = Some(serde_json::json!({
+                "code": "native-receiver-lease-live",
+                "retryable": true,
+                "expires_in_ms": expires_in_ms,
+            }));
+            envelope(StatusCode::CONFLICT, &answer)
+        }
         PijError::GovernanceRefused { code, record } if code == "E-RS-INBOX-AUTHORITY-SPLIT" => {
             let mut answer: Envelope<serde_json::Value> =
                 Envelope::refused("pij inbox", ErrorKind::Refused, error.to_string());

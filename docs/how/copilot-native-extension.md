@@ -155,11 +155,16 @@ sends with the receiver's seat named. It does not silently fall back to tmux.
 
 If only the extension died, run `pij inbox --json` inside the still-live Copilot
 seat's shell. The normal pane/session identity ladder authorizes this explicit
-pull and ACK; a different native session refuses. Operator Hold must first be
-cleared. Only bodies parked for unavailable native receivers are recovered this
-way, retaining their original job/message IDs and parking history. Manual reads
-do not claim the extension is alive. Paneless consumers still require the exact
-registered native-session/host tuple.
+pull and ACK; a different native session refuses. A live receiver lease refuses
+manual pull with `details.retryable:true` and `details.expires_in_ms`, even if the
+host looks idle or is on Hold. After extension death, wait up to the remaining
+lease (60 seconds by default); already-claimed mail is not manually reachable
+during that window. This protects against competing delivery, not lost mail.
+Once the lease expires or is absent, clear operator Hold and retry. Pending and
+running native bodies are first parked for receiver unavailability, then recovered
+with their original job/message IDs and parking history. Other parked outcomes
+are not recovered. Manual reads never renew extension presence. Paneless consumers
+still require the exact registered native-session/host tuple.
 
 Deploy memory and receiver-lease support together: build/restart the composed
 daemon using the operator-owned lifecycle, then reload/restart affected native
