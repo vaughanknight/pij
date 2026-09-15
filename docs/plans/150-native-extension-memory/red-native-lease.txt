@@ -1,0 +1,29 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling pij-harnesses v0.1.0 (/private/tmp/pij150-rust-red.f08Tti/crates/harnesses)
+   Compiling hostname v0.4.2
+   Compiling pij-daemon v0.1.0 (/private/tmp/pij150-rust-red.f08Tti/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 22.29s
+     Running unittests src/lib.rs (/tmp/pij150-rust-red.f08Tti/target/debug/deps/pij_daemon-043514ab0ddb16b1)
+
+running 2 tests
+
+thread 'delivery::tests::native_receiver_expiry_parks_pending_and_running_mail_despite_live_host' (12923552) panicked at crates/daemon/src/delivery/mod.rs:4480:13:
+a live Copilot host cannot hide an expired receiver: Queued { reason: Some("extension-stream"), next_retry_at: Some(0), draft_sha: None }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test delivery::tests::native_receiver_expiry_parks_pending_and_running_mail_despite_live_host ... FAILED
+
+thread 'http::native_tests::native_receiver_heartbeat_http_is_identity_bound_and_independent_of_hold' (12923553) panicked at crates/daemon/src/http/native_tests.rs:212:45:
+called `Result::unwrap()` on an `Err` value: reqwest::Error { kind: Decode, source: Error("expected value", line: 1, column: 1) }
+test http::native_tests::native_receiver_heartbeat_http_is_identity_bound_and_independent_of_hold ... FAILED
+
+failures:
+
+failures:
+    delivery::tests::native_receiver_expiry_parks_pending_and_running_mail_despite_live_host
+    http::native_tests::native_receiver_heartbeat_http_is_identity_bound_and_independent_of_hold
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 369 filtered out; finished in 0.04s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

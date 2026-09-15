@@ -1,0 +1,169 @@
+{
+  "status": "passed",
+  "identity": {
+    "node": "v24.7.0",
+    "pij": "pij-rs 0.1.0",
+    "pij_binary": "/Users/jordanknight/pi-hacking/fs3-native-memory/target/debug/pij-rs",
+    "pij_sha256": "7d2d6320c3896442e855f5178274a9c3eb767bc5dfb6db7b127a6366f7e433fc",
+    "copilot": "GitHub Copilot CLI 1.0.84-8.\nRun 'copilot update' to check for updates.",
+    "copilot_binary": "/Users/jordanknight/.local/bin/copilot",
+    "copilot_sha256": "02c95ab4968b2653f92cbdc664e7a7bf0d18bb0292896d2a2e7eda1edc5444c1",
+    "source_modules": {
+      "extension.mjs": "82d86ff3219e11600bd02e07ba0db3631de7e525b1a99e2f7a8aec987f74bbe4",
+      "store.mjs": "7ed8d0a421031c45de63c3200642affc9a64b5c34571cacc421d88d508763a31"
+    }
+  },
+  "isolation": {
+    "run": "/Users/jordanknight/pi-hacking/fs3-native-memory/docs/plans/150-native-extension-memory/evidence/ac6-2026-09-15T07-03-27.574Z-d03e021a/runtime",
+    "home": "/Users/jordanknight/pi-hacking/fs3-native-memory/docs/plans/150-native-extension-memory/evidence/ac6-2026-09-15T07-03-27.574Z-d03e021a/runtime/home",
+    "copilotHome": "/Users/jordanknight/pi-hacking/fs3-native-memory/docs/plans/150-native-extension-memory/evidence/ac6-2026-09-15T07-03-27.574Z-d03e021a/runtime/home/.copilot",
+    "claudeHome": "/Users/jordanknight/pi-hacking/fs3-native-memory/docs/plans/150-native-extension-memory/evidence/ac6-2026-09-15T07-03-27.574Z-d03e021a/runtime/home/.claude",
+    "claudeConfig": "/Users/jordanknight/pi-hacking/fs3-native-memory/docs/plans/150-native-extension-memory/evidence/ac6-2026-09-15T07-03-27.574Z-d03e021a/runtime/home/.claude",
+    "state": "/Users/jordanknight/pi-hacking/fs3-native-memory/docs/plans/150-native-extension-memory/evidence/ac6-2026-09-15T07-03-27.574Z-d03e021a/runtime/daemon",
+    "addr": "127.0.0.1:58288",
+    "workspace": "/Users/jordanknight/pi-hacking/fs3-native-memory/docs/plans/150-native-extension-memory/evidence/ac6-2026-09-15T07-03-27.574Z-d03e021a/runtime/workspace",
+    "tmux_name": "ac6-8ffb0aac-1fe",
+    "tmux_home": "/tmp/pij-memory-9ekwoJ",
+    "auth": "none",
+    "lease_ms": 60000,
+    "production_contacted": false,
+    "socket": "/private/tmp/pij-memory-9ekwoJ/tmux-501/ac6-8ffb0aac-1fe"
+  },
+  "history": {
+    "path": "/Users/jordanknight/pi-hacking/fs3-native-memory/docs/plans/150-native-extension-memory/evidence/ac6-2026-09-15T07-03-27.574Z-d03e021a/runtime/home/.copilot/session-state/97d375f2-c6b5-4c15-9c5f-58a31fc8f000/events.jsonl",
+    "bootstrap_events": 8,
+    "synthetic_events": 20002,
+    "total_events": 20010,
+    "bytes": 84024826,
+    "sha256": "3fcfe012f05f3880f36c4eabd5d81ac502c782e65d7347479f9dd4e531170665",
+    "last_event_id": "d990c084-a071-4a31-a5f6-cd6457a45ffb",
+    "format": "real bootstrap event templates + chained synthetic user/assistant events + supported successful compaction summary",
+    "inference": "synthetic history, not a claim of 10,000 real inference turns"
+  },
+  "completed_messages": 30,
+  "rss": [
+    {
+      "at": "2026-09-15T07:03:32.364Z",
+      "elapsed_ms": 3,
+      "kind": "start",
+      "completed_messages": 0,
+      "pid": 78961,
+      "rss_kib": 113152,
+      "rss_mib": 110.5
+    },
+    {
+      "at": "2026-09-15T07:03:42.370Z",
+      "elapsed_ms": 10009,
+      "kind": "10s",
+      "completed_messages": 10,
+      "pid": 78961,
+      "rss_kib": 116224,
+      "rss_mib": 113.5
+    },
+    {
+      "at": "2026-09-15T07:03:52.387Z",
+      "elapsed_ms": 20026,
+      "kind": "10s",
+      "completed_messages": 20,
+      "pid": 78961,
+      "rss_kib": 117120,
+      "rss_mib": 114.375
+    },
+    {
+      "at": "2026-09-15T07:04:02.372Z",
+      "elapsed_ms": 30011,
+      "kind": "10s",
+      "completed_messages": 30,
+      "pid": 78961,
+      "rss_kib": 118800,
+      "rss_mib": 116.015625
+    },
+    {
+      "at": "2026-09-15T07:04:03.026Z",
+      "elapsed_ms": 30665,
+      "kind": "before-kill",
+      "completed_messages": 30,
+      "pid": 78961,
+      "rss_kib": 118800,
+      "rss_mib": 116.015625
+    }
+  ],
+  "kill": {
+    "at": "2026-09-15T07:04:03.026Z",
+    "extension": {
+      "pid": 78961,
+      "ppid": 78599,
+      "rss_kib": 118800,
+      "started": "Tue Sep 15 17:03:31 2026",
+      "command": "/Users/jordanknight/.local/bin/copilot /Users/jordanknight/pi-hacking/fs3-native-memory/docs/plans/150-native-extension-memory/evidence/ac6-2026-09-15T07-03-27.574Z-d03e021a/runtime/home/.copilot/pkg/darwin-arm64/1.0.84-8/preloads/extension_bootstrap.mjs"
+    },
+    "host": {
+      "pid": 78599,
+      "ppid": 77565,
+      "rss_kib": 981136,
+      "started": "Tue Sep 15 17:03:30 2026",
+      "command": "/Users/jordanknight/.local/bin/copilot --no-custom-instructions --disable-builtin-mcps --no-remote --prefer-version 1.0.84-8 --resume=97d375f2-c6b5-4c15-9c5f-58a31fc8f000"
+    },
+    "pending_msg_id": "4f55fd17-4d00-4a83-bf04-4e94efc45d3c"
+  },
+  "dead_receiver": {
+    "park_observed_ms": 59023,
+    "lease_ms": 60000,
+    "parked": {
+      "seq": 134,
+      "at": 1789455902027,
+      "kind": "delivery.parked",
+      "seat": "pij-slow-duck",
+      "payload": "{\"jobId\":31,\"messageId\":\"4f55fd17-4d00-4a83-bf04-4e94efc45d3c\",\"outcome\":\"undelivered:native-receiver-unavailable\",\"reason\":\"native-extension-unavailable\",\"recipient\":\"pij-whispering-tick\"}"
+    },
+    "next_send": {
+      "ok": true,
+      "command": "pij send",
+      "v": 2,
+      "data": {
+        "msg_id": "deb70394-9df4-4422-8435-a36ba3d606e2",
+        "outcome": {
+          "outcome": "refused",
+          "reason": "native-extension-unavailable: native receiver for pij-whispering-tick has not renewed its lease"
+        },
+        "at": 1789455902108
+      },
+      "meta": "from pij-slow-duck; msg_id deb70394-9df4-4422-8435-a36ba3d606e2"
+    },
+    "next_send_exit": 0
+  },
+  "emergency_inbox": {
+    "caller": {
+      "pane": "%2",
+      "copilot_session": "97d375f2-c6b5-4c15-9c5f-58a31fc8f000"
+    },
+    "messages": [
+      {
+        "from": "pij-slow-duck",
+        "to": "pij-whispering-tick",
+        "body": "PIJ_MEMORY_PENDING_cfcd5f76-e457-4a2d-8d3a-fcbafe0bea2d",
+        "msg_id": "4f55fd17-4d00-4a83-bf04-4e94efc45d3c"
+      }
+    ],
+    "ack": [
+      {
+        "recipient": "pij-whispering-tick",
+        "msg_id": "4f55fd17-4d00-4a83-bf04-4e94efc45d3c",
+        "origin": "reader-read",
+        "delivered_at": 1789455902
+      }
+    ],
+    "jobs": [
+      {
+        "id": 31,
+        "state": "done",
+        "outcome": null
+      }
+    ]
+  },
+  "cleanup": {
+    "owned_tmux_stopped": true,
+    "owned_daemon_stopped": true,
+    "retained": "Plan-local isolated runtime retained for evidence; daemon key and synthetic history stay inside private runtime directory. No production/global configuration was changed."
+  }
+}

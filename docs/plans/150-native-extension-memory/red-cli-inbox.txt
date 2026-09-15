@@ -1,0 +1,38 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling utf8parse v0.2.2
+   Compiling getrandom v0.4.3
+   Compiling colorchoice v1.0.5
+   Compiling anstyle v1.0.14
+   Compiling anstyle-parse v1.0.0
+   Compiling anstyle-query v1.1.5
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling strsim v0.11.1
+   Compiling clap_lex v1.1.0
+   Compiling anstream v1.0.0
+   Compiling clap_derive v4.6.4
+   Compiling clap_builder v4.6.6
+   Compiling pij-daemon v0.1.0 (/private/tmp/pij150-rust-red.f08Tti/crates/daemon)
+   Compiling uuid v1.26.0
+   Compiling clap v4.6.6
+   Compiling pij-cli v0.1.0 (/private/tmp/pij150-rust-red.f08Tti/crates/cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.13s
+     Running tests/spawn.rs (/tmp/pij150-rust-red.f08Tti/target/debug/deps/spawn-d3ba6acdf551e222)
+
+running 1 test
+
+thread 'shipped_cli_native_inbox_uses_pane_session_ladder_and_acknowledges' (12972701) panicked at crates/cli/tests/spawn.rs:1013:5:
+manual native inbox: {"ok":false,"command":"pij inbox","v":2,"meta":"daemon/native-inbox: native incarnation mismatch: native_session, pid and proc_start must match the current Copilot seat","error":"refused"}
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test shipped_cli_native_inbox_uses_pane_session_ladder_and_acknowledges ... FAILED
+
+failures:
+
+failures:
+    shipped_cli_native_inbox_uses_pane_session_ladder_and_acknowledges
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 3 filtered out; finished in 2.69s
+
+error: test failed, to rerun pass `-p pij-cli --test spawn`

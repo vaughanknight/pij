@@ -1,0 +1,24 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on build directory
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.37s
+     Running unittests src/lib.rs (/tmp/pij150-rust-red.f08Tti/target/debug/deps/pij_daemon-043514ab0ddb16b1)
+
+running 1 test
+
+thread 'http::native_tests::native_cli_pane_session_claims_and_acks_without_self_reported_host_tuple' (12972228) panicked at crates/daemon/src/http/native_tests.rs:213:5:
+assertion `left == right` failed: HTTP envelope: {"command":"pij inbox","error":"refused","meta":"daemon/native-inbox: native incarnation mismatch: native_session, pid and proc_start must match the current Copilot seat","ok":false,"v":2}
+  left: 400
+ right: 200
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test http::native_tests::native_cli_pane_session_claims_and_acks_without_self_reported_host_tuple ... FAILED
+
+failures:
+
+failures:
+    http::native_tests::native_cli_pane_session_claims_and_acks_without_self_reported_host_tuple
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 370 filtered out; finished in 0.03s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

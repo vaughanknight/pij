@@ -1,0 +1,19 @@
+npm run smoke
+
+> pij@0.1.0 smoke
+> tsx harness/scripts/smoke.ts
+
+smoke: pij-team-scaffold ... {"smoke":"paneless-external","from":"pij-certain-panda","to":"pij-oral-tern","senderHost":{"pid":35485,"proc_start":20260915165816},"recipientHost":{"pid":35532,"proc_start":20260915165816},"sent":"b6c66a99f1a2e618-0000000000000000","reply":"b6c66a99f1a2e618-0000000000000001","modelCanary":"unproven-protocol-hosts"}
+{"smoke":"private-team","parent":"pij-excellent-philippa","worker":"pij-soft-yarpen","project":"private-team-smoke","stream":"private-team-smoke:workflow","dispatch":"dispatch-656c6655f6f27daa2df5554275773117","packetSha":"78b700cd31ea883a22a92d589df947de539d564db335e9b0d95413f6788c91c8","cursor":21,"modelCanary":"unproven-inert-hosts"}
+✓
+smoke: pij-watchdog ... {"smoke":"watchdog-refusal","code":"E-RS-UNPORTED","cursor":4,"forcedLegacy":"refused","mutation":"none"}
+✓
+smoke: file-watch-notify ... ✓
+smoke: image-see ... ✓
+smoke: minih-workbench ... ✓
+smoke: pi-peacock ... ✓
+smoke: pij ... ✓
+smoke: ralph-loop_compact-survival ... ✓
+smoke: session-sql ... ✓
+smoke: skill-runner ... ✓
+smoke: todo ... ✓
