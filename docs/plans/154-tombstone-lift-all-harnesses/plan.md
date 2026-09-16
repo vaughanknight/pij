@@ -10,14 +10,14 @@ Cause: `crates/daemon/src/registration.rs:723` — `let resuming = native && exi
 
 ## Rule
 
-**After any successful registration the row is live: `tombstoned_at` is `None`.** A claim that matches a tombstoned row's id resumes it when it proves continuity (same harness AND same harness/pi session id, OR same spawn_id, OR the recorded process incarnation) — lifting the tombstone and emitting `seat.resumed` with the prior reason — and is **refused** when it cannot (a foreign session claiming a retired id gets a decodable refusal naming the tombstone, never a silent rewrite). Live-and-tombstoned is an invariant violation, not a state.
+**After any successful registration the row is live: `tombstoned_at` is `None`.** A claim that matches a tombstoned row's id resumes it when it proves continuity (same harness AND one of: the same harness/pi session id, the same nonempty spawn_id, or the recorded process incarnation). The lift emits one event with the prior reason: `seat.native-resumed` for native Copilot, `seat.resumed` otherwise. Without continuity it is **refused** (a foreign session claiming a retired id gets a decodable refusal naming the tombstone, never a silent rewrite); harness mismatch is always refused and named. Live-and-tombstoned is an invariant violation, not a state.
 
 ## Acceptance criteria — each RED first, outputs in report.md
 
 - **AC1 Invariant.** A property/unit test over `register_inner`: for every successful registration outcome, `descriptor.tombstoned_at.is_none()`. RED today with an omp claim on a tombstoned row.
 - **AC2 Resume by continuity, all harnesses.** omp, pi, claude, codex: tombstoned row + claim with the same `session` (harness session) → row live, pid/pane updated, `seat.resumed{prior_reason}` event, bindings (parent, roles, telegram) intact. One test per harness, RED = tombstone survives.
 - **AC3 Refuse without continuity.** Tombstoned row + claim with a different session and no spawn/proc match → refusal `seat <id> is retired (<reason>, <at>); a different session may not take it`, HTTP 400 envelope; row unchanged. Test RED = today rewrites the row. Spawn-prebind (149) and revive paths keep their behaviour, pinned.
-- **AC4 Death sweep vs restart race.** A seat re-registers while the sweep is observing its OLD pid dead: the registration wins (the claim is the proof), the sweep does not re-tombstone the new incarnation. Test with the sweep's observation interleaved.
+- **AC4 Death sweep vs restart race.** The pre-existing `tombstone_if_unchanged` CAS is pinned by an interleaving test; the sweep cannot re-tombstone a re-registered incarnation.
 - **AC5 Live proof (isolated daemon).** Spawn an omp seat, kill its process, run the sweep (tombstoned), start `omp --resume` in the same pane → same id, `pij state` shows no tombstone, `pij send` from a peer lands. Paste. Then the foreign case: a fresh omp session claiming that id → refusal envelope pasted.
 - **AC6 Contract.** `docs/how/pij-rs-api.md` registration section: the invariant and the continuity ladder in one paragraph, replacing the 149 native-only wording.
 

@@ -2373,8 +2373,7 @@ async fn extension_identity_survives_sqlite_registration_readbacks_and_legacy_re
     pool.close().await;
 }
 
-#[tokio::test]
-async fn retired_registration_refuses_foreign_session_without_writing() {
+async fn retired_registration_refusal_contract(harness: Harness, proof: Option<&str>) {
     let old_proc = ProcIdentity {
         pid: 154,
         proc_start: 1,
@@ -2389,6 +2388,12 @@ async fn retired_registration_refuses_foreign_session_without_writing() {
     old.tombstoned_at = Some(154);
     old.tombstone_reason = Some("observed-dead".into());
     old.parent = Some("pij-original-parent".into());
+    if proof == Some("process") {
+        old.proc = Some(new_proc);
+    }
+    if proof == Some("spawn") {
+        old.spawn_id = Some("launch-154".into());
+    }
     let registry = Arc::new(FakeRegistry::new().with_seat(old.clone()));
     let spine = Arc::new(FakeSpine::new());
     let mut services = test_services(
@@ -2407,9 +2412,10 @@ async fn retired_registration_refuses_foreign_session_without_writing() {
         .post(format!("http://{addr}/v1/register"))
         .bearer_auth("key")
         .json(&serde_json::json!({
-            "id": old.id, "harness": "omp", "folder": "/abs/other-tree",
+            "id": old.id, "harness": harness.as_str(), "folder": "/abs/other-tree",
             "pid": new_proc.pid, "proc_start": new_proc.proc_start,
             "HARNESS_SESSION_ID": "foreign-omp-session", "parent": "pij-new-parent",
+            "spawn_id": if proof == Some("spawn") { old.spawn_id.as_deref() } else { None },
         }))
         .send()
         .await
@@ -2422,10 +2428,16 @@ async fn retired_registration_refuses_foreign_session_without_writing() {
     assert_eq!(envelope["command"], "pij register");
     assert_eq!(envelope["ok"], false);
     assert_eq!(envelope["error"], "refused");
-    assert_eq!(
-        envelope["meta"],
+    let mut expected =
         "seat pij-retired-154 is retired (observed-dead, 154); a different session may not take it"
-    );
+            .to_string();
+    if harness != old.harness {
+        expected.push_str(&format!(
+            "; harness mismatch: row omp, claim {}",
+            harness.as_str()
+        ));
+    }
+    assert_eq!(envelope["meta"], expected);
     assert_eq!(registry.get(&old.id).await.unwrap(), Some(old.clone()));
     assert_eq!(
         spine
@@ -2434,6 +2446,21 @@ async fn retired_registration_refuses_foreign_session_without_writing() {
             .unwrap(),
         before
     );
+}
+
+#[tokio::test]
+async fn retired_registration_refuses_foreign_session_without_writing() {
+    retired_registration_refusal_contract(Harness::Omp, None).await;
+}
+
+#[tokio::test]
+async fn retired_registration_refuses_pi_process_continuity_on_omp_row() {
+    retired_registration_refusal_contract(Harness::Pi, Some("process")).await;
+}
+
+#[tokio::test]
+async fn retired_registration_refuses_claude_spawn_continuity_on_omp_row() {
+    retired_registration_refusal_contract(Harness::Claude, Some("spawn")).await;
 }
 
 #[tokio::test]
