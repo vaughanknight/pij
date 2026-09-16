@@ -5,6 +5,8 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 export const INITIAL_RETRY_MS = 250;
 export const MAX_RETRY_MS = 5000;
+export const HOLD_ESCALATION_MS = 600000;
+export const HOLD_ESCALATED_RETRY_MS = 60000;
 const ERROR_BODY_LIMIT = 4096;
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const nonempty = (value) => typeof value === "string" && value.trim().length > 0;
@@ -798,7 +800,10 @@ export class NativeBridge {
 				try {
 					if (!this.registered) {
 						await this.register();
-						if (holdStarted !== undefined) this.emit("connection-ready");
+						if (holdStarted !== undefined) {
+							this.emit("connection-ready");
+							retry = INITIAL_RETRY_MS;
+						}
 						holdStarted = undefined;
 					}
 					if (this.completion) await this.waitForCompletion();
@@ -835,13 +840,16 @@ export class NativeBridge {
 						if (error instanceof NativeError && error.holdKind === "native-session") {
 							const now = performance.now();
 							holdStarted ??= now;
+							const elapsedMs = now - holdStarted;
+							if (elapsedMs >= HOLD_ESCALATION_MS) retry = HOLD_ESCALATED_RETRY_MS;
 							failureEpisode = false;
 							this.emit("registration-wait", {
 								holdKind: error.holdKind,
-								elapsedMs: now - holdStarted,
+								elapsedMs,
 								retryMs: retry,
 							});
 						} else {
+							if (holdStarted !== undefined) retry = INITIAL_RETRY_MS;
 							holdStarted = undefined;
 							if (!failureEpisode)
 								this.emit("reconnecting", {
@@ -1196,10 +1204,12 @@ export async function resolveNativeHost({ parentPid, inspectProcess, pane, paneP
 export function createNativeReporter({ log, capture }) {
 	let unavailable = false;
 	let registrationWaiting = false;
+	let registrationEscalated = false;
 	return (event) => {
 		if (event.kind === "registered" || event.kind === "connection-ready") {
 			unavailable = false;
 			registrationWaiting = false;
+			registrationEscalated = false;
 		}
 		if (event.kind === "connection-ready") return;
 		if (event.kind === "registration-wait" && event.holdKind === "native-session") {
@@ -1210,12 +1220,16 @@ export function createNativeReporter({ log, capture }) {
 				elapsedMs: event.elapsedMs,
 				retryMs: event.retryMs,
 			});
-			if (registrationWaiting || !(event.elapsedMs >= 10000)) return;
+			const escalated = event.elapsedMs >= HOLD_ESCALATION_MS;
+			if (escalated ? registrationEscalated : registrationWaiting || !(event.elapsedMs >= 10000))
+				return;
 			registrationWaiting = true;
+			registrationEscalated ||= escalated;
+			const message = escalated
+				? "[pij native] still waiting for this pane's resumed Copilot session after 10 min; pij delivery is unavailable in this window"
+				: "[pij native] waiting for this pane's resumed Copilot session";
 			return Promise.resolve()
-				.then(() =>
-					log("[pij native] waiting for this pane's resumed Copilot session", { level: "info" }),
-				)
+				.then(() => log(message, { level: "info" }))
 				.catch(() => capture({ kind: "native-diagnostic-unavailable", failureKind: event.kind }));
 		}
 		if (event.kind === "native-requeued") {
@@ -1230,6 +1244,7 @@ export function createNativeReporter({ log, capture }) {
 			)
 		) {
 			registrationWaiting = false;
+			registrationEscalated = false;
 			if (unavailable && !["receive-held", "extension-unavailable"].includes(event.kind)) return;
 			unavailable = true;
 			const advice =

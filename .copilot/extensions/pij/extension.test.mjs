@@ -404,6 +404,19 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			data: { body: "SECRET_HOLD_BODY", key: "fixture-secret" },
 		},
 	};
+	const waitingMessage = "[pij native] waiting for this pane's resumed Copilot session";
+	const escalationMessage =
+		"[pij native] still waiting for this pane's resumed Copilot session after 10 min; pij delivery is unavailable in this window";
+
+	async function expectHold(f, { at, elapsedMs = at, retryMs }) {
+		const delay = await f.waitFor("fixture-delay", (event) => event.at === at);
+		const wait = f.events.findLast(
+			(event) => event.kind === "registration-wait" && event.holdKind === "native-session",
+		);
+		assert.equal(wait?.elapsedMs, elapsedMs);
+		assert.equal(wait?.retryMs, retryMs);
+		assert.equal(delay.ms, retryMs, "the actual abortable sleep must use the reported cadence");
+	}
 
 	for (const phase of ["startup", "bridge"]) {
 		test(`actual extension ${phase} hold stays alive, backs off to five seconds and later delivers`, async (t) => {
@@ -464,6 +477,134 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			assert.equal(f.stdout(), "");
 		});
 
+		test(`actual extension ${phase} hold escalates once at ten minutes and aborts a minute retry in the second hour`, async (t) => {
+			const f = await launch(t, {
+				controlledClock: true,
+				registerResponses: [...(phase === "bridge" ? [{}] : []), ...Array(8).fill(transientHold)],
+			});
+			await expectHold(f, { at: 0, retryMs: 250 });
+			await f.advance(10000);
+			await expectHold(f, { at: 10000, retryMs: 500 });
+			await f.waitFor("native-log", (event) => event.message === waitingMessage);
+			await f.advance(589000);
+			await expectHold(f, { at: 599000, retryMs: 1000 });
+			await f.advance(999);
+			assert.deepEqual(
+				f.events.filter((event) => event.kind === "native-log").map((event) => event.message),
+				[waitingMessage],
+				"599999 ms is still before escalation",
+			);
+			await f.advance(1);
+			await expectHold(f, { at: 600000, retryMs: 60000 });
+			await f.waitFor("native-log", (event) => event.message === escalationMessage);
+			const registrations = f.requests.filter((request) => request.path === "/v1/register").length;
+			await f.advance(59999);
+			assert.equal(
+				f.requests.filter((request) => request.path === "/v1/register").length,
+				registrations,
+				"an escalated hold must not retry early",
+			);
+			await f.advance(1);
+			await expectHold(f, { at: 660000, retryMs: 60000 });
+			let at = 660000;
+			for (const next of [3600000, 3660000, 7200000]) {
+				await f.advance(next - at);
+				at = next;
+				await expectHold(f, { at, retryMs: 60000 });
+				assert.equal(f.child.exitCode, null);
+				assert.equal(f.child.signalCode, null);
+			}
+			const requests = f.requests.length;
+			const exited = once(f.child, "exit");
+			if (phase === "startup") f.child.stdin.end();
+			else
+				f.child.stdin.write(
+					`${JSON.stringify({ nativeEvents: [{ type: "session.shutdown", data: {} }] })}\n`,
+				);
+			assert.equal((await exited)[0], 0);
+			assert.equal(f.requests.length, requests, "aborting cancels the pending minute retry");
+			assert.deepEqual(
+				f.events.filter((event) => event.kind === "native-log").map((event) => event.message),
+				[waitingMessage, escalationMessage],
+				"second-hour holds must not repeat either notice",
+			);
+			assert.equal(
+				f.events.some((event) => event.kind === "native-send"),
+				false,
+			);
+			assert.equal(
+				f.requests.some((request) => request.path.startsWith("/v1/inbox")),
+				false,
+			);
+			assert.doesNotMatch(
+				JSON.stringify(f.events),
+				/SECRET_HOLD_BODY|fixture-secret|restart the Copilot CLI/,
+			);
+			assert.equal(f.stdout(), "");
+		});
+
+		test(`actual extension ${phase} non-hold failure resets escalation and fast retries before recovery`, async (t) => {
+			const f = await launch(t, {
+				controlledClock: true,
+				registerResponses: [
+					...(phase === "bridge" ? [{}] : []),
+					transientHold,
+					transientHold,
+					{
+						...transientHold,
+						refusal: {
+							...transientHold.refusal,
+							details: { retryable: true },
+							meta: "fixture registration temporarily unavailable",
+						},
+					},
+					...Array(4).fill(transientHold),
+				],
+				inboxPages: [{ data: [] }],
+			});
+			await expectHold(f, { at: 0, retryMs: 250 });
+			await f.advance(600000);
+			await expectHold(f, { at: 600000, retryMs: 60000 });
+			await f.waitFor("native-log", (event) => event.message === escalationMessage);
+			await f.advance(60000);
+			const failure = await f.waitFor("native-log", (event) =>
+				event.message.startsWith("[pij native] unavailable:"),
+			);
+			assert.match(failure.message, phase === "startup" ? /registration-wait/ : /reconnecting/);
+			const errorDelay = await f.waitFor("fixture-delay", (event) => event.at === 660000);
+			assert.equal(errorDelay.ms, 250, "a genuine failure must leave the slow hold cadence");
+			await f.advance(250);
+			await expectHold(f, { at: 660250, elapsedMs: 0, retryMs: 500 });
+			await f.advance(9999);
+			await expectHold(f, { at: 670249, elapsedMs: 9999, retryMs: 1000 });
+			assert.equal(f.events.filter((event) => event.kind === "native-log").length, 2);
+			await f.advance(1000);
+			await expectHold(f, { at: 671249, elapsedMs: 10999, retryMs: 2000 });
+			await f.waitFor("native-log", (event) => event.message === waitingMessage);
+			await f.advance(589001);
+			await expectHold(f, { at: 1260250, elapsedMs: 600000, retryMs: 60000 });
+			await f.advance(60000);
+			await f.waitFor("registered");
+			const resumedDelay = await f.waitFor(
+				"fixture-delay",
+				(event) => event.at === 1320250 && event.ms !== 20000,
+			);
+			assert.equal(resumedDelay.ms, 250, "successful registration must restore fast inbox polling");
+			assert.deepEqual(
+				f.events.filter((event) => event.kind === "native-log").map((event) => event.message),
+				[escalationMessage, failure.message, waitingMessage, escalationMessage],
+			);
+			await f.advance(250);
+			await f.waitFor("completion-wait");
+			assert.equal(f.events.filter((event) => event.kind === "native-send").length, 1);
+			assert.equal(f.requests.filter((request) => request.path === "/v1/inbox/ack").length, 1);
+			assert.doesNotMatch(
+				JSON.stringify(f.events),
+				/SECRET_HOLD_BODY|fixture-secret|restart the Copilot CLI/,
+			);
+			assert.equal(f.stdout(), "");
+		});
+
 		test(`actual extension ${phase} hold aborts a pending retry without a native banner`, async (t) => {
 			const f = await launch(t, {
 				controlledClock: true,
@@ -492,10 +633,44 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		});
 	}
 
-	test("actual bridge re-registration hold recovers without another unavailable episode", async (t) => {
+	test("actual startup hold success starts a fresh bridge hold escalation episode", async (t) => {
 		const f = await launch(t, {
 			controlledClock: true,
-			registerResponses: [{}, {}, transientHold, transientHold],
+			registerResponses: [
+				transientHold,
+				transientHold,
+				{},
+				transientHold,
+				transientHold,
+				transientHold,
+			],
+		});
+		await expectHold(f, { at: 0, retryMs: 250 });
+		await f.advance(600000);
+		await expectHold(f, { at: 600000, retryMs: 60000 });
+		await f.waitFor("native-log", (event) => event.message === escalationMessage);
+		await f.advance(60000);
+		await expectHold(f, { at: 660000, elapsedMs: 0, retryMs: 250 });
+		await f.advance(10000);
+		await expectHold(f, { at: 670000, elapsedMs: 10000, retryMs: 500 });
+		await f.waitFor("native-log", (event) => event.message === waitingMessage);
+		await f.advance(590000);
+		await expectHold(f, { at: 1260000, elapsedMs: 600000, retryMs: 60000 });
+		await f.advance(60000);
+		await f.waitFor("completion-wait");
+		assert.deepEqual(
+			f.events.filter((event) => event.kind === "native-log").map((event) => event.message),
+			[escalationMessage, waitingMessage, escalationMessage],
+		);
+		assert.equal(f.events.filter((event) => event.kind === "native-send").length, 1);
+		assert.equal(f.requests.filter((request) => request.path === "/v1/inbox/ack").length, 1);
+		assert.equal(f.stdout(), "");
+	});
+
+	test("actual bridge re-registration hold escalates and success restores fast inbox polling", async (t) => {
+		const f = await launch(t, {
+			controlledClock: true,
+			registerResponses: [{}, {}, transientHold, transientHold, transientHold],
 			inboxPages: [
 				{
 					refusal: {
@@ -506,6 +681,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 						meta: "daemon/native-inbox: native-extension-unavailable: Copilot requires current native registration",
 					},
 				},
+				{ data: [] },
 			],
 		});
 		await f.waitFor("fixture-delay", (event) => event.at === 0 && event.ms === 250);
@@ -525,12 +701,31 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			f.events.some((event) => event.kind === "native-send"),
 			false,
 		);
-		await f.advance(1000);
+		await f.advance(599500);
+		const escalated = await f.waitFor("registration-wait", (event) => event.elapsedMs === 600000);
+		assert.equal(escalated.retryMs, 60000);
+		const heldDelay = await f.waitFor(
+			"fixture-delay",
+			(event) => event.at === 600250 && event.ms !== 20000,
+		);
+		assert.equal(heldDelay.ms, 60000);
+		await f.waitFor("native-log", (event) => event.message === escalationMessage);
+		await f.advance(60000);
+		const resumedDelay = await f.waitFor(
+			"fixture-delay",
+			(event) => event.at === 660250 && event.ms !== 20000,
+		);
+		assert.equal(resumedDelay.ms, 250);
+		await f.advance(250);
 		await f.waitFor("completion-wait");
-		assert.equal(f.events.filter((event) => event.kind === "native-log").length, 1);
+		assert.deepEqual(
+			f.events.filter((event) => event.kind === "native-log").map((event) => event.message),
+			[failure.message, escalationMessage],
+			"the hold must not cause another unavailable failure episode",
+		);
 		assert.equal(f.events.filter((event) => event.kind === "native-send").length, 1);
 		assert.equal(f.requests.filter((request) => request.path === "/v1/inbox/ack").length, 1);
-		assert.equal(f.requests.filter((request) => request.path === "/v1/register").length, 5);
+		assert.equal(f.requests.filter((request) => request.path === "/v1/register").length, 6);
 		assert.doesNotMatch(
 			JSON.stringify(f.events),
 			/SECRET_HOLD_BODY|fixture-secret|restart the Copilot CLI/,

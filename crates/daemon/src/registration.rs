@@ -2109,6 +2109,27 @@ mod tests {
         }
     }
 
+    #[test]
+    fn native_transient_hold_requires_present_matching_pane_at_roster_guard() {
+        // Exercise this guard directly: upstream subagent rejection otherwise
+        // masks same-process collisions before either pane condition is reached.
+        for (claim_pane, owner_pane) in [(None, None), (Some("%151-claim"), Some("%151-owner"))] {
+            let mut claim = native_claim("");
+            claim.pane = claim_pane.map(str::to_string);
+            let mut owner = native_seat("pij-pane-owner");
+            owner.pane = owner_pane.map(str::to_string);
+            refused(super::check_native_roster(
+                &claim,
+                Some("unknown-session"),
+                Some(HOST),
+                &[owner],
+                None,
+                &[],
+                None,
+            ));
+        }
+    }
+
     #[tokio::test]
     async fn native_known_session_foreign_pane_collision_is_never_a_transient_hold() {
         for historical in [false, true] {

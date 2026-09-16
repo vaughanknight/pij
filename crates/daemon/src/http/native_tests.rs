@@ -442,6 +442,50 @@ async fn native_transient_session_holds_without_mutating_owner_or_queue() {
 }
 
 #[tokio::test]
+async fn native_transient_hold_yields_to_separate_pane_ownership_refusal() {
+    let old_host = HostFixture::spawn();
+    let new_host = HostFixture::spawn();
+    let (mut owner, _) = contract_identity();
+    // The hold-eligible owner sorts before the separate terminal conflict.
+    owner.id = "pij-aaa-copilot-owner".into();
+    owner.proc = Some(old_host.identity().await);
+    owner.pane = Some("%151-shared".into());
+    owner.harness_session = Some("owner-session".into());
+    let mut relay = owner.clone();
+    relay.id = "pij-zzz-relay".into();
+    relay.relay = true;
+    relay.native_extension_delivery = false;
+    relay.proc = None;
+    let store = FreshStore::new();
+    let services = native_host_services(&store, &owner.folder, &["%151-shared"]).await;
+    services.registry.put(owner.clone()).await.unwrap();
+    services.registry.put(relay).await.unwrap();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    let mut claimant = owner;
+    claimant.proc = Some(new_host.identity().await);
+    claimant.harness_session = Some("unknown-transient".into());
+    let mut claim = native_registration(&claimant);
+    claim["id"] = json!("");
+    let response = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/register"))
+            .json(&claim),
+        reqwest::StatusCode::BAD_REQUEST,
+    )
+    .await;
+    assert!(response["details"].get("hold").is_none(), "{response}");
+    assert!(
+        response["meta"]
+            .as_str()
+            .unwrap()
+            .contains("`pij-zzz-relay`"),
+        "{response}"
+    );
+    server.abort();
+}
+
+#[tokio::test]
 async fn native_transient_session_tombstoned_or_observed_dead_owner_admits_new_address() {
     for tombstoned in [false, true] {
         let mut old_host = HostFixture::spawn();

@@ -10,6 +10,8 @@ import {
 	createNativeReporter,
 	DaemonClient,
 	FileJournal,
+	HOLD_ESCALATED_RETRY_MS,
+	HOLD_ESCALATION_MS,
 	INITIAL_RETRY_MS,
 	MAX_RETRY_MS,
 	NativeBridge,
@@ -158,14 +160,17 @@ async function startExtension() {
 				if (error instanceof NativeError && error.holdKind === "native-session") {
 					const now = performance.now();
 					holdStarted ??= now;
+					const elapsedMs = now - holdStarted;
+					if (elapsedMs >= HOLD_ESCALATION_MS) retry = HOLD_ESCALATED_RETRY_MS;
 					failureEpisode = false;
 					nativeReport({
 						kind: "registration-wait",
 						holdKind: error.holdKind,
-						elapsedMs: now - holdStarted,
+						elapsedMs,
 						retryMs: retry,
 					});
 				} else {
+					if (holdStarted !== undefined) retry = INITIAL_RETRY_MS;
 					holdStarted = undefined;
 					if (!failureEpisode)
 						nativeReport({ kind: "registration-wait", diagnostic: error.message, retryMs: retry });
