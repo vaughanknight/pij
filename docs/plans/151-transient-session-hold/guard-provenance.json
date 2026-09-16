@@ -1,0 +1,80 @@
+{
+  "baseline": "f619fc05ca49d5cc0d127b38d568333fdb1e0267",
+  "comparison": "Sequence comparison: existing Rust test text unchanged, only inserted tests",
+  "files": {
+    "crates/daemon/src/registration.rs": {
+      "existing_lines_unchanged": true,
+      "change_kinds": [
+        "insert"
+      ]
+    },
+    "crates/daemon/src/http/native_tests.rs": {
+      "existing_lines_unchanged": true,
+      "change_kinds": [
+        "insert"
+      ]
+    }
+  },
+  "passed_unchanged_foreign_refusal_tests": [
+    {
+      "test": "native_refuses_different_session_harness_and_relay_ownership",
+      "guard": "Existing address/session, harness and relay ownership"
+    },
+    {
+      "test": "native_prebind_requires_exact_spawn_id_pane_and_harness",
+      "guard": "Prebind/spawn correlation"
+    },
+    {
+      "test": "native_supersedes_refuses_same_id_same_session_wrong_process_or_existing_target",
+      "guard": "Invalid supersedes"
+    },
+    {
+      "test": "native_session_cannot_resume_a_row_from_another_machine",
+      "guard": "Remote saved address"
+    },
+    {
+      "test": "cold_resume_can_retire_same_host_bootstrap_without_changing_saved_address",
+      "guard": "Includes wrong-process, harness, pane and tombstoned predecessor refusal cases"
+    },
+    {
+      "test": "native_saved_resume_cannot_borrow_unrelated_spawn_intent",
+      "guard": "Unrelated spawn intent"
+    },
+    {
+      "test": "native_bootstrap_other_pane_refusal_identifies_conflicting_address",
+      "guard": "Foreign bootstrap process/pane"
+    },
+    {
+      "test": "native_observation_revalidates_cross_seat_process_takeover_before_commit",
+      "guard": "Concurrent foreign process ownership"
+    },
+    {
+      "test": "ordinary_registration_refuses_changed_native_owner_after_readoption",
+      "guard": "Ordinary path cannot replace native process"
+    },
+    {
+      "test": "ordinary_registration_never_inherits_native_capability",
+      "guard": "Includes foreign process/session refusal cases"
+    },
+    {
+      "test": "ordinary_registration_cannot_relabel_or_supersede_active_copilot_seat",
+      "guard": "Ordinary relabel/relay/spawn/supersedes bypasses"
+    },
+    {
+      "test": "ordinary_withdrawal_preserves_session_and_does_not_enable_later_takeover",
+      "guard": "Withdrawal cannot authorize later takeover"
+    },
+    {
+      "test": "native_session_rejects_unverified_spawn_correlation_without_retiring_owner",
+      "guard": "HTTP spawn rejection preserves owner/mail"
+    },
+    {
+      "test": "native_sqlite_http_different_session_cannot_take_existing_address_or_mail",
+      "guard": "HTTP explicit foreign-session address claim"
+    },
+    {
+      "test": "native_sqlite_http_dead_legacy_and_uncorrelated_prebind_owners_are_not_taken_over",
+      "guard": "Legacy/prebind owners remain protected"
+    }
+  ]
+}

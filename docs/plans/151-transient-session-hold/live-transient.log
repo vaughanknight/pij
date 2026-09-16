@@ -1,0 +1,18 @@
+COMMAND: node_modules/.bin/tsx docs/plans/151-transient-session-hold/transient-hold-live.ts docs/plans/151-transient-session-hold/live-green-release.json --stretch-transient
+EXIT: 0 (scenario)
+SOURCE: user-pij-1789528935687-18384.log; full owned fork stderr snapshot
+=== launch pid=18384 module=/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-ivmK4m/home/.copilot/extensions/pij/extension.mjs ===
+[extension-fork] resolveBootstrapPath: __dir=/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-ivmK4m/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-9, argv-bootstrap=/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-ivmK4m/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-9/preloads/extension_bootstrap.mjs
+[extension-fork] resolveBootstrapPath: localBootstrap=/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-ivmK4m/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-9/preloads/extension_bootstrap.mjs, localExists=true
+[extension-bootstrap] starting: pid=18384, COPILOT_SDK_PATH=/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-ivmK4m/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-9/copilot-sdk, EXTENSION_PATH=/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-ivmK4m/home/.copilot/extensions/pij/extension.mjs, SESSION_ID=26e1bc6c-e118-4f93-8ca1-bbf9c30ec141
+[extension-bootstrap] importing extension: /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-ivmK4m/home/.copilot/extensions/pij/extension.mjs
+[extension-resolver] resolver hook loaded: pid=18384, COPILOT_SDK_PATH=/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-ivmK4m/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-9/copilot-sdk
+=== ready ===
+[pij-native] {"at":"2026-09-16T03:22:15.913Z","kind":"registration-wait","holdKind":"native-session","elapsedMs":0,"retryMs":250}
+[pij-native] {"at":"2026-09-16T03:22:16.250Z","kind":"registration-wait","holdKind":"native-session","elapsedMs":337.02083400000004,"retryMs":500}
+[pij-native] {"at":"2026-09-16T03:22:16.840Z","kind":"registration-wait","holdKind":"native-session","elapsedMs":926.7512919999999,"retryMs":1000}
+[pij-native] {"at":"2026-09-16T03:22:17.911Z","kind":"registration-wait","holdKind":"native-session","elapsedMs":1997.4190420000002,"retryMs":2000}
+[pij-native] {"at":"2026-09-16T03:22:19.974Z","kind":"registration-wait","holdKind":"native-session","elapsedMs":4060.5596669999995,"retryMs":4000}
+[pij-native] {"at":"2026-09-16T03:22:24.046Z","kind":"registration-wait","holdKind":"native-session","elapsedMs":8133.1470420000005,"retryMs":5000}
+[pij-native] {"at":"2026-09-16T03:22:29.116Z","kind":"registration-wait","holdKind":"native-session","elapsedMs":13203.134,"retryMs":5000}
+=== exit code=0 disposition=stopped-normally ===

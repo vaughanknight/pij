@@ -1,0 +1,259 @@
+{
+  "run": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor",
+  "addr": "127.0.0.1:59837",
+  "daemonAddr": "127.0.0.1:59836",
+  "home": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home",
+  "state": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/state",
+  "socket": "pij-151-f0e76e03-4957-47a8-b98a-38d29fcaa404",
+  "registrations": [
+    {
+      "at": 1789528039600,
+      "claim": {
+        "id": "",
+        "harness": "copilot",
+        "harness_session": "2118bb43-b5d9-4ab4-b0c2-c07b523d05c2",
+        "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/workspace",
+        "pid": 55486,
+        "proc_start": 20260916130716,
+        "relay": false,
+        "native_extension_delivery": true,
+        "pane": "%1"
+      },
+      "status": 200,
+      "envelope": {
+        "ok": true,
+        "command": "pij register",
+        "v": 2,
+        "data": {
+          "id": "pij-awful-locust",
+          "harness": "copilot",
+          "session": "2118bb43-b5d9-4ab4-b0c2-c07b523d05c2",
+          "extension_build": null,
+          "extension_path": null,
+          "pane": "%1",
+          "proc": {
+            "pid": 55486,
+            "proc_start": 20260916130716
+          },
+          "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/workspace",
+          "state": "idle",
+          "semantic_state": null,
+          "role": null,
+          "parent": null,
+          "relay": false,
+          "native_extension_delivery": true,
+          "binding": "created",
+          "proc_source": "harness",
+          "typing_grace_ms": 60000
+        }
+      },
+      "ancestry": "55486 55470 /Users/jordanknight/.npm-global/lib/node_modules/@github/copilot/node_modules/@github/copilot-darwin-arm64/copilot"
+    },
+    {
+      "at": 1789528039659,
+      "claim": {
+        "id": "pij-awful-locust",
+        "harness": "copilot",
+        "harness_session": "2118bb43-b5d9-4ab4-b0c2-c07b523d05c2",
+        "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/workspace",
+        "pid": 55486,
+        "proc_start": 20260916130716,
+        "relay": false,
+        "native_extension_delivery": true,
+        "pane": "%1"
+      },
+      "status": 200,
+      "envelope": {
+        "ok": true,
+        "command": "pij register",
+        "v": 2,
+        "data": {
+          "id": "pij-awful-locust",
+          "harness": "copilot",
+          "session": "2118bb43-b5d9-4ab4-b0c2-c07b523d05c2",
+          "extension_build": null,
+          "extension_path": null,
+          "pane": "%1",
+          "proc": {
+            "pid": 55486,
+            "proc_start": 20260916130716
+          },
+          "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/workspace",
+          "state": "idle",
+          "semantic_state": null,
+          "role": null,
+          "parent": null,
+          "relay": false,
+          "native_extension_delivery": true,
+          "binding": "same",
+          "proc_source": "harness",
+          "typing_grace_ms": 60000
+        }
+      },
+      "ancestry": "55486 55470 /Users/jordanknight/.npm-global/lib/node_modules/@github/copilot/node_modules/@github/copilot-darwin-arm64/copilot"
+    },
+    {
+      "at": 1789528040948,
+      "claim": {
+        "id": "pij-awful-locust",
+        "harness": "copilot",
+        "harness_session": "2118bb43-b5d9-4ab4-b0c2-c07b523d05c2",
+        "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/workspace",
+        "pid": 57429,
+        "proc_start": 20260916130720,
+        "relay": false,
+        "native_extension_delivery": true,
+        "pane": "%1"
+      },
+      "status": 200,
+      "envelope": {
+        "ok": true,
+        "command": "pij register",
+        "v": 2,
+        "data": {
+          "id": "pij-awful-locust",
+          "harness": "copilot",
+          "session": "2118bb43-b5d9-4ab4-b0c2-c07b523d05c2",
+          "extension_build": null,
+          "extension_path": null,
+          "pane": "%1",
+          "proc": {
+            "pid": 57429,
+            "proc_start": 20260916130720
+          },
+          "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/workspace",
+          "state": "idle",
+          "semantic_state": null,
+          "role": null,
+          "parent": null,
+          "relay": false,
+          "native_extension_delivery": true,
+          "binding": "rebound",
+          "proc_source": "harness",
+          "typing_grace_ms": 60000
+        }
+      },
+      "ancestry": "57429 55486 /Users/jordanknight/.npm-global/lib/node_modules/@github/copilot/node_modules/@github/copilot-darwin-arm64/copilot"
+    }
+  ],
+  "binary_sha256": "2ec7a583ad2aa5beb13123a56c821ea72500de90c16c9650e96ccc346263e843",
+  "store_sha256": "450ed6df65c6eb169c1790870621812f6fffe189c18361a3884c2d8849456008",
+  "provider": "local deterministic provider; actual installed Copilot CLI/extension, daemon, HTTP and tmux",
+  "copilot_binary": "/Users/jordanknight/.npm-global/lib/node_modules/@github/copilot/npm-loader.js",
+  "copilot_sha256": "8ba289084c305e25ea9ae09da860c31614c7eb32f6e7ec099aa71f74f2d4f130",
+  "before": {
+    "id": "pij-awful-locust",
+    "machine": "JordansacStudio.localdomain",
+    "harness": "copilot",
+    "session": "2118bb43-b5d9-4ab4-b0c2-c07b523d05c2",
+    "extension_build": null,
+    "extension_path": null,
+    "pane": "%1",
+    "proc": {
+      "pid": 55486,
+      "proc_start": 20260916130716
+    },
+    "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/workspace",
+    "state": "idle",
+    "semantic_state": null,
+    "role": null,
+    "parent": null,
+    "relay": false,
+    "native_extension_delivery": true,
+    "generation": "rs",
+    "badge": "idle",
+    "last_event_at": 1789528039650
+  },
+  "before_restart": "Current   Sessions   Issues   Pull requests   Gists \n\n  ╭─╮╭─╮\n  ╰─╯╰─╯  Copilot v1.0.84-9 uses AI.\n  █ ▘▝ █  Check for mistakes.\n   ▔▔▔▔   /experimental\n\n ● Tip: /app\n   └ Prefer a visual workspace? Try out the GitHub Copilot desktop app\n      https://github.com/features/ai/github-app \n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens \n   (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help providers  for configuration details.\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ PIJ_151_WARMUP_a87f5fce-6da5-4a03-a6e1-8a65dd42d731                                                                                                13:07  \n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/workspace\n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃  \n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ← open sidebar · / commands · ? help · tab next tab                                                                                         pij-native-fixture",
+  "pane_process_before": "55470",
+  "restart_staged": "Current   Sessions   Issues   Pull requests   Gists \n\n  ╭─╮╭─╮\n  ╰─╯╰─╯  Copilot v1.0.84-9 uses AI.\n  █ ▘▝ █  Check for mistakes.\n   ▔▔▔▔   /experimental\n\n ● Tip: /app\n   └ Prefer a visual workspace? Try out the GitHub Copilot desktop app\n      https://github.com/features/ai/github-app \n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens \n   (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help providers  for configuration details.\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ PIJ_151_WARMUP_a87f5fce-6da5-4a03-a6e1-8a65dd42d731                                                                                                13:07  \n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n  ❯ /restart                            Restart the CLI, restoring supported live sessions in this process\n    /resume                             Switch to a different session (optionally specify session ID, task ID, or name)\n \n \n \n                                                                                       \n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃ /restart \n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n /help show help                                                                                                                             pij-native-fixture",
+  "restart_at": 1789528039920,
+  "after": {
+    "id": "pij-awful-locust",
+    "machine": "JordansacStudio.localdomain",
+    "harness": "copilot",
+    "session": "2118bb43-b5d9-4ab4-b0c2-c07b523d05c2",
+    "extension_build": null,
+    "extension_path": null,
+    "pane": "%1",
+    "proc": {
+      "pid": 57429,
+      "proc_start": 20260916130720
+    },
+    "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/workspace",
+    "state": "idle",
+    "semantic_state": null,
+    "role": null,
+    "parent": null,
+    "relay": false,
+    "native_extension_delivery": true,
+    "generation": "rs",
+    "badge": "idle",
+    "last_event_at": 1789528041024
+  },
+  "terminal": "Current   Sessions   Issues   Pull requests   Gists \n\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ PIJ_151_WARMUP_a87f5fce-6da5-4a03-a6e1-8a65dd42d731                                                                                                13:07  \n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens \n   (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help providers  for configuration details.\n\n ● MCP Servers reloaded: 0 servers connected\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/workspace\n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃  \n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ← open sidebar · / commands · ? help · tab next tab                                                                                         pij-native-fixture",
+  "transient": [],
+  "schemas": [
+    {
+      "name": "seats",
+      "sql": "CREATE TABLE seats (\n    id              TEXT PRIMARY KEY NOT NULL,\n    harness         TEXT NOT NULL,\n    pane            TEXT,\n    -- Liveness identity is the PAIR. A pid alone is not an identity: the OS\n    -- recycles it, and the recycled case must be distinguishable from both alive\n    -- and dead.\n    pid             INTEGER,\n    proc_start      INTEGER,\n    folder          TEXT NOT NULL,\n    state           TEXT NOT NULL,\n    semantic_state  TEXT,\n    role            TEXT,\n    parent          TEXT,\n    relay           INTEGER NOT NULL DEFAULT 0,\n    -- A tombstone keeps the row: a seat that vanishes takes its own post-mortem\n    -- with it, so death is a column, never a DELETE.\n    tombstoned_at   INTEGER,\n    tombstone_reason TEXT,\n    seq             INTEGER NOT NULL\n, spawn_id TEXT, model TEXT, provider TEXT, effort TEXT, cross_session_inbound_accept INTEGER, harness_session TEXT, native_extension_delivery INTEGER NOT NULL DEFAULT 0\n    CHECK (native_extension_delivery IN (0, 1)\n        AND (native_extension_delivery = 0 OR (\n            harness = 'copilot'\n            AND pid IS NOT NULL AND pid BETWEEN 1 AND 4294967295\n            AND proc_start IS NOT NULL AND proc_start > 0\n            AND harness_session IS NOT NULL AND length(harness_session) > 0\n            AND tombstoned_at IS NULL\n        ))), extension_build TEXT, extension_path TEXT) STRICT"
+    },
+    {
+      "name": "jobs",
+      "sql": "CREATE TABLE jobs (\n    id          INTEGER PRIMARY KEY AUTOINCREMENT,\n    kind        TEXT NOT NULL,\n    serial_key  TEXT NOT NULL,\n    payload     TEXT NOT NULL,\n    dedupe_key  TEXT NOT NULL,\n    -- pending -> running -> done|failed. A job never returns to pending: a retry\n    -- is a NEW row, so the history of what was attempted survives.\n    state       TEXT NOT NULL DEFAULT 'pending',\n    worker      TEXT,\n    outcome     TEXT,\n    enqueued_at INTEGER NOT NULL DEFAULT 0,\n    claimed_at  INTEGER,\n    acked_at    INTEGER\n, attempt INTEGER NOT NULL DEFAULT 0, not_before INTEGER NOT NULL DEFAULT 0, lease_expirations INTEGER NOT NULL DEFAULT 0) STRICT"
+    }
+  ],
+  "leak_queries": [],
+  "status": "failed",
+  "error": "AssertionError [ERR_ASSERTION]: {\"ok\":false,\"command\":\"pij register\",\"v\":2,\"meta\":\"native Copilot registration refused: process, native session, or pane already belongs to seat `pij-awful-locust`\",\"error\":\"refused\"}\n\n400 !== 409\n\n    at <anonymous> (/Users/jordanknight/pi-hacking/fs3-transient-hold/docs/plans/151-transient-session-hold/transient-hold-live.ts:150:18)",
+  "final_terminal": "Current   Sessions   Issues   Pull requests   Gists \n\n ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n  ❯ PIJ_151_WARMUP_a87f5fce-6da5-4a03-a6e1-8a65dd42d731                                                                                                13:07  \n ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ● PIJ_NATIVE_OBSERVED\n\n ! Model \"pij-native-fixture\" is not in the built-in catalog. Using defaults for: prompt tokens (COPILOT_PROVIDER_MAX_PROMPT_TOKENS), output tokens \n   (COPILOT_PROVIDER_MAX_OUTPUT_TOKENS). Run  copilot help providers  for configuration details.\n\n ● MCP Servers reloaded: 0 servers connected\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/workspace\n╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃  \n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n ← open sidebar · / commands · ? help · tab next tab                                                                                         pij-native-fixture",
+  "extension_logs": [
+    {
+      "name": "user-pij-1789528039422-56906.log",
+      "text": "=== launch pid=56906 module=/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/.copilot/extensions/pij/extension.mjs ===\n[extension-fork] resolveBootstrapPath: __dir=/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-9, argv-bootstrap=/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-9/preloads/extension_bootstrap.mjs\n[extension-fork] resolveBootstrapPath: localBootstrap=/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-9/preloads/extension_bootstrap.mjs, localExists=true\n[extension-bootstrap] starting: pid=56906, COPILOT_SDK_PATH=/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-9/copilot-sdk, EXTENSION_PATH=/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/.copilot/extensions/pij/extension.mjs, SESSION_ID=2118bb43-b5d9-4ab4-b0c2-c07b523d05c2\n[extension-bootstrap] importing extension: /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/.copilot/extensions/pij/extension.mjs\n[extension-resolver] resolver hook loaded: pid=56906, COPILOT_SDK_PATH=/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-9/copilot-sdk\n=== ready ===\n[pij-native] {\"at\":\"2026-09-16T03:07:19.719Z\",\"kind\":\"native-event\",\"seat\":\"pij-awful-locust\",\"nativeSession\":\"2118bb43-b5d9-4ab4-b0c2-c07b523d05c2\",\"type\":\"user.message\",\"eventId\":\"cf5a1580-b1f0-4628-a468-7ba59cb6ebaf\",\"nativeMessageId\":\"43d3b6e3-624c-4344-86c9-37b12036b92e\",\"parentId\":\"c3418b61-f6f9-4d80-8ed2-b5fd6acb1da1\",\"agentId\":null,\"interactionId\":\"38ef9613-579a-4e5d-9a94-4d7f5b4318cc\",\"completionNativeId\":null,\"completionLive\":false,\"parentKnown\":false,\"descendantCount\":0,\"terminal\":null,\"grade\":\"native-event-not-pij-ack\"}\n[pij-native] {\"at\":\"2026-09-16T03:07:19.725Z\",\"kind\":\"registered\",\"seat\":\"pij-awful-locust\",\"nativeSession\":\"2118bb43-b5d9-4ab4-b0c2-c07b523d05c2\",\"pid\":55486,\"procStart\":20260916130716,\"pane\":\"%1\"}\n[pij-native] {\"at\":\"2026-09-16T03:07:19.741Z\",\"kind\":\"native-event\",\"seat\":\"pij-awful-locust\",\"nativeSession\":\"2118bb43-b5d9-4ab4-b0c2-c07b523d05c2\",\"type\":\"assistant.message\",\"eventId\":\"c0df773b-7e51-4fe5-bce8-671eaabd5c1e\",\"nativeMessageId\":\"c86d7a35-c497-4142-86de-b6c425a52f63\",\"parentId\":\"1ff1735c-1f33-4166-b5e6-68b542645efe\",\"agentId\":null,\"interactionId\":\"38ef9613-579a-4e5d-9a94-4d7f5b4318cc\",\"completionNativeId\":null,\"completionLive\":false,\"parentKnown\":false,\"descendantCount\":0,\"terminal\":null,\"grade\":\"native-event-not-pij-ack\"}\n[pij-native] {\"at\":\"2026-09-16T03:07:19.743Z\",\"kind\":\"native-event\",\"seat\":\"pij-awful-locust\",\"nativeSession\":\"2118bb43-b5d9-4ab4-b0c2-c07b523d05c2\",\"type\":\"session.idle\",\"eventId\":\"9bbbfe59-7539-44f6-8382-e700bacc3cad\",\"nativeMessageId\":null,\"parentId\":\"5f4a6bd5-2085-4a9b-8c0e-619aacbd771f\",\"agentId\":null,\"interactionId\":null,\"completionNativeId\":null,\"completionLive\":false,\"parentKnown\":false,\"descendantCount\":0,\"terminal\":null,\"grade\":\"native-event-not-pij-ack\"}\n=== exit code=0 disposition=stopped-normally ===\n"
+    },
+    {
+      "name": "user-pij-1789528040612-57983.log",
+      "text": "=== launch pid=57983 module=/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/.copilot/extensions/pij/extension.mjs ===\n[extension-fork] resolveBootstrapPath: __dir=/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-9, argv-bootstrap=/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-9/preloads/extension_bootstrap.mjs\n[extension-fork] resolveBootstrapPath: localBootstrap=/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-9/preloads/extension_bootstrap.mjs, localExists=true\n[extension-bootstrap] starting: pid=57983, COPILOT_SDK_PATH=/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-9/copilot-sdk, EXTENSION_PATH=/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/.copilot/extensions/pij/extension.mjs, SESSION_ID=3a05c978-47f1-454d-bdf0-e21078c81767\n[extension-bootstrap] importing extension: /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/.copilot/extensions/pij/extension.mjs\n[extension-resolver] resolver hook loaded: pid=57983, COPILOT_SDK_PATH=/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-9/copilot-sdk\n=== ready ===\n=== exit code=0 disposition=stopped-normally ===\n"
+    },
+    {
+      "name": "user-pij-1789528040793-58207.log",
+      "text": "=== launch pid=58207 module=/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/.copilot/extensions/pij/extension.mjs ===\n[extension-fork] resolveBootstrapPath: __dir=/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-9, argv-bootstrap=/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-9/preloads/extension_bootstrap.mjs\n[extension-fork] resolveBootstrapPath: localBootstrap=/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-9/preloads/extension_bootstrap.mjs, localExists=true\n[extension-bootstrap] starting: pid=58207, COPILOT_SDK_PATH=/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-9/copilot-sdk, EXTENSION_PATH=/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/.copilot/extensions/pij/extension.mjs, SESSION_ID=2118bb43-b5d9-4ab4-b0c2-c07b523d05c2\n[extension-bootstrap] importing extension: /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/.copilot/extensions/pij/extension.mjs\n[extension-resolver] resolver hook loaded: pid=58207, COPILOT_SDK_PATH=/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/Library/Caches/copilot/pkg/darwin-arm64/1.0.84-9/copilot-sdk\n=== ready ===\n[pij-native] {\"at\":\"2026-09-16T03:07:21.032Z\",\"kind\":\"registered\",\"seat\":\"pij-awful-locust\",\"nativeSession\":\"2118bb43-b5d9-4ab4-b0c2-c07b523d05c2\",\"pid\":57429,\"procStart\":20260916130720,\"pane\":\"%1\"}\n"
+    }
+  ],
+  "ac0": {
+    "source": "synthetic transient claim; real restart host, parent and tmux",
+    "claim": {
+      "id": "",
+      "harness": "copilot",
+      "harness_session": "151-ac0-a3106ddf-4c51-4b90-8c81-be5782635e99",
+      "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/workspace",
+      "pid": 57429,
+      "proc_start": 20260916130720,
+      "relay": false,
+      "native_extension_delivery": true,
+      "pane": "%1"
+    },
+    "owner": {
+      "id": "",
+      "harness": "copilot",
+      "harness_session": "2118bb43-b5d9-4ab4-b0c2-c07b523d05c2",
+      "folder": "/private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/workspace",
+      "pid": 55486,
+      "proc_start": 20260916130716,
+      "relay": false,
+      "native_extension_delivery": true,
+      "pane": "%1"
+    },
+    "ancestry": "57429 55486 /Users/jordanknight/.npm-global/lib/node_modules/@github/copilot/node_modules/@github/copilot-darwin-arm64/copilot",
+    "status": 400,
+    "envelope": {
+      "ok": false,
+      "command": "pij register",
+      "v": 2,
+      "meta": "native Copilot registration refused: process, native session, or pane already belongs to seat `pij-awful-locust`",
+      "error": "refused"
+    }
+  },
+  "daemonLog": "pij-rs claude inbound: /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/.claude-private=touched\npij-rs claude hook: /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/.claude-private=touched\npij-rs claude statusline: /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/home/.claude-private=touched\npij-rs daemon: listening on 127.0.0.1:59836 · key /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-JQmPor/state/daemon.key (0600) · offline=false\n"
+}

@@ -1,0 +1,23 @@
+COMMAND: cargo test -p pij-daemon --lib native_transient_session_holds_without_mutating_owner_or_queue -- --nocapture
+EXIT: 101
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-transient-hold/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.65s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-043514ab0ddb16b1)
+
+running 1 test
+test http::native_tests::native_transient_session_holds_without_mutating_owner_or_queue ... 
+thread 'http::native_tests::native_transient_session_holds_without_mutating_owner_or_queue' (61633708) panicked at crates/daemon/src/http/native_tests.rs:213:5:
+assertion `left == right` failed: HTTP envelope: {"command":"pij register","error":"refused","meta":"native Copilot registration refused: process, native session, or pane already belongs to seat `pij-resume-owner`","ok":false,"v":2}
+  left: 400
+ right: 409
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    http::native_tests::native_transient_session_holds_without_mutating_owner_or_queue
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 390 filtered out; finished in 0.12s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`
