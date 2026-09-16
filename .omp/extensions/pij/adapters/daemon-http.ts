@@ -154,6 +154,23 @@ export class PijDaemonClient {
 		this.key = key;
 	}
 
+	health(): Promise<HealthPayload> {
+		return this.get<HealthPayload>("/health");
+	}
+
+	spawn(request: {
+		readonly harness: Registration["harness"];
+		readonly model?: string;
+		readonly effort?: string;
+		readonly cwd: string;
+		readonly caller_pane?: string;
+		readonly parent: string;
+		readonly no_wait: boolean;
+		readonly accept_inbound: boolean;
+	}): Promise<RustSeatDescriptor> {
+		return this.post<RustSeatDescriptor>("/v1/spawn", request);
+	}
+
 	register(claim: Registration): Promise<RustSeatDescriptor> {
 		return this.post<RustSeatDescriptor>("/v1/register", claim);
 	}

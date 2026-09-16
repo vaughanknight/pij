@@ -23,7 +23,7 @@ quota is shared; merging to a shared target is always serialized.
    and `--evidence <declared return evidence>`. Preserve the receipt; a queue position is not a promise.
    The service persists the request and publishes `baton.requested`, then calls existing DeliveryService
    from requester to the definition's `created_by` keeper. Inspect `{request, seq, notice}`; do not send
-   an unconditional duplicate notice. `queued` is admission (Pi/OMP awaits ReaderRead), not observation;
+   an unconditional duplicate notice. `queued` is admission (OMP and Pi each await ReaderRead), not observation;
    `delivered` requires transport confirmation, not proof of keeper observation. `unverified` uses
    Dead/Recycled process-incarnation evidence, not heartbeat age; missing/dissolved keeper gives null/no send.
    Publication failure prevents send. Send/probe errors or Held/Refused outcomes cannot erase commitment

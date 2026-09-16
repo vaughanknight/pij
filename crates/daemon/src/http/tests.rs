@@ -2690,7 +2690,8 @@ async fn spawned_registration_adopts_prebind_row_and_preserves_port() {
         .json(&SpawnRequest {
             id: None,
             harness: Harness::Copilot,
-            executable: Some("copilot".to_string()),
+            allow_retired: false,
+            executable: None,
             model: Some("provider/model".to_string()),
             effort: Some("high".to_string()),
             cwd: "/abs/tree".to_string(),
@@ -2814,6 +2815,258 @@ async fn spawned_registration_adopts_prebind_row_and_preserves_port() {
 }
 
 #[tokio::test]
+async fn retired_harness_spawn_refuses_before_pane_or_descriptor_mutation() {
+    let policy: pij_core::config::Config = serde_json::from_value(serde_json::json!({
+        "retired_harnesses": ["pi"]
+    }))
+    .expect("retired harness config");
+    let mut services = crate::build_services(
+        &policy,
+        std::path::Path::new("/tmp/pij-test-retired-harness-signals"),
+    )
+    .await
+    .expect("fake services");
+    let registry = services.registry.clone();
+    let tmux = Arc::new(FakeTmux::new());
+    services.tmux = tmux.clone();
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/spawn"))
+        .bearer_auth("key")
+        .json(&serde_json::json!({
+            "id": "pij-retired",
+            "harness": "pi",
+            "cwd": "/abs/tree",
+            "session": "fleet",
+            "no_wait": true
+        }))
+        .send()
+        .await
+        .expect("spawn request");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("spawn envelope");
+    server.abort();
+
+    assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(
+        body["meta"],
+        "harness pi is retired on this machine; use omp (or pass --allow-retired)"
+    );
+    assert!(tmux.calls().is_empty(), "retired spawn never touches tmux");
+    assert!(
+        registry
+            .get(&"pij-retired".into())
+            .await
+            .expect("registry read")
+            .is_none(),
+        "retired spawn writes no descriptor"
+    );
+}
+
+#[tokio::test]
+async fn retired_harness_override_cannot_launch_without_its_spine_event() {
+    let registry = Arc::new(FakeRegistry::new());
+    let spine = Arc::new(FakeSpine::new());
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).expect("queue policy")),
+        spine.clone(),
+    )
+    .await;
+    services.retired_harnesses = vec![Harness::Pi].into();
+    let tmux = Arc::new(FakeTmux::new());
+    services.tmux = tmux.clone();
+    spine.script_append_error("override audit unavailable");
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/spawn"))
+        .bearer_auth("key")
+        .json(&serde_json::json!({
+            "id": "pij-unaudited",
+            "harness": "pi",
+            "allow_retired": true,
+            "cwd": "/abs/tree",
+            "session": "fleet",
+            "no_wait": true
+        }))
+        .send()
+        .await
+        .expect("spawn request");
+    assert_eq!(
+        response.status(),
+        reqwest::StatusCode::INTERNAL_SERVER_ERROR
+    );
+    assert!(tmux.calls().is_empty());
+    assert!(
+        registry
+            .get(&"pij-unaudited".into())
+            .await
+            .expect("registry read")
+            .is_none()
+    );
+    assert!(
+        spine.is_empty(),
+        "failed audit writes no accepted-override event"
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn retired_harness_override_launches_and_records_policy_exception() {
+    let policy = pij_core::config::Config {
+        retired_harnesses: vec![Harness::Pi],
+        ..Default::default()
+    };
+    let mut services = crate::build_services(
+        &policy,
+        std::path::Path::new("/tmp/pij-test-retired-override-signals"),
+    )
+    .await
+    .expect("fake services");
+    let registry = services.registry.clone();
+    let spine = services.spine.clone();
+    let tmux = Arc::new(FakeTmux::new());
+    services.tmux = tmux.clone();
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let client = reqwest::Client::new();
+    let health: serde_json::Value = client
+        .get(format!("http://{addr}/health"))
+        .bearer_auth("key")
+        .send()
+        .await
+        .expect("health request")
+        .json()
+        .await
+        .expect("health envelope");
+    assert_eq!(
+        health["data"]["retired_harnesses"],
+        serde_json::json!(["pi"])
+    );
+
+    for (id, harness) in [("pij-retired-allowed", "pi"), ("pij-current", "omp")] {
+        let response = client
+            .post(format!("http://{addr}/v1/spawn"))
+            .bearer_auth("key")
+            .json(&serde_json::json!({
+                "id": id,
+                "harness": harness,
+                "allow_retired": true,
+                "cwd": "/abs/tree",
+                "session": "fleet",
+                "no_wait": true
+            }))
+            .send()
+            .await
+            .expect("spawn request");
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let body: Envelope<SpawnResponse> = response.json().await.expect("spawn envelope");
+        let launched = body.data.expect("spawn result");
+        assert!(launched.dispatched);
+        assert_eq!(launched.seat.harness.as_str(), harness);
+        assert_eq!(
+            registry
+                .get(&id.into())
+                .await
+                .expect("registry read")
+                .expect("persisted descriptor"),
+            launched.seat
+        );
+        let overrides: Vec<Event> = spine
+            .tail(Some(&id.into()), Seq(0))
+            .await
+            .expect("spine read")
+            .into_iter()
+            .filter(|event| event.kind == "spawn.retired-harness-override")
+            .collect();
+        if harness == "pi" {
+            assert_eq!(overrides.len(), 1);
+            let payload: serde_json::Value =
+                serde_json::from_str(&overrides[0].payload).expect("override payload");
+            assert_eq!(
+                payload,
+                serde_json::json!({
+                    "harness": "pi",
+                    "allow_retired": true,
+                    "spawn_id": launched.seat.spawn_id
+                })
+            );
+            assert_eq!(overrides[0].seat.as_ref(), Some(&launched.seat.id));
+        } else {
+            assert!(
+                overrides.is_empty(),
+                "current harness needs no policy exception"
+            );
+        }
+    }
+    assert_eq!(
+        tmux.calls()
+            .iter()
+            .filter(|call| call.starts_with("new_window:"))
+            .count(),
+        2
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn executable_harness_mismatch_refuses_before_launch_or_override_event() {
+    let policy = pij_core::config::Config {
+        retired_harnesses: vec![Harness::Pi],
+        ..Default::default()
+    };
+    let mut services = crate::build_services(
+        &policy,
+        std::path::Path::new("/tmp/pij-test-bin-mismatch-signals"),
+    )
+    .await
+    .expect("fake services");
+    let registry = services.registry.clone();
+    let spine = services.spine.clone();
+    let tmux = Arc::new(FakeTmux::new());
+    services.tmux = tmux.clone();
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/spawn"))
+        .bearer_auth("key")
+        .json(&serde_json::json!({
+            "id": "pij-bin-mismatch",
+            "harness": "pi",
+            "allow_retired": true,
+            "executable": "/opt/harnesses/omp",
+            "cwd": "/abs/tree",
+            "session": "fleet",
+            "no_wait": true
+        }))
+        .send()
+        .await
+        .expect("spawn request");
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = response.json().await.expect("spawn envelope");
+    assert!(
+        body["meta"]
+            .as_str()
+            .expect("refusal")
+            .contains("use --harness omp")
+    );
+    assert!(tmux.calls().is_empty());
+    assert!(
+        registry
+            .get(&"pij-bin-mismatch".into())
+            .await
+            .expect("registry read")
+            .is_none()
+    );
+    assert!(
+        spine
+            .tail(Some(&"pij-bin-mismatch".into()), Seq(0))
+            .await
+            .expect("spine read")
+            .is_empty()
+    );
+    server.abort();
+}
+
+#[tokio::test]
 async fn spawn_wait_reports_child_exit_with_log_tail() {
     let registry = Arc::new(FakeRegistry::new());
     let tmux = Arc::new(
@@ -2836,7 +3089,8 @@ async fn spawn_wait_reports_child_exit_with_log_tail() {
         .json(&SpawnRequest {
             id: Some("pij-exits-before-bind".into()),
             harness: Harness::Omp,
-            executable: Some("omp".to_string()),
+            allow_retired: false,
+            executable: None,
             model: Some("bad/model".to_string()),
             effort: None,
             cwd: "/abs/tree".to_string(),
@@ -2931,7 +3185,8 @@ async fn spawn_wait_returns_bound_process_and_publishes_event() {
         .json(&SpawnRequest {
             id: Some("pij-binds-after-spawn".into()),
             harness: Harness::Omp,
-            executable: Some("omp".to_string()),
+            allow_retired: false,
+            executable: None,
             model: Some("github-copilot/gpt-5.6-sol".to_string()),
             effort: None,
             cwd: "/abs/tree".to_string(),
@@ -3040,7 +3295,8 @@ async fn spawn_reports_model_mismatch_without_killing_registered_seat() {
         .json(&SpawnRequest {
             id: Some("pij-model-mismatch".into()),
             harness: Harness::Omp,
-            executable: Some("omp".to_string()),
+            allow_retired: false,
+            executable: None,
             model: Some("requested/model".to_string()),
             effort: None,
             cwd: "/abs/tree".to_string(),
@@ -3618,6 +3874,7 @@ async fn spawn_stamps_only_the_argv_that_reached_the_observed_launch() {
         |id: &str, accept_inbound: bool, session: Option<&str>, pane: Option<&str>| SpawnRequest {
             id: Some(id.into()),
             harness: Harness::Claude,
+            allow_retired: false,
             executable: Some("/path with spaces/claude".to_string()),
             model: Some("provider/model".to_string()),
             effort: Some("high".to_string()),
@@ -3744,7 +4001,8 @@ async fn direct_http_spawn_carries_no_claude_default_the_cli_owns_it() {
         .json(&SpawnRequest {
             id: Some("pij-plan116-direct".into()),
             harness: Harness::Claude,
-            executable: Some("claude".to_string()),
+            allow_retired: false,
+            executable: None,
             model: None,
             effort: None,
             cwd: "/abs/tree".to_string(),

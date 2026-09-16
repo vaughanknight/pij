@@ -20,6 +20,7 @@ import { FsEventLog } from "./adapters/event-log.js";
 import { FsRegistry } from "./adapters/fs-registry.js";
 import { GitRepositoryAdapter } from "./adapters/git-repository.js";
 import { PiRuntimeAdapter } from "./adapters/pi-runtime.js";
+import { TmuxAdapter } from "./adapters/tmux.js";
 import { deriveSelfId, memorableIdentitySeed } from "./core/discovery.js";
 import { receiptBody } from "./core/message.js";
 import pijExtension from "./index.js";
@@ -586,6 +587,24 @@ describe("pij index — footer status bar", () => {
 		const id = statuses.at(-1)?.value;
 		expect(new FsRegistry(pijHome).read(id as string)?.planId).toBe("073-pij-first-class-ui");
 		await handlers.get("session_shutdown")?.({}, ctx);
+	});
+
+	it("refuses legacy tool spawning rather than bypassing daemon retirement policy", async () => {
+		const { pi, handlers, tools } = makeFakePi();
+		const { ctx } = makeFakeCtx("legacy-spawn-policy");
+		pijExtension(pi);
+		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+		const noTmux = vi.spyOn(TmuxAdapter.prototype, "currentSession").mockReturnValue(null);
+		try {
+			await expect(
+				tools
+					.get("pij_spawn")
+					?.execute("spawn-policy", { harness: "pi" }, undefined, undefined, ctx),
+			).rejects.toThrow("legacy spawn cannot enforce machine harness policy");
+		} finally {
+			noTmux.mockRestore();
+			await handlers.get("session_shutdown")?.({}, ctx);
+		}
 	});
 
 	it("blocks ask_user_question only for a structurally managed Pi peer and still captures it", async () => {

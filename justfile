@@ -740,7 +740,7 @@ bounce-rs:
     old=$(lsof -nP -iTCP:7461 -sTCP:LISTEN -t || true)
     [ -n "$old" ] && kill "$old" && sleep 0.5
     # Telegram worker is OPT-IN by env (crates/daemon/src/lib.rs); a bare restart silently turns it off.
-    (PIJ_TELEGRAM_ENV="${PIJ_TELEGRAM_ENV:-$HOME/.pij/telegram.env}" nohup "$HOME/.npm-global/bin/pij-rs" daemon >> "$HOME/.pij-rs/daemon.log" 2>&1 &)
+    (PIJ_RETIRED_HARNESSES="${PIJ_RETIRED_HARNESSES-pi}" PIJ_TELEGRAM_ENV="${PIJ_TELEGRAM_ENV:-$HOME/.pij/telegram.env}" nohup "$HOME/.npm-global/bin/pij-rs" daemon >> "$HOME/.pij-rs/daemon.log" 2>&1 &)
     sleep 1.5
     new=$(lsof -nP -iTCP:7461 -sTCP:LISTEN -t || true)
     [ -n "$new" ] && [ "$new" != "$old" ] || { echo "bounce-rs: daemon did not come back (old=$old new=$new)" >&2; exit 1; }

@@ -49,6 +49,23 @@ Self or the target's **current recorded parent** may assert/unset its role; an u
 
 Sources: [`identity.rs`](../../crates/daemon/src/http/identity.rs), [`role.rs`](../../crates/daemon/src/http/role.rs), [`types.rs`](../../crates/daemon/src/http/types.rs), [`governance.rs`](../../crates/daemon/src/http/governance.rs).
 
+## Spawn harness choice and retirement policy
+
+**OMP and Pi are distinct harnesses, with no shared default.** Native `pij-rs spawn --harness <h>`, HTTP `POST /v1/spawn` and in-process `pij_spawn({harness: …})` require an explicit selection from `omp`, `pi`, `claude`, `copilot` and `codex`; the parent runtime is not a default. `--bin` (HTTP `executable`, in-process `bin`) overrides only the executable path, never selects the harness. Bare selectors such as `--harness pi --bin omp` refuse with the fix `--harness omp`; a known different harness basename also refuses inside an absolute path. A matching absolute path, such as `--harness omp --bin /absolute/path/to/omp`, is accepted. OMP uses provider-qualified model ids such as `github-copilot/gpt-6-astra`; Pi uses its own installed catalog's exact id, such as `gpt-5.6-sol`, with provider qualification when needed. Model availability must be established in the selected runtime, not inferred from the other.
+
+| Harness | Required selection | Native model/effort translation |
+|---|---|---|
+| OMP | `--harness omp` or `"harness":"omp"` | `--model github-copilot/gpt-6-astra --effort high` becomes OMP `--model github-copilot/gpt-6-astra --thinking high` |
+| Pi | `--harness pi` or `"harness":"pi"` | `--model gpt-5.6-sol --effort high` becomes Pi `--model gpt-5.6-sol:high` |
+
+These are argument-shape examples, not catalog or runtime receipts. `pij models` catalog enumeration remains unported (`E-RS-UNPORTED`): agents still cannot enumerate per-harness catalogs through pij, and no native catalog command is supplied. Consult the selected harness's installed catalog, then prove the choice with a canary and actual runtime evidence. Existing native launch flags are otherwise unchanged; native spawn still has no legacy layout/task/branch/plan-id flags.
+
+The daemon's `Config.retired_harnesses` reads comma-separated `PIJ_RETIRED_HARNESSES`. The generic default is empty: no harness is retired. This machine's `just bounce-rs` recipe explicitly sets `PIJ_RETIRED_HARNESSES=pi`; Pi is not hard-coded as globally retired. With that policy, native and in-process Pi spawn refuse with `harness pi is retired on this machine; use omp (or pass --allow-retired)`.
+
+An intentional native `pij-rs spawn --harness pi --allow-retired …` sends HTTP `"allow_retired":true` to `/v1/spawn`. The daemon accepts the override with a spine event; inspect `pij spine events --peer <new-seat> --json` and retain that evidence. Omitted or false `allow_retired` does not bypass policy. The override does not rewrite the policy or change existing seats' registration, receiver ownership or caller authority.
+
+The existing `GET /health` v2 response adds `data.retired_harnesses`, an array of harness names (`[]` for the generic configuration, `["pi"]` for this machine's recipe). In-process spawn reads this through `client.health()` before local pane or spawn-expectation mutation; it does not re-read `PIJ_RETIRED_HARNESSES` in the extension environment or infer policy from the parent harness. OMP and Pi use their distinct local launch paths; external harness choices use native `/v1/spawn`. Use native `--allow-retired` when deliberately overriding retirement, never a `bin` selector.
+
 ## Native Copilot registration
 
 For a verified native Copilot `/v1/register` claim, `harness_session` normally identifies the durable seat in this machine's registry before pane/process heuristics. Restarting the same conversation reuses its id, adopts the observed host tuple and pane, and clears its tombstone without waiting for the old process or death sweep. Only live same-session rows compete: two live addresses return HTTP 409 with v2 `error:"refused"` and `details.retryable:true`. Tombstoned rows are history; selection prefers a live row, then greatest `proc_start`, then ascending id as a deterministic final tie. Queued jobs, parent, authoritative `seat_roles` assertion and Telegram reply binding retain that address. `pij state` reports the new process and no tombstone; `seat.native-resumed` records `old_proc`, `new_proc`, `old_pane`, `new_pane` and `reason:"native-session-resume"`.
@@ -106,7 +123,7 @@ Sources: [`registration.rs`](../../crates/daemon/src/registration.rs),
 
 ## Extension inbox recovery
 
-OMP/Pi body delivery is acknowledged only when the harness emits the matching
+In OMP and in Pi, body delivery is acknowledged only when that harness emits the matching
 `message_start`; injection returning or a turn starting is not consumption proof.
 The ordinary route stays unchanged. An unconsumed message idle for
 `PIJ_REDELIVER_IDLE_MS` (default `10000`) is resent through `sendUserMessage`,
@@ -171,7 +188,7 @@ The failed row and both sender events commit together before live publication.
 A real queue paired with a fake spine refuses terminal recovery with
 `E-RS-INBOX-AUTHORITY-SPLIT`, rather than emitting cursors from another store;
 ordinary reads and successful acknowledgements remain supported.
-The Pi/OMP sender sees a warning naming the undelivered id and recipient. The recipient
+An OMP sender or a Pi sender sees a warning naming the undelivered id and recipient. The recipient
 clears that message from its pending badge and visibly names the parked id once.
 The badge counts only unconsumed messages not recently resent; it is not a count
 of successful delivery or model completion.
@@ -210,7 +227,7 @@ pane/session still refuses; paneless readers retain their exact host tuple check
 | `id`, `harness`, `folder`, `state` | Stable seat id, harness enum, absolute working folder and stored mechanical state. Every harness currently defaults to `idle`; this is not observed inactivity. |
 | `generation`, `relay`, `native_extension_delivery` | Present `"rs"` and boolean flags. False is an explicit value, not omission. Display role does not grant native delivery attestation. |
 | `session`, `pane`, `proc`, `semantic_state`, `role`, `parent` | Present even when null. `session` is the serialized native harness-session id (not `harness_session`); null is unknown. `pane:null` is paneless; `proc:null` is no bound process identity. Non-null `proc` is `{pid, proc_start}`; never interpret pid alone as identity. Null semantic state/role means no declaration/assertion; null parent means no recorded governing seat. |
-| `extension_build`, `extension_path` | Present string or null on current-daemon whoami, seats and state responses. Build is the loaded Pi/OMP extension's `<sha10>`, `<sha10>+dirty`, or `hash:<12 hex>`; path is its resolved real source directory, not the seat's working folder. Null means no build was reported (a pre-144 Pi/OMP extension, or a harness without this feature), never a retroactive guess from today's checkout. Older daemons omit these keys entirely. |
+| `extension_build`, `extension_path` | Present string or null on current-daemon whoami, seats and state responses. Build is the loaded runtime extension's `<sha10>`, `<sha10>+dirty`, or `hash:<12 hex>`; path is its resolved real source directory, not the seat's working folder. Null means no build was reported (a pre-144 extension in OMP or Pi, or a harness without this feature), never a retroactive guess from today's checkout. Older daemons omit these keys entirely. |
 | `badge`, `last_event_at` | Current-daemon rows carry the worst-first row-fact badge and the highest-sequence seat event's epoch-ms timestamp, or null when no event exists. Both come from the roster's SQL snapshot, without per-seat queries. Older remote daemons may omit badge; absent remote freshness is null, not proof of no remote events. |
 | `machine` | Optional in the base descriptor serialization; this HTTP handler stamps it for local rows. Preserve the machine alias in federated views rather than guessing from seat ids. |
 | `spawn_id`, `model`, `provider`, `effort` | Omitted when unknown/unset (`skip_serializing_if`), not emitted as null; absence is not an inferred launch, model or effort. |
@@ -219,7 +236,7 @@ pane/session still refuses; paneless readers retain their exact host tuple check
 
 These are flattened descriptor fields plus HTTP projection metadata, **not StateCard**: the latter has its own camelCase projection and explicit `unsupported` list. Preserve null versus omission when comparing envelopes. RoleService owns the role join.
 
-Pi/OMP captures build identity once at extension load and reuses it on registration, adoption and re-registration. Git identity uses the real extension directory's repository HEAD, with `+dirty` scoped to that directory; a standalone install hashes sorted relative paths and bytes from `index.ts`, `adapters/*.ts` and `core/*.ts`. Later disk changes do not relabel the running extension. A registration without metadata clears any prior values. This is runtime-reported provenance, not a daemon-verified attestation. Human `pij whoami` prints `extension: <build> (<path>)`, and the Pi/OMP footer keeps the build and dirty marker visible. Build identity remains JSON-only for list: the native human view has no width-budgeted build column, and the shim's existing list route is JSON-only.
+OMP and Pi each capture build identity once at their runtime's extension load and reuse it on registration, adoption and re-registration. Git identity uses the real extension directory's repository HEAD, with `+dirty` scoped to that directory; a standalone install hashes sorted relative paths and bytes from `index.ts`, `adapters/*.ts` and `core/*.ts`. Later disk changes do not relabel the running extension. A registration without metadata clears any prior values. This is runtime-reported provenance, not a daemon-verified attestation. Human `pij whoami` prints `extension: <build> (<path>)`; OMP's footer and Pi's footer each keep their loaded build and dirty marker visible. Build identity remains JSON-only for list: the native human view has no width-budgeted build column, and the shim's existing list route is JSON-only.
 
 Direct HTTP `/v1/seats` accepts exact `harness`, `folder`, `parent` filters, `scope=local`, and `here=<absolute-path>`; another scope value or relative `here` refuses. Default scope may include federated last-known rows. Shim `pij list` forwards `--harness`, `--folder`, `--parent` and `--scope local` as URL-encoded GET parameters, preserving literal values. Shim and native `pij-rs list --here` select rows whose recorded `folder` equals the caller's canonical cwd; the flag is boolean (`--here`, `--here=true`, `--here=false`), never a path value. Existing absolute paths are canonicalised; unavailable absolute paths retain their literal spelling, never the daemon cwd. POST accepts `{argv:["list","--here"],caller:{cwd:"/absolute/path"}}`, sharing anomalies' boolean/path helpers. GET and POST query `here=<absolute-path>` use the same projection; other filters intersect rather than widen it. Native list accepts no other filters, and shim `pij sessions` has no query flags. Legacy `--prime`, `--role`, `--archived` and tree filters remain named refusals. `/v1/shim/sessions` is a distinct rs projection, never a union with the legacy store.
 
@@ -461,7 +478,7 @@ Return/reclaim **require** the observed `--lease-id`. Missing or stale ids retur
 
 `baton request` persists the request and publishes `baton.requested` before calling the existing delivery service, from the requester to the definition's `created_by` keeper. Its complete response includes `data: {request, seq, notice}`. The exact legacy notice text is pinned by `baton_notice_body_template` in the stable route corpus.
 
-`notice` is `queued` for Pi/OMP extension-stream admission until ReaderRead; `delivered` requires actual transport confirmation. `unverified` uses existing `Dead`/`Recycled` process-incarnation evidence, not a new heartbeat-age rule. A missing or dissolved keeper yields `notice: null` and no send. The eight retained host cases keep their message/no-write counts; idle Pi's expected value was explicitly corrected from delivered to queued under the honest-receipt rule.
+`notice` is `queued` for OMP extension-stream admission and for Pi extension-stream admission until ReaderRead; `delivered` requires actual transport confirmation. `unverified` uses existing `Dead`/`Recycled` process-incarnation evidence, not a new heartbeat-age rule. A missing or dissolved keeper yields `notice: null` and no send. The eight retained host cases keep their message/no-write counts; idle Pi's expected value was explicitly corrected from delivered to queued under the honest-receipt rule.
 
 Send/probe errors or Held/Refused transport outcomes cannot be presented as success or erase the committed request. `E-RS-PARTIAL` retains `committed`, `event_published`, `request` and `seq` evidence. A publication failure prevents the notice send. A later reader acknowledgement may prove delivery without creating a second notice message; self-send still uses the existing refusal path.
 

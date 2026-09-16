@@ -365,7 +365,36 @@ export class RustRuntimeSession {
 		return msgId;
 	}
 
-	spawn(opts: SpawnOpts): ReturnType<PijSession["spawn"]> {
+	async spawn(opts: SpawnOpts): Promise<ReturnType<PijSession["spawn"]>> {
+		const health = await this.client.health();
+		if (!Array.isArray(health.retired_harnesses))
+			return err(
+				"E-NOREG",
+				"daemon does not report retired harness policy; update and restart pij-rs before spawning",
+			);
+		if (health.retired_harnesses.includes(opts.harness))
+			return err(
+				"E-ARG",
+				`harness ${opts.harness} is retired on this machine; ${opts.harness === "omp" ? "use another harness" : "use omp"} (or pass --allow-retired)`,
+			);
+		if (opts.harness !== "pi" && opts.harness !== "omp") {
+			if (opts.layout === "split")
+				return err("E-ARG", `${opts.harness} uses daemon windows; pass layout:'window'`);
+			const child = await this.client.spawn({
+				harness: opts.harness,
+				model: opts.model,
+				effort: opts.effort,
+				cwd: opts.cwd,
+				caller_pane: process.env.TMUX_PANE,
+				parent: this.self,
+				no_wait: true,
+				accept_inbound: opts.harness === "claude",
+			});
+			if (!child.spawn_id || !child.pane)
+				return err("E-NOREG", "daemon spawn returned no spawn identity or pane");
+			if (opts.task !== undefined) await this.send(child.id, opts.task);
+			return ok({ spawnId: child.spawn_id, paneId: child.pane });
+		}
 		const result = this.session.spawn(opts);
 		void this.flush();
 		return result;

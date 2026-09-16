@@ -380,7 +380,7 @@ export interface SessionDescriptor {
 export interface SpawnExpectation {
 	readonly spawnId: string;
 	readonly creatorId?: SessionId;
-	readonly requestedHarness: HarnessKind;
+	readonly requestedHarness: HarnessKind | "omp";
 	readonly requestedAt: string;
 	/** Bounded registration window: expiry is a no-show observation, not a harness cause. */
 	readonly deadlineAt?: string;

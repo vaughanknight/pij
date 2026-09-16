@@ -300,6 +300,7 @@ pub(super) async fn revive_seat(
     let spawn_request = SpawnRequest {
         id: Some(prior.id),
         harness: prior.harness,
+        allow_retired: false,
         executable: None,
         model: prior.model,
         effort: prior.effort,

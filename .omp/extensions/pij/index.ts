@@ -260,18 +260,27 @@ export default function (pi: ExtensionAPI): void {
 	};
 
 	// pij_spawn — open a new tmux window running a pij worker (T206).
-	// Parameters: {task?, model?}; cwd from ctx.cwd (§M6). Thin pass-through of
-	// session.spawn(); E-NOTMUX is returned by spawn() itself (§M5 / P8-testable).
+	// Harness is explicit; cwd comes from the invoking runtime context.
 	pi.registerTool({
 		name: "pij_spawn",
 		label: "pij spawn",
 		description:
-			"Spawn a new pij worker session running pi in tmux — by DEFAULT stacked in a ~1/3-width column on your right (main-left; the stack grows downward and evens itself, no cap), or pass layout:'window' for a background tmux window instead. Returns once the pane opens (fire-and-forget); the child announces via a ready-ping once booted. Requires an active tmux session.",
+			"Spawn a pij worker in the explicitly selected harness: omp, pi, claude, copilot or codex. OMP and Pi workers use the side stack by default; layout:'window' opens a background tmux window. Other harnesses use native daemon windows. Requires tmux; retired harnesses are refused by machine policy.",
 		promptSnippet: "Spawn a pij worker into the side stack (default) or a new tmux window",
 		promptGuidelines: [
-			"Use pij_spawn to start a new worker session. By default it lands in the side stack — a ~1/3-width column on your right that grows downward and evens itself (no pane cap). Pass layout:'window' to open a background tmux window instead. The child sends a ready-ping via the delivery channel when it has booted.",
+			"Always name harness explicitly; omp and pi are distinct runtimes, never binary switches or inferred defaults. For OMP use a provider-qualified model such as github-copilot/gpt-6-astra. OMP and Pi default to the right-hand side stack; layout:'window' opens a background window. Other harnesses use daemon windows. A ready-ping proves child boot; pane creation alone does not.",
 		],
 		parameters: Type.Object({
+			harness: Type.Union(
+				[
+					Type.Literal("omp"),
+					Type.Literal("pi"),
+					Type.Literal("claude"),
+					Type.Literal("copilot"),
+					Type.Literal("codex"),
+				],
+				{ description: "Required harness identity; no default or inheritance from the caller." },
+			),
 			task: Type.Optional(
 				Type.String({
 					description:
@@ -298,7 +307,12 @@ export default function (pi: ExtensionAPI): void {
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			requirePeerContext(ctx);
 			if (!session) throw new Error("pij_spawn: session not booted yet");
-			const res = session.spawn({
+			if (!rustRuntime)
+				throw new Error(
+					"pij_spawn requires the Rust daemon; legacy spawn cannot enforce machine harness policy",
+				);
+			const res = await rustRuntime.spawn({
+				harness: params.harness,
 				task: typeof params.task === "string" ? params.task : undefined,
 				model: typeof params.model === "string" ? params.model : undefined,
 				effort: typeof params.effort === "string" ? params.effort : undefined,

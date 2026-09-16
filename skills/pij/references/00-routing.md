@@ -14,7 +14,7 @@ All probes are deterministic files/commands; remember nothing between calls.
 | B | Live fleet roster | newest run roster ids, corroborated through `pij state <id> --json`; legacy descriptor files are not rs liveness evidence | `pair` reattach or `ops` inspect owned retirement |
 | C | Active the-flow mid-build | newest `docs/plans/*/the-flow.json` → `harness flow nav show --path <it>`; `data.nav.now`/`next` on a phase/review node | offer `pair` dispatch for that phase |
 | D | Daemon alive | `pij-rs ping --json` | unavailable + spawn intent → operator-owned `ops` readiness; no automatic legacy daemon start |
-| E | Delivery owner | Copilot's native `pij_send` callable → native Copilot; else in-process `pij_spawn` callable → pi/omp push; else exact non-empty `$TMUX_PANE` → tmux push; otherwise external pull where supported | detect before self-registration advice; native Copilot never falls back to CLI pull or sendkeys |
+| E | Delivery owner | Copilot's native `pij_send` callable → native Copilot; else in-process `pij_spawn` callable → extension push (distinct OMP and Pi modes in C1); else exact non-empty `$TMUX_PANE` → tmux push; otherwise external pull where supported | detect before self-registration advice; native Copilot never falls back to CLI pull or sendkeys |
 | F | Self registration | after E: extensions own registration; non-extension tmux peers may probe `pij whoami`; paneless claims require verified native admission | verify native evidence before external inbox registration; never re-adopt an extension-owned seat |
 
 **Precedence**: A > B > C > D/F (D/F are preconditions folded into whichever route wins, not destinations). Nothing matches → ask the job in one line, listing the registry.
@@ -29,17 +29,17 @@ Cited by route modules as "§ C*n*" — prose lives here only.
 
 Delivery-owner detection happens before any self-registration advice. A Copilot session exposing the native `pij_send` tool is **native-extension-owned**: registration and receipt injection are automatic, so do not adopt it or start a competing CLI inbox consumer. Missing native capability queues/refuses, never sendkeys. Copilot programmatic compact/new/reload are unsupported; use native human lifecycle controls, not typed-message fallbacks. Its consent sensor still requires a supported pane unless the operator explicitly disables typing grace.
 
-For the remaining modes, detect once per run: callable in-process `pij_spawn` → **pi/omp push**; otherwise exact non-empty `$TMUX_PANE` → **tmux control-plane push**; otherwise **external pull** where supported. Pi injects in-process. OMP also uses its in-process receiver; other harnesses use daemon-selected transports. The table below covers these remaining modes, not native Copilot ownership.
+For the remaining modes, detect once per run: callable in-process `pij_spawn` → **extension push**, using the current host's OMP or Pi receiver; otherwise exact non-empty `$TMUX_PANE` → **tmux control-plane push**; otherwise **external pull** where supported. Receiver ownership does not select a child's harness: every spawn names it explicitly, with no shared default. The table below covers these remaining modes, not native Copilot ownership.
 
-| Intent | pi push | tmux control-plane push | external pull |
-|---|---|---|---|
-| prereq | **Extension-owned registration: no adopt/inbox register.** | running rs daemon + exact-pane adoption: `pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}` | `pij inbox register --json` from a verified Claude/Copilot/Codex tool shell; accepted id is `data.id` |
-| spawn | explicitly available in-process host tool, or native CLI | `pij-rs spawn --harness <h> --cwd <absolute-path> --parent <id> …` | no tmux launch without an available tmux context |
-| message | `pij_send({to, message})` | `pij send <id> '<text>'` | `pij send <id> '<text>' --json` from the same native host/session |
-| receive | automatic injected turn | automatic daemon-injected turn | `pij inbox --wait [ms] [--json]`; never a competing extension receiver |
-| compact peer | `pij_send({to, command:"compact"})` | `pij send <id> --command compact` | same structured command, subject to target support |
-| peek | host transcript or owner-scoped tmux capture | host transcript or owner-scoped tmux capture | supported host transcript only; shim tail refuses |
-| retire | owner-authorized host teardown is distinct from rs tombstone | `pij close <id>` tombstones only, self/current-parent | same rs ownership, no force bypass |
+| Intent | OMP push | Pi push | tmux control-plane push | external pull |
+|---|---|---|---|---|
+| prereq | **OMP extension owns registration: no adopt/inbox register.** | **Pi extension owns registration: no adopt/inbox register.** | running rs daemon + exact-pane adoption: `pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}` | `pij inbox register --json` from a verified Claude/Copilot/Codex tool shell; accepted id is `data.id` |
+| spawn | `pij_spawn({harness:"omp", …})` for an OMP child; another child needs its own explicit harness | `pij_spawn({harness:"pi", …})` for a Pi child, subject to daemon retirement policy | `pij-rs spawn --harness <h> --cwd <absolute-path> --parent <id> …` | no tmux launch without an available tmux context |
+| message | `pij_send({to, message})` | `pij_send({to, message})` | `pij send <id> '<text>'` | `pij send <id> '<text>' --json` from the same native host/session |
+| receive | automatic OMP in-process injected turn | automatic Pi in-process injected turn | automatic daemon-injected turn | `pij inbox --wait [ms] [--json]`; never a competing extension receiver |
+| compact peer | `pij_send({to, command:"compact"})` | `pij_send({to, command:"compact"})` | `pij send <id> --command compact` | same structured command, subject to target support |
+| peek | OMP transcript or owner-scoped tmux capture | Pi transcript or owner-scoped tmux capture | host transcript or owner-scoped tmux capture | supported host transcript only; shim tail refuses |
+| retire | owner-authorized OMP teardown is distinct from rs tombstone | owner-authorized Pi teardown is distinct from rs tombstone | `pij close <id>` tombstones only, self/current-parent | same rs ownership, no force bypass |
 
 Tmux self-adopt uses only the exact nonempty `$TMUX_PANE` of the current process. Carry the supported `--parent` claim when the environment names the true governor; omitted parent is unsaid and preserves an existing value. Existing-seat structural repair through `link` is unported, so never omit parent assuming that command can fix it later. Native extensions retain ownership of their own registration.
 
@@ -64,7 +64,7 @@ Pull seats have `pane:null` and `native_extension_delivery:false`. `inbox --wait
 blocks for mail; a positive millisecond argument bounds the wait. JSON remains a
 complete v2 envelope whose `data` is a claims array (empty on finite timeout),
 not an unwrapped `messages` object. The CLI prints before acknowledging; claim
-acceptance is not model completion. Native-extension-owned Copilot/Pi/OMP seats
+acceptance is not model completion. Native-extension-owned OMP, Pi and Copilot seats
 keep their automatic receiver and must not start this pull consumer.
 
 Model names and permission/launch behavior belong to the selected native harness and installed rs source, not legacy spawn defaults.
@@ -85,7 +85,7 @@ Between phases: compact, keep, reuse — never close-and-respawn a healthy peer.
 
 ### C4 — Model discovery
 
-`pij models` is unported and returns `E-RS-UNPORTED`. Use the host's actual installed model catalog, then corroborate the selection with canary/runtime evidence (C2). Do not substitute a stale legacy model list or invent a selector.
+`pij models` is unported and returns `E-RS-UNPORTED`: agents still cannot enumerate per-harness catalogs through pij, and there is no native catalog substitute here. Use the selected harness's actual installed model catalog, then corroborate the selection with canary/runtime evidence (C2). OMP uses provider-qualified ids; Pi uses its own catalog's exact model id, with provider qualification when needed. The [peer spawn contract](./routes/peer.md#spawn-and-revive-native-grammar-not-shim-fallback) gives separate examples, executable-override rules and daemon retirement policy. Do not substitute a stale legacy model list or invent a selector.
 
 ### C5 — Placement & split-cap
 

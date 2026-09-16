@@ -7,7 +7,7 @@ Preconditions: git repo, tmux, `pij`, ambient `harness`, one o-prime session, an
 ## 1. Seat and prove the o-prime
 
 1. Load [`../orient-oprime.md`](../orient-oprime.md); if governed from above, run [`kickoff.md#canary`](./kickoff.md#canary)'s three-leg canary.
-2. Run the orient's boot audit: channel, dead descriptors, inherited government, human status channel. Pi/OMP registers at boot; external seats adopt as the orient directs.
+2. Run the orient's boot audit: channel, dead descriptors, inherited government, human status channel. OMP and Pi each register through their runtime extension at boot; external seats adopt as the orient directs.
 3. **Refuse to seat over a living prime**: inspect unfiltered rs roster, current designation receipts/events, project records and authoritative government. If absence cannot be established, ask the owning prime/human rather than bootstrap by inference. An asserted `role: prime` is not designation authority.
 4. Resolve your exact id with `pij whoami --json`, then persist `pij orchestration prime set <resolved-seat-id> --json`. Check the returned designation and seq, plus `pij spine events --peer <resolved-seat-id> --json`; do not invent `prime:true`/`oldPrime` list fields. Ambiguous self is failure, never permission to target `operator`.
 

@@ -579,7 +579,7 @@ describe("PijSession.spawn", () => {
 	it("layout:window opens exactly one window; returns spawnId + paneId (AC-01)", () => {
 		const h = harness();
 		h.session.boot(bootInput());
-		const r = h.session.spawn({ cwd: "/repo", layout: "window" });
+		const r = h.session.spawn({ harness: "pi", cwd: "/repo", layout: "window" });
 		expect(r.ok).toBe(true);
 		if (!r.ok) return;
 		expect(typeof r.value.spawnId).toBe("string");
@@ -603,7 +603,7 @@ describe("PijSession.spawn", () => {
 			return originalNewWindow(opts);
 		};
 		parent.session.boot(bootInput());
-		const spawned = parent.session.spawn({ cwd: "/repo", layout: "window" });
+		const spawned = parent.session.spawn({ harness: "pi", cwd: "/repo", layout: "window" });
 		expect(spawned.ok).toBe(true);
 		if (!spawned.ok) return;
 		expect(expectations.writes[0]).toMatchObject({
@@ -635,7 +635,7 @@ describe("PijSession.spawn", () => {
 	it("env carries PIJ_ANNOUNCE_TO=self, PIJ_SPAWN_ID, PIJ_ROLE=worker (AC-02)", () => {
 		const h = harness();
 		h.session.boot(bootInput());
-		h.session.spawn({ cwd: "/repo", layout: "window" });
+		h.session.spawn({ harness: "pi", cwd: "/repo", layout: "window" });
 		const w = h.tmux.windows[0];
 		expect(w?.opts.env.PIJ_ANNOUNCE_TO).toBe("alice");
 		expect(w?.opts.env.PIJ_ROLE).toBe("worker");
@@ -646,7 +646,13 @@ describe("PijSession.spawn", () => {
 	it("threads model via --model argv AND PIJ_SPAWN_MODEL env (§H2 / F003)", () => {
 		const h = harness();
 		h.session.boot(bootInput());
-		h.session.spawn({ cwd: "/repo", model: "test-model", effort: "xhigh", layout: "window" });
+		h.session.spawn({
+			harness: "pi",
+			cwd: "/repo",
+			model: "test-model",
+			effort: "xhigh",
+			layout: "window",
+		});
 		const w = h.tmux.windows[0];
 		// F003: PIJ_SPAWN_MODEL is now emitted by buildSpawnCommand (not post-processed)
 		expect(w?.opts.args).toContain("--model");
@@ -668,7 +674,12 @@ describe("PijSession.spawn", () => {
 			models: [model("github-copilot"), model("copilot"), model("codex")],
 		});
 		h.session.boot(bootInput());
-		const result = h.session.spawn({ cwd: "/repo", model: "gpt-5.6-sol", layout: "window" });
+		const result = h.session.spawn({
+			harness: "pi",
+			cwd: "/repo",
+			model: "gpt-5.6-sol",
+			layout: "window",
+		});
 		expect(result).toMatchObject({ ok: true });
 		if (!result.ok) return;
 		expect(result.value.notice).toContain("defaulting");
@@ -680,7 +691,7 @@ describe("PijSession.spawn", () => {
 	it("does NOT set PIJ_PANE_ID in child env (§H1: child reads $TMUX_PANE)", () => {
 		const h = harness();
 		h.session.boot(bootInput());
-		h.session.spawn({ cwd: "/repo", layout: "window" });
+		h.session.spawn({ harness: "pi", cwd: "/repo", layout: "window" });
 		const w = h.tmux.windows[0];
 		expect(w?.opts.env.PIJ_PANE_ID).toBeUndefined();
 	});
@@ -688,7 +699,7 @@ describe("PijSession.spawn", () => {
 	it("passes task via PIJ_SPAWN_TASK env (finding 01 / CF-01)", () => {
 		const h = harness();
 		h.session.boot(bootInput());
-		h.session.spawn({ cwd: "/repo", task: "do the thing", layout: "window" });
+		h.session.spawn({ harness: "pi", cwd: "/repo", task: "do the thing", layout: "window" });
 		const w = h.tmux.windows[0];
 		expect(w?.opts.env.PIJ_SPAWN_TASK).toBe("do the thing");
 	});
@@ -696,7 +707,7 @@ describe("PijSession.spawn", () => {
 	it("returns E-NOTMUX when not inside a tmux session (§M5 / F004 / AC-07)", () => {
 		const h = harness({ tmux: new FakeTmux({ sessionName: null }) });
 		h.session.boot(bootInput());
-		const r = h.session.spawn({ cwd: "/repo" });
+		const r = h.session.spawn({ harness: "pi", cwd: "/repo" });
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
 		expect(r.code).toBe("E-NOTMUX");
@@ -714,7 +725,7 @@ describe("PijSession.spawn", () => {
 		tmux.newWindow = () => err("E-NOTMUX", "injected launch failure");
 		const h = harness({ expectations, tmux });
 		h.session.boot(bootInput());
-		const result = h.session.spawn({ cwd: "/repo", layout: "window" });
+		const result = h.session.spawn({ harness: "pi", cwd: "/repo", layout: "window" });
 		expect(result).toMatchObject({ ok: false, code: "E-NOTMUX" });
 		expect(expectations.list().map((item) => item.spawnId)).toEqual(["sentinel"]);
 	});
@@ -735,7 +746,7 @@ describe("PijSession.spawn", () => {
 	it("DEFAULT (no layout) → split -h (~1/3 right column) on the current pane, no window", () => {
 		const h = harness();
 		h.session.boot(bootInput());
-		const r = h.session.spawn({ cwd: "/repo" });
+		const r = h.session.spawn({ harness: "pi", cwd: "/repo" });
 		expect(r.ok).toBe(true);
 		expect(h.tmux.windows).toHaveLength(0); // stack is the default, not a window
 		expect(h.tmux.splits).toHaveLength(1);
@@ -753,7 +764,7 @@ describe("PijSession.spawn", () => {
 			tmux: new FakeTmux({ currentPane: "%500", windowPanes: ["%901"] }),
 		});
 		h.session.boot(bootInput());
-		const r = h.session.spawn({ cwd: "/repo", layout: "split" });
+		const r = h.session.spawn({ harness: "pi", cwd: "/repo", layout: "split" });
 		expect(r.ok).toBe(true);
 		const s = h.tmux.splits[0];
 		expect(s?.opts.direction).toBe("v");
@@ -768,7 +779,7 @@ describe("PijSession.spawn", () => {
 			tmux: new FakeTmux({ currentPane: "%500", windowPanes: ["%901", "%902"] }),
 		});
 		h.session.boot(bootInput());
-		const r = h.session.spawn({ cwd: "/repo", layout: "split" });
+		const r = h.session.spawn({ harness: "pi", cwd: "/repo", layout: "split" });
 		expect(r.ok).toBe(true);
 		const s = h.tmux.splits[0];
 		expect(s?.opts.direction).toBe("v");
@@ -782,7 +793,7 @@ describe("PijSession.spawn", () => {
 			tmux: new FakeTmux({ currentPane: "%500", windowPanes: [] }),
 		});
 		h.session.boot(bootInput());
-		const r = h.session.spawn({ cwd: "/repo", layout: "split" });
+		const r = h.session.spawn({ harness: "pi", cwd: "/repo", layout: "split" });
 		expect(r.ok).toBe(true);
 		expect(h.tmux.splits[0]?.opts.direction).toBe("h"); // still the first column
 	});
@@ -792,14 +803,14 @@ describe("PijSession.spawn", () => {
 		// registry is empty here. The parent must still stack #2 on #1 and #3 on #2.
 		const h = harness();
 		h.session.boot(bootInput());
-		const r1 = h.session.spawn({ cwd: "/repo", layout: "split" });
-		const r2 = h.session.spawn({ cwd: "/repo", layout: "split" });
+		const r1 = h.session.spawn({ harness: "pi", cwd: "/repo", layout: "split" });
+		const r2 = h.session.spawn({ harness: "pi", cwd: "/repo", layout: "split" });
 		expect(r1.ok && r2.ok).toBe(true);
 		if (!r1.ok || !r2.ok) return;
 		expect(h.tmux.splits[0]?.opts.direction).toBe("h"); // #1 = right column
 		expect(h.tmux.splits[1]?.opts.direction).toBe("v"); // #2 = stacked on #1
 		expect(h.tmux.splits[1]?.opts.target).toBe(r1.value.paneId);
-		const r3 = h.session.spawn({ cwd: "/repo", layout: "split" });
+		const r3 = h.session.spawn({ harness: "pi", cwd: "/repo", layout: "split" });
 		expect(r3.ok).toBe(true); // uncapped — #3 stacks below #2
 		if (!r3.ok) return;
 		expect(h.tmux.splits[2]?.opts.direction).toBe("v");

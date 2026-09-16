@@ -2,7 +2,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import type { WatchDeps } from "../../../file-watch-notify/watcher.js";
+import type { WatchDeps } from "../../../../../.pi/extensions/file-watch-notify/watcher.js";
 import { FsChannel } from "../../adapters/channel.js";
 import { FakeDelivery } from "../../adapters/fakes.js";
 import { FsRegistry } from "../../adapters/fs-registry.js";

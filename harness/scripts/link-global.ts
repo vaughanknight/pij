@@ -18,6 +18,7 @@ import {
 	readFileSync,
 	readlinkSync,
 	renameSync,
+	statSync,
 	symlinkSync,
 	unlinkSync,
 	writeFileSync,
@@ -66,7 +67,7 @@ function sourceExtensions(sourceRoot: string, filter?: string): string[] {
 	return entries
 		.filter((name) => {
 			if (filter && name !== filter) return false;
-			return lstatSync(join(sourceRoot, name), { throwIfNoEntry: false })?.isDirectory() === true;
+			return statSync(join(sourceRoot, name), { throwIfNoEntry: false })?.isDirectory() === true;
 		})
 		.sort();
 }

@@ -7,6 +7,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::model::Harness;
+
 /// Which implementation to wire behind a port.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -64,6 +66,9 @@ pub struct PeerDefinition {
 pub struct Config {
     /// Which implementation each port gets.
     pub adapters: Adapters,
+    /// Harnesses refused for new spawns unless the caller explicitly allows them.
+    /// Empty by default; the daemon composition root reads `PIJ_RETIRED_HARNESSES`.
+    pub retired_harnesses: Vec<Harness>,
     /// Where the daemon listens. Loopback only: the bearer key is a second lock,
     /// not the first one.
     pub bind_addr: String,
@@ -153,6 +158,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             adapters: Adapters::default(),
+            retired_harnesses: Vec::new(),
             bind_addr: "127.0.0.1:0".to_string(),
             store_path: String::new(),
             watchdog_interval_secs: 20 * 60,

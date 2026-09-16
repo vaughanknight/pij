@@ -85,6 +85,102 @@ fn launch_env(call: &str, key: &str) -> Option<String> {
     (!value.is_empty()).then(|| value.to_string())
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shipped_cli_retired_policy_requires_explicit_override_and_records_event() {
+    let dir = fresh_dir("pij-retired-spawn-e2e");
+    std::fs::write(dir.join("daemon.key"), "retired-test-key").expect("write client key");
+    let policy = Config {
+        retired_harnesses: vec![Harness::Pi],
+        ..Config::default()
+    };
+    let mut services = pij_daemon::build_services(&policy, &dir.join("pane-signals"))
+        .await
+        .expect("fake services");
+    let registry = services.registry.clone();
+    let spine = services.spine.clone();
+    let tmux = Arc::new(FakeTmux::new());
+    services.tmux = tmux.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind server");
+    let addr = listener.local_addr().expect("server address").to_string();
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            router_with_config(
+                services,
+                HttpConfig {
+                    local_key: "retired-test-key".to_string(),
+                    peer_keys: Vec::new(),
+                    machine_alias: "test-machine".to_string(),
+                },
+            ),
+        )
+        .await
+        .expect("serve router");
+    });
+    let mut args = vec![
+        "spawn",
+        "--id",
+        "pij-retired-cli",
+        "--harness",
+        "pi",
+        "--cwd",
+        dir.to_str().expect("UTF-8 cwd"),
+        "--session",
+        "fleet",
+        "--no-wait",
+    ];
+    let refused = run_cli_with_env(&dir, &addr, &args, [("PIJ_RETIRED_HARNESSES", "")]);
+    assert_eq!(refused.status.code(), Some(2));
+    let refused: Envelope<serde_json::Value> =
+        serde_json::from_slice(&refused.stdout).expect("refusal envelope");
+    assert_eq!(
+        refused.meta.as_deref(),
+        Some("harness pi is retired on this machine; use omp (or pass --allow-retired)")
+    );
+    assert!(tmux.calls().is_empty());
+    assert!(
+        registry
+            .get(&"pij-retired-cli".into())
+            .await
+            .expect("registry read")
+            .is_none()
+    );
+
+    args.extend(["--allow-retired", "--bin", "/opt/harnesses/pi"]);
+    let accepted = run_cli(&dir, &addr, &args);
+    assert!(
+        accepted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&accepted.stdout)
+    );
+    let accepted: Envelope<SeatDescriptor> =
+        serde_json::from_slice(&accepted.stdout).expect("spawn envelope");
+    let seat = accepted.data.expect("spawned descriptor");
+    assert_eq!(seat.harness, Harness::Pi);
+    let calls = tmux.calls();
+    assert_eq!(calls.len(), 1);
+    assert!(calls[0].contains("/opt/harnesses/pi"));
+    let events: Vec<_> = spine
+        .tail(Some(&seat.id), Seq(0))
+        .await
+        .expect("spine read")
+        .into_iter()
+        .filter(|event| event.kind == "spawn.retired-harness-override")
+        .collect();
+    assert_eq!(events.len(), 1);
+    let payload: serde_json::Value =
+        serde_json::from_str(&events[0].payload).expect("override payload");
+    assert_eq!(payload["harness"], "pi");
+    assert_eq!(payload["allow_retired"], true);
+    assert_eq!(
+        payload["spawn_id"],
+        seat.spawn_id.expect("spawn correlator")
+    );
+    server.abort();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shipped_spawn_revive_and_registration_do_not_attest_native_delivery() {
     let dir = fresh_dir("pij-spawn-e2e");
     std::fs::write(dir.join("daemon.key"), "spawn-test-key").expect("write client key");

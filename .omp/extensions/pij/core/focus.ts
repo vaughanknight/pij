@@ -307,6 +307,7 @@ export function launchFocus(input: LaunchFocusInput, deps: FocusLaunchDeps): Res
 	let command: SpawnCommand;
 	if (manifest.harness === "pi") {
 		command = buildPiFocusSpawnCommand({
+			harness: "pi",
 			spawnId: token,
 			announceTo: input.parentId ?? "",
 			cwd: input.launchCwd,

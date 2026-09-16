@@ -29,6 +29,8 @@ export interface HealthPayload {
 	readonly build: string;
 	readonly offline: boolean;
 	readonly machine: string;
+	/** Absent on older daemons; absence is not permission to launch. */
+	readonly retired_harnesses?: readonly Registration["harness"][];
 }
 
 export interface Registration {

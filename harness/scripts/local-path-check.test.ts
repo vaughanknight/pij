@@ -11,9 +11,11 @@ describe("local-path-check", () => {
 	it("scans operational surfaces and excludes tests, fixtures, and snapshots", () => {
 		expect(shouldScanFile("justfile")).toBe(true);
 		expect(shouldScanFile(".pi/extensions/pij/cli.ts")).toBe(true);
+		expect(shouldScanFile(".omp/extensions/pij/cli.ts")).toBe(true);
 		expect(shouldScanFile("harness/scripts/tool.sh")).toBe(true);
 		expect(shouldScanFile("skills/pij/SKILL.md")).toBe(true);
 		expect(shouldScanFile(".pi/extensions/pij/cli.test.ts")).toBe(false);
+		expect(shouldScanFile(".omp/extensions/pij/cli.test.ts")).toBe(false);
 		expect(shouldScanFile("harness/fixtures/output.json")).toBe(false);
 		expect(shouldScanFile("agents/a/__snapshots__/run.json")).toBe(false);
 		expect(shouldScanFile("agents/a/.minih-source.json")).toBe(false);

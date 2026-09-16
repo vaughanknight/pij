@@ -1,6 +1,6 @@
 ---
 name: pij
-description: Route pij platform jobs — adopt a seat and wait (/pij ready), spawn & talk to tmux colleagues (claude/copilot/codex/pi peers), run flow-pair coder+reviewer delegation fleets, delegate single tasks, run pij agent packs (flowspace-search etc.), run an installed skill in a peer (/validate-v2, /thesis…) with the result pushed back, manage the pij daemon and tmux/registry hygiene. Use when the user says "pij ready", "adopt and wait", "spawn a peer/colleague/worker", "flow-pair", "delegate this", "run an agent", "have a peer run /X", "pij daemon", or any pij orchestration ask.
+description: Route pij platform jobs — adopt a seat and wait (/pij ready), spawn & talk to tmux colleagues (OMP, Pi, Claude, Copilot and Codex peers), run flow-pair coder+reviewer delegation fleets, delegate single tasks, run pij agent packs (flowspace-search etc.), run an installed skill in a peer (/validate-v2, /thesis…) with the result pushed back, manage the pij daemon and tmux/registry hygiene. Use when the user says "pij ready", "adopt and wait", "spawn a peer/colleague/worker", "flow-pair", "delegate this", "run an agent", "have a peer run /X", "pij daemon", or any pij orchestration ask.
 ---
 
 # /pij — the pij platform router
@@ -77,7 +77,7 @@ primitive. `baton` is the other orchestration subcommand.
 
 | typed / intent | resolves to |
 |---|---|
-| "adopt your window and wait" / "report ready; prime will contact shortly" | `/pij ready`; pi/omp replies `Ready.` and STOPS — run NO pij identity command (no adopt, no inbox register) |
+| "adopt your window and wait" / "report ready; prime will contact shortly" | `/pij ready`; extension-owned seats reply `Ready.` and STOP — run NO pij identity command (no adopt, no inbox register); C1 identifies each harness's receiver |
 | `/flow-pair start\|dispatch\|observe\|review\|fix\|accept\|ledger\|learn …` | `/pij pair …` (same args) |
 | "spawn a worker / colleague / peer" | `/pij peer` |
 | "run flowspace search" / "ask an agent" | `/pij agent` |

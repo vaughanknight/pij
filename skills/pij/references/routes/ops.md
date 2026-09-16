@@ -13,6 +13,8 @@ pij-rs daemon --bind <host:port>           # foreground service; use an owned su
 
 Use native `pij-rs daemon --help` for the installed lifecycle grammar. Do not substitute the former `pij daemon start/stop/kill` commands or assume spawn auto-starts a daemon. Rust changes require a rebuilt binary and an **authorized** restart (§ C6), not tsx hot-reload. Production rebuild/bounce and acceptance are prime-owned. An unavailable daemon or bearer credential is a real error, never permission to inspect/mutate a legacy store.
 
+`PIJ_RETIRED_HARNESSES` is daemon-owned, comma-separated configuration with an empty generic default. Only this machine's `just bounce-rs` recipe opts into `pi`; do not treat that as a global Pi ban or set extension-local policy. `GET /health` exposes `data.retired_harnesses` for in-process spawn's pre-mutation policy check. Native `pij-rs spawn --harness pi --allow-retired …` is the explicit audited override, not an executable switch. See the [spawn contract](../../../../docs/how/pij-rs-api.md#spawn-harness-choice-and-retirement-policy); this guidance does not authorize a production bounce.
+
 Every fixture daemon **and client** must use the same private port, state directory, HOME, CLAUDE_CONFIG_DIR, XDG_CONFIG_HOME and private tmux socket. Canonical isolation recipe: `crates/testkit/fixtures/golden/api/governance-routes.json#isolation`. Never use production port 7461 or a shared tmux tap for a fixture. Canonical examples are not new runtime captures.
 
 ## Read the rs store, not legacy descriptors

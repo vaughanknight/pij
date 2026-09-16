@@ -16,7 +16,7 @@ export const DEFAULT_SPAWN_EXPECTATION_TTL_MS = 5 * 60 * 1000;
 export interface CreateSpawnExpectationInput {
 	readonly spawnId: string;
 	readonly creatorId?: string;
-	readonly requestedHarness: HarnessKind;
+	readonly requestedHarness: HarnessKind | "omp";
 	readonly requestedAt: string;
 	/** Producer-stamped deadline; callers use {@link spawnExpectationDeadline}.
 	 * Optional only for legacy fixture compatibility; production callers pass it. */

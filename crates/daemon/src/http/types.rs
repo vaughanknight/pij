@@ -97,7 +97,10 @@ pub struct SpawnRequest {
     pub id: Option<SeatId>,
     /// Harness to launch.
     pub harness: Harness,
-    /// Executable override from `--bin`.
+    /// Explicitly override this machine's retired-harness spawn policy.
+    #[serde(default)]
+    pub allow_retired: bool,
+    /// Absolute executable-path override from `--bin`, never a harness selector.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub executable: Option<String>,
     /// Exact requested model selector.

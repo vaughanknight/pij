@@ -1109,6 +1109,7 @@ describe("spawn exemption parsing", () => {
 		});
 		expect(
 			buildSpawnCommand({
+				harness: "pi",
 				spawnId: "s1",
 				announceTo: "owner",
 				cwd: "/repo",

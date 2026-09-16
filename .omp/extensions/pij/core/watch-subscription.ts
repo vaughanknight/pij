@@ -1,6 +1,6 @@
 import picomatch from "picomatch";
 
-import { type Change, formatRanges } from "../../file-watch-notify/store.js";
+import { type Change, formatRanges } from "../../../../.pi/extensions/file-watch-notify/store.js";
 import type { WatchMode, WatchSubscription } from "./types.js";
 
 export interface ParsedWatch {

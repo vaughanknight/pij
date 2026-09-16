@@ -32,6 +32,7 @@ import {
 	buildSpawnCommand,
 	readyBody,
 	resolvePiModelBinding,
+	type SpawnHarness,
 	STACK_COLUMN_PERCENT,
 } from "./spawn.js";
 import {
@@ -94,6 +95,8 @@ export interface PijPorts {
 /** Input to PijSession.spawn(). The session generates spawnId + announceTo
  *  internally; callers supply task/model/cwd. */
 export interface SpawnOpts {
+	/** Required harness; external runtimes use the native daemon launch path. */
+	readonly harness: SpawnHarness;
 	/** Optional model override for the worker (passed via --model + PIJ_SPAWN_MODEL). */
 	readonly model?: string;
 	/** Optional reasoning effort pinned for the worker. */
@@ -335,6 +338,11 @@ export class PijSession {
 	 *  (fire-and-forget: the child's ready-ping arrives via the delivery channel
 	 *  once it has booted). */
 	spawn(opts: SpawnOpts): Result<{ spawnId: string; paneId: string; notice?: string }> {
+		if (opts.harness !== "pi" && opts.harness !== "omp")
+			return err(
+				"E-ARG",
+				"local spawn requires --harness omp or pi; other harnesses require the Rust daemon",
+			);
 		const binding = resolvePiModelBinding(opts.model, this.ports.models ?? []);
 		if (!binding.ok) return binding;
 		// §M5: E-NOTMUX lives here (P8-testable against FakeTmux)
@@ -347,13 +355,14 @@ export class PijSession {
 		const expectation = createSpawnExpectation({
 			spawnId,
 			creatorId: this.self,
-			requestedHarness: "pi",
+			requestedHarness: opts.harness,
 			requestedAt,
 			deadlineAt: spawnExpectationDeadline(requestedAt),
 		});
 		// Persist intent before opening a pane: a vanished child may never produce a descriptor.
 		this.ports.expectations?.write(expectation);
 		const spawnCmd = buildSpawnCommand({
+			harness: opts.harness,
 			model: binding.value.model,
 			provider: binding.value.provider,
 			effort: opts.effort,

@@ -2,18 +2,18 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import type { Change } from "../../../file-watch-notify/store.js";
+import type { Change } from "../../../../../.pi/extensions/file-watch-notify/store.js";
 import {
 	compileWatch,
 	DEFAULT_IGNORE,
 	DEFAULT_NOTICE,
 	WatchReconciler,
-} from "../../../file-watch-notify/store.js";
+} from "../../../../../.pi/extensions/file-watch-notify/store.js";
 import {
 	FolderWatcher,
 	nodeWatchDeps,
 	type WatchDeps,
-} from "../../../file-watch-notify/watcher.js";
+} from "../../../../../.pi/extensions/file-watch-notify/watcher.js";
 import { resolvePijHome } from "../agents/paths.js";
 import type { DeliveryPort } from "../ports.js";
 import type { SessionDescriptor, SessionId, WatchSubscription } from "../types.js";
