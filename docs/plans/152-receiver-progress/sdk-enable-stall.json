@@ -1,0 +1,21 @@
+{
+  "classification": "Candidate H1 shared SDK session-refresh/read blockage; not proven to be koi's production mechanism",
+  "trigger": "After controlled H2 recovery, disable user:pij via session.rpc.extensions.disable, wait for lease expiry, perform manual inbox recovery, then enable user:pij via session.rpc.extensions.enable from the private companion while the same Copilot host/session stays alive.",
+  "runtime": "1.0.84-9",
+  "history_bytes": 105037242,
+  "history_events": 25010,
+  "host_pid": 27791,
+  "replacement_extension_pid": 92668,
+  "session": "b554b56b-97a8-4b43-817c-8acf478602ef",
+  "rpc": "eventLog.read({direction:'backward',max:128,includeEphemeral:false})",
+  "configured_deadline_ms": 15000,
+  "registered_at": "2026-09-16T05:26:38.609Z",
+  "receive_held_at": "2026-09-16T05:26:53.612Z",
+  "registered_to_held_ms": 15003,
+  "safeDiagnostic": "eventLog.read deadline exceeded (15000ms)",
+  "observed_after_deadline": "The private adapter logged real-backward-recovery with 128 events after receive-held; exact later latency was not recorded. No lease renewal or message reinjection followed.",
+  "production_relation": "Koi's old receiver had no per-call deadline, so this class of blocked read could present as silent waiting. Its incident followed abort/model change, not an observed explicit SDK enable. The shared mechanism, whether cleanup unblocked the read, and permanent versus transient waiting remain unproven.",
+  "confounders": "Isolated deterministic provider, synthetic history, and controlled callback/old-cursor fault adapter; backward reads themselves call the actual SDK without injected delay.",
+  "repro_cwd": "/Users/jordanknight/pi-hacking/fs3-receiver-progress",
+  "repro": "just copilot-native-progress-smoke --large-history --inject-empty-cursor --copilot-bin \"$HOME/.local/bin/copilot\" --copilot-runtime-dir \"$HOME/.copilot/pkg/darwin-arm64/1.0.84-9\""
+}

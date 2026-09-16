@@ -1,0 +1,1 @@
+{"ok":true,"command":"pij inbox","v":2,"data":[{"from":"pij-printed-ziller","to":"pij-realistic-gamefowl","body":"PIJ_PROGRESS_MANUAL. Reply exactly PIJ_NATIVE_OBSERVED. Do not call tools.","msg_id":"9da71965-1e06-4e62-a5ac-79460446ea14"}],"meta":"native-receiver-stale","details":{"native_receiver_reason":"native-receiver-stale"}}

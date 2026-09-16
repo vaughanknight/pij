@@ -1,0 +1,11 @@
+=== launch pid=92668 module=/Users/jordanknight/pi-hacking/fs3-receiver-progress/docs/plans/152-receiver-progress/evidence/ac5-recycle-verified/runtime/home/.copilot/extensions/pij/extension.mjs ===
+[extension-fork] resolveBootstrapPath: __dir=/Users/jordanknight/pi-hacking/fs3-receiver-progress/docs/plans/152-receiver-progress/evidence/ac5-recycle-verified/runtime/home/.copilot/pkg/darwin-arm64/1.0.84-9, argv-bootstrap=/Users/jordanknight/pi-hacking/fs3-receiver-progress/docs/plans/152-receiver-progress/evidence/ac5-recycle-verified/runtime/home/.copilot/pkg/darwin-arm64/1.0.84-9/preloads/extension_bootstrap.mjs
+[extension-fork] resolveBootstrapPath: localBootstrap=/Users/jordanknight/pi-hacking/fs3-receiver-progress/docs/plans/152-receiver-progress/evidence/ac5-recycle-verified/runtime/home/.copilot/pkg/darwin-arm64/1.0.84-9/preloads/extension_bootstrap.mjs, localExists=true
+[extension-bootstrap] starting: pid=92668, COPILOT_SDK_PATH=/Users/jordanknight/pi-hacking/fs3-receiver-progress/docs/plans/152-receiver-progress/evidence/ac5-recycle-verified/runtime/home/.copilot/pkg/darwin-arm64/1.0.84-9/copilot-sdk, EXTENSION_PATH=/Users/jordanknight/pi-hacking/fs3-receiver-progress/docs/plans/152-receiver-progress/evidence/ac5-recycle-verified/runtime/home/.copilot/extensions/pij/extension.mjs, SESSION_ID=b554b56b-97a8-4b43-817c-8acf478602ef
+[extension-bootstrap] importing extension: /Users/jordanknight/pi-hacking/fs3-receiver-progress/docs/plans/152-receiver-progress/evidence/ac5-recycle-verified/runtime/home/.copilot/extensions/pij/extension.mjs
+[extension-resolver] resolver hook loaded: pid=92668, COPILOT_SDK_PATH=/Users/jordanknight/pi-hacking/fs3-receiver-progress/docs/plans/152-receiver-progress/evidence/ac5-recycle-verified/runtime/home/.copilot/pkg/darwin-arm64/1.0.84-9/copilot-sdk
+=== ready ===
+[pij-native] {"at":"2026-09-16T05:26:38.609Z","kind":"registered","seat":"pij-practical-barnacle","nativeSession":"b554b56b-97a8-4b43-817c-8acf478602ef","pid":27791,"procStart":20260916152536,"pane":"%2"}
+[pij-native] {"at":"2026-09-16T05:26:53.612Z","kind":"receive-held","holdKind":null,"safeDiagnostic":"eventLog.read deadline exceeded (15000ms)","retryMs":null}
+[pij-smoke-fault] {"kind":"real-backward-recovery","events":128}
+=== exit code=0 disposition=stopped-normally ===

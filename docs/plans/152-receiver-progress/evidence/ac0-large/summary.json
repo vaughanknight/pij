@@ -1,0 +1,106 @@
+{
+  "status": "passed",
+  "started": "2026-09-16T04:21:42.916Z",
+  "finished": "2026-09-16T04:21:53.095Z",
+  "runtime": "1.0.84-9",
+  "subject": {
+    "node": "v24.7.0",
+    "pij": "pij-rs 0.1.0",
+    "pij_binary": "/Users/jordanknight/pi-hacking/fs3-receiver-progress/target/pij152-baseline",
+    "pij_sha256": "6b36b50d45d521b178278d513ff368c847b4837c85c9112bbceaa9f5a01f4ee9",
+    "copilot": "GitHub Copilot CLI 1.0.84-9.\nRun 'copilot update' to check for updates.",
+    "copilot_binary": "/Users/jordanknight/.local/bin/copilot",
+    "copilot_sha256": "02c95ab4968b2653f92cbdc664e7a7bf0d18bb0292896d2a2e7eda1edc5444c1",
+    "source_modules": {
+      "extension.mjs": "82d86ff3219e11600bd02e07ba0db3631de7e525b1a99e2f7a8aec987f74bbe4",
+      "store.mjs": "47f089f0557056840d2f0f33d639b03fd9b1c2289a94a62ecba23fd1e4c4f1ee"
+    }
+  },
+  "daemon": "127.0.0.1:62659",
+  "history": {
+    "path": "/Users/jordanknight/pi-hacking/fs3-receiver-progress/docs/plans/152-receiver-progress/evidence/ac0-large/runtime/home/.copilot/session-state/c894228d-2e6b-42ba-9c7c-618154cae161/events.jsonl",
+    "bootstrap_events": 8,
+    "synthetic_events": 25002,
+    "total_events": 25010,
+    "bytes": 105037242,
+    "sha256": "d0877716365ccd36aad5c512ccfa41a4eb0023fedcef9cf86b7956a692795668",
+    "last_event_id": "a2f8eaa7-b6e4-4f3c-a1a9-915a1fd099b0",
+    "format": "real bootstrap event templates + chained synthetic user/assistant events + supported successful compaction summary",
+    "inference": "synthetic history, not a claim of 12500 real inference turns"
+  },
+  "abort_control": "Esc produced no abort; Ctrl-C fallback",
+  "model_change": {
+    "at": "2026-09-16T04:21:50.443Z",
+    "elapsed_ms": 2310,
+    "changed": {
+      "id": "04e69bbc-b709-488a-9776-5225ec3217c2",
+      "type": "session.model_change",
+      "data": {
+        "source": "model_picker",
+        "contextTier": null,
+        "newModel": "progress-local/pij-progress-alternate",
+        "previousModel": "progress-local/pij-native-fixture",
+        "reasoningEffort": null
+      }
+    }
+  },
+  "next_accepted": true,
+  "reads": [
+    {
+      "at": "2026-09-16T04:21:49.226Z",
+      "elapsed_ms": 0,
+      "events": 0,
+      "cursor": "14db62b3-d474-4274-a0b9-b0e4be278cfb|25023",
+      "status": "ok"
+    },
+    {
+      "at": "2026-09-16T04:21:49.249Z",
+      "elapsed_ms": 1,
+      "events": 3,
+      "cursor": "d67e5ea5-7e90-4290-bc4e-0f5f6a4c853f|25031",
+      "status": "ok"
+    },
+    {
+      "at": "2026-09-16T04:21:49.502Z",
+      "elapsed_ms": 1,
+      "events": 0,
+      "cursor": "d67e5ea5-7e90-4290-bc4e-0f5f6a4c853f|25031",
+      "status": "ok"
+    },
+    {
+      "at": "2026-09-16T04:21:50.005Z",
+      "elapsed_ms": 1,
+      "events": 0,
+      "cursor": "d67e5ea5-7e90-4290-bc4e-0f5f6a4c853f|25031",
+      "status": "ok"
+    },
+    {
+      "at": "2026-09-16T04:21:51.006Z",
+      "elapsed_ms": 1,
+      "events": 0,
+      "cursor": "d67e5ea5-7e90-4290-bc4e-0f5f6a4c853f|25031",
+      "status": "ok"
+    },
+    {
+      "at": "2026-09-16T04:21:52.797Z",
+      "elapsed_ms": 0,
+      "events": 0,
+      "cursor": "3a7c00bd-dca7-4ba2-8def-3820ef60f8f0|25051",
+      "status": "ok"
+    },
+    {
+      "at": "2026-09-16T04:21:52.816Z",
+      "elapsed_ms": 1,
+      "events": 3,
+      "cursor": "712a0b1b-abc8-437d-ac17-f09f9b942cd2|25059",
+      "status": "ok"
+    }
+  ],
+  "max_read_ms": 1,
+  "mechanism_reproduced": false,
+  "cleanup": {
+    "owned_tmux_stopped": true,
+    "owned_daemon_stopped": true,
+    "retained": "Plan-local isolated runtime retained for evidence; daemon key and synthetic history stay inside private runtime directory. No production/global configuration was changed."
+  }
+}
