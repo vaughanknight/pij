@@ -1,32 +1,23 @@
 COMMAND: just self-check
 EXIT: 0
-just local-path-check
-just lockfile-allowlist
-just typecheck
-just lint
-Checked 543 files in 231ms. No fixes applied.
-just test
+Checked 543 files in 273ms. No fixes applied.
  Test Files  241 passed | 4 skipped (245)
       Tests  5308 passed | 22 skipped (5330)
-just copilot-native-test
 ℹ tests 2
+ℹ suites 0
 ℹ pass 2
 ℹ fail 0
 ℹ skipped 0
 ℹ tests 230
+ℹ suites 0
 ℹ pass 227
 ℹ fail 0
 ℹ skipped 3
-just windows-compat
-Checked 543 files in 245ms. No fixes applied.
+Checked 543 files in 228ms. No fixes applied.
  Test Files  4 passed (4)
       Tests  84 passed | 2 skipped (86)
-windows-compat: all portable stages passed.
-just smoke
-smoke: pij-team-scaffold ... {"smoke":"paneless-external","from":"pij-of-course-i-still-love-you","to":"pij-quintessential-trout","senderHost":{"pid":6185,"proc_start":20260916152112},"recipientHost":{"pid":6208,"proc_start":20260916152112},"sent":"103948993aafc352-0000000000000000","reply":"103948993aafc352-0000000000000001","modelCanary":"unproven-protocol-hosts"}
-✓
+smoke: pij-team-scaffold ... {"smoke":"paneless-external","from":"pij-chilly-sabrina","to":"pij-collective-jerusalem","senderHost":{"pid":12007,"proc_start":20260916160530},"recipientHost":{"pid":12061,"proc_start":20260916160530},"sent":"ab891d067547ef6d-0000000000000000","reply":"ab891d067547ef6d-0000000000000001","modelCanary":"unproven-protocol-hosts"}
 smoke: pij-watchdog ... {"smoke":"watchdog-refusal","code":"E-RS-UNPORTED","cursor":4,"forcedLegacy":"refused","mutation":"none"}
-✓
 smoke: file-watch-notify ... ✓
 smoke: image-see ... ✓
 smoke: minih-workbench ... ✓
@@ -36,10 +27,29 @@ smoke: ralph-loop_compact-survival ... ✓
 smoke: session-sql ... ✓
 smoke: skill-runner ... ✓
 smoke: todo ... ✓
-✗ aggregate: fail (score=58, findings=20, 4845ms)
+✗ aggregate: fail (score=58, findings=20, 4646ms)
+  · scorecard:not-found: no Scorecard data for npm/%40tintinweb%2Fpi-subagents (404)
+  · vetter:meta: agent skipped: PIJ_VET_SKIP_AGENT=1
+
+⚠ REVIEW (report-only, not blocking): 1/4 entry flagged — aggregate fail
   • git:github.com/ghoseb/pi-askuserquestion: fail (4 fail, 13 warn) — keep, or: npm run pkg disable git:github.com/ghoseb/pi-askuserquestion
 just snapshots-check
+npm run snapshots:check
+
+> pij@0.1.0 snapshots:check
+> tsx harness/scripts/snapshot-check.ts
+
 ✓ snapshot-check: briefing.md SHA matches snapshots (cdf5f5b25001...)
 just pij-commit-trailers
-pij-commit-trailers: warn — 1 missing across 1 harness commit(s) since merge-base with main
+node_modules/.bin/tsx harness/scripts/pij-commit-trailers.ts "$@"
+pij-commit-trailers: warn — 3 missing across 3 harness commit(s) since merge-base with main
+86ed585c6ee8b092119a5c0305fe42d88c2c5847: missing Pij-Prime
+  Pij-Prime: cannot derive commit-time identity; do not substitute the current seat
+6b908fd6546477f7cf6fe09b46c8e1ccaeae8498: missing Pij-Prime
+  Pij-Prime: cannot derive commit-time identity; do not substitute the current seat
 d64fa0e4e329b339cc8404efabdcab670ca606b2: missing Pij-Prime
+  Pij-Prime: cannot derive commit-time identity; do not substitute the current seat
+86ed585c6ee8b092119a5c0305fe42d88c2c5847: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime
+6b908fd6546477f7cf6fe09b46c8e1ccaeae8498: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime
+d64fa0e4e329b339cc8404efabdcab670ca606b2: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime
+Advisory only: add derived trailers after a blank line alongside harness attribution; do not rewrite shared history automatically.

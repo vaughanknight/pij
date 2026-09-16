@@ -1,0 +1,22 @@
+COMMAND: /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --lib native_session_resume_lifts_tombstone_and_publishes_incarnation_change -- --nocapture
+EXIT: 101
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.31s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-043514ab0ddb16b1)
+
+running 1 test
+test registration::tests::native_session_resume_lifts_tombstone_and_publishes_incarnation_change ... 
+thread 'registration::tests::native_session_resume_lifts_tombstone_and_publishes_incarnation_change' (72011507) panicked at crates/daemon/src/registration.rs:2052:9:
+assertion `left == right` failed: one fact per native transition
+  left: ["seat.resumed", "seat.native-resumed"]
+ right: ["seat.native-resumed"]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    registration::tests::native_session_resume_lifts_tombstone_and_publishes_incarnation_change
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 417 filtered out; finished in 0.02s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

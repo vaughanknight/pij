@@ -1,6 +1,8 @@
 # Plan154 — successful registration clears tombstones
 
-**Source commit:** `6d90798697ce138a1ec1676eb13a356452e7af2c`.
+**Initial source commit:** `6d90798697ce138a1ec1676eb13a356452e7af2c`; review fixes are recorded below.
+
+**Review-fix source commit:** `14697256e4a9190114962233004d33e4bef3f1b9`.
 
 Baseline: `d64fa0e4e329b339cc8404efabdcab670ca606b2` (packet on main1fd636c4). Worktree `fs3-tombstone-lift`; production daemon untouched. Prime owns plan reconciliation, push, PR and merge.
 
@@ -23,6 +25,7 @@ retired_registration_refuses_foreign_session_without_writing: HTTP200 != HTTP400
 ```
 
 The foreign response was an actual decoded HTTP envelope (`v:2`, `command:"pij register"`, `ok:true`, `binding:"rebound"`), already rewritten to session `foreign-omp-session`, process155/start2, folder `/abs/other-tree` and parent `pij-new-parent`, while still tombstoned at154. Unit sensor identities are injected, not actual OMP hosts. [red-invariant.log](red-invariant.log) and [red-registration.log](red-registration.log) retain bounded command/exit output.
+`red-invariant.log` stops at its first failing case (`Omp/retired`); `red-registration.log` supplies the remaining per-harness REDs rather than implying that the first panic exercised the entire matrix.
 
 The independent spawn-continuity witness also failed `Some(154) != None`. Missing/foreign-continuity claims incorrectly returned `Ok` with the retired row rewritten. The role-override witness hit a distinct existing failure: `E-RS-PARTIAL registration ... persisted but role assertion failed ... E-RS-ARG`, because the rewritten subject remained retired; this is not the four harnesses' tombstone-assertion RED.
 
@@ -36,7 +39,7 @@ Prime approved cold private-tmux restart: the reaper's pane-presence check is a 
 
 `green-registration.log`: exit0,9 passed (the eight new retired-address witnesses plus the preserved Copilot relabel refusal). `green-invariant.log`: exit0,1 test passed, exercising15 successful new/live/retired registrations across omp, pi, claude, codex and Copilot. All four requested harness witnesses observe live rows, new process/pane, preserved parent, authoritative role and Telegram binding, and `seat.resumed{prior_reason:"observed-dead"}`.
 
-Continuity is checked after the existing read-only admission/native-HOLD guards and before writes. Empty/missing values cannot match each other; a pane is not a continuity witness. Spawn correlation and the complete observed process incarnation each independently authorize a lift. Existing native events, prebind selection and capability guards remain; ordinary tombstone lifting does not grant native delivery capability.
+Continuity is checked after the existing read-only admission/native-HOLD guards and before writes; the review fix additionally refuses a retired harness mismatch before harness-specific ownership checks. Empty/missing values cannot match each other; a pane is not a continuity witness. Within the same harness, spawn correlation and the complete observed process incarnation each independently authorize a lift. Existing prebind selection and capability guards remain; ordinary tombstone lifting does not grant native delivery capability. Native and ordinary resumes now each emit exactly one event.
 
 The complete daemon run exposed one intentionally changed prior assertion: `ordinary_registration_never_inherits_native_capability` expected its matching retired registration to keep `Some(1)`. It now requires `None` while preserving its capability/refusal/binding assertions; no guard was weakened.
 
@@ -71,23 +74,23 @@ Driver: [tombstone-lift-live.ts](tombstone-lift-live.ts), actual installed OMP18
 
 Fresh session `01a0a89d-3e53-7033-90a8-38ef69fdff27` in recreated `%0`, PID4281, wrongly returned HTTP200 and rewrote the retired row. All five behavioral checks failed; all owned cleanup succeeded.
 
-**Final GREEN** ([live-green.json](live-green.json), exit0): `pij-gravitas-shortfall`, saved session `01a0a8a5-a2ca-710e-bf59-3187fa60f12c`, recreated `%0`, PID94378→96746. Canonical `observed-dead` sweep preceded resume. Selected actual `pij state` data:
+**Final review-fix GREEN** ([live-green.json](live-green.json), exit0): `pij-adorable-canidae`, saved session `01a0a8cf-f924-77d0-9e64-56b096ca2be4`, recreated `%0`, PID86044→88966. Canonical `observed-dead` sweep preceded resume. Selected actual `pij state` data:
 
 ```json
-{"id":"pij-gravitas-shortfall","liveness":"active","pid":96746,"procStart":20260916151703,"pane":"%0","tombstonedAt":null,"tombstoneReason":null,"session":"01a0a8a5-a2ca-710e-bf59-3187fa60f12c"}
+{"id":"pij-adorable-canidae","liveness":"active","pid":88966,"procStart":20260916160318,"pane":"%0","tombstonedAt":null,"tombstoneReason":null,"session":"01a0a8cf-f924-77d0-9e64-56b096ca2be4"}
 ```
 
-`seat.resumed` at spine7 records old94378/new96746, old/new pane `%0`, and `prior_reason:"observed-dead"`. Real peer `pij-free-bovid` sent message `01a0a8a5-af8a-7192-a7e2-d402707dc72d`: the CLI correctly reported `queued`/`extension-stream`, then the actual resumed OMP emitted `message_end`, `customType:"pij"`, matching session and message id, containing `PIJ_154_DELIVERY_120ce81e-7d28-4da4-b12e-8559c7eb0c41`. The receipt retains that native event and terminal; queued alone is not claimed as delivery proof.
+`seat.resumed` at spine7 records old86044/new88966, old/new pane `%0`, and `prior_reason:"observed-dead"`. Real peer `pij-established-finch` sent message `01a0a8d0-0707-74f3-9cb1-a515b6c8c4de`: the CLI correctly reported `queued`/`extension-stream`, then the actual resumed OMP emitted `message_end`, `customType:"pij"`, matching session and message id, containing `PIJ_154_DELIVERY_eaf5273b-02a3-4c96-bb10-523833fe155c`. The receipt retains that native event and terminal; queued alone is not claimed as delivery proof.
 
-After another real death/sweep/recreated-pane sequence, fresh session `01a0a8a5-b38e-7497-8714-effa2b3741e0`, PID98824, claimed the same address and `%0`:
+After another real death/sweep/recreated-pane sequence, fresh session `01a0a8d0-0afe-7164-8bf5-cee5013a6809`, PID91331, claimed the same address and `%0`:
 
 ```json
-{"ok":false,"command":"pij register","v":2,"meta":"seat pij-gravitas-shortfall is retired (observed-dead, 1789535826231); a different session may not take it","error":"refused"}
+{"ok":false,"command":"pij register","v":2,"meta":"seat pij-adorable-canidae is retired (observed-dead, 1789538601082); a different session may not take it","error":"refused"}
 ```
 
 HTTP400; the complete stored descriptor, including seq13, remained unchanged. Both resume and foreign claims omitted `spawn_id` and had distinct actual process incarnations. Therefore the successful lift was authorized by the saved pi session, not the recycled pane or an alternate spawn/process continuity path. All five checks and every owned teardown passed.
 
-Fixed daemon SHA256: `196f82eeab1cd3c3cfd8ae35e8a49816d874b0d51a8ca82905bb2ef0d4c4fee4`. No production OMP, daemon, seat or pane was modified.
+Fixed daemon SHA256: `0af81dc829b35bd881dd11aa13e80fb4deccd9e1692cf570894af5dd188be34a`. This supersedes the pre-review GREEN receipt. No production OMP, daemon, seat or pane was modified.
 
 **Fixture limitation, resolved:** the first run canonically tombstoned its actual OMP but queried live-only `/v1/seats`, then failed before resume. [live-fixture-gap.json](live-fixture-gap.json) retains that distinction; it is not behavioral RED. The driver now reads only its private registry with `SELECT * FROM seats WHERE id = ?`, read-only, never manufacturing lifecycle state.
 
@@ -95,7 +98,7 @@ Fixed daemon SHA256: `196f82eeab1cd3c3cfd8ae35e8a49816d874b0d51a8ca82905bb2ef0d4
 
 A final contract check found that the pre-existing native foreign-session refusal omitted the retired row's reason/time. [red-native-retired-diagnostic.log](red-native-retired-diagnostic.log) exited101: actual `native Copilot registration refused: seat id belongs to a different native session`, expected `seat pij-retired-native is retired (observed-dead, 154); a different session may not take it`. The shared formatter now names that tombstone; [green-native-retired-diagnostic.log](green-native-retired-diagnostic.log) exited0. The test deliberately supplies the same process: native foreign-session refusal still wins over the general process-continuity branch. This changes retired diagnostic context, not native admission authority.
 
-[Registration contract](../../how/pij-rs-api.md#registration-and-tombstone-continuity) defines the successful-row invariant and continuity ladder in one paragraph, replacing native-only tombstone wording. `native_prebind`, `registration_target` and `check_native_roster` were compared byte-for-byte with baseline and remain unchanged. Existing native HOLD, spawn-prebind, queue ownership and explicit revive behavior remain protected by the full Rust suite.
+[Registration contract](../../how/pij-rs-api.md#registration-and-tombstone-continuity) defines the successful-row invariant and continuity ladder in one paragraph, replacing native-only tombstone wording. After the review fixes, `native_prebind`, `registration_target`, `same_native_owner` and `check_native_roster` were compared byte-for-byte with baseline and remain unchanged. Existing native HOLD, spawn-prebind, queue ownership and explicit revive behavior remain protected by the full Rust suite.
 
 ## Harness harvest
 
@@ -108,13 +111,31 @@ The inherited harness now has executable all-harness tombstone invariants, indep
 
 ## Final gates and disposition
 
-All requested gates were rerun after the native diagnostic correction, with inherited PATH plus Cargo, `RUST_TEST_THREADS=1` and `VITEST_MAX_WORKERS=1`:
+All requested gates were rerun after the review fixes, with inherited PATH plus Cargo, `RUST_TEST_THREADS=1` and `VITEST_MAX_WORKERS=1`; the warm `just self-check` exited0:
 
-- [gate-rust.log](gate-rust.log): fmt check, Clippy `--workspace --all-targets -- -D warnings`, CLI build and workspace tests, exit0; **1130 passed,88 suites,8 ignored**.
+- [gate-rust.log](gate-rust.log): check-only `cargo fmt --all --check`, Clippy `--workspace --all-targets -- -D warnings`, CLI build and workspace tests, exit0; **1140 passed,88 suites,8 ignored**, including419 daemon tests.
 - [gate-self-check.log](gate-self-check.log): `just self-check`, exit0; **241 Vitest files /5308 tests passed**, native JavaScript **227 passed /3 platform skips**, Windows **84 passed /2 skipped**, all **11 smoke scenarios** passed.
 - [driver-typecheck.log](driver-typecheck.log): strict NodeNext TypeScript for the otherwise excluded permanent driver, exit0.
 - [red-old-contract.log](red-old-contract.log) preserves the intermediate old tombstone-retention assertion failure; the final full Rust gate passes its corrected invariant without weakening native-capability refusals.
 
-Closing snapshot proof: `briefing.md SHA matches snapshots (cdf5f5b25001...)`. Biome schema2.0.0 versus CLI2.4.14 is informational. Package audit remains report-only: `git:github.com/ghoseb/pi-askuserquestion` aggregate fail, score58,20 findings (4 fail /13 warn); operator decides keep or `npm run pkg disable git:github.com/ghoseb/pi-askuserquestion`. No dependency was changed or risk silently accepted. Packet commit `d64fa0e4` lacks `Pij-Prime`; it was not rewritten or assigned current-seat provenance.
+Closing snapshot proof: `briefing.md SHA matches snapshots (cdf5f5b25001...)`. Biome schema2.0.0 versus CLI2.4.14 is informational. Package audit remains report-only: `git:github.com/ghoseb/pi-askuserquestion` aggregate fail, score58,20 findings (4 fail /13 warn); operator decides keep or `npm run pkg disable git:github.com/ghoseb/pi-askuserquestion`. No dependency was changed or risk silently accepted. Inherited packet/review commits `d64fa0e4`, `6b908fd6` and `86ed585c` lack `Pij-Prime`, with unresolved `Pij-Seat` applicability; they were not rewritten or assigned current-seat provenance.
 
 AC1–AC6 and both recreated-pane riders are proven. The report retains distinct assertion REDs, one actual native baseline RED, one final actual native GREEN and the resolved fixture gap; redundant runs and the owned frozen baseline binary were removed from the delivered artifact set. DL-001–003 were harvested here and cleared.
+
+## Fix round
+
+Authority: [packet-fix.md](packet-fix.md), rulings on [review.md](review.md). The review probes remain reviewer-owned and unchanged.
+
+- **F001 — retired paneless selection.** [fix-red-paneless.log](fix-red-paneless.log), exit101: all six independent Claude/Codex/Copilot dead-host/same-host witnesses failed. Dead-host claims minted another id; same-host claims falsely reported `a subagent of <id>`. The foreign-session witness also returned that false relationship instead of the AC3 diagnostic. [fix-green-paneless.log](fix-green-paneless.log), exit0: all seven passed after selecting live rows first, then retired rows by newest incarnation/id, retaining live ownership/pull-shape guards. Historical rows no longer create process aliases against the selected paneless address. The old refusal matrix's retired-own-session row was removed because it pinned the defect; all other refusal shapes remain.
+- **F002 — harness gates every rung.** [fix-red-harness.log](fix-red-harness.log), exit101: actual HTTP pi/process and claude/spawn claims against an omp row returned200 and changed the harness. [fix-green-harness.log](fix-green-harness.log), exit0: both now return400 with the complete v2 AC3 envelope plus `harness mismatch: row omp, claim pi|claude`; complete descriptor and spine stay unchanged. The pre-existing foreign-session HTTP witness also passes. A lift no longer assigns `descriptor.harness`; plan and API wording use the harness-gated ladder.
+- **F003 — exact refusal and honest missing-process witness.** [fix-red-refusal-guard.log](fix-red-refusal-guard.log), exit101: the exact-message assertion exposed `missing-process` failing admission with `no bind evidence`, not continuity. The case now removes only the recorded process while retaining a bound observed claimant; all six cases assert their exact refusal. [fix-red-continuity-deleted.log](fix-red-continuity-deleted.log), exit101: removing the continuity block makes the loop fail on unexpected successful foreign-session registration. Restored block: [fix-green-refusal-guard.log](fix-green-refusal-guard.log), exit0.
+- **AC4 wording.** Removed the over-promised sentence and replaced it with the pre-existing `tombstone_if_unchanged` CAS contract actually pinned by the interleaving test. Exact old-phrase search returned zero matches in `plan.md`; no reaper production code changed. This is a documentation correction, not a new behavioral RED.
+- **Minor2 — one event per transition.** [fix-red-native-event.log](fix-red-native-event.log), exit101: the native witness observed `["seat.resumed","seat.native-resumed"]`, expected only `["seat.native-resumed"]`. [fix-green-native-event.log](fix-green-native-event.log), exit0: native resume publishes only its existing native event, now also carrying `prior_reason`. Ordinary and paneless paths assert exactly one `seat.resumed`.
+- **Minor3 — RED coverage pointer.** The AC1–AC3 section now explicitly points from the invariant's first panic to the separate per-harness REDs. No behavioral change or claimed test RED.
+- **Minor1 — independent format gate.** Replaced the prior gate receipt with a fresh command beginning `cargo fmt --all --check` (no formatting write in the chain). Exit0; the complete Rust gate passed1140 tests. Formatting was an earlier development action, not a step that repairs its own gate.
+
+Additional final proof: `retired_paneless_selection_prefers_live_then_newest_then_id` passes in the full Rust gate, including a retired duplicate with the returning host's PID; it proves live precedence, newest retired incarnation, deterministic id tie-break and unchanged non-selected history. The six paneless resume witnesses use injected OS observations, not actual Claude/Codex/Copilot hosts. The refreshed real OMP receipt above exercises the final binary and all five death/resume/delivery/foreign-refusal checks.
+
+Fix-round harvest: the linked-worktree LSP empty-reference gap recurred and was captured as DL-001; explicit source/callsite coverage supplied the boundary, and a worktree-indexing canary remains the encodable improvement. The cold `file-watch-notify` timing issue is out of scope by prime ruling and was not changed. New deterministic proof now covers selection before continuity, harness identity on both alternative rungs, exact refusal ownership, and one event per transition.
+
+All fix rulings are complete; the fix-round observation buffer was harvested above and cleared (one entry). No push, PR, merge, production-state repair or installed-runtime change was performed.

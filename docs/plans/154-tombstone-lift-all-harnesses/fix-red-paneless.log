@@ -1,0 +1,59 @@
+COMMAND: /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --lib retired_paneless_ -- --nocapture
+EXIT: 101
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-tombstone-lift/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.38s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-043514ab0ddb16b1)
+
+running 7 tests
+test registration::tests::retired_paneless_claude_reuses_dead_host_address ... 
+thread 'registration::tests::retired_paneless_claude_reuses_dead_host_address' (72005840) panicked at crates/daemon/src/registration.rs:3525:9:
+assertion `left == right` failed: Claude: retired address was abandoned
+  left: SeatId("pij-zestful-tochee")
+ right: SeatId("pij-complete-mawhrin")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test registration::tests::retired_paneless_claude_reuses_same_host_address ... 
+thread 'registration::tests::retired_paneless_claude_reuses_same_host_address' (72005861) panicked at crates/daemon/src/registration.rs:3524:14:
+a returning paneless host is not its own subagent: Refused("a subagent of pij-complete-mawhrin, not a seat: it inherited PIJ_* from its parent")
+FAILED
+test registration::tests::retired_paneless_codex_reuses_dead_host_address ... 
+thread 'registration::tests::retired_paneless_codex_reuses_dead_host_address' (72005876) panicked at crates/daemon/src/registration.rs:3525:9:
+assertion `left == right` failed: Codex: retired address was abandoned
+  left: SeatId("pij-changing-butterfly")
+ right: SeatId("pij-eerie-odette")
+FAILED
+test registration::tests::retired_paneless_codex_reuses_same_host_address ... 
+thread 'registration::tests::retired_paneless_codex_reuses_same_host_address' (72005905) panicked at crates/daemon/src/registration.rs:3524:14:
+a returning paneless host is not its own subagent: Refused("a subagent of pij-eerie-odette, not a seat: it inherited PIJ_* from its parent")
+FAILED
+test registration::tests::retired_paneless_copilot_reuses_dead_host_address ... 
+thread 'registration::tests::retired_paneless_copilot_reuses_dead_host_address' (72005923) panicked at crates/daemon/src/registration.rs:3525:9:
+assertion `left == right` failed: Copilot: retired address was abandoned
+  left: SeatId("pij-high-radovid")
+ right: SeatId("pij-mild-elisabet")
+FAILED
+test registration::tests::retired_paneless_copilot_reuses_same_host_address ... 
+thread 'registration::tests::retired_paneless_copilot_reuses_same_host_address' (72005940) panicked at crates/daemon/src/registration.rs:3524:14:
+a returning paneless host is not its own subagent: Refused("a subagent of pij-mild-elisabet, not a seat: it inherited PIJ_* from its parent")
+FAILED
+test registration::tests::retired_paneless_foreign_session_names_tombstone_without_writes ... 
+thread 'registration::tests::retired_paneless_foreign_session_names_tombstone_without_writes' (72005956) panicked at crates/daemon/src/registration.rs:3585:13:
+assertion `left == right` failed: Claude
+  left: "a subagent of pij-retired-paneless, not a seat: it inherited PIJ_* from its parent"
+ right: "seat pij-retired-paneless is retired (observed-dead, 154); a different session may not take it"
+FAILED
+
+failures:
+
+failures:
+    registration::tests::retired_paneless_claude_reuses_dead_host_address
+    registration::tests::retired_paneless_claude_reuses_same_host_address
+    registration::tests::retired_paneless_codex_reuses_dead_host_address
+    registration::tests::retired_paneless_codex_reuses_same_host_address
+    registration::tests::retired_paneless_copilot_reuses_dead_host_address
+    registration::tests::retired_paneless_copilot_reuses_same_host_address
+    registration::tests::retired_paneless_foreign_session_names_tombstone_without_writes
+
+test result: FAILED. 0 passed; 7 failed; 0 ignored; 0 measured; 411 filtered out; finished in 0.12s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

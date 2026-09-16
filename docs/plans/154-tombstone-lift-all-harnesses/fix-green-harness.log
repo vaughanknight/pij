@@ -1,0 +1,12 @@
+COMMAND: /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --lib retired_registration_refuses_ -- --nocapture
+EXIT: 0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.36s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-043514ab0ddb16b1)
+
+running 3 tests
+test http::tests::retired_registration_refuses_claude_spawn_continuity_on_omp_row ... ok
+test http::tests::retired_registration_refuses_foreign_session_without_writing ... ok
+test http::tests::retired_registration_refuses_pi_process_continuity_on_omp_row ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 415 filtered out; finished in 0.10s
+

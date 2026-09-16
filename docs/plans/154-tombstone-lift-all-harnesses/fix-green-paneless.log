@@ -1,0 +1,17 @@
+COMMAND: /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --lib retired_paneless_ -- --nocapture
+EXIT: 0
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-tombstone-lift/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.19s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-043514ab0ddb16b1)
+
+running 7 tests
+test registration::tests::retired_paneless_claude_reuses_dead_host_address ... ok
+test registration::tests::retired_paneless_claude_reuses_same_host_address ... ok
+test registration::tests::retired_paneless_codex_reuses_dead_host_address ... ok
+test registration::tests::retired_paneless_codex_reuses_same_host_address ... ok
+test registration::tests::retired_paneless_copilot_reuses_dead_host_address ... ok
+test registration::tests::retired_paneless_copilot_reuses_same_host_address ... ok
+test registration::tests::retired_paneless_foreign_session_names_tombstone_without_writes ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 411 filtered out; finished in 0.15s
+
