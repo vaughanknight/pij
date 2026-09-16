@@ -293,3 +293,201 @@ just self-check
 ```
 
 All live work used isolated daemons on ephemeral ports with private `HOME`/Copilot/Claude homes and `tmux -L` sockets; every receipt records `"production_contacted": false` and `owned_tmux_stopped`/`owned_daemon_stopped` true. The production daemon was never contacted and the production registry was never written. `bounce-daemon.sh` was never executed — it stops the production daemon by design.
+
+---
+
+# Round 2 — fix round
+
+Range `fc4e7c36..1c290079`, single commit `1c290079 fix(harness): budget receiver startup proof and pin Copilot smokes`. Base `fc4e7c36` is a packet-only commit on top of the round-1 reviewed source `8df2bb0d`, so the product source under review is unchanged. Fresh detached worktree at `1c290079`, worktree-local deps, worktree-local `CARGO_TARGET_DIR`.
+
+## Verdict
+
+**APPROVE.**
+
+F1 and F3 are both fixed, and I could break each fix by mutating it. No receiver or Rust behaviour changed: the diff is 8 files, and the only non-harness edits are a one-line type declaration, one documentation sentence, and evidence. The contract sentence is present. Warm gates green.
+
+One correction to the packet's expected result for F3, in the coder's favour — see below.
+
+## F1 — registration-relative budget
+
+Every element of the ruling is present at `harness/scripts/copilot-native-progress-smoke.ts`:
+
+- **imported, not restated** — `:17` `import { NATIVE_RPC_DEADLINE_MS } from "../../.copilot/extensions/pij/store.mjs"`, used at `:455` as `NATIVE_RPC_DEADLINE_MS + 30_000`.
+- **measured from registration** — `:449` waits for the replacement's own `registered` event (filtered to `Date.parse(event.at) >= enableStarted`), and `:457` starts the window at `registeredAt`, not `enableStarted`.
+- **unreachable branch gone** — the `card.native_receiver_reason === undefined → observing` early return and the whole `if (replacement.kind === "observing")` arm are deleted; `kind` is now only ever `"held"`.
+- **stale latch asserted before enable** — `:440-444`, immediately before the `enable-pij` command is written.
+
+Two things tightened beyond the ruling, both worth noting: the diagnostic match moved from a regex (`/eventLog\.read deadline exceeded/`) to exact string equality against `` `eventLog.read deadline exceeded (${NATIVE_RPC_DEADLINE_MS}ms)` ``, so a wrong deadline value can no longer satisfy it; and the receipt now records `registration_elapsed_ms`, `held_after_registration_ms` and `budget_ms`, which is what let me check margins without instrumenting anything.
+
+I confirmed `until` (`copilot-native-smoke.ts:271-283`) is a `do…while`, so a zero or negative remaining budget probes once and then throws `PIJ_NATIVE_TIMEOUT` — `Math.max(0, …)` at `:458` cannot spin or silently pass.
+
+### Three bare runs
+
+`just copilot-native-progress-smoke`, no flags, back to back. All exit 0.
+
+| Run | Enable → registered | Registered | Exact-deadline hold | Registered → held | Budget | Elapsed | Exit |
+|---|---:|---|---|---:|---:|---:|---:|
+| 1 | 224 ms | 07:38:39.284Z | 07:38:54.289Z | **15,005 ms** | 45,000 ms | 80 s | 0 |
+| 2 | 394 ms | 07:39:58.595Z | 07:40:13.599Z | **15,004 ms** | 45,000 ms | 79 s | 0 |
+| 3 | 271 ms | 07:41:17.764Z | 07:41:32.768Z | **15,004 ms** | 45,000 ms | 80 s | 0 |
+
+All three carried the exact diagnostic `eventLog.read deadline exceeded (15000ms)` with `holdKind: null` and `retryMs: null` — i.e. a hold, not a registration retry, which is also the round-1 bar-4b contract. Margin is now 30,000 ms instead of the ~5,000 ms that produced the round-1 failure, and it no longer competes with registration latency.
+
+These numbers independently reproduce the report's three runs (15,002 / 15,001 / 15,016 ms), from a different worktree and a different hour.
+
+### Mutation: is the import load-bearing?
+
+The packet asked whether restating `20_000` still passes. It does — and that is the honest answer, not a reason to weaken the fix. I ran the triple that settles *why*:
+
+| # | Mutation | Result |
+|---|---|---|
+| MUT-1 | `replacementBudgetMs = 20_000` (deadline unchanged) | **exit 0** — held 15,003 ms against `budget_ms: 20000` |
+| MUT-2 | `replacementBudgetMs = 20_000` **and** `NATIVE_RPC_DEADLINE_MS = 25000` | **exit 1** |
+| MUT-3 | shipped import **and** `NATIVE_RPC_DEADLINE_MS = 25000` | **exit 0** — held 25,002 ms against `budget_ms: 55000` |
+
+MUT-2's receipt:
+
+```json
+{"status":"failed",
+ "error":"PIJ_NATIVE_MEMORY_TIMEOUT: registered replacement explicitly holds an unresponsive SDK",
+ "cleanup":{"owned_tmux_stopped":true,"owned_daemon_stopped":true}}
+```
+
+So: MUT-1 proves the literal is *currently* sufficient; MUT-2 proves it stops being sufficient the moment the runtime constant it shadows moves; MUT-3 proves the shipped form absorbs exactly that move, rescaling itself to 55,000 ms and still passing. The fix is drift-proofing, and the drift it proofs against is demonstrated rather than asserted.
+
+That matters more than a margin argument. A restated `20_000` is not wrong today — it is a **silent** dependency on a number defined somewhere else, and the failure mode when that number changes is a red harness blamed on the product. The import turns that into a compile-time-visible relationship.
+
+### The declaration file
+
+`store.d.mts` exists because `harness/**/*.ts` is inside `tsconfig.json`'s `include` and the project has no `allowJs`, so the first TS consumer of a `.copilot` `.mjs` needs one. It declares one of the module's 18 exports.
+
+That is a deliberate minimum rather than a lie, and it fails in the right direction: a future TS importer of another symbol gets "has no exported member" rather than a wrongly-typed value. If the constant were renamed in `store.mjs`, the import would become `undefined`, the budget `NaN`, and `until` would throw on its first probe — plus the exact-diagnostic assertion would never match. Loud, not silent. Worth one sentence in a future doc; not a finding.
+
+## F3 — Copilot version prerequisite
+
+`justfile:130-180`: both public recipes now delegate to `_copilot-native-pinned-smoke`, which resolves the launcher's version through `--prefer-version $COPILOT_VERSION --version` under `COPILOT_OFFLINE=true`, checks the installed runtime's `package.json` version, and only then launches the smoke with `--copilot-bin` / `--copilot-runtime-dir` pinned.
+
+### Correction to the packet's expected result
+
+The packet expects "both recipes on the machine default (1.0.85) exit 2 within seconds". **They do not, and should not.** On this machine the ambient npm-global launcher *can* select the cached pin:
+
+```
+$ copilot --version
+GitHub Copilot CLI 1.0.85.
+$ COPILOT_OFFLINE=true copilot --prefer-version 1.0.84-9 --version
+GitHub Copilot CLI 1.0.84-9.
+```
+
+So the bare recipe prints `copilot-native-smoke: copilot resolved 1.0.84-9` and proceeds. This is the better outcome — the round-1 finding asked for "pin its runtime **or** fail fast", and the fix does the first, falling back to the second. The coder disclosed this precisely rather than letting the packet's framing stand: `fix-round-proof.json` records `"ambient": "Bare ambient launcher can select 1.0.84-9 using --prefer-version; without selection it reports 1.0.85."` I am recording the discrepancy so it is not read later as an unmet ruling.
+
+### Refusal paths — five probes, all exit 2 in ≤1 s
+
+| Probe | Command | Result |
+|---|---|---|
+| A | `COPILOT_BIN=<launcher that ignores --prefer-version, reports 1.0.85>` | `… resolved 1.0.85, expected COPILOT_VERSION=1.0.84-9; runtime drift is not a product failure` |
+| B | `COPILOT_BIN=/tmp/s152/does-not-exist` | `… could not report version 1.0.84-9; select an installed native launcher with COPILOT_BIN` |
+| C | `COPILOT_VERSION=1.0.83` (published, **not** cached) | `copilot resolved 1.0.85, expected COPILOT_VERSION=1.0.83; …` — refused, nothing downloaded |
+| D | `--copilot-runtime-dir …/1.0.85` with a valid launcher | `…/1.0.85 does not contain COPILOT_VERSION=1.0.84-9` |
+| E | `--copilot-bin` with no value | exit 2 |
+
+Each is a single `PIJ_NATIVE_PREREQUISITE_VERSION:` line, and each fires **before** any tmux server, daemon or evidence directory is created — the round-1 complaint was a 90-second timeout that read like a product defect; this is under a second and names the cause.
+
+Probe D matters most: it proves the runtime-metadata check is independently live rather than decorative, since the launcher check had already passed. Probe C is the "never downloads" case — an available-but-uncached version is refused rather than fetched.
+
+### Cached selection, no downloads
+
+`~/.copilot/pkg/darwin-arm64` fingerprinted before the first probe and after every probe and all seven full smoke runs:
+
+```
+0.0.412-2 1771542219    1.0.84-5 1789426615    1.0.84-7 1789453356
+1.0.84-8 1789530125     1.0.84-9 1789530128    1.0.85 1789530132
+```
+
+Identical both times — same six directories, same mtimes, `1.0.84-9` still stamped 13:42:08 local, hours before this review. Nothing was downloaded, replaced or touched. `COPILOT_OFFLINE=true` on the version probe makes that structural rather than lucky.
+
+I also hit the intended refusal by accident, which is the best evidence it works: my fresh worktree had no `pij-rs` binary, and the bare memory smoke stopped in 0.9 s with
+
+```
+PIJ_NATIVE_PREREQUISITE_BINARY: build the composed worktree with CARGO_TARGET_DIR=$PWD/target cargo build -p pij-cli --bin pij-rs
+```
+
+leaving `owned_daemon_stopped: true` and no started resources. Wrong-environment refusals are now actionable one-liners across the board.
+
+## Contract sentence
+
+Present, `docs/how/pij-rs-api.md:242-243`, in the receiver section:
+
+> Startup hold is immediately visible in extension stderr; `pij state` exposes the receiver reason only after the unrenewed lease expires, up to 60 seconds later.
+
+That is the round-1 caveat stated as a contract, in the right place and in the right terms — it names both surfaces and the bound between them.
+
+## Provenance
+
+`fix-round-proof.json` lists sha256 for the five files it claims to have changed. I recomputed all five against the checked-out tree: **5 match, 0 differ**. `reviewed_source` is recorded as `8df2bb0d` and `base_note` states `fc4e7c36` is a packet-only commit — so the proof does not quietly claim the product source was re-verified.
+
+The report's fix-round section is candid in the same way as the original: it labels the SDK-enable phase "not a healthy-reload witness", keeps H1 unproved, states the Windows-focused stage still runs zero tests and points at `84ca47f6` on main rather than counting it here, and discloses two aborted preliminary invocations as **not** acceptance evidence.
+
+## Fence
+
+`1c290079` touches 8 files: 3 evidence/report, and 5 real —
+
+| File | Change |
+|---|---|
+| `harness/scripts/copilot-native-progress-smoke.ts` | +64/−37, the F1 fix |
+| `justfile` | +55/−4, the F3 prerequisite |
+| `.copilot/extensions/pij/store.d.mts` | new, 1 line |
+| `docs/how/pij-rs-api.md` | +2, the contract sentence |
+| `.gitignore` / evidence | unchanged / additive |
+
+No receiver, daemon or CLI source changed in this round, which is what "no product behaviour changed" should look like. Against merge-base `6b8d8504` the non-plan path set is unchanged from round 1 apart from `store.d.mts`.
+
+## Gates — my checkout, warm
+
+| Gate | Result |
+|---|---|
+| `node --test .copilot/extensions/pij/*.test.mjs` | **exit 0** — 262 tests, **259 passed**, 3 skipped, 0 failed |
+| `cargo test --workspace --no-fail-fast` | **exit 0** — **1135 passed**, 0 failed |
+| `cargo fmt --all --check` | **exit 0** |
+| `cargo clippy --workspace --all-targets -- -D warnings` | **exit 0**, zero errors |
+| `just copilot-native-progress-smoke` ×3 (bare) | **exit 0, 0, 0** |
+| `just self-check` | **exit 0** — 243 files / **5307 passed** / 22 skipped, smoke 11/11, `✓ snapshot-check: briefing.md SHA matches snapshots (cdf5f5b25001…)` |
+
+Matches the report's claimed final gates exactly (259/3 native, 1135 Rust, 5307 Vitest).
+
+### Two flakes seen, both traced, neither 152's
+
+**`smoke: file-watch-notify ✗` on the first run in a fresh worktree.** Same cold-clone cause I logged on plans 151 and 153 — the captured pane shows `Cloning into '…/s152-r2/.pi/git/github.com/ghoseb/pi-askuserquestion'` while the 30 s idle window expires. `.pi/git/` is per-worktree, so every new worktree pays it once. Green on re-run.
+
+**`cli.inbox.integration.test.ts` failed once under full-suite load**, and is worth naming precisely because the message looks alarming:
+
+```
+pij register → {"ok":false,"meta":"native Copilot registration refused:
+  process observation failed or timed out: Ok(None)","error":"refused"}
+expected { code: 4 } to match { code: 0 }
+```
+
+That is **not** the receiver observation this plan is about. It is host-process observation in `crates/daemon/src/registration.rs:1453`, which forks `/bin/ps` and gives it a hard **250 ms** wall-clock deadline; under 243 parallel Vitest files the fork can miss it, `try_wait` returns `Ok(None)`, and registration refuses. `registration.rs` has **zero commits** in `6b8d8504..1c290079` — last touched by `b3f8378c`, which predates the merge-base — and the file passed 17/17 twice in isolation and in two of three full self-check runs on this same tree.
+
+Untouched code, unrelated subsystem, load-dependent. Not a blocker and not 152's, but a 250 ms budget for forking `/bin/ps` on a loaded machine is thin, and the refusal text points a reader straight at native registration. Worth a harness ticket alongside the `file-watch-notify` cold-clone one.
+
+## Round 2 commands
+
+```bash
+git worktree add --detach …/pij-worktrees/s152-r2 1c290079 && node harness/scripts/worktree-deps.mjs
+cargo build -p pij-cli --bin pij-rs
+just copilot-native-progress-smoke                      # x3 bare, all exit 0
+# MUT-1 replacementBudgetMs = 20_000                    → exit 0  (budget_ms 20000, held 15003)
+# MUT-2 MUT-1 + NATIVE_RPC_DEADLINE_MS = 25000          → exit 1  PIJ_NATIVE_MEMORY_TIMEOUT
+# MUT-3 shipped import + NATIVE_RPC_DEADLINE_MS = 25000 → exit 0  (budget_ms 55000, held 25002)
+COPILOT_BIN=<forced-1.0.85 launcher> just copilot-native-memory-smoke     # exit 2, 0s
+COPILOT_BIN=/tmp/s152/does-not-exist just copilot-native-progress-smoke   # exit 2, 0s
+COPILOT_VERSION=1.0.83 just copilot-native-memory-smoke                   # exit 2, 1s
+just copilot-native-memory-smoke --copilot-runtime-dir …/1.0.85           # exit 2
+just copilot-native-progress-smoke --copilot-bin                          # exit 2
+stat -f '%N %m' ~/.copilot/pkg/darwin-arm64/*          # before and after: identical
+node --test .copilot/extensions/pij/*.test.mjs ; cargo test --workspace --no-fail-fast
+cargo fmt --all --check ; cargo clippy --workspace --all-targets -- -D warnings ; just self-check
+# every mutation restored immediately; git status --porcelain showed 0 tracked modifications after each
+```
+
+All seven smoke runs used isolated daemons on ephemeral ports with private `HOME`/Copilot/Claude homes and `tmux -L` sockets, and every receipt recorded `owned_tmux_stopped` / `owned_daemon_stopped` true. The production daemon was never contacted; the Copilot package cache was never written.
