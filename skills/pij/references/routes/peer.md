@@ -6,7 +6,7 @@
 
 ## Identity and views
 
-Follow § C1 delivery-owner detection first. Native OMP/Pi/Copilot extensions own registration/receiving; never re-adopt them or run a competing inbox consumer. Other tmux seats adopt only their exact nonempty current-process pane:
+Follow § C1 delivery-owner detection first. Native OMP, Pi and Copilot extensions each own their runtime's registration/receiving; never re-adopt them or run a competing inbox consumer. Other tmux seats adopt only their exact nonempty current-process pane:
 
 ```bash
 pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"} [--role <asserted-role>] --json
@@ -20,7 +20,7 @@ pij node show <seat> --json
 
 `--json` forwards the complete original v2 envelope; ids live in its real `data`, not a legacy rewrapped object. Shim list forwards exact `--harness <h>`, `--folder <path>`, `--parent <seat>` and `--scope local`. Both shim and native `pij-rs list --here` select the caller's canonical cwd; `--here` is boolean, not a path argument. Sessions has no filters and never unions TS telemetry. Legacy `--role`, `--prime` and `--archived` remain refused. Node show supplies the rs subtree and linked records. RoleService supplies string or null; omitted role preserves existing assertion, explicit unset uses `pij role <seat> --unset`.
 
-`pij whoami` shows the loaded Pi/OMP `extension_build` and real `extension_path`; current-daemon null means a pre-144/unreported build (older daemons omit the keys), never infer it from the seat cwd or today's HEAD. Use `pij list --json` for roster build identity.
+For an OMP seat, `pij whoami` reports the loaded OMP extension's `extension_build` and real `extension_path`; for a Pi seat it reports that Pi runtime's loaded extension. Current-daemon null means a pre-144/unreported build (older daemons omit the keys), never infer it from the seat cwd or today's HEAD. Use `pij list --json` for roster build identity.
 
 Parent is the rs descriptor's recorded `parent`, not a spawnedBy fallback. Supply `--parent` when creating/adopting within its supported admission contract. `pij link`/`tree` refuse: no existing-seat reparent/root-placement port exists, and a role change cannot stand in for a structural link.
 
@@ -28,21 +28,32 @@ Verified external/paneless seats use `pij inbox register --json`, then `pij inbo
 
 ## Spawn and revive: native grammar, not shim fallback
 
+**OMP and Pi are distinct harnesses.** Every spawn requires an explicit `harness` (`omp`, `pi`, `claude`, `copilot` or `codex`); there is no shared default and the parent's runtime does not choose for you. `--bin` is an executable-path override, never a harness selector: `--harness pi --bin omp` refuses; request `--harness omp` instead. A path such as `--harness omp --bin /absolute/path/to/omp` is allowed, but a known different harness basename is refused even in an absolute path. OMP model ids are provider-qualified (`github-copilot/gpt-6-astra`); Pi uses its own installed catalog's exact id (`gpt-5.6-sol` in this example), with provider qualification when needed. A spelling accepted by one runtime does not prove availability in the other.
+
+| Harness | Explicit selection | Native model/effort form |
+|---|---|---|
+| OMP | `--harness omp`; in-process `harness:"omp"` | `--model github-copilot/gpt-6-astra --effort high` launches OMP with `--model github-copilot/gpt-6-astra --thinking high` |
+| Pi | `--harness pi`; in-process `harness:"pi"` | `--model gpt-5.6-sol --effort high` launches Pi with `--model gpt-5.6-sol:high`; use a model from Pi's own catalog |
+
 ```bash
-pij-rs spawn --harness <claude|copilot|codex|pi|omp> --model <exact-model> [--effort <level>] [--cwd <absolute-path>] [--parent <seat>] [--session <tmux-session>] [--name <window-name>] --json
+pij-rs spawn --harness <omp|pi|claude|copilot|codex> --model <exact-model> [--effort <level>] [--cwd <absolute-path>] [--parent <seat>] [--session <tmux-session>] [--name <window-name>] [--allow-retired] --json
 pij attest <new-seat> --plan-id <plan-id> --json
 pij dispatch <new-seat> --packet <path> --wait --json
 pij-rs revive <seat> [--session <tmux-session>] [--name <window-name>] --json
 pij-rs revive <seat> --assume-dead --evidence 'Describe why the recorded process binding is stale' --json
 ```
 
-The shim's `spawn`/`revive` are named refusals because their grammar differs. Native spawn also supports `--id`, `--bin`, `--no-wait`, `--wait-seconds` and Claude inbound-consent flags; it has no legacy `--layout`, `--task`, `--branch` or `--plan-id`. Use its reported pane/window for explicit, owner-controlled tmux placement (§ C5); do not claim a legacy side-stack default. Send a packet after real binding; attest separately. Native revive requires an explicit id; `--print` and `--attach` remain unsupported.
+The shim's `spawn`/`revive` are named refusals because their grammar differs. Native spawn also supports `--id`, `--bin <executable-path>`, `--no-wait`, `--wait-seconds` and Claude inbound-consent flags; it has no legacy `--layout`, `--task`, `--branch` or `--plan-id`. Use its reported pane/window for explicit, owner-controlled tmux placement (§ C5); do not claim a legacy side-stack default. Send a packet after real binding; attest separately. Native revive requires an explicit id; `--print` and `--attach` remain unsupported.
+
+**Daemon-owned retirement policy:** `PIJ_RETIRED_HARNESSES` is a comma-separated daemon configuration, empty by default; generic installations retire no harness. This machine's `just bounce-rs` recipe opts into `PIJ_RETIRED_HARNESSES=pi`. Native and in-process Pi spawn then refuse: `harness pi is retired on this machine; use omp (or pass --allow-retired)`. An intentional native `pij-rs spawn --harness pi --allow-retired …` override is accepted with a spine event; preserve its evidence from `pij spine events --peer <new-seat> --json`. It does not change the machine policy or registration/receiver ownership.
+
+The in-process `pij_spawn` tool reads the daemon's `GET /health` `data.retired_harnesses` through `client.health()` before changing local panes or spawn expectations. It does not duplicate policy from the extension's environment. Use native `--allow-retired` for an explicit override; do not switch executables to bypass refusal. External harness choices use native `/v1/spawn`, not a disguised local Pi launch.
 
 Revive accepts a tombstone **or** `Dead` process observation with the recorded pane absent, without a preliminary close. It records `revive-observed-dead` retirement before relaunch under one spawn lock and cites the tombstone in `details.seq`. `Recycled`/`Unknown` observations require `--assume-dead` plus nonempty `--evidence`: only the recorded parent may override, or a caller with authoritative role `prime` **when the target is parentless**. An unrelated prime has no override on a parented seat. The `revive.assumed-dead` event retains evidence and observation (`details.assumed_dead_seq`); no replacement pid is signalled. `E-RS-REVIVE-LIVE` names the observation and exact override command. An `Active` process or a present recorded pane still vetoes revival, even with the override.
 
 A legacy tombstone row without a matching spine event also revives: `revive.legacy-tombstone` records its stored retirement before relaunch, cited by `details.legacy_tombstone_seq` instead of a fabricated `details.seq`.
 
-An in-process host spawn tool is a separate, explicitly available capability; it does not make an unported CLI flag work. Discover model ids from the host's actual catalog; `pij models` is unported. Canary every new/provided/revived peer before trust (§ C2), using runtime footer/round-trip evidence, never a ready-ping alone. Name every owned pane/window, seed § C10 in its packet, and apply § C11 at commit boundaries.
+An in-process host spawn tool is a separate, explicitly available capability; it does not make an unported CLI flag work. `pij models` catalog enumeration remains unported: agents cannot enumerate per-harness catalogs through pij, and no native catalog command is implied. Discover ids from the selected harness's actual installed catalog. Canary every new/provided/revived peer before trust (§ C2), using runtime footer/round-trip evidence, never a ready-ping alone. Name every owned pane/window, seed § C10 in its packet, and apply § C11 at commit boundaries.
 
 Focus save/list/launch and watch/unwatch are unported; do not silently route them to TS.
 
@@ -60,19 +71,19 @@ pij inbox --json                             # manual claims; not a competing ex
 Double-quoted backticks/`$(...)` execute in the sending shell before pij runs. Use single quotes or a literal body file (`-` = stdin) for code/untrusted text. Pointer delivery: persist large content, then send its path. No attachment or broadcast/fan-out substitute is implied by the shim route; unsupported options refuse. Messages follow § C10; let pushed turns wake you rather than polling state.
 
 **Remote controls on rs** ([full contract](../../../../docs/how/pij.md#remote-session-control)):
-commands carry no body; OMP/Pi handles claims in-process and acknowledges `executed` or
+commands carry no body; OMP and Pi each handle claims in-process and acknowledge `executed` or
 `refused` + reason. Acceptance is NOT completion. Native extension delivery bypasses typing
 grace; Claude PTY keeps it (human drafts hold commands). Copilot refuses with
 `E-RS-CONTROL-UNSUPPORTED: use Copilot's native user controls`; paneless seats also refuse.
 Never replace refusal with literal `/compact` or send-keys. Any registered peer may compact,
 without arming. Destructive `new`/`reload` require self or target-recorded parent, resolved
 from daemon caller evidence — prime flags/roles confer no authority (no rs target-prime relation).
-OMP/Pi's human must run `/pij` in the target to arm `new`/`reload`; unarmed requests refuse, never defer: arm and resend. Pi reload needs re-arming; installed OMP reload reopens the native session, NOT extension/skill resources.
+In either OMP or Pi, the target's human must run `/pij` to arm `new`/`reload`; unarmed requests refuse, never defer: arm and resend. Pi reload needs re-arming; installed OMP reload reopens the native session, NOT extension/skill resources.
 Expired claims terminate with unknown-outcome/missing-ack, never replay; refused ids stay refused. Intentional retry after arming requires a new message id.
 
 `compact-self` takes no legacy instruction/pane override; it remains a shipped structured daemon operation. `pij bg create/list/tail/kill` remains shipped unchanged in semantics (§ C7): detached runner, completion injected from `pij-bg`, bounded output and owner/recorded-parent recovery. Neither introduces answer queue withdrawal.
 
-**OMP/Pi body recovery** ([wire contract](../../../../docs/how/pij-rs-api.md#extension-inbox-recovery)):
+**Body recovery in OMP and in Pi** ([wire contract](../../../../docs/how/pij-rs-api.md#extension-inbox-recovery)):
 unconsumed delivery idle for `PIJ_REDELIVER_IDLE_MS` (default 10s) resends through
 the prompt path, marked `[pij resend n]`; lease reclaim only refreshes tracking.
 The first observed agent boundary grants one prompt resend after `PIJ_BOUNDARY_GRACE_MS`

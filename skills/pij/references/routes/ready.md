@@ -8,16 +8,18 @@ prime or operator will push the next turn.
 
 ## Procedure
 
-1. **You are a pi/omp seat: the extension registered you at boot. Reply `Ready.` and
+1. **You are an OMP seat: its extension registered you at boot. Reply `Ready.` and
    STOP — run NO pij identity command (no adopt, no inbox register).**
+   **You are a Pi seat: its own runtime extension also registered you at boot.
+   Reply `Ready.` and STOP with the same no-identity-command rule.**
    Copilot with its native `pij_send` tool is also extension-owned: reply `Ready.`
    and stop without a competing identity/adopt/inbox command.
    Copilot without the native tool but with a pane must report native setup
    unavailable; do not start a competing pull receiver. Without a pane it may
    use the verified external pull path below. Otherwise, detect the delivery owner:
    - With an exact non-empty `$TMUX_PANE`, resolve `<h>` from the current host
-     (`claude` or `codex` — NEVER `pi`: pi/omp seats self-register at
-     boot and `pij adopt` rejects `--harness pi` by design) and run exactly
+     (`claude` or `codex` — NEVER `omp` or `pi`: each runtime's extension
+     owns its boot registration; `pij adopt` rejects `--harness pi` by design) and run exactly
      `pij adopt "$TMUX_PANE" --harness <h> ${PIJ_PARENT_ID:+--parent "$PIJ_PARENT_ID"}`.
      Carry the parent whenever the env has one — it is a self-declaration of who
      governs you, validated and persisted, and it is the ONLY moment it can be

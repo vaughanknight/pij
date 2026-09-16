@@ -52,7 +52,7 @@ if [ "$head_sha" != "$main_sha" ]; then
     exit 1
 fi
 
-dirty=$(git -C "$canonical" status --porcelain -- .pi/extensions/pij package.json package-lock.json)
+dirty=$(git -C "$canonical" status --porcelain -- .omp/extensions/pij .pi/extensions/pij package.json package-lock.json)
 if [ -n "$dirty" ]; then
     echo "!! canonical checkout has daemon-relevant changes:" >&2
     printf '%s\n' "$dirty" >&2

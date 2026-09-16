@@ -1,0 +1,20 @@
+{
+  "PIJ_SESSION_ID": "pij-broken-lucia",
+  "calls": [
+    {
+      "tool": "pij_spawn",
+      "arguments": {
+        "harness": "omp",
+        "model": "github-copilot/gpt-6-astra"
+      },
+      "result": "spawned pij worker — spawnId=s1789533500959-0 paneId=%5"
+    },
+    {
+      "tool": "pij_spawn",
+      "arguments": {
+        "harness": "pi"
+      },
+      "error": "pij_spawn failed (E-ARG): harness pi is retired on this machine; use omp (or pass --allow-retired)"
+    }
+  ]
+}

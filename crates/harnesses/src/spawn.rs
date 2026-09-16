@@ -40,7 +40,7 @@ pub struct SpawnPlanInput {
     pub spawn_id: String,
     /// Harness to launch.
     pub harness: Harness,
-    /// Executable override from `--bin`; the harness name is used when absent.
+    /// Absolute executable-path override from `--bin`; never a harness selector.
     pub executable: Option<String>,
     /// Exact model selector requested by the caller.
     pub model: Option<String>,
@@ -50,6 +50,40 @@ pub struct SpawnPlanInput {
     pub effort: Option<String>,
     /// Whether to configure Claude to accept cross-session inbound messages.
     pub accept_inbound: bool,
+}
+
+/// Validate `--bin` without allowing it to change the selected harness.
+///
+/// # Errors
+///
+/// Refuses bare commands, relative paths, and a known different harness basename.
+pub fn validate_executable_override(harness: Harness, executable: Option<&str>) -> Result<()> {
+    let Some(executable) = executable else {
+        return Ok(());
+    };
+    let path = Path::new(executable);
+    if let Some(selected) = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .and_then(Harness::parse)
+        && selected != harness
+    {
+        return Err(PijError::Adapter {
+            adapter: "spawn".to_string(),
+            message: format!(
+                "--bin {executable} selects {selected}, not the requested harness {harness}; use --harness {selected} and omit --bin, or provide an absolute executable path for {harness}"
+            ),
+        });
+    }
+    if !path.is_absolute() || path.file_name().is_none() {
+        return Err(PijError::Adapter {
+            adapter: "spawn".to_string(),
+            message: format!(
+                "--bin is an absolute executable-path override, not a harness selector; use --harness {harness} without --bin, or --bin /absolute/path/to/{harness}"
+            ),
+        });
+    }
+    Ok(())
 }
 
 /// Build the exact environment launcher and harness argv for one spawn.
@@ -69,7 +103,9 @@ pub struct SpawnPlanInput {
 ///
 /// Refuses `accept_inbound` for non-Claude harnesses because those runtimes do
 /// not establish the capability represented by the descriptor stamp.
+/// Executable overrides must be absolute paths and cannot name another harness.
 pub fn build_spawn_plan(input: SpawnPlanInput) -> Result<SpawnPlan> {
+    validate_executable_override(input.harness, input.executable.as_deref())?;
     if input.spawn_id.trim().is_empty() {
         return Err(PijError::Adapter {
             adapter: "spawn".to_string(),
@@ -89,7 +125,6 @@ pub fn build_spawn_plan(input: SpawnPlanInput) -> Result<SpawnPlan> {
 
     let harness_executable = input
         .executable
-        .clone()
         .unwrap_or_else(|| input.harness.as_str().to_string());
     let mut args = vec![
         format!("{PIJ_SESSION_ID}={}", input.seat_id),
@@ -361,6 +396,44 @@ mod tests {
             let error = build_spawn_plan(request).expect_err("must refuse");
             assert!(error.to_string().contains("applies only to claude"));
         }
+    }
+
+    #[test]
+    fn executable_override_rejects_harness_selectors_and_mismatched_basenames() {
+        for executable in ["omp", "/opt/harnesses/omp"] {
+            let mut request = input(Harness::Pi);
+            request.executable = Some(executable.to_string());
+            let error = build_spawn_plan(request).expect_err("cannot disguise omp as pi");
+            assert!(error.to_string().contains("use --harness omp"));
+        }
+        for executable in ["pi", "./bin/pi", ""] {
+            let mut request = input(Harness::Pi);
+            request.executable = Some(executable.to_string());
+            let error = build_spawn_plan(request).expect_err("override must be an absolute path");
+            assert!(
+                error
+                    .to_string()
+                    .contains("absolute executable-path override")
+            );
+        }
+    }
+
+    #[test]
+    fn absolute_omp_executable_keeps_omp_flag_translation() {
+        let mut request = input(Harness::Omp);
+        request.executable = Some("/opt/harnesses/omp".to_string());
+        let plan = build_spawn_plan(request).expect("omp executable override");
+        assert_eq!(
+            &plan.args[2..],
+            [
+                "/opt/harnesses/omp",
+                "--auto-approve",
+                "--model",
+                "provider/model",
+                "--thinking",
+                "high"
+            ]
+        );
     }
 
     #[test]

@@ -52,9 +52,15 @@ export default defineConfig({
 		},
 	],
 	test: {
-		include: [".pi/extensions/**/*.test.ts", "harness/**/*.test.ts", "skills/**/*.test.ts"],
+		include: [
+			".omp/extensions/**/*.test.ts",
+			".pi/extensions/**/*.test.ts",
+			"harness/**/*.test.ts",
+			"skills/**/*.test.ts",
+		],
 		exclude: [
 			"node_modules",
+			".pi/extensions/pij/**",
 			".pi/git",
 			".pi/npm",
 			...(hasNodeSqlite() ? [] : SQLITE_DEPENDENT_TESTS),

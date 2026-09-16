@@ -8,7 +8,7 @@
 
 ## Boot path for the incoming seat
 
-1. **Native Pi/OMP/Copilot extension seats keep extension-owned registration.** Other supported tmux seats adopt only their exact current pane per C1. Resolve incoming identity with `pij whoami --json`, then lever 0.
+1. **Native OMP, Pi and Copilot seats each keep their runtime's extension-owned registration.** Other supported tmux seats adopt only their exact current pane per C1. Resolve incoming identity with `pij whoami --json`, then lever 0.
    Persist `pij orchestration prime set <incoming-pij-id> --json`;
    preserve the designation/seq and corroborate its spine event before changing any writer line. No `list --prime` or tree projection exists; display role is not designation. Until step 5 retires the outgoing marker, the explicitly ruled designation overlap prevents a discovery gap.
 2. Read and write this pack under `<government-root>`; resolve it via

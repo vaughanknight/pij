@@ -1,0 +1,1 @@
+{"ok":false,"command":"pij spawn","v":2,"meta":"harness pi is retired on this machine; use omp (or pass --allow-retired)","error":"refused"}

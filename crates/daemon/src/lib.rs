@@ -137,6 +137,8 @@ pub struct Services {
     pub background: Arc<background::BackgroundService>,
     /// Row-consistent badge inputs and event freshness, without process fan-out.
     pub status: pij_store::status::SqliteStatus,
+    /// Machine-local spawn policy, shared with clients through daemon health.
+    pub retired_harnesses: Arc<[Harness]>,
     /// Whether this daemon is running entirely on fakes.
     pub offline: bool,
 }
@@ -431,6 +433,7 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         anomalies,
         background,
         status,
+        retired_harnesses: config.retired_harnesses.clone().into(),
         offline: config.is_fully_offline(),
     })
 }

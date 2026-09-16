@@ -1070,7 +1070,8 @@ async fn native_spawn_wait_resolves_prebound_child_resuming_saved_session() {
         .json(&super::SpawnRequest {
             id: Some(child_id.clone()),
             harness: Harness::Copilot,
-            executable: Some("copilot".into()),
+            allow_retired: false,
+            executable: None,
             model: None,
             effort: None,
             cwd: saved.folder.clone(),

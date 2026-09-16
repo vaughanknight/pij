@@ -557,11 +557,12 @@ async fn require_bearer(
 }
 
 #[derive(serde::Serialize)]
-struct Health {
+struct Health<'a> {
     status: &'static str,
     build: &'static str,
     offline: bool,
     machine: String,
+    retired_harnesses: &'a [Harness],
 }
 
 async fn health(State(state): State<AppState>) -> Response {
@@ -574,6 +575,7 @@ async fn health(State(state): State<AppState>) -> Response {
                 build: BUILD,
                 offline: state.services.offline,
                 machine: state.machine_alias,
+                retired_harnesses: &state.services.retired_harnesses,
             },
         ),
     )
@@ -889,6 +891,20 @@ pub(crate) struct ExistingSeatPolicy {
 }
 
 async fn spawn_seat(State(state): State<AppState>, Json(request): Json<SpawnRequest>) -> Response {
+    if state.services.retired_harnesses.contains(&request.harness) && !request.allow_retired {
+        let alternative = if request.harness == Harness::Omp {
+            "use another harness"
+        } else {
+            "use omp"
+        };
+        return refused(
+            "pij spawn",
+            format!(
+                "harness {} is retired on this machine; {alternative} (or pass --allow-retired)",
+                request.harness
+            ),
+        );
+    }
     launch_seat(
         &state,
         request,
@@ -1024,6 +1040,32 @@ async fn launch_seat_locked(
         Ok(plan) => plan,
         Err(error) => return refused(command_name, error),
     };
+    if request.allow_retired && state.services.retired_harnesses.contains(&request.harness) {
+        let at = match system_time_ms() {
+            Ok(at) => at,
+            Err(error) => return internal(command_name, error),
+        };
+        if let Err(error) = state
+            .services
+            .event_bus
+            .publish(Event {
+                seq: None,
+                v: wire::EVENT_VERSION,
+                at,
+                kind: "spawn.retired-harness-override".to_string(),
+                seat: Some(seat_id.clone()),
+                payload: serde_json::json!({
+                    "harness": request.harness,
+                    "allow_retired": true,
+                    "spawn_id": spawn_id,
+                })
+                .to_string(),
+            })
+            .await
+        {
+            return internal(command_name, error);
+        }
+    }
     let requested_model = plan.model.clone();
     let (status_path, log_path) = spawn_evidence_paths(&spawn_id);
     if let Some(parent) = status_path.parent()

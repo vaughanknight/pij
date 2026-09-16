@@ -25,7 +25,7 @@ use pij_harnesses::{
     claude_homes, ensure_claude_inbound_accept, ensure_claude_session_start_hook,
     ensure_claude_statusline, inspect_claude_inbound, inspect_claude_session_start_hook,
     inspect_claude_statusline, install_claude_session_start_script,
-    install_claude_statusline_script,
+    install_claude_statusline_script, validate_executable_override,
 };
 use serde_json::{Value, json};
 
@@ -195,7 +195,10 @@ enum Command {
         /// Harness to launch.
         #[arg(long, value_parser = parse_harness)]
         harness: Harness,
-        /// Executable override.
+        /// Explicitly allow a harness retired by this machine's daemon policy.
+        #[arg(long)]
+        allow_retired: bool,
+        /// Absolute executable-path override; never selects a different harness.
         #[arg(long)]
         bin: Option<String>,
         /// Exact model selector.
@@ -692,7 +695,12 @@ async fn run(cli: Cli) -> ExitCode {
             Ok(bind) => bind,
             Err(message) => return emit_config_error(&cli, message),
         };
-        return run_daemon(&bind, state_dir, hook_dir, *offline).await;
+        let retired_harnesses =
+            match resolve_retired_harnesses(std::env::var_os("PIJ_RETIRED_HARNESSES")) {
+                Ok(harnesses) => harnesses,
+                Err(message) => return emit_config_error(&cli, message),
+            };
+        return run_daemon(&bind, state_dir, hook_dir, *offline, retired_harnesses).await;
     }
     if let Command::Daemon {
         action: Some(DaemonAction::Bounce),
@@ -1207,6 +1215,27 @@ fn resolve_state_dir(flag: Option<PathBuf>, env: Option<OsString>) -> Result<Pat
     Ok(path)
 }
 
+fn resolve_retired_harnesses(env: Option<OsString>) -> Result<Vec<Harness>, String> {
+    let Some(value) = env else {
+        return Ok(Vec::new());
+    };
+    let value = value
+        .into_string()
+        .map_err(|_| "PIJ_RETIRED_HARNESSES must be valid UTF-8".to_string())?;
+    if value.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut retired = Vec::new();
+    for name in value.split(',').map(str::trim) {
+        let harness =
+            parse_harness(name).map_err(|error| format!("PIJ_RETIRED_HARNESSES: {error}"))?;
+        if !retired.contains(&harness) {
+            retired.push(harness);
+        }
+    }
+    Ok(retired)
+}
+
 fn resolve_client_addr(flag: Option<&str>, env: Option<OsString>) -> Result<String, String> {
     let (value, source) = configured_string(flag, env, "--addr", "PIJ_RS_ADDR")?;
     validate_host_port(&value, source)?;
@@ -1567,7 +1596,13 @@ fn run_claude_statusline_doctor(json: bool, state_dir: &Path) -> ExitCode {
     emit(&Envelope::ok("pij doctor claude-statusline", rows), json)
 }
 
-async fn run_daemon(bind: &str, state_dir: PathBuf, hook_dir: PathBuf, offline: bool) -> ExitCode {
+async fn run_daemon(
+    bind: &str,
+    state_dir: PathBuf,
+    hook_dir: PathBuf,
+    offline: bool,
+    retired_harnesses: Vec<Harness>,
+) -> ExitCode {
     let homes = claude_homes();
     let inbound_reports = ensure_claude_inbound_accept(&homes);
     let hook_script = install_claude_session_start_script(&hook_dir)
@@ -1582,7 +1617,8 @@ async fn run_daemon(bind: &str, state_dir: PathBuf, hook_dir: PathBuf, offline: 
         .as_ref()
         .map(|script| ensure_claude_statusline(&homes, script))
         .unwrap_or_default();
-    let config = daemon_config(bind, &state_dir.join("pij.sqlite"), offline);
+    let mut config = daemon_config(bind, &state_dir.join("pij.sqlite"), offline);
+    config.retired_harnesses = retired_harnesses;
     match pij_daemon::boot(&config, state_dir).await {
         Ok(daemon) => {
             for (kind, label, reports) in [
@@ -1811,6 +1847,7 @@ fn prepare_spawn_request(command: &Command) -> Result<Option<SpawnRequest>, PijE
     let Command::Spawn {
         id,
         harness,
+        allow_retired,
         bin,
         model,
         effort,
@@ -1826,6 +1863,7 @@ fn prepare_spawn_request(command: &Command) -> Result<Option<SpawnRequest>, PijE
     else {
         return Ok(None);
     };
+    validate_executable_override(*harness, bin.as_deref())?;
     let cwd = match cwd {
         Some(cwd) => cwd.clone(),
         None => std::env::current_dir().map_err(|error| PijError::Adapter {
@@ -1875,6 +1913,7 @@ fn prepare_spawn_request(command: &Command) -> Result<Option<SpawnRequest>, PijE
     Ok(Some(SpawnRequest {
         id: id.clone().map(Into::into),
         harness: *harness,
+        allow_retired: *allow_retired,
         executable: bin.clone(),
         model: model.clone(),
         effort: effort.clone(),
@@ -2109,7 +2148,8 @@ mod tests {
 
     use super::{
         Cli, Command, DaemonAction, caller_claude_warning, git_dir_is_linked,
-        prepare_spawn_request, resolve_bind_addr, resolve_client_addr, resolve_state_dir,
+        prepare_spawn_request, resolve_bind_addr, resolve_client_addr, resolve_retired_harnesses,
+        resolve_state_dir,
     };
 
     #[test]
@@ -2689,6 +2729,33 @@ mod tests {
             !request.accept_inbound,
             "non-Claude harnesses must not silently inherit the Claude default"
         );
+    }
+
+    #[test]
+    fn retired_harness_config_rejects_typos_and_honors_explicit_empty_policy() {
+        assert_eq!(
+            resolve_retired_harnesses(Some(OsString::from(" pi,omp,pi ")))
+                .expect("known harness names"),
+            vec![Harness::Pi, Harness::Omp]
+        );
+        assert_eq!(
+            resolve_retired_harnesses(Some(OsString::from(""))).expect("explicit empty policy"),
+            Vec::<Harness>::new()
+        );
+        for value in ["opm", "pi,"] {
+            let error = resolve_retired_harnesses(Some(OsString::from(value)))
+                .expect_err("invalid harness config");
+            assert!(error.contains("PIJ_RETIRED_HARNESSES"));
+            assert!(error.contains("unknown harness"));
+        }
+    }
+
+    #[test]
+    fn bin_harness_selector_refuses_before_cwd_or_tmux_resolution() {
+        let parsed = Cli::try_parse_from(["pij-rs", "spawn", "--harness", "pi", "--bin", "omp"])
+            .expect("spawn arguments");
+        let error = prepare_spawn_request(&parsed.command).expect_err("not a harness switch");
+        assert!(error.to_string().contains("use --harness omp"));
     }
 
     #[test]

@@ -1,0 +1,1 @@
+{"ok":false,"command":"pij spawn","v":2,"meta":"spawn: --bin omp selects omp, not the requested harness pi; use --harness omp and omit --bin, or provide an absolute executable path for pi","error":"adapter"}

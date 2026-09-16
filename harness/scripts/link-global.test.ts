@@ -9,6 +9,8 @@ import {
 	readdirSync,
 	readFileSync,
 	readlinkSync,
+	realpathSync,
+	renameSync,
 	rmSync,
 	symlinkSync,
 	unlinkSync,
@@ -69,6 +71,25 @@ afterEach(() => {
 });
 
 describe("link-global", () => {
+	it("links the OMP project home through its Pi discovery symlink", () => {
+		const root = checkout();
+		const home = tempDir("pij-link-home-");
+		const canonical = join(root, ".omp", "extensions", "pij");
+		mkdirSync(join(root, ".omp", "extensions"), { recursive: true });
+		renameSync(join(root, ".pi", "extensions", "pij"), canonical);
+		symlinkSync("../../.omp/extensions/pij", join(root, ".pi", "extensions", "pij"));
+		mkdirSync(join(home, ".pi", "agent"), { recursive: true });
+		writeFileSync(join(home, ".pi", "agent", "mcp.json"), "{}\n");
+
+		expect(run(root, home)).toMatchObject({ code: 0, stderr: [] });
+		for (const namespace of [".omp", ".pi"]) {
+			expect(realpathSync(join(home, namespace, "agent", "extensions", "pij"))).toBe(
+				realpathSync(canonical),
+			);
+		}
+		expect(run(root, home, ["--doctor-omp"])).toMatchObject({ code: 0, stderr: [] });
+	});
+
 	it("links the full Pi inventory, only pij for OMP, and shares Pi MCP + curated models", () => {
 		const root = checkout(["pij", "todo", "session-sql"]);
 		const home = tempDir("pij-link-home-");

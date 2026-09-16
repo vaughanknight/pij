@@ -178,7 +178,7 @@ tombstone, never erase).
 
 ## Your boot sequence
 
-1. Confirm delivery ownership per C1. Native Pi/OMP/Copilot extensions own registration; never adopt or start a competing receiver. Other supported tmux seats adopt only the exact current pane, carrying the true parent claim. Read `pij whoami --json` and `pij phonehome --json`; inspect the original v2 binding evidence. Unknown/stale process evidence is not permission to purge a descriptor. Use authorized rs close or conservative reap for records; legacy files are not rs authority. In-place `revive --attach` is unported.
+1. Confirm delivery ownership per C1. Native OMP, Pi and Copilot extensions each own their runtime's registration; never adopt or start a competing receiver. Other supported tmux seats adopt only the exact current pane, carrying the true parent claim. Read `pij whoami --json` and `pij phonehome --json`; inspect the original v2 binding evidence. Unknown/stale process evidence is not permission to purge a descriptor. Use authorized rs close or conservative reap for records; legacy files are not rs authority. In-place `revive --attach` is unported.
 2. Read inherited [store facts](./rituals/store-native.md) and documents at the
    resolved `<government-root>`: unmigrated spine → baton book → prime-flow → open
    briefs → latest reports. Audit dead holders, stale rows, orphaned peers in

@@ -16,6 +16,7 @@ const ROOT_FILES = new Set(["justfile", "package.json", "biome.json", "tsconfig.
 const OPERATIONAL_PREFIXES = [
 	".github/",
 	".harness/extensions/",
+	".omp/extensions/",
 	".pi/extensions/",
 	"agents/",
 	"harness/",

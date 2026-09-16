@@ -37,6 +37,13 @@ impl Drop for Fixture {
 }
 
 async fn fixture(probe: Arc<dyn LivenessPort>) -> Fixture {
+    fixture_with_retired_harnesses(probe, Vec::new()).await
+}
+
+async fn fixture_with_retired_harnesses(
+    probe: Arc<dyn LivenessPort>,
+    retired_harnesses: Vec<Harness>,
+) -> Fixture {
     let store = FreshStore::new();
     let config = Config {
         adapters: Adapters {
@@ -45,6 +52,7 @@ async fn fixture(probe: Arc<dyn LivenessPort>) -> Fixture {
             ..Adapters::default()
         },
         store_path: store.path(),
+        retired_harnesses,
         ..Config::default()
     };
     let mut services = pij_daemon::build_services(
@@ -183,6 +191,51 @@ async fn revive_observed_dead_tombstones_before_relaunch_and_cites_seq() {
     assert_eq!(revived.parent, prior.parent);
     assert_eq!(revived.model, prior.model);
     assert_ne!(revived.pane, prior.pane);
+}
+
+#[tokio::test]
+async fn revive_retired_harness_succeeds_and_audits_override() {
+    let f = fixture_with_retired_harnesses(Arc::new(FakeLiveness::new()), vec![Harness::Pi]).await;
+    let mut prior = target();
+    prior.harness = Harness::Pi;
+    let before = f.services.registry.put(prior.clone()).await.unwrap();
+
+    let body = post(&f, &request()).await;
+    assert_eq!(body["ok"], true, "{body}");
+    let revived = f.services.registry.get(&prior.id).await.unwrap().unwrap();
+    assert_eq!(revived.harness, Harness::Pi);
+    assert_eq!(revived.tombstoned_at, None);
+    assert_ne!(revived.pane, prior.pane);
+
+    let events = f
+        .services
+        .spine
+        .tail(Some(&prior.id), before)
+        .await
+        .unwrap();
+    let overrides: Vec<_> = events
+        .iter()
+        .filter(|event| event.kind == "spawn.retired-harness-override")
+        .collect();
+    assert_eq!(overrides.len(), 1, "retired revival must be audited");
+    let event = overrides[0];
+    assert_eq!(event.seat.as_ref(), Some(&prior.id));
+    assert_eq!(
+        serde_json::from_str::<Value>(&event.payload).unwrap(),
+        json!({
+            "harness": "pi",
+            "allow_retired": true,
+            "spawn_id": revived.spawn_id,
+        })
+    );
+    let launched = events
+        .iter()
+        .find(|event| event.kind == "seat.put")
+        .unwrap();
+    assert!(
+        event.seq < launched.seq,
+        "audit precedes launch publication"
+    );
 }
 
 #[tokio::test]
