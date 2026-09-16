@@ -23,7 +23,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 					if (timer.due <= clock.now) timer.finish();
 				}
 			},
-			sleep(ms, value, signal) {
+			sleep(ms, value, signal, source) {
 				signal.throwIfAborted();
 				return new Promise((resolve, reject) => {
 					const finish = (error) => {
@@ -37,7 +37,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 					pending.add(timer);
 					signal.addEventListener("abort", aborted, { once: true });
 					console.error(
-						`TEST_EVENT ${JSON.stringify({ kind: "fixture-delay", ms, at: clock.now })}`,
+						`TEST_EVENT ${JSON.stringify({ kind: "fixture-delay", source, ms, at: clock.now })}`,
 					);
 				});
 			},
@@ -69,6 +69,8 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
         rpc: { eventLog: {
           async tail() { return {cursor:String(history.length)}; },
           async read({cursor='0',max}) {
+            emit({kind:'sdk-read',at:globalThis.pijNativeTestClock?.now});
+            if (process.env.PIJ_NATIVE_TEST_READ_FAIL === '1') throw new Error('Fixture SDK read unavailable');
             const events=history.slice(Number(cursor),Number(cursor)+max);
             const next=Number(cursor)+events.length;
             return {events,cursor:String(next),hasMore:next<history.length,cursorStatus:'ok'};
@@ -118,8 +120,20 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
     import { setTimeout as sleep } from 'node:timers/promises';
     export function setTimeout(ms, value, options) {
       return options?.signal
-        ? globalThis.pijNativeTestClock.sleep(ms, value, options.signal)
+        ? globalThis.pijNativeTestClock.sleep(ms, value, options.signal, 'registration')
         : sleep(ms, value, options);
+    }
+  `;
+	const storeApi = `
+    import * as real from ${JSON.stringify(new URL("./store.mjs", import.meta.url).href)};
+    export * from ${JSON.stringify(new URL("./store.mjs", import.meta.url).href)};
+    export class NativeBridge extends real.NativeBridge {
+      constructor(options) {
+        super({...options,
+          delay: (ms, signal) => globalThis.pijNativeTestClock.sleep(ms, undefined, signal, 'receiver'),
+          heartbeatDelay: (ms, signal) => globalThis.pijNativeTestClock.sleep(ms, undefined, signal, 'heartbeat')
+        });
+      }
     }
   `;
 	registerHooks({
@@ -132,10 +146,16 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 						: specifier === "node:timers/promises" &&
 								process.env.PIJ_NATIVE_TEST_CLOCK === "1" &&
 								/\/(?:extension|store)\.mjs$/.test(context.parentURL ?? "")
-							? timerApi
-							: specifier === "node:fs/promises" && context.parentURL?.endsWith("/extension.mjs")
-								? kernelApi
-								: undefined;
+							? context.parentURL.endsWith("/extension.mjs")
+								? timerApi
+								: timerApi.replace("'registration'", "'store'")
+							: specifier === "./store.mjs" &&
+									process.env.PIJ_NATIVE_TEST_CLOCK === "1" &&
+									context.parentURL?.endsWith("/extension.mjs")
+								? storeApi
+								: specifier === "node:fs/promises" && context.parentURL?.endsWith("/extension.mjs")
+									? kernelApi
+									: undefined;
 			return source === undefined
 				? next(specifier, context)
 				: { url: `data:text/javascript,${encodeURIComponent(source)}`, shortCircuit: true };
@@ -163,6 +183,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			registerResponses = [],
 			registerRefusal,
 			controlledClock = false,
+			startupReadFails = false,
 		} = {},
 	) {
 		const home = await mkdtemp(join(tmpdir(), "pij-native-shell-"));
@@ -314,6 +335,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			PIJ_NATIVE_TEST_COMM: processCommand,
 			PIJ_NATIVE_TEST_EXECUTABLE: kernelExecutable,
 			PIJ_NATIVE_TEST_CLOCK: controlledClock ? "1" : "0",
+			PIJ_NATIVE_TEST_READ_FAIL: startupReadFails ? "1" : "0",
 		};
 		for (const name of ["TMUX", "TMUX_PANE", "PIJ_SESSION_ID", "PIJ_SPAWN_ID", "PIJ_PARENT_ID"])
 			delete env[name];
@@ -389,7 +411,13 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			child.stdin.write(`${JSON.stringify({ advanceMs: ms })}\n`);
 			await waitFor("fixture-clock", (event) => event.at === clock);
 		}
-		return { child, events, requests, waitFor, advance, stdout: () => stdout };
+		const waitForRetry = (matches) =>
+			waitFor(
+				"fixture-delay",
+				(event) =>
+					(event.source === "registration" || event.source === "receiver") && matches(event),
+			);
+		return { child, events, requests, waitFor, waitForRetry, advance, stdout: () => stdout };
 	}
 
 	const transientHold = {
@@ -409,7 +437,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		"[pij native] still waiting for this pane's resumed Copilot session after 10 min; pij delivery is unavailable in this window";
 
 	async function expectHold(f, { at, elapsedMs = at, retryMs }) {
-		const delay = await f.waitFor("fixture-delay", (event) => event.at === at);
+		const delay = await f.waitForRetry((event) => event.at === at);
 		const wait = f.events.findLast(
 			(event) => event.kind === "registration-wait" && event.holdKind === "native-session",
 		);
@@ -435,7 +463,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 					(event) => event.holdKind === "native-session" && event.elapsedMs === elapsedMs,
 				);
 				assert.equal(wait.retryMs, retryMs);
-				await f.waitFor("fixture-delay", (event) => event.at === elapsedMs && event.ms === retryMs);
+				await f.waitForRetry((event) => event.at === elapsedMs && event.ms === retryMs);
 				assert.equal(f.child.exitCode, null);
 				assert.equal(f.child.signalCode, null);
 				if (elapsedMs >= 10000) await f.waitFor("native-log");
@@ -571,7 +599,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 				event.message.startsWith("[pij native] unavailable:"),
 			);
 			assert.match(failure.message, phase === "startup" ? /registration-wait/ : /reconnecting/);
-			const errorDelay = await f.waitFor("fixture-delay", (event) => event.at === 660000);
+			const errorDelay = await f.waitForRetry((event) => event.at === 660000);
 			assert.equal(errorDelay.ms, 250, "a genuine failure must leave the slow hold cadence");
 			await f.advance(250);
 			await expectHold(f, { at: 660250, elapsedMs: 0, retryMs: 500 });
@@ -585,10 +613,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			await expectHold(f, { at: 1260250, elapsedMs: 600000, retryMs: 60000 });
 			await f.advance(60000);
 			await f.waitFor("registered");
-			const resumedDelay = await f.waitFor(
-				"fixture-delay",
-				(event) => event.at === 1320250 && event.ms !== 20000,
-			);
+			const resumedDelay = await f.waitForRetry((event) => event.at === 1320250);
 			assert.equal(resumedDelay.ms, 250, "successful registration must restore fast inbox polling");
 			assert.deepEqual(
 				f.events.filter((event) => event.kind === "native-log").map((event) => event.message),
@@ -610,9 +635,9 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 				controlledClock: true,
 				registerResponses: [...(phase === "bridge" ? [{}] : []), transientHold, transientHold],
 			});
-			await f.waitFor("fixture-delay", (event) => event.at === 0 && event.ms === 250);
+			await f.waitForRetry((event) => event.at === 0 && event.ms === 250);
 			await f.advance(250);
-			await f.waitFor("fixture-delay", (event) => event.at === 250 && event.ms === 500);
+			await f.waitForRetry((event) => event.at === 250 && event.ms === 500);
 			assert.equal(f.child.exitCode, null);
 			const requests = f.requests.length;
 			const exited = once(f.child, "exit");
@@ -684,7 +709,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 				{ data: [] },
 			],
 		});
-		await f.waitFor("fixture-delay", (event) => event.at === 0 && event.ms === 250);
+		await f.waitForRetry((event) => event.at === 0 && event.ms === 250);
 		const failure = await f.waitFor("native-log");
 		assert.match(failure.message, /unavailable: reconnecting/);
 		await f.advance(250);
@@ -692,10 +717,10 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			"registration-wait",
 			(event) => event.holdKind === "native-session" && event.elapsedMs === 0,
 		);
-		await f.waitFor("fixture-delay", (event) => event.at === 250 && event.ms === 500);
+		await f.waitForRetry((event) => event.at === 250 && event.ms === 500);
 		await f.advance(500);
 		await f.waitFor("registration-wait", (event) => event.elapsedMs === 500);
-		await f.waitFor("fixture-delay", (event) => event.at === 750 && event.ms === 1000);
+		await f.waitForRetry((event) => event.at === 750 && event.ms === 1000);
 		assert.equal(f.events.filter((event) => event.kind === "native-log").length, 1);
 		assert.equal(
 			f.events.some((event) => event.kind === "native-send"),
@@ -704,17 +729,11 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		await f.advance(599500);
 		const escalated = await f.waitFor("registration-wait", (event) => event.elapsedMs === 600000);
 		assert.equal(escalated.retryMs, 60000);
-		const heldDelay = await f.waitFor(
-			"fixture-delay",
-			(event) => event.at === 600250 && event.ms !== 20000,
-		);
+		const heldDelay = await f.waitForRetry((event) => event.at === 600250);
 		assert.equal(heldDelay.ms, 60000);
 		await f.waitFor("native-log", (event) => event.message === escalationMessage);
 		await f.advance(60000);
-		const resumedDelay = await f.waitFor(
-			"fixture-delay",
-			(event) => event.at === 660250 && event.ms !== 20000,
-		);
+		const resumedDelay = await f.waitForRetry((event) => event.at === 660250);
 		assert.equal(resumedDelay.ms, 250);
 		await f.advance(250);
 		await f.waitFor("completion-wait");
@@ -729,6 +748,96 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		assert.doesNotMatch(
 			JSON.stringify(f.events),
 			/SECRET_HOLD_BODY|fixture-secret|restart the Copilot CLI/,
+		);
+	});
+
+	test("registration hold success followed by startup observation hold never retries registration", async (t) => {
+		const f = await launch(t, {
+			controlledClock: true,
+			startupReadFails: true,
+			registerResponses: [{}, transientHold, transientHold],
+		});
+		await expectHold(f, { at: 0, retryMs: 250 });
+		await f.advance(600000);
+		await expectHold(f, { at: 600000, retryMs: 60000 });
+		await f.advance(60000);
+		const held = await f.waitFor("receive-held");
+		assert.equal(held.safeDiagnostic, "eventLog.read failed");
+		const registrations = f.requests.filter((request) => request.path === "/v1/register").length;
+		await f.advance(60000);
+		assert.equal(
+			f.requests.filter((request) => request.path === "/v1/register").length,
+			registrations,
+		);
+		assert.deepEqual(
+			f.events
+				.filter((event) => event.kind === "fixture-delay")
+				.map(({ source, ms }) => ({ source, ms })),
+			[
+				{ source: "receiver", ms: 250 },
+				{ source: "receiver", ms: 60000 },
+			],
+		);
+		assert.equal(
+			f.requests.some((request) => request.path.startsWith("/v1/inbox")),
+			false,
+		);
+		f.child.stdin.write(
+			`${JSON.stringify({ to: "pij-peer", message: "OUTGOING_AFTER_OBSERVATION_HOLD" })}\n`,
+		);
+		assert.equal((await f.waitFor("tool-result")).result.ok, true);
+	});
+
+	test("idle empty receiver has no SDK probe timer; outstanding completion retains observation polling", async (t) => {
+		const f = await launch(t, { controlledClock: true, inboxPages: [{ data: [] }] });
+		await f.waitForRetry((event) => event.ms === 250);
+		await f.waitFor("fixture-delay", (event) => event.source === "heartbeat");
+		assert.deepEqual(
+			new Set(
+				f.events.filter((event) => event.kind === "fixture-delay").map((event) => event.source),
+			),
+			new Set(["receiver", "heartbeat"]),
+			"idle has only inbox and lease waits, not an SDK probe timer",
+		);
+		assert.equal(
+			f.events.filter((event) => event.kind === "sdk-read").length,
+			1,
+			"only startup observation",
+		);
+		await f.advance(250);
+		await f.waitFor("completion-wait");
+		await f.waitForRetry((event) => event.at === 250);
+		const reads = f.events.filter((event) => event.kind === "sdk-read").length;
+		const claims = f.requests.filter((request) => request.path.startsWith("/v1/inbox?")).length;
+		await f.advance(250);
+		await f.waitForRetry((event) => event.at === 500);
+		assert.ok(f.events.filter((event) => event.kind === "sdk-read").length > reads);
+		assert.equal(
+			f.requests.filter((request) => request.path.startsWith("/v1/inbox?")).length,
+			claims,
+		);
+		f.child.stdin.write(
+			`${JSON.stringify({
+				nativeEvents: [
+					{
+						type: "assistant.message",
+						id: "final",
+						parentId: "user-native-shell-137",
+						data: { toolRequests: [] },
+					},
+					{ type: "assistant.turn_end", id: "end", parentId: "final", data: {} },
+				],
+			})}\n`,
+		);
+		await f.waitFor("native-completed");
+		await f.waitForRetry((event) => event.at === 500 && event.ms === 250);
+		const after = f.events.filter((event) => event.kind === "sdk-read").length;
+		await f.advance(1000);
+		await f.waitForRetry((event) => event.at === 1500);
+		assert.equal(
+			f.events.filter((event) => event.kind === "sdk-read").length,
+			after,
+			"completed work leaves no SDK polling",
 		);
 	});
 

@@ -1,0 +1,144 @@
+{
+  "base": "aedf5ee310608c05286174e9c5118f3aa7d550ee",
+  "onto": "6b8d8504",
+  "constraints": {
+    "production_mutations": false,
+    "rebase_by_coder": false,
+    "private_smoke_resources": true
+  },
+  "source_hashes": {
+    ".copilot/extensions/pij/store.mjs": "ecdce862aea71ce61e330aef79533e3c7fa431f5d0a3f5bb995de316edfe3475",
+    ".copilot/extensions/pij/extension.mjs": "46c1a205821d192e6024c84280dc3c898a89e5fc4671ab8b9131d6440175e466",
+    ".copilot/extensions/pij/extension.test.mjs": "5ee5faac724bc71855bbd7d5cb1288980a3a77ccde3656d9c022d48e7580f454",
+    ".copilot/extensions/pij/progress.test.mjs": "fb57e361e610a8e76e30b3e3c98a1ada36b233e4e8e94f70998f5b72b674f584"
+  },
+  "red": [
+    {
+      "case": "shutdown fixture namespace superset",
+      "result": "AssertionError: shutdown wrapper must preserve the complete store API",
+      "exit": 1
+    },
+    {
+      "case": "idle empty receiver has no SDK probe timer",
+      "result": "actual timer sources Set(3) {heartbeat,receiver,store}; expected Set(2) {receiver,heartbeat}",
+      "exit": 1
+    }
+  ],
+  "gates": {
+    "native": {
+      "command": "node --test .copilot/extensions/pij/*.test.mjs",
+      "tests": 262,
+      "passed": 259,
+      "skipped": 3,
+      "failed": 0,
+      "exit": 0,
+      "artifact": "368"
+    },
+    "rust": {
+      "command": "~/.cargo/bin/cargo test --workspace",
+      "passed": 1135,
+      "suites": 88,
+      "ignored": 8,
+      "filtered": 93,
+      "exit": 0,
+      "artifact": "373"
+    },
+    "fmt": {
+      "command": "~/.cargo/bin/cargo fmt --all --check",
+      "exit": 0
+    },
+    "clippy": {
+      "command": "~/.cargo/bin/cargo clippy --workspace --all-targets -- -D warnings",
+      "exit": 0
+    },
+    "build": {
+      "command": "~/.cargo/bin/cargo build -p pij-cli --bin pij-rs",
+      "exit": 0
+    },
+    "progress_smoke": {
+      "command": "just copilot-native-progress-smoke --large-history --inject-empty-cursor --copilot-bin /Users/jordanknight/.local/bin/copilot --copilot-runtime-dir /Users/jordanknight/.copilot/pkg/darwin-arm64/1.0.84-9 --output-dir /Users/jordanknight/pi-hacking/fs3-receiver-progress/docs/plans/152-receiver-progress/evidence/ac5-rebase",
+      "exit": 0,
+      "receipt": "evidence/ac5-rebase/summary.json",
+      "history_bytes": 105037245,
+      "expiry_ms": 54713,
+      "recycle": "held",
+      "runtime": "1.0.84-9"
+    },
+    "memory_smoke": {
+      "command": "just copilot-native-memory-smoke --copilot-bin /Users/jordanknight/.local/bin/copilot --copilot-runtime-dir /Users/jordanknight/.copilot/pkg/darwin-arm64/1.0.84-9 --output-dir /Users/jordanknight/pi-hacking/fs3-receiver-progress/docs/plans/150-native-extension-memory/evidence/ac6-plan152-rebase",
+      "exit": 0,
+      "receipt": "evidence/ac6-rebase/summary.json",
+      "history_bytes": 84024782,
+      "messages": 30,
+      "cadence_seconds": 10,
+      "expiry_ms": 56623,
+      "runtime": "1.0.84-9"
+    },
+    "self_check": {
+      "command": "just self-check",
+      "exit": 0,
+      "artifact": "395",
+      "vitest": {
+        "files_passed": 243,
+        "files_skipped": 4,
+        "passed": 5307,
+        "skipped": 22
+      },
+      "native": {
+        "tests": 262,
+        "passed": 259,
+        "skipped": 3,
+        "failed": 0
+      },
+      "smoke_scenarios": 11,
+      "windows_focused": {
+        "tests_run": 0,
+        "verdict": "proof gap: .pi selectors excluded after .omp migration; empty suite exits 0"
+      },
+      "snapshot": "briefing.md SHA matches snapshots (cdf5f5b25001...)",
+      "audit": {
+        "policy": "report-only",
+        "flagged_entries": 1,
+        "total_entries": 4,
+        "fail": 4,
+        "warn": 13
+      },
+      "attribution_warnings": [
+        "bb0619882b03f13cbd1ebacd2aa616b325a100b5",
+        "aedf5ee310608c05286174e9c5118f3aa7d550ee",
+        "0e907e46a8eba407c926d3ce775f1bbfa37682b8"
+      ]
+    }
+  },
+  "memory_unit": {
+    "deliveries": 50,
+    "polls": 50,
+    "full_history_reads": 0,
+    "retained_growth_bytes": 474120,
+    "replay": {
+      "pages": 158,
+      "events": 20002,
+      "startup_pages": 1,
+      "startup_events": 128,
+      "gc_samples": 319,
+      "acks": 1,
+      "sends": 0,
+      "full_history_reads": 0,
+      "peak_growth_bytes": 1710576
+    }
+  },
+  "rule": "No permanent idle SDK polling. Existing pending-consumption/completion observation owns bounded probes; next delivery tails afresh. Registration success resets hold cadence; startup observation failure holds receiving without registration retry.",
+  "cwd": "/Users/jordanknight/pi-hacking/fs3-receiver-progress",
+  "environment": {
+    "CARGO_TARGET_DIR": "/Users/jordanknight/pi-hacking/fs3-receiver-progress/target",
+    "PATH": "inherited unchanged"
+  },
+  "harness": {
+    "encoded": "Delay ownership and idle/workload lifecycle regression",
+    "observations": [
+      "DL-004",
+      "DL-005"
+    ],
+    "portable_gap_notified_to": "pij-far-jackal"
+  }
+}

@@ -232,6 +232,14 @@ A replacement child first attests its identity, then observes a bounded SDK hist
 window before sending its initial progress heartbeat or claiming inbox work.
 This allows healthy same-host replacement without granting renewal to a timer alone.
 
+SDK probing is workload-gated: the existing consumption/completion observation loop
+reads and checks the independent tail only while a native delivery is pending or its
+completion is outstanding. There is no permanent one-second idle SDK timer. An empty
+receiver still renews its daemon lease and accepts callbacks, but does not poll the SDK;
+the next delivery captures a fresh tail in `newCompletion`. Startup observation remains
+a single bounded read. Registration success resets its hold cadence before that read;
+a startup observation failure is `receive-held`, never a registration retry episode.
+
 The extension treats `stale` as `receive-held`, not a malformed response or an
 infinite retry. `pij state` reports `native_receiver_reason:"native-receiver-stale"`
 separately from host liveness; human output names the same reason. `pij inbox`

@@ -658,7 +658,6 @@ export class NativeBridge {
 		report,
 		delay = (ms, signal) => sleep(ms, undefined, { signal }),
 		heartbeatDelay = (ms, signal) => sleep(ms, undefined, { signal }),
-		receiverDelay = (ms, signal) => sleep(ms, undefined, { signal }),
 		now = Date.now,
 		setTimer = setTimeout,
 		clearTimer = clearTimeout,
@@ -670,7 +669,6 @@ export class NativeBridge {
 		this.report = report;
 		this.delay = delay;
 		this.heartbeatDelay = heartbeatDelay;
-		this.receiverDelay = receiverDelay;
 		this.now = now;
 		this.setTimer = setTimer;
 		this.clearTimer = clearTimer;
@@ -920,9 +918,6 @@ export class NativeBridge {
 					if (!this.heartbeat) {
 						await this.observeStartup();
 						this.heartbeat = this.keepReceiverAlive();
-						this.receiverWatch = this.watchIdleReceiver().catch((error) => {
-							if (!signal.aborted) this.holdReceiving(error);
-						});
 					}
 					if (this.completion) await this.waitForCompletion();
 					throwIfStopped(signal);
@@ -1072,26 +1067,6 @@ export class NativeBridge {
 				"Native startup observation page is unavailable or malformed; receiving held",
 			);
 		for (const event of page.events) this.observeProgress(event);
-	}
-	async watchIdleReceiver() {
-		const signal = this.receiverController.signal;
-		// This loop remains independent of a daemon inbox long-poll or operator Hold.
-		let idle;
-		while (!signal.aborted) {
-			await this.receiverDelay(RECEIVER_PROBE_INTERVAL_MS, signal);
-			throwIfStopped(signal);
-			if (this.completion && !this.completion.reported) {
-				idle = undefined;
-				continue;
-			}
-			if (!idle) {
-				const tail = await this.nativeRpc("eventLog.tail", () => this.native.rpc.eventLog.tail());
-				if (typeof tail?.cursor !== "string")
-					throw new NativeError("Native incremental history baseline is malformed; receiving held");
-				idle = { cursor: tail.cursor, tailCursor: tail.cursor, lastProbeAt: 0, observe() {} };
-			}
-			await this.readEvents(idle);
-		}
 	}
 	async probeReceiver(completion) {
 		const signal = this.receiverController.signal;

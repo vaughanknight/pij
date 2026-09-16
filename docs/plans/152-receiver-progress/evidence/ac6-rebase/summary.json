@@ -1,0 +1,79 @@
+{
+  "status": "passed",
+  "started": "2026-09-16T06:28:10.075Z",
+  "finished": "2026-09-16T06:34:15.883Z",
+  "identity": {
+    "node": "v24.7.0",
+    "pij": "pij-rs 0.1.0",
+    "pij_binary": "/Users/jordanknight/pi-hacking/fs3-receiver-progress/target/debug/pij-rs",
+    "pij_sha256": "d5f133bed05011fb0e6a50d64c8ccd520a58b87bb63250092128f3d55562269d",
+    "copilot": "GitHub Copilot CLI 1.0.84-9.\nRun 'copilot update' to check for updates.",
+    "copilot_binary": "/Users/jordanknight/.local/bin/copilot",
+    "copilot_sha256": "02c95ab4968b2653f92cbdc664e7a7bf0d18bb0292896d2a2e7eda1edc5444c1",
+    "source_modules": {
+      "extension.mjs": "46c1a205821d192e6024c84280dc3c898a89e5fc4671ab8b9131d6440175e466",
+      "store.mjs": "ecdce862aea71ce61e330aef79533e3c7fa431f5d0a3f5bb995de316edfe3475"
+    }
+  },
+  "history": {
+    "path": "/Users/jordanknight/pi-hacking/fs3-receiver-progress/docs/plans/150-native-extension-memory/evidence/ac6-plan152-rebase/runtime/home/.copilot/session-state/6c4391f9-92a5-4470-87ad-0ef9bb4c8dbe/events.jsonl",
+    "bootstrap_events": 8,
+    "synthetic_events": 20002,
+    "total_events": 20010,
+    "bytes": 84024782,
+    "sha256": "16dc3ce805f4ddd4b777af0b4347ad7c3084b6298904523c983f4c62e7524fe6",
+    "last_event_id": "f1a21ace-0c96-4833-939e-9eb4033cac7e",
+    "format": "real bootstrap event templates + chained synthetic user/assistant events + supported successful compaction summary",
+    "inference": "synthetic history, not a claim of 10000 real inference turns"
+  },
+  "history_prefix_preserved_after_messages": true,
+  "target": {
+    "seat": "pij-uptight-flea",
+    "session": "6c4391f9-92a5-4470-87ad-0ef9bb4c8dbe",
+    "host": 23135,
+    "extension": 23556
+  },
+  "messages": 30,
+  "cadence_seconds": 10,
+  "rss": {
+    "samples": 32,
+    "span_ms": 302441,
+    "min_kib": 102544,
+    "max_kib": 114112,
+    "first_kib": 114112,
+    "last_kib": 108848
+  },
+  "lease": {
+    "elapsed_ms": 56623,
+    "bound_ms": 60000,
+    "parked": {
+      "seq": 135,
+      "at": 1789540455405,
+      "kind": "delivery.parked",
+      "seat": "pij-attitude-adjuster",
+      "payload": "{\"jobId\":31,\"messageId\":\"8680f9ed-e135-4606-b6ec-47a8f151017a\",\"outcome\":\"undelivered:native-receiver-unavailable\",\"reason\":\"native-extension-unavailable\",\"recipient\":\"pij-uptight-flea\"}"
+    }
+  },
+  "manual": {
+    "acknowledgements": [
+      {
+        "recipient": "pij-uptight-flea",
+        "msg_id": "8680f9ed-e135-4606-b6ec-47a8f151017a",
+        "origin": "reader-read",
+        "delivered_at": 1789540455
+      }
+    ],
+    "jobs": [
+      {
+        "id": 31,
+        "state": "done",
+        "outcome": null
+      }
+    ]
+  },
+  "cleanup": {
+    "owned_tmux_stopped": true,
+    "owned_daemon_stopped": true,
+    "retained": "Plan-local isolated runtime retained for evidence; daemon key and synthetic history stay inside private runtime directory. No production/global configuration was changed."
+  }
+}

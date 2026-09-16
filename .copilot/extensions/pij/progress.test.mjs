@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { registerHooks } from "node:module";
 import test from "node:test";
 import { setImmediate as flush } from "node:timers/promises";
@@ -71,7 +71,6 @@ function fixture(t, { consume = true, claims = true, boundary = false } = {}) {
 		heartbeats = [],
 		reads = [];
 	const waits = [],
-		idleWaits = [],
 		heartbeatWaits = [],
 		timers = new Map(),
 		records = new Map();
@@ -210,7 +209,6 @@ function fixture(t, { consume = true, claims = true, boundary = false } = {}) {
 		client,
 		report: (event) => reports.push(event),
 		delay: (ms, signal) => gate(waits, ms, signal),
-		receiverDelay: (ms, signal) => gate(idleWaits, ms, signal),
 		heartbeatDelay: (ms, signal) => gate(heartbeatWaits, ms, signal),
 		now: () => state.now,
 		setTimer: (fn, ms) => {
@@ -234,7 +232,6 @@ function fixture(t, { consume = true, claims = true, boundary = false } = {}) {
 		heartbeats,
 		reads,
 		waits,
-		idleWaits,
 		heartbeatWaits,
 		timers,
 		records,
@@ -266,27 +263,8 @@ async function pump(f, bucket = f.waits) {
 }
 const held = (f) => f.reports.filter((event) => event.kind === "receive-held");
 
-if (process.env.PIJ_PROGRESS_EXIT_CHILD === "1") {
-	// Only OS/SDK/daemon seams are replaced. The extension lifecycle and bridge are real.
-	const sdkSource = `
-		let listener; const typed = new Map();
-		export async function joinSession() {
-			process.stdin.on('data', (bytes) => {
-				if (String(bytes).trim() === 'exit') process.exit(0);
-				else { typed.get('session.shutdown')?.(); listener?.({type:'session.shutdown',data:{}}); }
-			});
-			return {
-				sessionId: process.env.SESSION_ID,
-				on(type, fn) { if (typeof type === 'function') listener=type; else typed.set(type,fn); return () => {}; },
-				async send() { listener({type:'user.message',id:'owned-user',data:{messageId:'native-progress'}}); return 'native-progress'; },
-				rpc: { eventLog: { async tail() { return {cursor:'empty'}; }, async read() { return {events:[],cursor:'empty',hasMore:false,cursorStatus:'ok'}; } } },
-				async disconnect() {}, async log() {}
-			};
-		}
-	`;
-	const storeSource = `
-		import * as real from ${JSON.stringify(new URL("./store.mjs", import.meta.url).href)};
-		export const {NativeBridge,NativeError,createNativeReporter,INITIAL_RETRY_MS,MAX_RETRY_MS,normalizeExecutable,parseProcessStart} = real;
+const storeSource = `
+		export * from ${JSON.stringify(new URL("./store.mjs", import.meta.url).href)};
 		const registration = ${JSON.stringify(registration)};
 		export const chooseRegistration=()=>registration;
 		export const resolveRegistration=async()=>registration;
@@ -312,6 +290,24 @@ if (process.env.PIJ_PROGRESS_EXIT_CHILD === "1") {
 			}
 		}
 	`;
+if (process.env.PIJ_PROGRESS_EXIT_CHILD === "1") {
+	// Only OS/SDK/daemon seams are replaced. The extension lifecycle and bridge are real.
+	const sdkSource = `
+		let listener; const typed = new Map();
+		export async function joinSession() {
+			process.stdin.on('data', (bytes) => {
+				if (String(bytes).trim() === 'exit') process.exit(0);
+				else { typed.get('session.shutdown')?.(); listener?.({type:'session.shutdown',data:{}}); }
+			});
+			return {
+				sessionId: process.env.SESSION_ID,
+				on(type, fn) { if (typeof type === 'function') listener=type; else typed.set(type,fn); return () => {}; },
+				async send() { listener({type:'user.message',id:'owned-user',data:{messageId:'native-progress'}}); return 'native-progress'; },
+				rpc: { eventLog: { async tail() { return {cursor:'empty'}; }, async read() { return {events:[],cursor:'empty',hasMore:false,cursorStatus:'ok'}; } } },
+				async disconnect() {}, async log() {}
+			};
+		}
+	`;
 	registerHooks({
 		resolve(specifier, context, next) {
 			const source =
@@ -326,6 +322,23 @@ if (process.env.PIJ_PROGRESS_EXIT_CHILD === "1") {
 		},
 	});
 } else {
+	test("shutdown fixture exports every real store symbol", () => {
+		const child = spawnSync(
+			process.execPath,
+			[
+				"--input-type=module",
+				"--eval",
+				`import * as wrapped from ${JSON.stringify(`data:text/javascript,${encodeURIComponent(storeSource)}`)}; console.log(JSON.stringify(Object.keys(wrapped)));`,
+			],
+			{ encoding: "utf8", timeout: 5000 },
+		);
+		const exports = JSON.parse(child.stdout);
+		assert.ok(
+			Object.keys(store).every((name) => exports.includes(name)),
+			"shutdown wrapper must preserve the complete store API",
+		);
+	});
+
 	for (const call of [
 		"eventLog.tail",
 		"eventLog.read",
@@ -567,32 +580,27 @@ if (process.env.PIJ_PROGRESS_EXIT_CHILD === "1") {
 		await run;
 	});
 
-	test("AC2: idle receiver probes independently of a blocked inbox and resumes only from a forward tail", async (t) => {
+	test("AC2: empty idle receiver leaves SDK observation to the next delivery", async (t) => {
 		const f = fixture(t, { claims: false });
 		const run = f.bridge.run();
 		await flush();
-		await f.tick(f.idleWaits);
+		const reads = f.reads.length;
 		f.rebase([{ type: "session.model_change", id: "idle-model", data: {} }]);
-		await pump(f, f.idleWaits);
-		assert.equal(f.reports.filter((event) => event.kind === "receiver-rebaselined").length, 1);
-		assert.ok(
-			f.reads.some((read) => read.cursor?.includes("after-model-picker")),
-			"forward polling resumed after the rebaseline",
-		);
+		await pump(f);
 		await f.tick(f.heartbeatWaits);
-		assert.equal(f.heartbeats.at(-1).observed_seq, 1);
-		assert.equal(f.state.claims, 1, "progress monitoring does not poll the daemon again");
+		assert.equal(f.reads.length, reads, "no SDK reads while the inbox is empty");
+		assert.equal(f.waits.length, 0, "no observation poll timer");
+		assert.equal(f.heartbeats.at(-1).observed_seq, 0);
 		assert.deepEqual(f.sends, []);
-		assert.deepEqual(held(f), []);
 		f.bridge.stop();
 		await run;
 	});
 
-	test("AC3: timers and empty idle pages do not manufacture observation progress", async (t) => {
+	test("AC3: idle heartbeats do not manufacture observation progress", async (t) => {
 		const f = fixture(t, { claims: false });
 		const run = f.bridge.run();
 		await flush();
-		await pump(f, f.idleWaits);
+		await pump(f);
 		await f.tick(f.heartbeatWaits);
 		assert.deepEqual(
 			f.heartbeats.map(({ observed_at, observed_seq }) => ({ observed_at, observed_seq })),
