@@ -389,7 +389,7 @@ export class FsRegistry implements RegistryPort {
 		// those fields are uncontested, so the stale copy would win and overwrite the
 		// correction — leaving a live seat pointing at a directory that no longer
 		// exists. That is worse than the original split, because `pij path`/`pij tail`
-		// then name nothing at all. pi/omp happened to self-heal (session.ts computes
+		// then name nothing at all. Pi and OMP self-healed (session.ts computes
 		// its own dataDir); s066's buildRevivedDescriptor does not, so claude/copilot/
 		// codex — the harnesses whose revive is live-proven — kept the broken path.
 		//

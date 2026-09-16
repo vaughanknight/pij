@@ -140,7 +140,7 @@ describe("planRevive — exact native continuation only", () => {
 		]);
 	});
 
-	it("uses existing-only Pi --session and persists runtime provenance", () => {
+	it("uses existing-only Pi --session rather than --session-id", () => {
 		const session = "/home/.pi/agent/sessions/repo/timestamp_native.jsonl";
 		const result = planRevive(
 			descriptor({ harness: "pi", runtimeBin: "pi", boundModel: "openai/gpt-5.5" }),
@@ -152,7 +152,6 @@ describe("planRevive — exact native continuation only", () => {
 		expect(result.value.command.cmd).toBe("pi");
 		expect(result.value.command.args.slice(0, 2)).toEqual(["--session", session]);
 		expect(result.value.command.args).not.toContain("--session-id");
-		expect(result.value.command.env.PIJ_PI_BIN).toBe("pi");
 		expect(result.value.command.env.PIJ_SPAWN_TASK).toBe(REVIVE_REFRAME);
 	});
 
@@ -808,7 +807,7 @@ describe("the five golden shell lines (D2/D4)", () => {
 		).toBe(
 			"PIJ_ANNOUNCE_TO=pij-parent PIJ_PARENT_ID=pij-parent PIJ_SPAWN_ID=revive-1 PIJ_ROLE=worker " +
 				`PIJ_SPAWN_TASK='${REVIVE_REFRAME}' ` +
-				"PIJ_PI_BIN=pi PIJ_SPAWN_MODEL=@preset/glm-1m PIJ_SPAWN_PROVIDER=zai PIJ_SPAWN_EFFORT=high " +
+				"PIJ_SPAWN_MODEL=@preset/glm-1m PIJ_SPAWN_PROVIDER=zai PIJ_SPAWN_EFFORT=high " +
 				"pi --session /home/.pi/agent/sessions/s.json --model @preset/glm-1m:high",
 		);
 	});
@@ -822,7 +821,7 @@ describe("the five golden shell lines (D2/D4)", () => {
 		).toBe(
 			"PIJ_ANNOUNCE_TO=pij-parent PIJ_PARENT_ID=pij-parent PIJ_SPAWN_ID=revive-1 PIJ_ROLE=worker " +
 				`PIJ_SPAWN_TASK='${REVIVE_REFRAME}' ` +
-				"PIJ_PI_BIN=omp PIJ_SPAWN_MODEL=claude-opus-5 PIJ_SPAWN_EFFORT=high " +
+				"PIJ_SPAWN_MODEL=claude-opus-5 PIJ_SPAWN_EFFORT=high " +
 				"omp --auto-approve --resume=/home/.omp/agent/sessions/s.json --model claude-opus-5 --thinking high",
 		);
 	});

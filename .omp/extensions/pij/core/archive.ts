@@ -117,7 +117,7 @@ export const REVIVE_GRACE_MS = 10 * 60_000;
 export function classifyRegistryRecord(descriptor: SessionDescriptor, nowMs: number): RegistryTier {
 	if (!isTerminalRecord(descriptor)) return "hot";
 	// A revive in flight (review round 1 §2.1). `pij revive` relaunches a DISSOLVED
-	// seat, and for pi/omp s066 deliberately writes no descriptor during the boot —
+	// seat, and for Pi and OMP s066 deliberately writes no descriptor during boot —
 	// so the record stays `dissolved` for the whole window and the 60s janitor would
 	// `renameSync` the session dir out from under the booting process. Age alone
 	// cannot see this: a revivable seat is >=48h old BY DEFINITION.

@@ -297,10 +297,11 @@ pub(super) async fn revive_seat(
 
     // Preserve durable launch intent, not old process/port ownership. The existing
     // launch path still owns post-mortem publication and pane rollback on failure.
+    // Reviving an existing seat is an explicit operator override of retirement.
     let spawn_request = SpawnRequest {
         id: Some(prior.id),
         harness: prior.harness,
-        allow_retired: false,
+        allow_retired: true,
         executable: None,
         model: prior.model,
         effort: prior.effort,

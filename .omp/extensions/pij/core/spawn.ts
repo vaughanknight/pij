@@ -36,7 +36,7 @@ export interface PiModelBinding {
  * its provider is unique. If the id exists under github-copilot and other
  * providers, github-copilot is the deliberate machine default and the caller
  * receives a notice. Every other multi-provider collision fails loud instead of
- * delegating an order-dependent choice to pi/OMP's fuzzy resolver. Unknown ids
+ * delegating an order-dependent choice to Pi's or OMP's fuzzy resolver. Unknown ids
  * preserve the existing warn-and-pass-through contract. */
 export function resolvePiModelBinding(
 	model: string | undefined,
@@ -180,8 +180,6 @@ export function buildSpawnCommand(input: SpawnInput): SpawnCommand {
 		PIJ_SPAWN_ID: input.spawnId,
 		PIJ_ROLE: input.role,
 	};
-	// Runtime provenance for existing resume readers; never a launch selector.
-	env.PIJ_PI_BIN = input.harness;
 
 	// Thread the effective model selector through the ready ping. OMP keeps the
 	// model id unsuffixed and reports effort separately.
@@ -995,7 +993,7 @@ export function parseAdoptArgs(argv: readonly string[]): Result<AdoptRequest> {
 			if (value === "pi") {
 				return err(
 					"E-ARG",
-					"pi/omp seats self-register at boot; you are already reachable — run `pij whoami` to confirm, never adopt",
+					"Pi seats self-register at boot; you are already reachable — run `pij whoami` to confirm, never adopt",
 				);
 			}
 			if (!CONTROL_HARNESSES.has(value as HarnessKind))

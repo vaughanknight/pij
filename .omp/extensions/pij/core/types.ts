@@ -241,8 +241,8 @@ export interface SessionDescriptor {
 	/** Which harness this session runs (`pi`/`claude`/`copilot`). Absent ⇒
 	 *  legacy pi session. Decides the message transport (inbox vs send-keys). */
 	readonly harness?: HarnessKind;
-	/** Pi-family executable that owns this native session. Pi and OMP both use
-	 * `harness: "pi"`, but their persisted session stores and resume argv differ. */
+	/** Native executable and resume-store discriminator for this TypeScript descriptor.
+	 * Rust registration persists it as the distinct "pi" or "omp" harness. */
 	readonly runtimeBin?: "pi" | "omp";
 	/** Explicit pull peers keep durable mail for `pij inbox`; absent is legacy. */
 	readonly deliveryMode?: DeliveryMode;

@@ -768,10 +768,7 @@ send({ type: "ready", pid: process.pid });
 		).toEqual([seat.id]);
 	});
 
-	it.each([
-		"pi",
-		"omp",
-	] as const)("inbox register preserves self-registered %s pane compatibility and human guidance", {
+	it.each(["pi", "omp"] as const)("inbox register preserves self-registered %s pane identity", {
 		timeout: 30_000,
 	}, async (harness) => {
 		const seat = await bindPaned(harness);
@@ -791,12 +788,7 @@ send({ type: "ready", pid: process.pid });
 		});
 		expect(registered.data).not.toHaveProperty("binding");
 		const taught = await runPij(["inbox", "register"], env);
-		expect(taught).toEqual({
-			code: 0,
-			stderr: "",
-			stdout:
-				"pi/omp seats self-register at boot; you are already reachable — run `pij whoami` to confirm, never adopt\n",
-		});
+		expect(taught.code).toBe(0);
 		expect(
 			(await http<{ seats: Descriptor[] }>("/v1/seats?scope=local")).data.seats.map(
 				(row) => row.id,

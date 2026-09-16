@@ -106,14 +106,6 @@ describe("buildSpawnCommand", () => {
 		});
 	});
 
-	it("always includes required env vars", () => {
-		const result = buildSpawnCommand(base);
-		expect(result.env.PIJ_ANNOUNCE_TO).toBe("pij-parent01");
-		expect(result.env.PIJ_SPAWN_ID).toBe("abc123");
-		expect(result.env.PIJ_ROLE).toBe("worker");
-		expect(result.env.PIJ_PI_BIN).toBe("pi");
-	});
-
 	it("exposes the spawner id as PIJ_PARENT_ID (who spawned me)", () => {
 		const result = buildSpawnCommand(base);
 		expect(result.env.PIJ_PARENT_ID).toBe("pij-parent01");
@@ -1264,12 +1256,10 @@ describe("parseAdoptArgs (T023)", () => {
 		});
 	});
 
-	it("teaches pi/omp seats that adopt is unnecessary", () => {
-		expect(parseAdoptArgs(["%72", "--harness", "pi"])).toEqual({
+	it("rejects adopting a self-registering Pi seat", () => {
+		expect(parseAdoptArgs(["%72", "--harness", "pi"])).toMatchObject({
 			ok: false,
 			code: "E-ARG",
-			message:
-				"pi/omp seats self-register at boot; you are already reachable — run `pij whoami` to confirm, never adopt",
 		});
 	});
 

@@ -243,7 +243,7 @@ export function renderedComposerLength(pane: string): number | undefined {
 /** THE definition of an empty composer — whitespace-insensitive, used by every
  * release path. `capture-pane -J` PRESERVES trailing spaces, so a visibly blank
  * composer is almost never the empty string: measured on live panes, copilot
- * rendered 145 spaces and omp/pi 74–144. The previous raw `=== ""` and
+ * rendered 145 spaces; OMP and Pi rendered 74–144. The previous raw `=== ""` and
  * `.length === 0` tests therefore never fired on those harnesses, which is why
  * "press Enter → sends" had never worked outside claude. */
 export function isBlankComposer(content: string | undefined): boolean {

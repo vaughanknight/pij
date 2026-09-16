@@ -55,7 +55,7 @@ function renderAdopt(payload: unknown): string {
 function renderRegister(payload: unknown): string {
 	const harness = text(payload, "harness");
 	if (harness === "pi" || harness === "omp")
-		return "pi/omp seats self-register at boot; you are already reachable — run `pij whoami` to confirm, never adopt";
+		return `${harness === "omp" ? "OMP" : "Pi"} seats self-register at boot; you are already reachable — run \`pij whoami\` to confirm, never adopt`;
 	return `registered ${text(payload, "id") ?? "?"} (${harness ?? "?"}, ${text(payload, "pane") === undefined ? "paneless pull" : "pane push"})`;
 }
 

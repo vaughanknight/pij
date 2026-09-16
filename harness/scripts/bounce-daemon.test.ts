@@ -70,7 +70,12 @@ function fixture(overrides: Record<string, string> = {}) {
 +  "rev-parse HEAD") echo "$BOUNCE_HEAD" ;;
 +  "rev-parse refs/remotes/origin/main") echo "$BOUNCE_MAIN" ;;
 +  "rev-parse --short") echo "${overrides.BOUNCE_SHORT ?? "aaaaaaaa"}" ;;
-+  "status --porcelain") [ -z "$BOUNCE_DIRTY" ] || printf '%s\\n' "$BOUNCE_DIRTY" ;;
++  "status --porcelain")
++    for path in "$@"; do
++      case "$BOUNCE_DIRTY" in
++        " M $path"|" M $path/"*) printf '%s\\n' "$BOUNCE_DIRTY" ;;
++      esac
++    done ;;
 +  *) echo "unexpected git args: $*" >&2; exit 2 ;;
 +esac`.replace(/^\+/gm, ""),
 	);
@@ -102,13 +107,16 @@ describe("bounce-daemon", () => {
 		expect(f.log()).toEqual(["fetch"]);
 	});
 
-	it("refuses daemon-relevant dirt unless --force is explicit", () => {
-		const f = fixture({ BOUNCE_DIRTY: " M .pi/extensions/pij/daemon.ts" });
+	it.each([
+		".pi/extensions/pij",
+		".omp/extensions/pij/core/spawn.ts",
+	])("refuses daemon-relevant dirt at %s unless --force is explicit", (path) => {
+		const f = fixture({ BOUNCE_DIRTY: ` M ${path}` });
 		const result = f.run();
 
+		expect(f.log()).toEqual(["fetch"]);
 		expect(result.status).toBe(1);
 		expect(result.stderr).toContain("just bounce-daemon --force");
-		expect(f.log()).toEqual(["fetch"]);
 	});
 
 	it("announces, gracefully stops, restarts the captured invocation, and verifies health", () => {

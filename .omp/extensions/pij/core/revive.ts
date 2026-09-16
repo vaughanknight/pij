@@ -411,7 +411,7 @@ export function renderShellLine(command: SpawnCommand): string {
  *  claude/copilot/codex have no in-process pij extension, so nothing rewrites
  *  their descriptor: pasting the resume command alone brings the harness back
  *  but leaves pij pointing at the dead pane. `--attach` binds the operator's own
- *  pane to the seat first. pi/omp self-register at boot and need no such step. */
+ *  pane to the seat first. Pi and OMP each self-register at boot and need no such step. */
 export function attachCommandLine(id: SessionId): string {
 	return `pij revive ${shellQuote(id)} --attach "$TMUX_PANE"`;
 }
@@ -478,11 +478,7 @@ function controlEnv(descriptor: SessionDescriptor, input: RevivePlanInput): Reco
 	};
 }
 
-function piEnv(
-	descriptor: SessionDescriptor,
-	input: RevivePlanInput,
-	runtime: "pi" | "omp",
-): Record<string, string> {
+function piEnv(descriptor: SessionDescriptor, input: RevivePlanInput): Record<string, string> {
 	const parentId = input.parentId ?? "";
 	return {
 		PIJ_ANNOUNCE_TO: parentId,
@@ -490,7 +486,6 @@ function piEnv(
 		PIJ_SPAWN_ID: input.spawnId,
 		PIJ_ROLE: descriptor.role ?? "worker",
 		PIJ_SPAWN_TASK: REVIVE_REFRAME,
-		PIJ_PI_BIN: runtime,
 		...(descriptor.boundModel ? { PIJ_SPAWN_MODEL: descriptor.boundModel } : {}),
 		...(descriptor.boundProvider ? { PIJ_SPAWN_PROVIDER: descriptor.boundProvider } : {}),
 		...(descriptor.effort ? { PIJ_SPAWN_EFFORT: descriptor.effort } : {}),
@@ -550,7 +545,7 @@ function buildCommand(
 		return {
 			cmd: "pi",
 			args: ["--session", artifactPath, ...(model ? ["--model", model] : [])],
-			env: piEnv(descriptor, input, runtime),
+			env: piEnv(descriptor, input),
 		};
 	}
 	return {
@@ -561,7 +556,7 @@ function buildCommand(
 			...modelArgs(descriptor.boundModel),
 			...(descriptor.effort ? ["--thinking", descriptor.effort] : []),
 		],
-		env: piEnv(descriptor, input, runtime),
+		env: piEnv(descriptor, input),
 	};
 }
 

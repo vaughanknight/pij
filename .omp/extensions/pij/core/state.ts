@@ -277,9 +277,9 @@ const COMMAND_RUNNERS: ReadonlySet<string> = new Set([
 	"login",
 ]);
 
-/** Which executable basenames count as each harness. `pi` and `omp` share the
- *  `pi` HarnessKind but are different binaries (`runtimeBin` distinguishes them
- *  in the registry); either one satisfies a `pi` seat. */
+/** Executable aliases for the legacy TypeScript transport classification.
+ * Rust persists Pi and OMP as distinct harnesses; this TypeScript projection uses
+ * `pi` for native-extension seats and preserves the executable in `runtimeBin`. */
 const HARNESS_BINARIES: Readonly<Record<HarnessKind, readonly string[]>> = {
 	pi: ["pi", "omp"],
 	claude: ["claude"],
