@@ -17,3 +17,12 @@ Verdict bar — APPROVE only if each holds with a pasted probe:
 8. Gates on YOUR checkout: cargo test --workspace, fmt, clippy -D warnings, `node --test .copilot/extensions/pij/*.test.mjs`, `just copilot-native-memory-smoke`, `just copilot-native-progress-smoke`, `just self-check` (warm).
 
 Verdict: APPROVE / APPROVE-WITH-FIXES (file:line each) / REJECT (why). Report at both edges.
+
+## Addendum (post rebase-integration, tip 0d1a85e6)
+
+Range is now `0e907e46..0d1a85e6`; brandon's integration commit(s) follow bb061988. Two things changed since the hold — verify them first, then run the original bars 1–8:
+- **Idle poller removed** (prime ruling): no always-on 1 s SDK probe; bounded probes run only while a completion/delivery is outstanding. Assert: no `RECEIVER_PROBE_INTERVAL_MS` timer while idle-and-empty; probes present during completion-wait; the new idle→delivery→completion test is load-bearing (mutate: re-add an idle probe → which test goes red).
+- **Fixture timers tagged by owner**; 151's waiters select by identity. Confirm the exclusion `ms !== 1000` was NOT used, and that extension.test.mjs:490's 1000 ms retry step still asserts.
+- Startup-observation failure is `receive-held`, never a registration retry — named test.
+- Brandon reports the windows-compat focused-tests stage runs zero files after 153 (a separate follow-up is fixing it on main); do not count that stage as coverage here.
+Your s152-rev worktree at facee441 must be moved to 0d1a85e6.
