@@ -1,0 +1,29 @@
+COMMAND: node --test '--test-name-pattern=hold|HOLD|escalat' .copilot/extensions/pij/extension.test.mjs .copilot/extensions/pij/hold.test.mjs
+EXIT: 0
+✔ actual extension startup hold stays alive, backs off to five seconds and later delivers (108.596917ms)
+✔ actual extension startup hold escalates once at ten minutes and aborts a minute retry in the second hour (76.893583ms)
+✔ actual extension startup non-hold failure resets escalation and fast retries before recovery (98.457667ms)
+✔ actual extension startup hold aborts a pending retry without a native banner (75.954833ms)
+✔ actual extension bridge hold stays alive, backs off to five seconds and later delivers (95.452625ms)
+✔ actual extension bridge hold escalates once at ten minutes and aborts a minute retry in the second hour (76.760458ms)
+✔ actual extension bridge non-hold failure resets escalation and fast retries before recovery (92.169667ms)
+✔ actual extension bridge hold aborts a pending retry without a native banner (75.897625ms)
+✔ actual startup hold success starts a fresh bridge hold escalation episode (92.784792ms)
+✔ actual bridge re-registration hold escalates and success restores fast inbox polling (90.39075ms)
+✔ actual extension shell delivers during recent human typing without a typing hold (85.76725ms)
+✔ actual extension shell delivers during unavailable typing sensor without a typing hold (82.769125ms)
+✔ actual HTTP target-session hold stops claims and ack with actionable native diagnostic (411.351958ms)
+✔ actual HTTP empty page differs from human-consent hold and release delivers without another send (843.841834ms)
+✔ actual HTTP empty page differs from native-pane-changed hold and release delivers without another send (836.008666ms)
+✔ actual HTTP empty page differs from semantic-hold hold and release delivers without another send (835.071375ms)
+✔ transient registration hold is silent before ten seconds and reports once afterward (0.773542ms)
+✔ registration hold escalates once at ten minutes even when the initial notice was skipped (0.502708ms)
+✔ only a typed retryable registration 409 becomes a native-session hold (8.922709ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4024.017291

@@ -10,6 +10,8 @@ import {
 	createNativeReporter,
 	DaemonClient,
 	FileJournal,
+	HOLD_ESCALATED_RETRY_MS,
+	HOLD_ESCALATION_MS,
 	INITIAL_RETRY_MS,
 	MAX_RETRY_MS,
 	NativeBridge,
@@ -125,6 +127,7 @@ async function startExtension() {
 		});
 		let retry = INITIAL_RETRY_MS;
 		let failureEpisode = false;
+		let holdStarted;
 		while (!signal.aborted) {
 			try {
 				const roster = await client.request("/v1/seats?scope=local", undefined, signal);
@@ -140,6 +143,7 @@ async function startExtension() {
 					signal,
 				);
 				signal.throwIfAborted();
+				if (holdStarted !== undefined) nativeReport({ kind: "connection-ready" });
 				bridge = new NativeBridge({
 					registration,
 					native: session,
@@ -153,9 +157,25 @@ async function startExtension() {
 			} catch (error) {
 				if (signal.aborted) return;
 				if (!error.retryable) throw error;
-				if (!failureEpisode)
-					nativeReport({ kind: "registration-wait", diagnostic: error.message, retryMs: retry });
-				failureEpisode = true;
+				if (error instanceof NativeError && error.holdKind === "native-session") {
+					const now = performance.now();
+					holdStarted ??= now;
+					const elapsedMs = now - holdStarted;
+					if (elapsedMs >= HOLD_ESCALATION_MS) retry = HOLD_ESCALATED_RETRY_MS;
+					failureEpisode = false;
+					nativeReport({
+						kind: "registration-wait",
+						holdKind: error.holdKind,
+						elapsedMs,
+						retryMs: retry,
+					});
+				} else {
+					if (holdStarted !== undefined) retry = INITIAL_RETRY_MS;
+					holdStarted = undefined;
+					if (!failureEpisode)
+						nativeReport({ kind: "registration-wait", diagnostic: error.message, retryMs: retry });
+					failureEpisode = true;
+				}
 				await sleep(retry, undefined, { signal });
 				retry = Math.min(retry * 2, MAX_RETRY_MS);
 			}

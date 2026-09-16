@@ -9,11 +9,42 @@ import { join } from "node:path";
 import test from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { createNativeReporter } from "./store.mjs";
 
 // Preloaded only in the owned test subprocess. Real extension source, HTTP and disk;
 // explicit SDK/process seams, NOT proof of native CLI installation or real model behavior.
 if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
+	if (process.env.PIJ_NATIVE_TEST_CLOCK === "1") {
+		const pending = new Set();
+		const clock = {
+			now: 0,
+			advance(ms) {
+				clock.now += ms;
+				for (const timer of pending) {
+					if (timer.due <= clock.now) timer.finish();
+				}
+			},
+			sleep(ms, value, signal) {
+				signal.throwIfAborted();
+				return new Promise((resolve, reject) => {
+					const finish = (error) => {
+						pending.delete(timer);
+						signal.removeEventListener("abort", aborted);
+						if (error) reject(error);
+						else resolve(value);
+					};
+					const aborted = () => finish(signal.reason);
+					const timer = { due: clock.now + ms, finish };
+					pending.add(timer);
+					signal.addEventListener("abort", aborted, { once: true });
+					console.error(
+						`TEST_EVENT ${JSON.stringify({ kind: "fixture-delay", ms, at: clock.now })}`,
+					);
+				});
+			},
+		};
+		globalThis.pijNativeTestClock = clock;
+		Object.defineProperty(performance, "now", { value: () => clock.now });
+	}
 	const sdk = `
     const emit = (event) => console.error('TEST_EVENT ' + JSON.stringify(event));
     export async function joinSession(config) {
@@ -48,6 +79,11 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
       };
       process.stdin.on('data', async (data) => {
         const input = JSON.parse(String(data));
+        if (input.advanceMs !== undefined) {
+          globalThis.pijNativeTestClock.advance(input.advanceMs);
+          emit({kind:'fixture-clock',at:globalThis.pijNativeTestClock.now});
+          return;
+        }
         if (input.nativeEvents) {
           for (const event of input.nativeEvents) {
             history.push(event);
@@ -78,6 +114,14 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
       return process.env.PIJ_NATIVE_TEST_EXECUTABLE;
     }
   `;
+	const timerApi = `
+    import { setTimeout as sleep } from 'node:timers/promises';
+    export function setTimeout(ms, value, options) {
+      return options?.signal
+        ? globalThis.pijNativeTestClock.sleep(ms, value, options.signal)
+        : sleep(ms, value, options);
+    }
+  `;
 	registerHooks({
 		resolve(specifier, context, next) {
 			const source =
@@ -85,9 +129,13 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 					? sdk
 					: specifier === "node:child_process"
 						? processApi
-						: specifier === "node:fs/promises" && context.parentURL?.endsWith("/extension.mjs")
-							? kernelApi
-							: undefined;
+						: specifier === "node:timers/promises" &&
+								process.env.PIJ_NATIVE_TEST_CLOCK === "1" &&
+								/\/(?:extension|store)\.mjs$/.test(context.parentURL ?? "")
+							? timerApi
+							: specifier === "node:fs/promises" && context.parentURL?.endsWith("/extension.mjs")
+								? kernelApi
+								: undefined;
 			return source === undefined
 				? next(specifier, context)
 				: { url: `data:text/javascript,${encodeURIComponent(source)}`, shortCircuit: true };
@@ -114,6 +162,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			dropRegistrations = 0,
 			registerResponses = [],
 			registerRefusal,
+			controlledClock = false,
 		} = {},
 	) {
 		const home = await mkdtemp(join(tmpdir(), "pij-native-shell-"));
@@ -264,6 +313,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			PIJ_NATIVE_TEST_JOIN_FAIL: joinFails ? "1" : "0",
 			PIJ_NATIVE_TEST_COMM: processCommand,
 			PIJ_NATIVE_TEST_EXECUTABLE: kernelExecutable,
+			PIJ_NATIVE_TEST_CLOCK: controlledClock ? "1" : "0",
 		};
 		for (const name of ["TMUX", "TMUX_PANE", "PIJ_SESSION_ID", "PIJ_SPAWN_ID", "PIJ_PARENT_ID"])
 			delete env[name];
@@ -324,11 +374,363 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			for (;;) {
 				const found = events.find((event) => event.kind === kind && matches(event));
 				if (found) return found;
-				await once(emitter, "event", { signal });
+				try {
+					await once(emitter, "event", { signal });
+				} catch (error) {
+					throw new Error(`Waiting for ${kind}; observed ${JSON.stringify(events)}`, {
+						cause: error,
+					});
+				}
 			}
 		}
-		return { child, events, requests, waitFor, stdout: () => stdout };
+		let clock = 0;
+		async function advance(ms) {
+			clock += ms;
+			child.stdin.write(`${JSON.stringify({ advanceMs: ms })}\n`);
+			await waitFor("fixture-clock", (event) => event.at === clock);
+		}
+		return { child, events, requests, waitFor, advance, stdout: () => stdout };
 	}
+
+	const transientHold = {
+		status: 409,
+		refusal: {
+			ok: false,
+			v: 2,
+			command: "pij register",
+			error: "refused",
+			details: { retryable: true, hold: "native-session" },
+			meta: "native Copilot registration held: pane owned by seat `pij-owner`; awaiting resumed session",
+			data: { body: "SECRET_HOLD_BODY", key: "fixture-secret" },
+		},
+	};
+	const waitingMessage = "[pij native] waiting for this pane's resumed Copilot session";
+	const escalationMessage =
+		"[pij native] still waiting for this pane's resumed Copilot session after 10 min; pij delivery is unavailable in this window";
+
+	async function expectHold(f, { at, elapsedMs = at, retryMs }) {
+		const delay = await f.waitFor("fixture-delay", (event) => event.at === at);
+		const wait = f.events.findLast(
+			(event) => event.kind === "registration-wait" && event.holdKind === "native-session",
+		);
+		assert.equal(wait?.elapsedMs, elapsedMs);
+		assert.equal(wait?.retryMs, retryMs);
+		assert.equal(delay.ms, retryMs, "the actual abortable sleep must use the reported cadence");
+	}
+
+	for (const phase of ["startup", "bridge"]) {
+		test(`actual extension ${phase} hold stays alive, backs off to five seconds and later delivers`, async (t) => {
+			const delays = [250, 500, 1000, 2000, 4000, 5000, 5000, 5000];
+			const f = await launch(t, {
+				controlledClock: true,
+				registerResponses: [
+					...(phase === "bridge" ? [{}] : []),
+					...delays.map(() => transientHold),
+				],
+			});
+			let elapsedMs = 0;
+			for (const retryMs of delays) {
+				const wait = await f.waitFor(
+					"registration-wait",
+					(event) => event.holdKind === "native-session" && event.elapsedMs === elapsedMs,
+				);
+				assert.equal(wait.retryMs, retryMs);
+				await f.waitFor("fixture-delay", (event) => event.at === elapsedMs && event.ms === retryMs);
+				assert.equal(f.child.exitCode, null);
+				assert.equal(f.child.signalCode, null);
+				if (elapsedMs >= 10000) await f.waitFor("native-log");
+				assert.equal(
+					f.events.filter((event) => event.kind === "native-log").length,
+					elapsedMs < 10000 ? 0 : 1,
+				);
+				assert.equal(
+					f.requests.some((request) => request.path.startsWith("/v1/inbox")),
+					false,
+				);
+				assert.equal(
+					f.events.some((event) => event.kind === "native-send"),
+					false,
+				);
+				await f.advance(retryMs);
+				elapsedMs += retryMs;
+			}
+			await f.waitFor("completion-wait");
+			assert.equal(f.events.filter((event) => event.kind === "native-send").length, 1);
+			assert.equal(f.requests.filter((request) => request.path === "/v1/inbox/ack").length, 1);
+			assert.equal(
+				f.events.find((event) => event.kind === "native-log").message,
+				"[pij native] waiting for this pane's resumed Copilot session",
+			);
+			assert.equal(f.events.filter((event) => event.kind === "native-log").length, 1);
+			assert.equal(
+				f.events.some((event) => ["receive-held", "extension-unavailable"].includes(event.kind)),
+				false,
+			);
+			assert.doesNotMatch(
+				JSON.stringify(f.events),
+				/SECRET_HOLD_BODY|fixture-secret|unavailable|restart the Copilot CLI/,
+			);
+			f.child.stdin.write(
+				`${JSON.stringify({ to: "pij-peer", message: "HOLD_RESOLVED_REPLY" })}\n`,
+			);
+			assert.equal((await f.waitFor("tool-result")).result.ok, true);
+			assert.equal(f.stdout(), "");
+		});
+
+		test(`actual extension ${phase} hold escalates once at ten minutes and aborts a minute retry in the second hour`, async (t) => {
+			const f = await launch(t, {
+				controlledClock: true,
+				registerResponses: [...(phase === "bridge" ? [{}] : []), ...Array(8).fill(transientHold)],
+			});
+			await expectHold(f, { at: 0, retryMs: 250 });
+			await f.advance(10000);
+			await expectHold(f, { at: 10000, retryMs: 500 });
+			await f.waitFor("native-log", (event) => event.message === waitingMessage);
+			await f.advance(589000);
+			await expectHold(f, { at: 599000, retryMs: 1000 });
+			await f.advance(999);
+			assert.deepEqual(
+				f.events.filter((event) => event.kind === "native-log").map((event) => event.message),
+				[waitingMessage],
+				"599999 ms is still before escalation",
+			);
+			await f.advance(1);
+			await expectHold(f, { at: 600000, retryMs: 60000 });
+			await f.waitFor("native-log", (event) => event.message === escalationMessage);
+			const registrations = f.requests.filter((request) => request.path === "/v1/register").length;
+			await f.advance(59999);
+			assert.equal(
+				f.requests.filter((request) => request.path === "/v1/register").length,
+				registrations,
+				"an escalated hold must not retry early",
+			);
+			await f.advance(1);
+			await expectHold(f, { at: 660000, retryMs: 60000 });
+			let at = 660000;
+			for (const next of [3600000, 3660000, 7200000]) {
+				await f.advance(next - at);
+				at = next;
+				await expectHold(f, { at, retryMs: 60000 });
+				assert.equal(f.child.exitCode, null);
+				assert.equal(f.child.signalCode, null);
+			}
+			const requests = f.requests.length;
+			const exited = once(f.child, "exit");
+			if (phase === "startup") f.child.stdin.end();
+			else
+				f.child.stdin.write(
+					`${JSON.stringify({ nativeEvents: [{ type: "session.shutdown", data: {} }] })}\n`,
+				);
+			assert.equal((await exited)[0], 0);
+			assert.equal(f.requests.length, requests, "aborting cancels the pending minute retry");
+			assert.deepEqual(
+				f.events.filter((event) => event.kind === "native-log").map((event) => event.message),
+				[waitingMessage, escalationMessage],
+				"second-hour holds must not repeat either notice",
+			);
+			assert.equal(
+				f.events.some((event) => event.kind === "native-send"),
+				false,
+			);
+			assert.equal(
+				f.requests.some((request) => request.path.startsWith("/v1/inbox")),
+				false,
+			);
+			assert.doesNotMatch(
+				JSON.stringify(f.events),
+				/SECRET_HOLD_BODY|fixture-secret|restart the Copilot CLI/,
+			);
+			assert.equal(f.stdout(), "");
+		});
+
+		test(`actual extension ${phase} non-hold failure resets escalation and fast retries before recovery`, async (t) => {
+			const f = await launch(t, {
+				controlledClock: true,
+				registerResponses: [
+					...(phase === "bridge" ? [{}] : []),
+					transientHold,
+					transientHold,
+					{
+						...transientHold,
+						refusal: {
+							...transientHold.refusal,
+							details: { retryable: true },
+							meta: "fixture registration temporarily unavailable",
+						},
+					},
+					...Array(4).fill(transientHold),
+				],
+				inboxPages: [{ data: [] }],
+			});
+			await expectHold(f, { at: 0, retryMs: 250 });
+			await f.advance(600000);
+			await expectHold(f, { at: 600000, retryMs: 60000 });
+			await f.waitFor("native-log", (event) => event.message === escalationMessage);
+			await f.advance(60000);
+			const failure = await f.waitFor("native-log", (event) =>
+				event.message.startsWith("[pij native] unavailable:"),
+			);
+			assert.match(failure.message, phase === "startup" ? /registration-wait/ : /reconnecting/);
+			const errorDelay = await f.waitFor("fixture-delay", (event) => event.at === 660000);
+			assert.equal(errorDelay.ms, 250, "a genuine failure must leave the slow hold cadence");
+			await f.advance(250);
+			await expectHold(f, { at: 660250, elapsedMs: 0, retryMs: 500 });
+			await f.advance(9999);
+			await expectHold(f, { at: 670249, elapsedMs: 9999, retryMs: 1000 });
+			assert.equal(f.events.filter((event) => event.kind === "native-log").length, 2);
+			await f.advance(1000);
+			await expectHold(f, { at: 671249, elapsedMs: 10999, retryMs: 2000 });
+			await f.waitFor("native-log", (event) => event.message === waitingMessage);
+			await f.advance(589001);
+			await expectHold(f, { at: 1260250, elapsedMs: 600000, retryMs: 60000 });
+			await f.advance(60000);
+			await f.waitFor("registered");
+			const resumedDelay = await f.waitFor(
+				"fixture-delay",
+				(event) => event.at === 1320250 && event.ms !== 20000,
+			);
+			assert.equal(resumedDelay.ms, 250, "successful registration must restore fast inbox polling");
+			assert.deepEqual(
+				f.events.filter((event) => event.kind === "native-log").map((event) => event.message),
+				[escalationMessage, failure.message, waitingMessage, escalationMessage],
+			);
+			await f.advance(250);
+			await f.waitFor("completion-wait");
+			assert.equal(f.events.filter((event) => event.kind === "native-send").length, 1);
+			assert.equal(f.requests.filter((request) => request.path === "/v1/inbox/ack").length, 1);
+			assert.doesNotMatch(
+				JSON.stringify(f.events),
+				/SECRET_HOLD_BODY|fixture-secret|restart the Copilot CLI/,
+			);
+			assert.equal(f.stdout(), "");
+		});
+
+		test(`actual extension ${phase} hold aborts a pending retry without a native banner`, async (t) => {
+			const f = await launch(t, {
+				controlledClock: true,
+				registerResponses: [...(phase === "bridge" ? [{}] : []), transientHold, transientHold],
+			});
+			await f.waitFor("fixture-delay", (event) => event.at === 0 && event.ms === 250);
+			await f.advance(250);
+			await f.waitFor("fixture-delay", (event) => event.at === 250 && event.ms === 500);
+			assert.equal(f.child.exitCode, null);
+			const requests = f.requests.length;
+			const exited = once(f.child, "exit");
+			if (phase === "startup") f.child.stdin.end();
+			else
+				f.child.stdin.write(
+					`${JSON.stringify({ nativeEvents: [{ type: "session.shutdown", data: {} }] })}\n`,
+				);
+			assert.equal((await exited)[0], 0);
+			assert.equal(f.requests.length, requests);
+			assert.equal(f.events.filter((event) => event.kind === "native-log").length, 0);
+			assert.equal(f.events.filter((event) => event.kind === "native-send").length, 0);
+			assert.equal(
+				f.requests.some((request) => request.path.startsWith("/v1/inbox")),
+				false,
+			);
+			assert.equal(f.stdout(), "");
+		});
+	}
+
+	test("actual startup hold success starts a fresh bridge hold escalation episode", async (t) => {
+		const f = await launch(t, {
+			controlledClock: true,
+			registerResponses: [
+				transientHold,
+				transientHold,
+				{},
+				transientHold,
+				transientHold,
+				transientHold,
+			],
+		});
+		await expectHold(f, { at: 0, retryMs: 250 });
+		await f.advance(600000);
+		await expectHold(f, { at: 600000, retryMs: 60000 });
+		await f.waitFor("native-log", (event) => event.message === escalationMessage);
+		await f.advance(60000);
+		await expectHold(f, { at: 660000, elapsedMs: 0, retryMs: 250 });
+		await f.advance(10000);
+		await expectHold(f, { at: 670000, elapsedMs: 10000, retryMs: 500 });
+		await f.waitFor("native-log", (event) => event.message === waitingMessage);
+		await f.advance(590000);
+		await expectHold(f, { at: 1260000, elapsedMs: 600000, retryMs: 60000 });
+		await f.advance(60000);
+		await f.waitFor("completion-wait");
+		assert.deepEqual(
+			f.events.filter((event) => event.kind === "native-log").map((event) => event.message),
+			[escalationMessage, waitingMessage, escalationMessage],
+		);
+		assert.equal(f.events.filter((event) => event.kind === "native-send").length, 1);
+		assert.equal(f.requests.filter((request) => request.path === "/v1/inbox/ack").length, 1);
+		assert.equal(f.stdout(), "");
+	});
+
+	test("actual bridge re-registration hold escalates and success restores fast inbox polling", async (t) => {
+		const f = await launch(t, {
+			controlledClock: true,
+			registerResponses: [{}, {}, transientHold, transientHold, transientHold],
+			inboxPages: [
+				{
+					refusal: {
+						ok: false,
+						v: 2,
+						command: "pij inbox",
+						error: "refused",
+						meta: "daemon/native-inbox: native-extension-unavailable: Copilot requires current native registration",
+					},
+				},
+				{ data: [] },
+			],
+		});
+		await f.waitFor("fixture-delay", (event) => event.at === 0 && event.ms === 250);
+		const failure = await f.waitFor("native-log");
+		assert.match(failure.message, /unavailable: reconnecting/);
+		await f.advance(250);
+		await f.waitFor(
+			"registration-wait",
+			(event) => event.holdKind === "native-session" && event.elapsedMs === 0,
+		);
+		await f.waitFor("fixture-delay", (event) => event.at === 250 && event.ms === 500);
+		await f.advance(500);
+		await f.waitFor("registration-wait", (event) => event.elapsedMs === 500);
+		await f.waitFor("fixture-delay", (event) => event.at === 750 && event.ms === 1000);
+		assert.equal(f.events.filter((event) => event.kind === "native-log").length, 1);
+		assert.equal(
+			f.events.some((event) => event.kind === "native-send"),
+			false,
+		);
+		await f.advance(599500);
+		const escalated = await f.waitFor("registration-wait", (event) => event.elapsedMs === 600000);
+		assert.equal(escalated.retryMs, 60000);
+		const heldDelay = await f.waitFor(
+			"fixture-delay",
+			(event) => event.at === 600250 && event.ms !== 20000,
+		);
+		assert.equal(heldDelay.ms, 60000);
+		await f.waitFor("native-log", (event) => event.message === escalationMessage);
+		await f.advance(60000);
+		const resumedDelay = await f.waitFor(
+			"fixture-delay",
+			(event) => event.at === 660250 && event.ms !== 20000,
+		);
+		assert.equal(resumedDelay.ms, 250);
+		await f.advance(250);
+		await f.waitFor("completion-wait");
+		assert.deepEqual(
+			f.events.filter((event) => event.kind === "native-log").map((event) => event.message),
+			[failure.message, escalationMessage],
+			"the hold must not cause another unavailable failure episode",
+		);
+		assert.equal(f.events.filter((event) => event.kind === "native-send").length, 1);
+		assert.equal(f.requests.filter((request) => request.path === "/v1/inbox/ack").length, 1);
+		assert.equal(f.requests.filter((request) => request.path === "/v1/register").length, 6);
+		assert.doesNotMatch(
+			JSON.stringify(f.events),
+			/SECRET_HOLD_BODY|fixture-secret|restart the Copilot CLI/,
+		);
+	});
 
 	test("actual extension shell joins, registers, receives and exposes immutable outgoing tool", async (t) => {
 		const f = await launch(t, { typingSnapshots: [{ state: "unavailable" }] });
@@ -884,25 +1286,5 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		assert.match((await f.waitFor("stderr")).line, /^\[pij native\] unavailable: native-join/);
 		assert.equal(f.events.filter((e) => e.kind === "native-log").length, 0);
 		assert.equal(f.requests.length, 0);
-	});
-
-	test("native diagnostic sink counts one call per failure episode and never logs raw remote secrets", async () => {
-		const lines = [];
-		const report = createNativeReporter({
-			log: async (message, options) => lines.push({ message, options }),
-			capture: () => undefined,
-		});
-		for (let i = 0; i < 5; i++)
-			await report({ kind: "reconnecting", diagnostic: "SECRET_SERVER_BODY" });
-		assert.equal(lines.length, 1);
-		await report({ kind: "connection-ready" });
-		await report({ kind: "reconnecting", diagnostic: "SECRET_SERVER_BODY" });
-		assert.equal(lines.length, 2);
-		assert.ok(
-			lines.every(
-				(line) =>
-					line.message.startsWith("[pij native] unavailable:") && !line.message.includes("SECRET"),
-			),
-		);
 	});
 }

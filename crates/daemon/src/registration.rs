@@ -19,6 +19,7 @@ use crate::http::role::RoleService;
 pub(crate) enum RegistrationError {
     Refused(String),
     Retryable(String),
+    NativeSessionHold(SeatId),
     Runtime(PijError),
 }
 
@@ -26,6 +27,10 @@ impl std::fmt::Display for RegistrationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Refused(reason) | Self::Retryable(reason) => f.write_str(reason),
+            Self::NativeSessionHold(owner) => write!(
+                f,
+                "native Copilot registration held: pane owned by seat `{owner}`; awaiting resumed session"
+            ),
             Self::Runtime(error) => error.fmt(f),
         }
     }
@@ -611,8 +616,9 @@ impl RegistrationService {
                 "an existing Copilot seat cannot change harness",
             ));
         }
+        let mut native_hold = None;
         if native {
-            check_native_roster(
+            match check_native_roster(
                 &claim,
                 harness_session.as_deref(),
                 proc,
@@ -620,7 +626,11 @@ impl RegistrationService {
                 existing,
                 dead_native,
                 spawn_predecessor,
-            )?;
+            ) {
+                Ok(()) => {}
+                Err(error @ RegistrationError::NativeSessionHold(_)) => native_hold = Some(error),
+                Err(error) => return Err(error),
+            }
         } else if let Some(owner) = seats.iter().find(|seat| {
             seat.harness == Harness::Copilot
                 && seat.proc.is_some()
@@ -705,6 +715,11 @@ impl RegistrationService {
                 "unrecognised harness after admission".to_string(),
             ));
         };
+        // A pane hold must not turn an otherwise-invalid claim into a retry.
+        // All admission checks above remain read-only; no held session is stored.
+        if let Some(error) = native_hold {
+            return Err(error);
+        }
         let resuming = native
             && existing.is_some_and(|seat| {
                 seat.harness_session == harness_session
@@ -1154,6 +1169,11 @@ fn check_native_roster(
             "spawn id has no matching pre-bind/current incarnation",
         ));
     }
+    let unknown_session = existing.is_none()
+        && !seats
+            .iter()
+            .any(|seat| seat.harness_session.as_deref() == Some(session));
+    let mut held_owner = None;
     for seat in seats.iter().filter(|seat| seat.tombstoned_at.is_none()) {
         if existing.is_some_and(|existing| existing.id == seat.id)
             || predecessor.is_some_and(|previous| previous.id == seat.id)
@@ -1167,11 +1187,34 @@ fn check_native_roster(
                 && seat.harness_session.as_deref() == Some(session))
             || (claim.pane.is_some() && seat.pane == claim.pane)
         {
+            if unknown_session
+                && claim.pane.is_some()
+                && seat.pane == claim.pane
+                && seat.harness == Harness::Copilot
+                && seat.native_extension_delivery
+                && !seat.relay
+                && seat.machine.is_none()
+                && seat
+                    .proc
+                    .is_some_and(|proc| proc.pid > 0 && proc.proc_start > 0)
+                && seat
+                    .harness_session
+                    .as_deref()
+                    .is_some_and(|old| !old.is_empty() && old != session)
+            {
+                // Tombstoned and observed-dead owners were excluded above.
+                // Finish the scan so a separate ownership refusal wins.
+                held_owner = Some(&seat.id);
+                continue;
+            }
             return Err(native_refusal(format!(
                 "process, native session, or pane already belongs to seat `{}`",
                 seat.id
             )));
         }
+    }
+    if let Some(owner) = held_owner {
+        return Err(RegistrationError::NativeSessionHold(owner.clone()));
     }
     Ok(())
 }
@@ -1999,6 +2042,108 @@ mod tests {
                 .expect("paneless actual host")
                 .native_extension_delivery
         );
+    }
+
+    #[tokio::test]
+    async fn native_transient_hold_never_masks_invalid_claims() {
+        for invalid in [
+            "id",
+            "folder",
+            "spawn",
+            "supersedes",
+            "explicit-owner",
+            "shared-process",
+        ] {
+            let mut owner = native_seat("pij-pane-owner");
+            owner.proc = Some(OTHER_HOST);
+            let mut claim = native_claim("");
+            match invalid {
+                "id" => claim.id = " ".into(),
+                "folder" => claim.folder = "relative".into(),
+                "spawn" => claim.spawn_id = Some("unmatched-spawn".into()),
+                "supersedes" => claim.supersedes = Some(owner.id.clone()),
+                "explicit-owner" => claim.id = owner.id.to_string(),
+                "shared-process" => owner.proc = Some(HOST),
+                _ => unreachable!(),
+            }
+            let (service, registry) = native_service(vec![owner.clone()], native_liveness()).await;
+            refused(attest(&service, claim, Some("unknown-session"), &native_tmux()).await);
+            assert_eq!(
+                registry.list(SeatFilter::default()).await.unwrap(),
+                vec![owner]
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn native_transient_hold_requires_local_attested_native_owner() {
+        for mismatch in [
+            "harness", "relay", "machine", "legacy", "prebind", "session", "process",
+        ] {
+            let mut owner = native_seat("pij-pane-owner");
+            owner.proc = Some(OTHER_HOST);
+            match mismatch {
+                "harness" => owner.harness = Harness::Pi,
+                "relay" => owner.relay = true,
+                "machine" => owner.machine = Some("another-machine".into()),
+                "legacy" => owner.native_extension_delivery = false,
+                "prebind" => owner.proc = None,
+                "session" => owner.harness_session = None,
+                "process" => owner.proc.as_mut().unwrap().proc_start = 0,
+                _ => unreachable!(),
+            }
+            let (service, registry) = native_service(vec![owner.clone()], native_liveness()).await;
+            refused(
+                attest(
+                    &service,
+                    native_claim(""),
+                    Some("unknown-session"),
+                    &native_tmux(),
+                )
+                .await,
+            );
+            assert_eq!(
+                registry.list(SeatFilter::default()).await.unwrap(),
+                vec![owner]
+            );
+        }
+    }
+
+    #[test]
+    fn native_transient_hold_requires_present_matching_pane_at_roster_guard() {
+        // Exercise this guard directly: upstream subagent rejection otherwise
+        // masks same-process collisions before either pane condition is reached.
+        for (claim_pane, owner_pane) in [(None, None), (Some("%151-claim"), Some("%151-owner"))] {
+            let mut claim = native_claim("");
+            claim.pane = claim_pane.map(str::to_string);
+            let mut owner = native_seat("pij-pane-owner");
+            owner.pane = owner_pane.map(str::to_string);
+            refused(super::check_native_roster(
+                &claim,
+                Some("unknown-session"),
+                Some(HOST),
+                &[owner],
+                None,
+                &[],
+                None,
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn native_known_session_foreign_pane_collision_is_never_a_transient_hold() {
+        for historical in [false, true] {
+            let mut owner = native_seat("pij-pane-owner");
+            owner.proc = Some(OTHER_HOST);
+            owner.harness_session = Some("owners-session".into());
+            let mut saved = native_seat("pij-saved-address");
+            saved.pane = None;
+            saved.tombstoned_at = historical.then_some(1);
+            let (service, registry) = native_service(vec![owner, saved], native_liveness()).await;
+            let before = registry.list(SeatFilter::default()).await.unwrap();
+            refused(attest(&service, native_claim(""), Some(SESSION), &native_tmux()).await);
+            assert_eq!(registry.list(SeatFilter::default()).await.unwrap(), before);
+        }
     }
 
     #[tokio::test]

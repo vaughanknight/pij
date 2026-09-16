@@ -1,0 +1,31 @@
+COMMAND: /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --lib native_transient_hold_yields_to_separate_pane_ownership_refusal -- --nocapture
+EXIT: 101
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-transient-hold/crates/daemon)
+warning: value assigned to `held_owner` is never read
+    --> crates/daemon/src/registration.rs:1205:17
+     |
+1205 |                 held_owner = Some(&seat.id);
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `pij-daemon` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.02s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-043514ab0ddb16b1)
+
+running 1 test
+test http::native_tests::native_transient_hold_yields_to_separate_pane_ownership_refusal ... 
+thread 'http::native_tests::native_transient_hold_yields_to_separate_pane_ownership_refusal' (64636105) panicked at crates/daemon/src/http/native_tests.rs:478:5:
+{"command":"pij register","error":"refused","meta":"native Copilot registration refused: process, native session, or pane already belongs to seat `pij-aaa-copilot-owner`","ok":false,"v":2}
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    http::native_tests::native_transient_hold_yields_to_separate_pane_ownership_refusal
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 397 filtered out; finished in 0.12s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

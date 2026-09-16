@@ -1,0 +1,7 @@
+{
+  "facts": [
+    "The uncontrolled native bootstrap ended before transient registration was attempted.",
+    "The driver failed its guard: restart must exercise a throwaway native session, not skip the hold."
+  ],
+  "report": "report.md#ac4--actual-native-restart-one-transient-fork"
+}

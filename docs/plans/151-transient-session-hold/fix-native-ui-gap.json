@@ -1,0 +1,44 @@
+{
+  "command": "node_modules/.bin/tsx docs/plans/151-transient-session-hold/transient-hold-live.ts /tmp/pij-151-fix-green-20260916.json --stretch-transient",
+  "exit": 1,
+  "grade": "upstream UI parser compatibility failure before /restart; not a HOLD regression",
+  "source_receipt": "/tmp/pij-151-fix-green-20260916.json",
+  "prior_runtime": {
+    "version": "1.0.84-9",
+    "sha256": "10de486a2b198b31fbbb05c28a0f305d3b2d15882bcd3e42507f1f2584840e15",
+    "receipt": "live-green-release.json"
+  },
+  "current_runtime": {
+    "version": "1.0.85",
+    "sha256": "29034a478e514e2d6c8cb33e16a7e94067ef4f80cc737aec93ecac9dd12b8557"
+  },
+  "subject": {
+    "binary_sha256": "d6d05307e8476e4213b9742ba1967814f4e94155dd61e15153505b4321d61723",
+    "store_sha256": "8e76766214380125d9e3fdbf3c35330210f4b5d2079aa87b299245a547a36a8e",
+    "extension_sha256": "a6aa6c00a97b692debaf56cb35299787a954a6a56eb69efdb9269285f21ca4e3"
+  },
+  "registration_statuses": [
+    200,
+    200
+  ],
+  "native_seat": {
+    "id": "pij-screeching-edeard",
+    "session": "03d3bc1a-154d-4a96-a8c9-464cfc9a8bd7",
+    "proc": {
+      "pid": 87750,
+      "proc_start": 20260916141533
+    },
+    "pane": "%1",
+    "native_extension_delivery": true
+  },
+  "transient_registration_count": 0,
+  "error": "Error: Timeout: initial empty composer\n    at until (/Users/jordanknight/pi-hacking/fs3-transient-hold/docs/plans/151-transient-session-hold/transient-hold-live.ts:115:8)\n    at async <anonymous> (/Users/jordanknight/pi-hacking/fs3-transient-hold/docs/plans/151-transient-session-hold/transient-hold-live.ts:147:2)",
+  "terminal_footer": [
+    "",
+    " /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-151-live-ehuKbN/workspace",
+    "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+    "❯",
+    "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+    " ← open sidebar · / commands · ? help · tab next tab                                                                                         pij-native-fixture"
+  ]
+}

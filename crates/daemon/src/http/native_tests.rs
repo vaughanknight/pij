@@ -381,6 +381,228 @@ async fn native_session_resume_state_shows_new_process_and_no_tombstone() {
     native_session_resume_contract("state").await;
 }
 #[tokio::test]
+async fn native_transient_session_holds_without_mutating_owner_or_queue() {
+    let old_host = HostFixture::spawn();
+    let new_host = HostFixture::spawn();
+    let (mut owner, _) = contract_identity();
+    owner.id = "pij-resume-owner".into();
+    owner.proc = Some(old_host.identity().await);
+    owner.pane = Some("%151".into());
+    let store = FreshStore::new();
+    let services = native_host_services(&store, &owner.folder, &["%151"]).await;
+    let registry = services.registry.clone();
+    let queue = services.queue.clone();
+    let spine = services.spine.clone();
+    registry.put(owner.clone()).await.unwrap();
+    let before = registry.list(Default::default()).await.unwrap();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    native_http_response(
+        client.post(format!("http://{addr}/v1/send")).json(&json!({
+            "from": "pij-peer", "to": {"seat": owner.id},
+            "body": "retained while restart holds", "msg_id": "151-held-mail"
+        })),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    let queued = queue.peek(&[delivery_kind(&owner.id)]).await.unwrap();
+    let events = spine.tail(None, pij_core::model::Seq(0)).await.unwrap();
+    let mut claimant = owner.clone();
+    claimant.proc = Some(new_host.identity().await);
+    claimant.harness_session = Some("transient-before-resume".into());
+    let mut claim = native_registration(&claimant);
+    claim["id"] = json!("");
+    let response = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/register"))
+            .json(&claim),
+        reqwest::StatusCode::CONFLICT,
+    )
+    .await;
+    assert_eq!(response["command"], "pij register");
+    assert_eq!(response["error"], "refused");
+    assert_eq!(
+        response["details"],
+        json!({"retryable": true, "hold": "native-session"})
+    );
+    assert_eq!(
+        response["meta"],
+        "native Copilot registration held: pane owned by seat `pij-resume-owner`; awaiting resumed session"
+    );
+    assert_eq!(registry.list(Default::default()).await.unwrap(), before);
+    assert_eq!(
+        queue.peek(&[delivery_kind(&owner.id)]).await.unwrap(),
+        queued
+    );
+    assert_eq!(
+        spine.tail(None, pij_core::model::Seq(0)).await.unwrap(),
+        events
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn native_transient_hold_yields_to_separate_pane_ownership_refusal() {
+    let old_host = HostFixture::spawn();
+    let new_host = HostFixture::spawn();
+    let (mut owner, _) = contract_identity();
+    // The hold-eligible owner sorts before the separate terminal conflict.
+    owner.id = "pij-aaa-copilot-owner".into();
+    owner.proc = Some(old_host.identity().await);
+    owner.pane = Some("%151-shared".into());
+    owner.harness_session = Some("owner-session".into());
+    let mut relay = owner.clone();
+    relay.id = "pij-zzz-relay".into();
+    relay.relay = true;
+    relay.native_extension_delivery = false;
+    relay.proc = None;
+    let store = FreshStore::new();
+    let services = native_host_services(&store, &owner.folder, &["%151-shared"]).await;
+    services.registry.put(owner.clone()).await.unwrap();
+    services.registry.put(relay).await.unwrap();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    let mut claimant = owner;
+    claimant.proc = Some(new_host.identity().await);
+    claimant.harness_session = Some("unknown-transient".into());
+    let mut claim = native_registration(&claimant);
+    claim["id"] = json!("");
+    let response = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/register"))
+            .json(&claim),
+        reqwest::StatusCode::BAD_REQUEST,
+    )
+    .await;
+    assert!(response["details"].get("hold").is_none(), "{response}");
+    assert!(
+        response["meta"]
+            .as_str()
+            .unwrap()
+            .contains("`pij-zzz-relay`"),
+        "{response}"
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn native_transient_session_tombstoned_or_observed_dead_owner_admits_new_address() {
+    for tombstoned in [false, true] {
+        let mut old_host = HostFixture::spawn();
+        let new_host = HostFixture::spawn();
+        let old_process = old_host.identity().await;
+        let (mut owner, _) = contract_identity();
+        owner.id = "pij-retired-pane-owner".into();
+        owner.proc = Some(old_process);
+        owner.pane = Some("%151-retired".into());
+        if tombstoned {
+            owner.tombstoned_at = Some(1);
+            owner.tombstone_reason = Some("already swept".into());
+            owner.native_extension_delivery = false;
+        }
+        let store = FreshStore::new();
+        let services = native_host_services(&store, &owner.folder, &["%151-retired"]).await;
+        let registry = services.registry.clone();
+        registry.put(owner.clone()).await.unwrap();
+        let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+        let client = reqwest::Client::new();
+        let new_process = new_host.identity().await;
+        let mut claimant = owner.clone();
+        claimant.proc = Some(new_process);
+        claimant.harness_session = Some("genuinely-new-session".into());
+        let mut claim = native_registration(&claimant);
+        claim["id"] = json!("");
+        if !tombstoned {
+            native_http_response(
+                client
+                    .post(format!("http://{addr}/v1/register"))
+                    .json(&claim),
+                reqwest::StatusCode::CONFLICT,
+            )
+            .await;
+            old_host.kill_and_reap(old_process).await;
+        }
+        let admitted = native_http_response(
+            client
+                .post(format!("http://{addr}/v1/register"))
+                .json(&claim),
+            reqwest::StatusCode::OK,
+        )
+        .await;
+        let id: SeatId = admitted["data"]["id"].as_str().unwrap().into();
+        assert_ne!(id, owner.id);
+        assert_eq!(admitted["data"]["binding"], "created");
+        let created = registry.get(&id).await.unwrap().unwrap();
+        assert_eq!(created.harness_session, claimant.harness_session);
+        assert_eq!(created.proc, Some(new_process));
+        assert_eq!(created.pane, owner.pane);
+        assert!(created.native_extension_delivery);
+        let retired = registry.get(&owner.id).await.unwrap().unwrap();
+        if tombstoned {
+            assert_eq!(retired, owner);
+        } else {
+            assert!(retired.tombstoned_at.is_some());
+            assert!(!retired.native_extension_delivery);
+            assert_eq!(retired.harness_session, owner.harness_session);
+            assert_eq!(retired.proc, owner.proc);
+        }
+        assert_eq!(registry.list(Default::default()).await.unwrap().len(), 2);
+        server.abort();
+    }
+}
+
+#[tokio::test]
+async fn native_known_historical_session_resumes_instead_of_holding_live_bootstrap() {
+    let saved_host = HostFixture::spawn();
+    let resumed_host = HostFixture::spawn();
+    let new_process = resumed_host.identity().await;
+    let (mut saved, _) = contract_identity();
+    saved.id = "pij-known-saved-session".into();
+    saved.proc = Some(saved_host.identity().await);
+    saved.tombstoned_at = Some(1);
+    saved.tombstone_reason = Some("historical incarnation".into());
+    saved.native_extension_delivery = false;
+    let mut bootstrap = saved.clone();
+    bootstrap.id = "pij-current-bootstrap".into();
+    bootstrap.proc = Some(new_process);
+    bootstrap.pane = Some("%151-known".into());
+    bootstrap.harness_session = Some("current-bootstrap-session".into());
+    bootstrap.tombstoned_at = None;
+    bootstrap.tombstone_reason = None;
+    bootstrap.native_extension_delivery = true;
+    let store = FreshStore::new();
+    let services = native_host_services(&store, &saved.folder, &["%151-known"]).await;
+    let registry = services.registry.clone();
+    registry.put(saved.clone()).await.unwrap();
+    registry.put(bootstrap.clone()).await.unwrap();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    let mut claim = native_registration(&bootstrap);
+    claim["id"] = json!("");
+    claim["harness_session"] = json!(saved.harness_session);
+    let resumed = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/register"))
+            .json(&claim),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(resumed["data"]["id"], saved.id.as_str());
+    assert_eq!(resumed["data"]["binding"], "rebound");
+    let current = registry.get(&saved.id).await.unwrap().unwrap();
+    assert_eq!(current.harness_session, saved.harness_session);
+    assert_eq!(current.proc, Some(new_process));
+    assert_eq!(current.pane, bootstrap.pane);
+    assert!(current.tombstoned_at.is_none());
+    assert!(current.native_extension_delivery);
+    let retired = registry.get(&bootstrap.id).await.unwrap().unwrap();
+    assert!(retired.tombstoned_at.is_some());
+    assert!(!retired.native_extension_delivery);
+    assert_eq!(registry.list(Default::default()).await.unwrap().len(), 2);
+    server.abort();
+}
+
+#[tokio::test]
 async fn native_session_ambiguity_returns_typed_retry_without_mutation() {
     let host = HostFixture::spawn();
     let (mut seat, _) = contract_identity();

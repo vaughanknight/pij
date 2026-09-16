@@ -812,6 +812,13 @@ async fn register(
             answer.details = Some(serde_json::json!({ "retryable": true }));
             envelope(StatusCode::CONFLICT, &answer)
         }
+        Err(error @ RegistrationError::NativeSessionHold(_)) => {
+            let mut answer: Envelope<()> =
+                Envelope::refused("pij register", ErrorKind::Refused, error.to_string());
+            answer.details =
+                Some(serde_json::json!({ "retryable": true, "hold": "native-session" }));
+            envelope(StatusCode::CONFLICT, &answer)
+        }
         Err(RegistrationError::Runtime(error)) => internal("pij register", error),
     }
 }
