@@ -1,0 +1,4 @@
+COMMAND: node --input-type=module (historical inline fixture; original fixture source not retained)
+EXIT: 0
+ROUND: 1 (historical); last 60 output lines
+same native session is nominated before stale pane metadata

@@ -9,7 +9,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { chooseRegistration, createNativeReporter } from "./store.mjs";
+import { createNativeReporter } from "./store.mjs";
 
 // Preloaded only in the owned test subprocess. Real extension source, HTTP and disk;
 // explicit SDK/process seams, NOT proof of native CLI installation or real model behavior.
@@ -100,8 +100,11 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			seats = [],
 			remoteSeats = [],
 			pane,
+			requestedId,
+			requestedSpawn,
 			rosters = [],
 			dropRegistrations = 0,
+			registerResponses = [],
 			registerRefusal,
 		} = {},
 	) {
@@ -124,6 +127,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 				let data;
 				let meta;
 				let refusal;
+				let status;
 				if (url.pathname === "/v1/seats") {
 					const local = rosters.length
 						? rosters.shift()
@@ -134,7 +138,9 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 						seats: url.searchParams.get("scope") === "local" ? local : [...local, ...remoteSeats],
 					};
 				} else if (request.url === "/v1/register") {
-					refusal = registerRefusal;
+					const next = registerResponses.shift();
+					refusal = next?.refusal ?? registerRefusal;
+					status = next?.status;
 					registered = { ...body, id: body.id || registered?.id || "pij-bright-otter" };
 					data = {
 						id: registered.id,
@@ -142,6 +148,8 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 						session: body.harness_session,
 						folder: body.folder,
 						pane: body.pane ?? null,
+						parent: body.parent ?? null,
+						spawn_id: body.spawn_id ?? null,
 						proc: { pid: body.pid, proc_start: body.proc_start },
 						native_extension_delivery: true,
 						typing_grace_ms: 60000,
@@ -221,7 +229,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 					data = { msg_id: body.msg_id, outcome: { outcome: "queued" }, at: 137 };
 				else throw new Error(`Unexpected native endpoint ${request.url}`);
 				response.setHeader("Content-Type", "application/json");
-				response.statusCode = refusal ? 400 : 200;
+				response.statusCode = status ?? (refusal ? 400 : 200);
 				response.end(JSON.stringify(refusal ?? { ok: true, v: 2, data, meta }));
 			});
 			server.listen(0, "127.0.0.1");
@@ -250,6 +258,8 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		for (const name of ["TMUX", "TMUX_PANE", "PIJ_SESSION_ID", "PIJ_SPAWN_ID", "PIJ_PARENT_ID"])
 			delete env[name];
 		if (pane !== undefined) env.TMUX_PANE = pane;
+		if (requestedId !== undefined) env.PIJ_SESSION_ID = requestedId;
+		if (requestedSpawn !== undefined) env.PIJ_SPAWN_ID = requestedSpawn;
 		const child = spawn(
 			process.execPath,
 			[
@@ -524,7 +534,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		});
 	}
 
-	test("ambiguous native roster refreshes without selecting until unique", async (t) => {
+	test("two-live native ambiguity refreshes until one live address remains beside tombstoned history", async (t) => {
 		const candidate = {
 			id: "pij-cold-candidate",
 			harness: "copilot",
@@ -533,7 +543,12 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			native_extension_delivery: true,
 		};
 		const ambiguous = [candidate, { ...candidate, id: "pij-other-candidate" }];
-		const f = await launch(t, { rosters: [ambiguous, ambiguous, [candidate]] });
+		const resolved = [
+			{ ...candidate, id: "pij-a-retired", tombstoned_at: 1 },
+			{ ...candidate, id: "pij-b-retired", tombstoned_at: 2 },
+			candidate,
+		];
+		const f = await launch(t, { rosters: [ambiguous, ambiguous, resolved] });
 		await f.waitFor("native-log");
 		assert.equal(f.requests.filter((r) => r.path === "/v1/register").length, 0);
 		assert.equal(f.events.filter((e) => e.kind === "native-send").length, 0);
@@ -542,25 +557,62 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		assert.equal(f.requests.filter((r) => r.path === "/v1/register").length, 1);
 		assert.equal(f.requests.find((r) => r.path === "/v1/register").body.id, candidate.id);
 		assert.equal(f.events.filter((e) => e.kind === "native-log").length, 1);
+		assert.equal(f.requests.find((r) => r.path === "/v1/inbox/ack").body.seat, candidate.id);
 		const exited = once(f.child, "exit");
 		f.child.stdin.end();
 		assert.equal((await exited)[0], 0);
 		assert.equal(f.stdout(), "");
 	});
 
-	test("retired native attachment mints fresh id once across dropped registration response", async (t) => {
-		const old = chooseRegistration({
-			sessionId: "native-shell-137",
-			host: { pid: process.pid, proc_start: 20260905120000 },
-			folder: "/work",
-			env: {},
-			seats: [],
+	test("spawned extension consumes and sends under allocated id and parent instead of saved session", async (t) => {
+		const saved = {
+			id: "pij-saved-session",
+			harness: "copilot",
+			session: "native-shell-137",
+			pane: "%1",
+			proc: { pid: process.pid + 1, proc_start: 20260905115900 },
+			spawn_id: "saved-spawn",
+			parent: "pij-saved-parent",
+			native_extension_delivery: true,
+		};
+		const prebind = {
+			id: "pij-allocated-child",
+			harness: "copilot",
+			session: null,
+			proc: null,
+			pane: "%2",
+			spawn_id: "allocated-spawn",
+			parent: "pij-allocated-parent",
+			native_extension_delivery: false,
+		};
+		const f = await launch(t, {
+			seats: [saved, prebind],
+			pane: prebind.pane,
+			requestedId: prebind.id,
+			requestedSpawn: prebind.spawn_id,
 		});
+		await f.waitFor("completion-wait");
+		const registered = f.requests.find((r) => r.path === "/v1/register").body;
+		assert.equal(registered.id, prebind.id);
+		assert.equal(registered.parent, prebind.parent);
+		assert.equal(registered.spawn_id, prebind.spawn_id);
+		assert.equal(f.requests.find((r) => r.path === "/v1/inbox/ack").body.seat, prebind.id);
+		assert.match(f.events.find((e) => e.kind === "native-send").input.prompt, /shell-137/);
+		f.child.stdin.write(`${JSON.stringify({ to: "pij-peer", message: "SPAWNED_CHILD_REPLY" })}\n`);
+		assert.equal((await f.waitFor("tool-result")).result.ok, true);
+		assert.equal(f.requests.find((r) => r.path === "/v1/send").body.from, prebind.id);
+		const exited = once(f.child, "exit");
+		f.child.stdin.end();
+		assert.equal((await exited)[0], 0);
+		assert.equal(f.stdout(), "");
+	});
+
+	test("retired native attachment retains its durable id across dropped registration response", async (t) => {
 		const retired = {
 			id: "pij-copilot-0123456789abcdef01234567",
 			harness: "copilot",
-			session: old.harness_session,
-			proc: { pid: old.pid, proc_start: old.proc_start },
+			session: "native-shell-137",
+			proc: { pid: process.pid, proc_start: 20260905120000 },
 			native_extension_delivery: false,
 			tombstoned_at: 1,
 			state: "tombstoned",
@@ -569,16 +621,65 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		await f.waitFor("completion-wait");
 		const attempts = f.requests.filter((r) => r.path === "/v1/register");
 		assert.equal(attempts.length, 2);
-		assert.notEqual(attempts[0].body.id, retired.id);
-		assert.equal(attempts[0].body.id, "");
-		assert.equal(attempts[1].body.id, "pij-bright-otter");
-		assert.equal(f.requests.filter((r) => r.path === "/v1/seats?scope=local").length, 2);
+		assert.deepEqual(
+			attempts.map((attempt) => attempt.body.id),
+			[retired.id, retired.id],
+		);
 		assert.equal(f.requests.filter((r) => r.path === "/v1/inbox/ack").length, 1);
 		assert.equal(f.events.filter((e) => e.kind === "native-send").length, 1);
 		const exited = once(f.child, "exit");
 		f.child.stdin.end();
 		assert.equal((await exited)[0], 0);
 		assert.equal(f.stdout(), "");
+	});
+
+	test("actual HTTP 409 registration retry retains the native id and later consumes queued work", async (t) => {
+		const previous = {
+			id: "pij-resuming-native",
+			harness: "copilot",
+			session: "native-shell-137",
+			proc: { pid: process.pid + 1, proc_start: 20260905115900 },
+			native_extension_delivery: true,
+		};
+		const refusal = {
+			ok: false,
+			v: 2,
+			command: "pij register",
+			error: "refused",
+			details: { retryable: true },
+			meta: "registration temporarily unavailable",
+		};
+		const f = await launch(t, {
+			seats: [previous],
+			registerResponses: [
+				{ status: 409, refusal },
+				{ status: 409, refusal },
+			],
+		});
+		await f.waitFor("native-log");
+		assert.equal(
+			f.events.some((event) => ["receive-held", "extension-unavailable"].includes(event.kind)),
+			false,
+		);
+		await f.waitFor("completion-wait");
+		assert.deepEqual(
+			f.requests
+				.filter((request) => request.path === "/v1/register")
+				.map((request) => request.body.id),
+			[previous.id, previous.id, previous.id],
+		);
+		assert.equal(
+			f.requests.find((request) => request.path === "/v1/inbox/ack").body.seat,
+			previous.id,
+		);
+		assert.equal(f.events.filter((event) => event.kind === "native-send").length, 1);
+		assert.equal(
+			f.events.some((event) => ["receive-held", "extension-unavailable"].includes(event.kind)),
+			false,
+		);
+		f.child.stdin.write(`${JSON.stringify({ to: "pij-peer", message: "RESUMED_REPLY" })}\n`);
+		assert.equal((await f.waitFor("tool-result")).result.ok, true);
+		assert.equal(f.requests.find((request) => request.path === "/v1/send").body.from, previous.id);
 	});
 
 	test("actual HTTP native-unavailable refusal re-registers and consumes queued work", async (t) => {

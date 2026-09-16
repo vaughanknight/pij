@@ -1,0 +1,63 @@
+COMMAND: node --test .copilot/extensions/pij/*.test.mjs
+EXIT: 0
+ROUND: 2; last60 output lines
+✔ native consumer proof rejects {"native_session":"stale-session","pid":137,"proc_start":20260905120000} before injection and ack (0.043875ms)
+✔ native consumer proof rejects {"native_session":"native-137","pid":999,"proc_start":20260905120000} before injection and ack (0.039042ms)
+✔ native consumer proof rejects {"native_session":"native-137","pid":137,"proc_start":1} before injection and ack (0.04475ms)
+✔ spawned native rollover preserves correlation across extension reload (0.073625ms)
+✔ outage emits one actionable reconnect diagnostic per failure episode (0.120541ms)
+✔ consent hold release delivers the queued claim without a second message (0.14575ms)
+✔ native-event diagnostics retain pre-observe ancestry for healthy session.idle (2.083042ms)
+✔ native-event diagnostics retain pre-observe ancestry for healthy session.error (0.554125ms)
+✔ native-event diagnostics identify rejected idle without declaring a stall (0.443125ms)
+✔ native-event diagnostics expose only scalar IDs and never callback or buffered bodies (0.265792ms)
+✔ post-ack barrier blocks next claim until current native completion, not outgoing (0.472083ms)
+✔ post-ack barrier retains session.idle before native send resolves (0.385ms)
+✔ post-ack barrier retains session.error before native send resolves (0.189791ms)
+✔ post-ack barrier captures idle during acknowledgement but cannot overtake ack (0.327792ms)
+✔ post-ack barrier cannot release a later send from earlier generation events (0.514583ms)
+✔ post-ack barrier completes the owned final turn before a following foreground user (0.311958ms)
+✔ post-ack barrier rejects unproven foreground transition {"parentId":"unrelated-end"} (0.317666ms)
+✔ post-ack barrier rejects unproven foreground transition {"parentId":"owned-user"} (0.352542ms)
+✔ post-ack barrier rejects unproven foreground transition {"agentId":"subagent"} (0.249125ms)
+✔ post-ack barrier rejects unproven foreground transition {"data":{"messageId":"next-native"}} (0.224208ms)
+✔ post-ack barrier keeps accepted duplicate pending without completion evidence (0.265875ms)
+✔ post-ack barrier survives failed ack before reclaiming accepted duplicate (0.28925ms)
+✔ post-ack barrier shutdown disposes subscription and ignores late completion (0.283833ms)
+✔ post-ack barrier follows real native PoC ancestry with sibling ephemeral idles (0.502125ms)
+✔ post-ack interaction anchor repairs the direct product permission gap without inferring idle (0.394792ms)
+✔ post-ack interaction anchor accepts only the matched foreground assistant.turn_start (0.524083ms)
+✔ post-ack interaction anchor accepts only the matched foreground assistant.message (0.38175ms)
+✔ post-ack interaction anchor accepts only the matched foreground tool.execution_complete (1.580042ms)
+✔ post-ack interaction anchor rejects absent or blank binding undefined (0.412834ms)
+✔ post-ack interaction anchor rejects absent or blank binding "" (0.314959ms)
+✔ post-ack interaction anchor rejects absent or blank binding "   " (0.323334ms)
+✔ post-ack interaction anchor retains correlation before send acceptance (0.296584ms)
+✔ claim page preserves typed target and transient hold metadata without changing request data (0.564292ms)
+✔ malformed claim hold metadata is not silently downgraded to an empty inbox (0.094166ms)
+✔ only the exact native-unavailable inbox refusal is retryable (0.706209ms)
+✔ native-unavailable retries re-register with bounded backoff and stop cleanly (0.62825ms)
+✔ semantic consent preflight binds exact tuple and current bearer key over real HTTP (2.153625ms)
+✔ semantic consent rejects malformed hold and mismatched native identity over HTTP (4.893375ms)
+✔ semantic consent ignores typing metadata and needs only identity and operator Hold (2.360916ms)
+✔ new native send waits for semantic consent before creating durable intent (0.339458ms)
+✔ native delivery proceeds during recent human typing without submitting the human draft (0.428959ms)
+✔ native delivery proceeds during unavailable typing sensor without submitting the human draft (0.32175ms)
+✔ native delivery retains human-consent while the human is typing (0.221417ms)
+✔ native delivery retains semantic-hold while the human is typing (0.08375ms)
+✔ native delivery retains native-target-session:original-native while the human is typing (0.062084ms)
+✔ semantic Hold survives observed typing and requires a fresh claim after clearance (0.656ms)
+✔ semantic Hold survives unavailable typing and requires a fresh claim after clearance (0.346458ms)
+✔ shutdown during consent snapshot cancels old-context work without intent send or ACK (0.287916ms)
+✔ shutdown during consent semantic hold delay cancels old-context work without intent send or ACK (0.199167ms)
+✔ semantic consent HTTP wait is externally abortable and its deadline is not inbox renewal (151.95325ms)
+✔ invalid semantic consent or native proof holds receiving without hiding outgoing (3.895417ms)
+✔ invalid semantic consent or native proof holds receiving without hiding outgoing (2.8575ms)
+ℹ tests 197
+ℹ suites 0
+ℹ pass 194
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 3
+ℹ todo 0
+ℹ duration_ms 8517.338834

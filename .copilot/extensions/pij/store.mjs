@@ -12,13 +12,13 @@ const positiveInteger = (value) => Number.isSafeInteger(value) && value > 0;
 const sameProcess = (seat, host) =>
 	seat.proc?.pid === host.pid && seat.proc?.proc_start === host.proc_start;
 const samePane = (seat, host) => (seat.pane ?? undefined) === (host.pane ?? undefined);
-const nativeAttested = (seat) =>
+const nativeSession = (seat) =>
 	seat.harness === "copilot" &&
-	seat.native_extension_delivery === true &&
-	seat.tombstoned_at == null &&
 	nonempty(seat.session) &&
 	positiveInteger(seat.proc?.pid) &&
 	positiveInteger(seat.proc?.proc_start);
+const nativeAttested = (seat) =>
+	nativeSession(seat) && seat.native_extension_delivery === true && seat.tombstoned_at == null;
 
 export class NativeError extends Error {
 	constructor(message, retryable = false, safeDiagnostic = message) {
@@ -81,45 +81,60 @@ export function chooseRegistration({ sessionId, host, folder, seats, env }) {
 	const requestedSpawn = env.PIJ_SPAWN_ID?.trim();
 	const prebind =
 		requestedId && requestedSpawn && host.pane
-			? live.find(
+			? seats.find(
 					(seat) =>
 						seat.id === requestedId &&
 						seat.harness === "copilot" &&
+						!seat.relay &&
+						seat.tombstoned_at == null &&
 						seat.proc == null &&
+						(seat.session == null || seat.session === sessionId) &&
 						samePane(seat, host) &&
 						seat.spawn_id === requestedSpawn,
 				)
 			: undefined;
+	const candidates = seats.filter(
+		(seat) => seat !== prebind && seat.harness === "copilot" && seat.session === sessionId,
+	);
+	if (candidates.filter((seat) => seat.tombstoned_at == null).length > 1)
+		throw new NativeError(
+			"Native session has multiple candidate Pij addresses; refreshing roster",
+			true,
+		);
+	candidates.sort(
+		(a, b) =>
+			Number(a.tombstoned_at != null) - Number(b.tombstoned_at != null) ||
+			(b.proc?.proc_start ?? -Infinity) - (a.proc?.proc_start ?? -Infinity) ||
+			(a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+	);
 	const exact = live.filter((seat) => sameProcess(seat, host));
-	if (exact.length > 1 || exact.some((seat) => seat.harness !== "copilot" || !samePane(seat, host)))
+	if (
+		exact.length > 1 ||
+		exact.some(
+			(seat) => seat.harness !== "copilot" || (!samePane(seat, host) && seat !== candidates[0]),
+		)
+	)
 		throw new NativeError("Native process identity has conflicting seats or pane");
 	if (
 		host.pane &&
 		live.some(
 			(seat) =>
 				seat !== prebind &&
+				seat !== candidates[0] &&
 				seat.pane === host.pane &&
 				!sameProcess(seat, host) &&
 				!nativeAttested(seat),
 		)
 	)
 		throw new NativeError("Pane belongs to a different process identity");
-	// Roster rows only nominate identity; the daemon proves death and authorizes rebind/retirement.
-	let prior = exact[0] ?? prebind;
-	if (!prior) {
-		const candidates = seats.filter((seat) => nativeAttested(seat) && seat.session === sessionId);
-		if (candidates.length > 1)
-			throw new NativeError(
-				"Native session has multiple candidate Pij addresses; refreshing roster",
-				true,
-			);
-		prior = candidates[0];
-	}
+	// A verified spawn allocation owns its id and parent; otherwise the session owns the address.
+	const prior = prebind ?? candidates[0] ?? exact[0];
+	// A same-process session rollover keeps its original launch environment on extension reload.
 	const correlatedSuccessor =
 		prior?.native_extension_delivery === true &&
 		requestedSpawn &&
 		prior.spawn_id === requestedSpawn &&
-		(sameProcess(prior, host) || prior.session === sessionId);
+		sameProcess(prior, host);
 	if (requestedId && (!prior || prior.id !== requestedId) && !correlatedSuccessor)
 		throw new NativeError("Spawn prebind identity is not corroborated by the host process", !prior);
 	if (requestedSpawn && (!prior || prior.spawn_id !== requestedSpawn))
@@ -128,6 +143,7 @@ export function chooseRegistration({ sessionId, host, folder, seats, env }) {
 	// New identities are allocated by the daemon's normal memorable-name allocator.
 	// Existing addresses, including older hash names, remain stable on resume.
 	const id = !replacing && prior ? prior.id : "";
+	const spawnId = prior?.spawn_id;
 	return Object.freeze({
 		id,
 		harness: "copilot",
@@ -139,7 +155,7 @@ export function chooseRegistration({ sessionId, host, folder, seats, env }) {
 		native_extension_delivery: true,
 		...(host.pane ? { pane: host.pane } : {}),
 		...(replacing ? { supersedes: prior.id } : {}),
-		...(prior?.spawn_id ? { spawn_id: prior.spawn_id } : {}),
+		...(spawnId ? { spawn_id: spawnId } : {}),
 		...(prior?.parent ? { parent: prior.parent } : {}),
 	});
 }
@@ -304,9 +320,18 @@ export class DaemonClient {
 				/^native Copilot registration refused: claimed pid is not an actual Copilot host executable; observed basename="[^"\\/\r\n]{1,255}", replaced=(?:true|false)$/.test(
 					envelope.meta,
 				);
+			const registrationRetry =
+				path === "/v1/register" &&
+				response.status === 409 &&
+				envelope?.v === 2 &&
+				envelope.ok === false &&
+				envelope.command === "pij register" &&
+				envelope.error === "refused" &&
+				envelope.details?.retryable === true;
 			throw new NativeError(
 				`Pij HTTP ${response.status}: ${diagnostic}`,
 				nativeUnavailable ||
+					registrationRetry ||
 					response.status === 401 ||
 					response.status === 429 ||
 					response.status >= 500,

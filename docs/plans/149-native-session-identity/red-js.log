@@ -1,0 +1,63 @@
+COMMAND: just copilot-native-test
+EXIT: 1
+ROUND: 1 (historical); last 60 output lines
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'pij-preallocated'
+  - 'pij-test'
+         ^
+  
+      at TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-native-identity/.copilot/extensions/pij/store.test.mjs:1525:9)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
+      at Test.postRun (node:internal/test_runner/test:1235:19)
+      at Test.run (node:internal/test_runner/test:1163:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'pij-preallocated',
+    expected: 'pij-test',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .copilot/extensions/pij/store.test.mjs:1538:1
+✖ conflicting same-session addresses cannot hide behind an exact process or prebind (0.095083ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-native-identity/.copilot/extensions/pij/store.test.mjs:1546:9)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
+      at Test.postRun (node:internal/test_runner/test:1235:19)
+      at Test.run (node:internal/test_runner/test:1163:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at .copilot/extensions/pij/store.test.mjs:1760:1
+✖ only typed HTTP 409 registration refusals permit retry (0.320708ms)
+  AssertionError [ERR_ASSERTION]: typed refusal
+  
+  false !== true
+  
+      at Object.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-native-identity/.copilot/extensions/pij/store.test.mjs:1795:11)
+      at expectedException (node:assert:576:17)
+      at expectsError (node:assert:701:21)
+      at strict.rejects (node:assert:767:3)
+      at async TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-native-identity/.copilot/extensions/pij/store.test.mjs:1794:3)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+error: Recipe `copilot-native-test` failed on line 108 with exit code 1

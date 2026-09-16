@@ -603,10 +603,7 @@ pub(crate) async fn adopt(
         .register_with_harness_session(claim, harness_session)
         .await
     {
-        return match error {
-            RegistrationError::Refused(reason) => refused(ADOPT, reason),
-            RegistrationError::Runtime(error) => internal(ADOPT, error),
-        };
+        return adopt_registration_error(error);
     }
 
     // THE ANSWER IS A RE-READ. Not the descriptor we just built — the row the
@@ -645,6 +642,18 @@ pub(crate) async fn adopt(
             ),
         ),
         Err(error) => internal(ADOPT, error),
+    }
+}
+
+fn adopt_registration_error(error: RegistrationError) -> Response {
+    match error {
+        RegistrationError::Refused(reason) => refused(ADOPT, reason),
+        RegistrationError::Retryable(reason) => {
+            let mut answer: Envelope<()> = Envelope::refused(ADOPT, ErrorKind::Refused, reason);
+            answer.details = Some(json!({ "retryable": true }));
+            envelope(StatusCode::CONFLICT, &answer)
+        }
+        RegistrationError::Runtime(error) => internal(ADOPT, error),
     }
 }
 
@@ -880,5 +889,31 @@ pub(crate) async fn resolve_seat(
             ),
         )),
         Err(error) => Resolved::Refusal(internal(command, error)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn adopt_registration_retryable_error_preserves_conflict_discriminator() {
+        // Adopt currently uses ordinary registration, not native attestation.
+        // Exercise its error projection, without claiming this race is reachable
+        // through today's adopt request.
+        let response = adopt_registration_error(RegistrationError::Retryable(
+            "native owner changed during death observation; retry registration".into(),
+        ));
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let answer: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(answer["v"], 2);
+        assert_eq!(answer["ok"], false);
+        assert_eq!(answer["command"], "pij adopt");
+        assert_eq!(answer["error"], "refused");
+        assert_eq!(answer["details"]["retryable"], true);
+        assert!(answer.get("data").is_none());
     }
 }

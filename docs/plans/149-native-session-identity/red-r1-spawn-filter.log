@@ -1,0 +1,24 @@
+COMMAND: /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --lib native_saved_session_accepts_spawn_from_auto_discovered_bootstrap -- --nocapture
+EXIT: 101
+ROUND: R1 exact filter deletion; RUST_TEST_THREADS=1; source restored afterward
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-native-identity/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.82s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-043514ab0ddb16b1)
+
+running 1 test
+test http::native_tests::native_saved_session_accepts_spawn_from_auto_discovered_bootstrap ... 
+thread 'http::native_tests::native_saved_session_accepts_spawn_from_auto_discovered_bootstrap' (15714849) panicked at crates/daemon/src/http/native_tests.rs:213:5:
+assertion `left == right` failed: HTTP envelope: {"command":"pij register","error":"refused","meta":"native Copilot registration refused: spawn id has no matching pre-bind/current incarnation","ok":false,"v":2}
+  left: 400
+ right: 200
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    http::native_tests::native_saved_session_accepts_spawn_from_auto_discovered_bootstrap
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 381 filtered out; finished in 0.15s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

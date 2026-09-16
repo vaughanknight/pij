@@ -241,6 +241,281 @@ async fn native_http_claims(
     serde_json::from_value(body["data"].clone()).unwrap()
 }
 
+// Real SQLite/HTTP/OS evidence. HostFixture is inert, not the live Copilot proof.
+async fn native_session_resume_contract(assertion: &str) {
+    let mut old_host = HostFixture::spawn();
+    let old_process = old_host.identity().await;
+    let new_host = HostFixture::spawn();
+    let new_process = new_host.identity().await;
+    let (mut seat, _) = contract_identity();
+    seat.proc = Some(old_process);
+    seat.pane = Some("%149-old".into());
+    seat.parent = Some("pij-parent".into());
+    let store = FreshStore::new();
+    let services = native_host_services(&store, &seat.folder, &["%149-old", "%149-new"]).await;
+    let registry = services.registry.clone();
+    let queue = services.queue.clone();
+    let spine = services.spine.clone();
+    let roles = services.roles.clone();
+    let bus = services.event_bus.clone();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    let mut initial = native_registration(&seat);
+    initial["parent"] = json!(seat.parent);
+    initial["role"] = json!("coder");
+    native_http_response(
+        client
+            .post(format!("http://{addr}/v1/register"))
+            .json(&initial),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    let conversation: SeatId = "pij-telegram-chat-149".into();
+    bus.publish(pij_core::model::Event {
+        seq: None,
+        v: 1,
+        at: 1,
+        kind: "telegram.binding".into(),
+        seat: Some(conversation.clone()),
+        payload: json!({"target":seat.id,"outbound_msg_id":"telegram-before-resume"}).to_string(),
+    })
+    .await
+    .unwrap();
+    let original_binding = spine
+        .latest_matching(&conversation, &["telegram.binding"])
+        .await
+        .unwrap();
+    native_http_response(
+        client.post(format!("http://{addr}/v1/send")).json(&json!({
+            "from":"pij-peer","to":{"seat":seat.id},"body":"149 queued before restart",
+            "msg_id":"149-mail-survives"
+        })),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    let (job_id, _) = queue
+        .peek(&[delivery_kind(&seat.id)])
+        .await
+        .unwrap()
+        .unwrap();
+    old_host.kill_and_reap(old_process).await;
+    let mut retired = registry.get(&seat.id).await.unwrap().unwrap();
+    retired.tombstoned_at = Some(1);
+    retired.tombstone_reason = Some("observed-dead".into());
+    retired.native_extension_delivery = false;
+    registry.put(retired).await.unwrap();
+    seat.proc = Some(new_process);
+    seat.pane = Some("%149-new".into());
+    let mut resumed_claim = native_registration(&seat);
+    resumed_claim["id"] = json!("");
+    let resumed = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/register"))
+            .json(&resumed_claim),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(
+        resumed["data"]["id"],
+        seat.id.as_str(),
+        "{assertion}: durable address"
+    );
+    match assertion {
+        "mail" => {
+            let identity = NativeInboxIdentity {
+                native_session: seat.harness_session.clone(),
+                pid: Some(new_process.pid),
+                proc_start: Some(new_process.proc_start),
+            };
+            let claims = native_http_claims(&client, addr, &seat.id, &identity).await;
+            assert_eq!(claims.len(), 1);
+            assert_eq!(claims[0].job_id, job_id);
+            assert_eq!(claims[0].message.body, "149 queued before restart");
+        }
+        "bindings" => {
+            let current = registry.get(&seat.id).await.unwrap().unwrap();
+            assert_eq!(current.parent, seat.parent);
+            assert_eq!(
+                roles.read_role(&seat.id).await.unwrap().as_deref(),
+                Some("coder")
+            );
+            assert_eq!(
+                spine
+                    .latest_matching(&conversation, &["telegram.binding"])
+                    .await
+                    .unwrap(),
+                original_binding
+            );
+            assert_eq!(resumed["data"]["role"], "coder");
+        }
+        "state" => {
+            let state = native_http_response(
+                client
+                    .post(format!("http://{addr}/v1/state"))
+                    .json(&json!({"id":seat.id})),
+                reqwest::StatusCode::OK,
+            )
+            .await;
+            assert_eq!(state["data"]["pid"], new_process.pid);
+            assert_eq!(state["data"]["procStart"], new_process.proc_start);
+            assert!(state["data"]["tombstonedAt"].is_null());
+            assert!(state["data"]["tombstoneReason"].is_null());
+        }
+        _ => unreachable!(),
+    }
+    server.abort();
+}
+
+#[tokio::test]
+async fn native_session_resume_preserves_queued_mail() {
+    native_session_resume_contract("mail").await;
+}
+
+#[tokio::test]
+async fn native_session_resume_preserves_parent_role_and_telegram_binding() {
+    native_session_resume_contract("bindings").await;
+}
+
+#[tokio::test]
+async fn native_session_resume_state_shows_new_process_and_no_tombstone() {
+    native_session_resume_contract("state").await;
+}
+#[tokio::test]
+async fn native_session_ambiguity_returns_typed_retry_without_mutation() {
+    let host = HostFixture::spawn();
+    let (mut seat, _) = contract_identity();
+    seat.proc = Some(host.identity().await);
+    seat.pane = None;
+    let store = FreshStore::new();
+    let services = native_host_services(&store, &seat.folder, &[]).await;
+    let registry = services.registry.clone();
+    registry.put(seat.clone()).await.unwrap();
+    let mut duplicate = seat.clone();
+    duplicate.id = "pij-duplicate-conversation".into();
+    registry.put(duplicate.clone()).await.unwrap();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    let response = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/register"))
+            .json(&native_registration(&seat)),
+        reqwest::StatusCode::CONFLICT,
+    )
+    .await;
+    assert_eq!(response["command"], "pij register");
+    assert_eq!(response["error"], "refused");
+    assert_eq!(response["details"]["retryable"], true);
+    assert_eq!(registry.get(&seat.id).await.unwrap(), Some(seat));
+    assert_eq!(registry.get(&duplicate.id).await.unwrap(), Some(duplicate));
+    server.abort();
+}
+
+#[tokio::test]
+async fn native_session_live_address_outranks_two_newer_tombstones() {
+    let host = HostFixture::spawn();
+    let process = host.identity().await;
+    let (mut live, _) = contract_identity();
+    live.id = "pij-z-live-conversation".into();
+    live.proc = Some(ProcIdentity {
+        pid: process.pid,
+        proc_start: 1,
+    });
+    live.parent = Some("pij-live-parent".into());
+    let mut first_history = live.clone();
+    first_history.id = "pij-a-retired-conversation".into();
+    first_history.proc.as_mut().unwrap().proc_start = 30;
+    first_history.tombstoned_at = Some(1);
+    first_history.native_extension_delivery = false;
+    let mut second_history = first_history.clone();
+    second_history.id = "pij-m-retired-conversation".into();
+    second_history.proc.as_mut().unwrap().proc_start = 20;
+    let store = FreshStore::new();
+    let services = native_host_services(&store, &live.folder, &[]).await;
+    let registry = services.registry.clone();
+    for row in [&live, &first_history, &second_history] {
+        registry.put(row.clone()).await.unwrap();
+    }
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    let mut claim = native_registration(&live);
+    claim["id"] = json!("");
+    claim["pid"] = json!(process.pid);
+    claim["proc_start"] = json!(process.proc_start);
+    let response = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/register"))
+            .json(&claim),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(response["data"]["id"], live.id.as_str());
+    assert_eq!(response["data"]["binding"], "rebound");
+    assert_eq!(
+        response["data"]["parent"],
+        live.parent.as_ref().unwrap().as_str()
+    );
+    let current = registry.get(&live.id).await.unwrap().unwrap();
+    assert_eq!(current.proc, Some(process));
+    assert!(current.tombstoned_at.is_none());
+    assert_eq!(
+        registry.get(&first_history.id).await.unwrap(),
+        Some(first_history)
+    );
+    assert_eq!(
+        registry.get(&second_history.id).await.unwrap(),
+        Some(second_history)
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn native_session_all_tombstones_resume_newest_process_not_first_id() {
+    let host = HostFixture::spawn();
+    let process = host.identity().await;
+    let (mut newest, _) = contract_identity();
+    newest.id = "pij-z-newest-conversation".into();
+    newest.proc = Some(ProcIdentity {
+        pid: process.pid,
+        proc_start: 30,
+    });
+    newest.tombstoned_at = Some(1);
+    newest.native_extension_delivery = false;
+    let mut older = newest.clone();
+    older.id = "pij-m-older-conversation".into();
+    older.proc.as_mut().unwrap().proc_start = 20;
+    let mut unknown = newest.clone();
+    unknown.id = "pij-a-unknown-conversation".into();
+    unknown.proc = None;
+    let store = FreshStore::new();
+    let services = native_host_services(&store, &newest.folder, &[]).await;
+    let registry = services.registry.clone();
+    for row in [&newest, &older, &unknown] {
+        registry.put(row.clone()).await.unwrap();
+    }
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    let mut claim = native_registration(&newest);
+    claim["id"] = json!("");
+    claim["pid"] = json!(process.pid);
+    claim["proc_start"] = json!(process.proc_start);
+    let response = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/register"))
+            .json(&claim),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(response["data"]["id"], newest.id.as_str());
+    assert_eq!(response["data"]["binding"], "rebound");
+    let current = registry.get(&newest.id).await.unwrap().unwrap();
+    assert_eq!(current.proc, Some(process));
+    assert!(current.tombstoned_at.is_none());
+    assert!(current.native_extension_delivery);
+    assert_eq!(registry.get(&older.id).await.unwrap(), Some(older));
+    assert_eq!(registry.get(&unknown.id).await.unwrap(), Some(unknown));
+    server.abort();
+}
+
 #[tokio::test]
 async fn native_registration_preserves_claimed_host_and_reports_atomic_binding_transitions() {
     let mut first_host = HostFixture::spawn();
@@ -306,249 +581,447 @@ async fn native_registration_preserves_claimed_host_and_reports_atomic_binding_t
 }
 
 #[tokio::test]
-async fn native_sqlite_http_exact_prebind_retires_only_dead_same_session_owner_without_inheriting_work()
- {
-    let mut old_host = HostFixture::spawn();
-    let old_process = old_host.identity().await;
+async fn native_saved_session_accepts_spawn_from_auto_discovered_bootstrap() {
+    let host = HostFixture::spawn();
+    let process = host.identity().await;
+    let (mut saved, _) = contract_identity();
+    saved.proc = Some(ProcIdentity {
+        pid: process.pid,
+        proc_start: process.proc_start - 1,
+    });
+    saved.spawn_id = Some("saved-session-launch".into());
+    saved.tombstoned_at = Some(1);
+    saved.tombstone_reason = Some("previous host exited".into());
+    saved.native_extension_delivery = false;
+    let store = FreshStore::new();
+    let services = native_host_services(&store, &saved.folder, &["%149-bootstrap"]).await;
+    let registry = services.registry.clone();
+    registry.put(saved.clone()).await.unwrap();
+
+    let mut bootstrap = SeatDescriptor::new(
+        "pij-resume-bootstrap",
+        Harness::Copilot,
+        saved.folder.clone(),
+    );
+    bootstrap.pane = Some("%149-bootstrap".into());
+    bootstrap.spawn_id = Some("current-host-launch".into());
+    registry.put(bootstrap.clone()).await.unwrap();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    bootstrap.proc = Some(process);
+    bootstrap.harness_session = Some("temporary-bootstrap-session".into());
+    let mut claim = native_registration(&bootstrap);
+    claim["spawn_id"] = json!(bootstrap.spawn_id);
+    let bound = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/register"))
+            .json(&claim),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(bound["data"]["id"], bootstrap.id.as_str());
+
+    // --resume switches the now-bound host from its temporary conversation to
+    // the saved one. Its launch id belongs to the bootstrap, not the saved row.
+    // Omit supersedes: the daemon must discover that same-host/pane predecessor.
+    claim["id"] = json!("");
+    claim["harness_session"] = json!(saved.harness_session);
+    let resumed = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/register"))
+            .json(&claim),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(resumed["data"]["id"], saved.id.as_str());
+    assert_eq!(resumed["data"]["binding"], "rebound");
+    assert_eq!(resumed["data"]["spawn_id"], "saved-session-launch");
+    let current = registry.get(&saved.id).await.unwrap().unwrap();
+    assert_eq!(current.proc, Some(process));
+    assert_eq!(current.pane, bootstrap.pane);
+    assert!(current.tombstoned_at.is_none());
+    assert!(current.tombstone_reason.is_none());
+    assert!(current.native_extension_delivery);
+    let retired = registry.get(&bootstrap.id).await.unwrap().unwrap();
+    assert!(retired.tombstoned_at.is_some());
+    assert!(!retired.native_extension_delivery);
+    server.abort();
+}
+
+#[tokio::test]
+async fn native_sqlite_http_prebind_precedes_saved_session_without_retargeting_work() {
+    let old_host = HostFixture::spawn();
     let new_host = HostFixture::spawn();
-    let new_process = new_host.identity().await;
-    assert_ne!(old_process.pid, new_process.pid);
     let (mut first, _) = contract_identity();
-    first.proc = Some(old_process);
+    first.proc = Some(old_host.identity().await);
     first.pane = Some("%137-prebind-old".into());
+    first.parent = Some("pij-saved-parent".into());
     let store = FreshStore::new();
     let services = native_host_services(
         &store,
         &first.folder,
-        &["%137-prebind-old", "%137-prebind-new", "%137-prebind-wrong"],
+        &["%137-prebind-old", "%137-prebind-new"],
     )
     .await;
     let registry = services.registry.clone();
     let queue = services.queue.clone();
+    let spine = services.spine.clone();
+    let roles = services.roles.clone();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    let mut initial = native_registration(&first);
+    initial["parent"] = json!(first.parent);
+    initial["role"] = json!("reviewer");
+    native_http_response(
+        client
+            .post(format!("http://{addr}/v1/register"))
+            .json(&initial),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    first.spawn_id = Some("original-launch".into());
+    registry.put(first.clone()).await.unwrap();
+    let mut prebind =
+        SeatDescriptor::new("pij-new-prebind", Harness::Copilot, first.folder.clone());
+    prebind.pane = Some("%137-prebind-new".into());
+    prebind.spawn_id = Some("verified-spawn".into());
+    prebind.parent = Some("pij-chosen-parent".into());
+    registry.put(prebind.clone()).await.unwrap();
+    roles
+        .assert_role(&prebind.id, &prebind.id, Some("coder".into()))
+        .await
+        .unwrap();
+    for (seat, body) in [
+        (&first.id, "saved conversation mail"),
+        (&prebind.id, "new prebind mail"),
+    ] {
+        native_http_response(
+            client.post(format!("http://{addr}/v1/send")).json(&json!({
+                "from":"pij-peer", "to":{"seat":seat}, "body":body, "msg_id":body,
+            })),
+            reqwest::StatusCode::OK,
+        )
+        .await;
+    }
+    let original = queue
+        .peek(&[delivery_kind(&first.id)])
+        .await
+        .unwrap()
+        .unwrap();
+    let preallocated = queue
+        .peek(&[delivery_kind(&prebind.id)])
+        .await
+        .unwrap()
+        .unwrap();
+    let mut successor = prebind.clone();
+    successor.proc = Some(new_host.identity().await);
+    successor.harness_session = first.harness_session.clone();
+    let mut claim = native_registration(&successor);
+    claim["spawn_id"] = json!(prebind.spawn_id);
+    // Even a stale saved-id/parent nomination cannot replace verified spawn intent.
+    claim["id"] = json!(first.id);
+    claim["parent"] = json!(first.parent);
+    let bound = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/register"))
+            .json(&claim),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(bound["data"]["id"], prebind.id.as_str());
+    assert_eq!(
+        bound["data"]["parent"],
+        prebind.parent.as_ref().unwrap().as_str()
+    );
+    assert_eq!(bound["data"]["role"], "coder");
+    assert_eq!(
+        bound["data"]["spawn_id"],
+        prebind.spawn_id.as_deref().unwrap()
+    );
+    let replayed = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/register"))
+            .json(&claim),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(replayed["data"]["id"], prebind.id.as_str());
+    assert_eq!(
+        replayed["data"]["parent"],
+        prebind.parent.as_ref().unwrap().as_str()
+    );
+    assert_eq!(replayed["data"]["role"], "coder");
+    assert_eq!(replayed["data"]["binding"], "same");
+    let current = registry.get(&prebind.id).await.unwrap().unwrap();
+    assert!(current.tombstoned_at.is_none());
+    assert_eq!(current.proc, successor.proc);
+    assert_eq!(current.parent, prebind.parent);
+    let retired = registry.get(&first.id).await.unwrap().unwrap();
+    assert!(retired.tombstoned_at.is_some());
+    assert!(!retired.native_extension_delivery);
+    assert_eq!(retired.parent, first.parent);
+    assert_eq!(
+        roles.read_role(&first.id).await.unwrap().as_deref(),
+        Some("reviewer")
+    );
+    let retirement = spine
+        .latest_matching(&first.id, &["seat.native-superseded"])
+        .await
+        .unwrap()
+        .expect("saved address retirement event");
+    assert_eq!(
+        serde_json::from_str::<Value>(&retirement.payload).unwrap(),
+        json!({"successor":prebind.id,"spawn_id":prebind.spawn_id,"reason":"native-spawn-prebind"})
+    );
+    assert_eq!(
+        queue.peek(&[delivery_kind(&first.id)]).await.unwrap(),
+        Some(original)
+    );
+    let identity = NativeInboxIdentity {
+        native_session: first.harness_session.clone(),
+        pid: successor.proc.map(|proc| proc.pid),
+        proc_start: successor.proc.map(|proc| proc.proc_start),
+    };
+    let claims = native_http_claims(&client, addr, &prebind.id, &identity).await;
+    assert_eq!(claims.len(), 1);
+    assert_eq!(claims[0].job_id, preallocated.0);
+    assert_eq!(claims[0].message.body, "new prebind mail");
+    assert_eq!(claims[0].message.to, prebind.id);
+    server.abort();
+}
+
+#[tokio::test]
+async fn native_spawn_wait_resolves_prebound_child_resuming_saved_session() {
+    let old_host = HostFixture::spawn();
+    let child_host = HostFixture::spawn();
+    let child_process = child_host.identity().await;
+    let (mut saved, _) = contract_identity();
+    saved.id = "pij-saved-before-spawn".into();
+    saved.proc = Some(old_host.identity().await);
+    saved.parent = Some("pij-saved-parent".into());
+    let child_id: SeatId = "pij-prebound-resumed-child".into();
+    let chosen_parent: SeatId = "pij-chosen-parent".into();
+    let store = FreshStore::new();
+    let mut services = native_host_services(&store, &saved.folder, &[]).await;
+    // FakeTmux's first launched window is %100. Only the tmux observation
+    // is scripted; registration still verifies the inert child's OS ancestry.
+    services.tmux = Arc::new(FakeTmux::new().with_pane_process(
+        "%100",
+        PaneProcess {
+            pid: std::process::id(),
+            cwd: saved.folder.clone(),
+        },
+    ));
+    let registry = services.registry.clone();
+    let queue = services.queue.clone();
+    let spine = services.spine.clone();
+    let roles = services.roles.clone();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    let mut initial = native_registration(&saved);
+    initial["parent"] = json!(saved.parent);
+    initial["role"] = json!("reviewer");
+    native_http_response(
+        client
+            .post(format!("http://{addr}/v1/register"))
+            .json(&initial),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    native_http_response(
+        client.post(format!("http://{addr}/v1/send")).json(&json!({
+            "from":"pij-peer","to":{"seat":saved.id},"body":"saved queue stays saved",
+            "msg_id":"149-spawn-saved-mail"
+        })),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    let saved_job = queue
+        .peek(&[delivery_kind(&saved.id)])
+        .await
+        .unwrap()
+        .unwrap();
+    let waiting = client
+        .post(format!("http://{addr}/v1/spawn"))
+        .bearer_auth("native-key")
+        .timeout(Duration::from_secs(6))
+        .json(&super::SpawnRequest {
+            id: Some(child_id.clone()),
+            harness: Harness::Copilot,
+            executable: Some("copilot".into()),
+            model: None,
+            effort: None,
+            cwd: saved.folder.clone(),
+            session: Some("fleet".into()),
+            caller_pane: None,
+            name: None,
+            parent: Some(chosen_parent.clone()),
+            accept_inbound: false,
+            wait_seconds: Some(2),
+            no_wait: false,
+        })
+        .send();
+    let register_child = async {
+        let prebind = tokio::time::timeout(Duration::from_secs(4), async {
+            loop {
+                if let Some(prebind) = registry.get(&child_id).await.unwrap() {
+                    break prebind;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("spawn persists the prebind before waiting");
+        assert!(prebind.proc.is_none());
+        assert_eq!(prebind.parent, Some(chosen_parent.clone()));
+        roles
+            .assert_role(&child_id, &child_id, Some("coder".into()))
+            .await
+            .unwrap();
+        native_http_response(
+            client.post(format!("http://{addr}/v1/send")).json(&json!({
+                "from":"pij-peer","to":{"seat":child_id},"body":"allocated child queue",
+                "msg_id":"149-spawn-child-mail"
+            })),
+            reqwest::StatusCode::OK,
+        )
+        .await;
+        let child_job = queue
+            .peek(&[delivery_kind(&child_id)])
+            .await
+            .unwrap()
+            .unwrap();
+        let mut child = prebind.clone();
+        child.proc = Some(child_process);
+        child.harness_session = saved.harness_session.clone();
+        let mut claim = native_registration(&child);
+        claim["spawn_id"] = json!(prebind.spawn_id);
+        // Simulate a saved-session payload without letting it flip spawn intent.
+        claim["parent"] = json!(saved.parent);
+        let registered = native_http_response(
+            client
+                .post(format!("http://{addr}/v1/register"))
+                .json(&claim),
+            reqwest::StatusCode::OK,
+        )
+        .await;
+        (registered, prebind, child_job)
+    };
+    let (response, (registered, prebind, child_job)) = tokio::join!(waiting, register_child);
+    let response = response.expect("spawn waiter response");
+    let status = response.status();
+    let outcome: Value = response.json().await.unwrap();
+    assert_eq!(
+        status,
+        reqwest::StatusCode::OK,
+        "spawn must not 504: {outcome}"
+    );
+    assert_eq!(outcome["data"]["bound"], true);
+    assert_eq!(outcome["data"]["pid"], child_process.pid);
+    assert_eq!(outcome["data"]["id"], child_id.as_str());
+    assert_eq!(outcome["data"]["parent"], chosen_parent.as_str());
+    assert_eq!(registered["data"]["id"], child_id.as_str());
+    assert_eq!(registered["data"]["parent"], chosen_parent.as_str());
+    assert_eq!(registered["data"]["role"], "coder");
+    let current = registry.get(&child_id).await.unwrap().unwrap();
+    assert_eq!(current.proc, Some(child_process));
+    assert!(current.tombstoned_at.is_none());
+    let retired = registry.get(&saved.id).await.unwrap().unwrap();
+    assert!(retired.tombstoned_at.is_some());
+    assert!(!retired.native_extension_delivery);
+    assert_eq!(retired.parent, saved.parent);
+    assert_eq!(
+        roles.read_role(&saved.id).await.unwrap().as_deref(),
+        Some("reviewer")
+    );
+    let retirement = spine
+        .latest_matching(&saved.id, &["seat.native-superseded"])
+        .await
+        .unwrap()
+        .expect("saved address retirement event");
+    assert_eq!(
+        serde_json::from_str::<Value>(&retirement.payload).unwrap(),
+        json!({"successor":child_id,"spawn_id":prebind.spawn_id,"reason":"native-spawn-prebind"})
+    );
+    assert!(
+        spine
+            .latest_matching(&child_id, &["spawn.bound"])
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        spine
+            .latest_matching(&child_id, &["spawn.failed"])
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        queue.peek(&[delivery_kind(&saved.id)]).await.unwrap(),
+        Some(saved_job)
+    );
+    assert_eq!(
+        queue.peek(&[delivery_kind(&child_id)]).await.unwrap(),
+        Some(child_job)
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn native_session_rejects_unverified_spawn_correlation_without_retiring_owner() {
+    let old_host = HostFixture::spawn();
+    let new_host = HostFixture::spawn();
+    let (mut owner, _) = contract_identity();
+    owner.proc = Some(old_host.identity().await);
+    let store = FreshStore::new();
+    let services = native_host_services(&store, &owner.folder, &[]).await;
+    let registry = services.registry.clone();
+    let queue = services.queue.clone();
+    let spine = services.spine.clone();
     let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
     let client = reqwest::Client::new();
     native_http_response(
         client
             .post(format!("http://{addr}/v1/register"))
-            .json(&native_registration(&first)),
+            .json(&native_registration(&owner)),
         reqwest::StatusCode::OK,
     )
     .await;
-    assert_eq!(registry.get(&first.id).await.unwrap(), Some(first.clone()));
-    let mut prebind = SeatDescriptor::new(
-        "pij-copilot-explicit-prebind",
-        Harness::Copilot,
-        first.folder.clone(),
-    );
-    prebind.pane = Some("%137-prebind-new".into());
-    prebind.spawn_id = Some("explicit-new-address-spawn".into());
-    // Seed only the existing launcher/preallocation contract, never native attestation.
-    registry.put(prebind.clone()).await.unwrap();
-    for (seat, body, msg_id) in [
-        (
-            &first.id,
-            "M1 stays with predecessor S1",
-            "native-prebind-old-m1",
-        ),
-        (
-            &prebind.id,
-            "M2 is the explicitly preallocated S2 task",
-            "native-prebind-new-m2",
-        ),
-    ] {
-        let sent = native_http_response(
-            client.post(format!("http://{addr}/v1/send")).json(&json!({
-                "from": "pij-peer", "to": {"seat": seat}, "body": body, "msg_id": msg_id,
-            })),
-            reqwest::StatusCode::OK,
-        )
-        .await;
-        assert_eq!(sent["data"]["outcome"]["outcome"], "queued");
-    }
-    let old_job = queue
-        .peek(&[delivery_kind(&first.id)])
-        .await
-        .unwrap()
-        .unwrap();
-    let new_job = queue
-        .peek(&[delivery_kind(&prebind.id)])
-        .await
-        .unwrap()
-        .unwrap();
-    let old_payload: Value = serde_json::from_str(&old_job.1.payload).unwrap();
-    assert_eq!(
-        old_payload["native_target_session"],
-        first.harness_session.as_deref().unwrap()
-    );
-    let new_payload: Value = serde_json::from_str(&new_job.1.payload).unwrap();
-    assert!(
-        new_payload["native_target_session"].is_null(),
-        "prebind task has no invented native session"
-    );
-    let mut successor = prebind.clone();
-    successor.proc = Some(new_process);
-    successor.harness_session = first.harness_session.clone();
-    successor.native_extension_delivery = true;
-    let mut registration = native_registration(&successor);
-    registration["spawn_id"] = json!(prebind.spawn_id);
-    assert!(registration.get("supersedes").is_none());
-
-    let live_refused = native_http_response(
-        client
-            .post(format!("http://{addr}/v1/register"))
-            .json(&registration),
-        reqwest::StatusCode::BAD_REQUEST,
+    owner.spawn_id = Some("saved-launch".into());
+    registry.put(owner.clone()).await.unwrap();
+    native_http_response(
+        client.post(format!("http://{addr}/v1/send")).json(&json!({
+            "from":"pij-peer","to":{"seat":owner.id},"body":"owner keeps its queue",
+            "msg_id":"149-forged-spawn-mail"
+        })),
+        reqwest::StatusCode::OK,
     )
     .await;
-    assert_eq!(live_refused["command"], "pij register");
-    assert!(
-        live_refused["meta"]
-            .as_str()
-            .unwrap()
-            .contains(first.id.as_str())
-    );
-    assert_eq!(
-        old_host.identity().await,
-        old_process,
-        "valid prebind cannot steal a live native session"
-    );
-    assert_eq!(registry.get(&first.id).await.unwrap(), Some(first.clone()));
-    assert_eq!(
-        registry.get(&prebind.id).await.unwrap(),
-        Some(prebind.clone())
-    );
-    assert_eq!(
-        queue.peek(&[delivery_kind(&first.id)]).await.unwrap(),
-        Some(old_job.clone())
-    );
-    assert_eq!(
-        queue.peek(&[delivery_kind(&prebind.id)]).await.unwrap(),
-        Some(new_job.clone())
-    );
-
-    old_host.kill_and_reap(old_process).await;
-    assert_eq!(new_host.identity().await, new_process);
-    for invalid in ["wrong-spawn", "missing-spawn", "wrong-pane"] {
-        let mut invalid_registration = registration.clone();
-        match invalid {
-            "wrong-spawn" => invalid_registration["spawn_id"] = json!("uncorrelated-spawn"),
-            "missing-spawn" => {
-                invalid_registration
-                    .as_object_mut()
-                    .unwrap()
-                    .remove("spawn_id");
-            }
-            _ => invalid_registration["pane"] = json!("%137-prebind-wrong"),
-        }
-        let refused = native_http_response(
-            client
-                .post(format!("http://{addr}/v1/register"))
-                .json(&invalid_registration),
-            reqwest::StatusCode::BAD_REQUEST,
-        )
-        .await;
-        assert_eq!(refused["command"], "pij register");
-        assert!(
-            refused["meta"]
-                .as_str()
-                .unwrap()
-                .starts_with("native Copilot registration refused:")
-        );
-        assert_eq!(
-            registry.get(&first.id).await.unwrap(),
-            Some(first.clone()),
-            "{invalid} must not retire S1"
-        );
-        assert_eq!(
-            registry.get(&prebind.id).await.unwrap(),
-            Some(prebind.clone()),
-            "{invalid} must not bind S2"
-        );
-        assert_eq!(
-            queue.peek(&[delivery_kind(&first.id)]).await.unwrap(),
-            Some(old_job.clone())
-        );
-        assert_eq!(
-            queue.peek(&[delivery_kind(&prebind.id)]).await.unwrap(),
-            Some(new_job.clone())
-        );
-        assert!(queue.claimed_delivery(old_job.0).await.unwrap().is_none());
-        assert!(queue.claimed_delivery(new_job.0).await.unwrap().is_none());
-    }
-
+    let original = queue.peek(&[delivery_kind(&owner.id)]).await.unwrap();
+    let mut claimant = owner.clone();
+    claimant.proc = Some(new_host.identity().await);
+    let mut claim = native_registration(&claimant);
+    claim["spawn_id"] = json!("unverified-new-launch");
     native_http_response(
         client
             .post(format!("http://{addr}/v1/register"))
-            .json(&registration),
-        reqwest::StatusCode::OK,
+            .json(&claim),
+        reqwest::StatusCode::BAD_REQUEST,
     )
     .await;
+    assert_eq!(registry.get(&owner.id).await.unwrap(), Some(owner.clone()));
     assert_eq!(
-        registry.get(&prebind.id).await.unwrap(),
-        Some(successor.clone())
+        queue.peek(&[delivery_kind(&owner.id)]).await.unwrap(),
+        original
     );
-    let retired = registry.get(&first.id).await.unwrap().unwrap();
-    assert!(retired.tombstoned_at.is_some());
-    assert!(!retired.native_extension_delivery);
     assert!(
-        retired
-            .tombstone_reason
-            .as_deref()
-            .unwrap()
-            .contains(prebind.id.as_str())
-    );
-    let mut expected_retired = first.clone();
-    expected_retired.tombstoned_at = retired.tombstoned_at;
-    expected_retired.tombstone_reason = retired.tombstone_reason.clone();
-    expected_retired.native_extension_delivery = false;
-    assert_eq!(retired, expected_retired);
-    assert_eq!(
-        queue.peek(&[delivery_kind(&first.id)]).await.unwrap(),
-        Some(old_job.clone())
-    );
-    assert_eq!(
-        queue.peek(&[delivery_kind(&prebind.id)]).await.unwrap(),
-        Some(new_job.clone())
-    );
-    let identity = NativeInboxIdentity {
-        native_session: first.harness_session.clone(),
-        pid: Some(new_process.pid),
-        proc_start: Some(new_process.proc_start),
-    };
-    let claims = native_http_claims(&client, addr, &prebind.id, &identity).await;
-    assert_eq!(claims.len(), 1);
-    assert_eq!(claims[0].job_id, new_job.0);
-    assert_eq!(
-        claims[0].message.body,
-        "M2 is the explicitly preallocated S2 task"
-    );
-    assert_eq!(claims[0].message.to, prebind.id);
-    assert_eq!(claims[0].native_consumer.as_ref(), Some(&identity));
-    let ack = native_http_response(
-        client
-            .post(format!("http://{addr}/v1/inbox/ack"))
-            .json(&InboxAckRequest {
-                delivery_outcome: None,
-                seat: prebind.id.clone(),
-                job_id: new_job.0,
-                native: identity.clone(),
-                control_outcome: None,
-            }),
-        reqwest::StatusCode::OK,
-    )
-    .await;
-    assert_eq!(ack["data"], new_job.0.0);
-    assert!(queue.claimed_delivery(new_job.0).await.unwrap().is_none());
-    assert!(
-        native_http_claims(&client, addr, &prebind.id, &identity)
+        spine
+            .latest_matching(&owner.id, &["seat.native-superseded"])
             .await
-            .is_empty()
+            .unwrap()
+            .is_none()
     );
-    assert_eq!(
-        queue.peek(&[delivery_kind(&first.id)]).await.unwrap(),
-        Some(old_job.clone())
-    );
-    assert!(queue.claimed_delivery(old_job.0).await.unwrap().is_none());
     server.abort();
 }
 
@@ -683,7 +1156,7 @@ async fn native_sqlite_http_dead_host_rebinds_same_session_and_reclaims_original
 }
 
 #[tokio::test]
-async fn native_sqlite_http_live_host_refuses_same_session_process_takeover_without_mutation() {
+async fn native_sqlite_http_different_session_cannot_take_existing_address_or_mail() {
     let old_host = HostFixture::spawn();
     let old_process = old_host.identity().await;
     let new_host = HostFixture::spawn();
@@ -722,6 +1195,7 @@ async fn native_sqlite_http_live_host_refuses_same_session_process_takeover_with
         .unwrap();
     let mut contender = seat.clone();
     contender.proc = Some(new_process);
+    contender.harness_session = Some("different-native-session".into());
     let refused = native_http_response(
         client
             .post(format!("http://{addr}/v1/register"))
@@ -730,10 +1204,6 @@ async fn native_sqlite_http_live_host_refuses_same_session_process_takeover_with
     )
     .await;
     assert_eq!(refused["command"], "pij register");
-    assert_eq!(
-        refused["meta"],
-        "native Copilot registration refused: seat id belongs to a different process incarnation"
-    );
     assert_eq!(
         old_host.identity().await,
         old_process,
@@ -928,8 +1398,7 @@ async fn native_sqlite_http_fresh_session_retires_dead_pane_owner_without_retarg
     );
     assert!(queue.claimed_delivery(retained.0).await.unwrap().is_none());
 
-    // A -> B -> A uses a new A2 address. Reusing A's native UUID must not
-    // reactivate its retired address or inherit either predecessor's work.
+    // A -> B -> A restores A's durable address and its own queued work, never B's.
     native_http_response(
         client.post(format!("http://{addr}/v1/send")).json(&json!({
             "from": "pij-peer", "to": {"seat": successor.id},
@@ -949,36 +1418,6 @@ async fn native_sqlite_http_fresh_session_retires_dead_pane_owner_without_retarg
     new_host.kill_and_reap(new_process).await;
     let mut reopened = first.clone();
     reopened.proc = Some(reopened_process);
-    let refused = native_http_response(
-        client
-            .post(format!("http://{addr}/v1/register"))
-            .json(&native_registration(&reopened)),
-        reqwest::StatusCode::BAD_REQUEST,
-    )
-    .await;
-    assert_eq!(
-        refused["meta"],
-        "native Copilot registration refused: seat id conflicts with its harness, pane, session, or retirement"
-    );
-    assert_eq!(
-        registry.get(&first.id).await.unwrap(),
-        Some(retired.clone())
-    );
-    assert_eq!(
-        registry.get(&successor.id).await.unwrap(),
-        Some(successor.clone()),
-        "failed old-address recovery must not partially retire B"
-    );
-    assert_eq!(
-        queue.peek(&[delivery_kind(&first.id)]).await.unwrap(),
-        Some(retained.clone())
-    );
-    assert_eq!(
-        queue.peek(&[delivery_kind(&successor.id)]).await.unwrap(),
-        Some(retained_b.clone())
-    );
-
-    reopened.id = "pij-copilot-reopened-session".into();
     let reopened_identity = NativeInboxIdentity {
         native_session: first.harness_session.clone(),
         pid: Some(reopened_process.pid),
@@ -996,7 +1435,6 @@ async fn native_sqlite_http_fresh_session_retires_dead_pane_owner_without_retarg
         registry.get(&reopened.id).await.unwrap(),
         Some(reopened.clone())
     );
-    assert_eq!(registry.get(&first.id).await.unwrap(), Some(retired));
     let retired_b = registry.get(&successor.id).await.unwrap().unwrap();
     assert!(retired_b.tombstoned_at.is_some());
     assert!(!retired_b.native_extension_delivery);
@@ -1012,20 +1450,18 @@ async fn native_sqlite_http_fresh_session_retires_dead_pane_owner_without_retarg
     expected_retired_b.tombstone_reason = retired_b.tombstone_reason.clone();
     expected_retired_b.native_extension_delivery = false;
     assert_eq!(retired_b, expected_retired_b);
-    assert!(
-        native_http_claims(&client, addr, &reopened.id, &reopened_identity)
-            .await
-            .is_empty()
-    );
+    let restored_claims = native_http_claims(&client, addr, &reopened.id, &reopened_identity).await;
+    assert_eq!(restored_claims.len(), 1);
+    assert_eq!(restored_claims[0].job_id, retained.0);
     assert_eq!(
-        queue.peek(&[delivery_kind(&first.id)]).await.unwrap(),
-        Some(retained.clone())
+        restored_claims[0].message.body,
+        "M1 retained for dead native session"
     );
     assert_eq!(
         queue.peek(&[delivery_kind(&successor.id)]).await.unwrap(),
         Some(retained_b.clone())
     );
-    assert!(queue.claimed_delivery(retained.0).await.unwrap().is_none());
+    assert!(queue.claimed_delivery(retained.0).await.unwrap().is_some());
     assert!(
         queue
             .claimed_delivery(retained_b.0)
@@ -1076,6 +1512,9 @@ async fn native_sqlite_http_dead_legacy_and_uncorrelated_prebind_owners_are_not_
             .unwrap()
             .unwrap();
         for same_address in [true, false] {
+            if same_address && !prebind {
+                continue; // Same-session native resume is now admitted; covered above.
+            }
             let mut contender = SeatDescriptor::new(
                 if same_address {
                     owner.id.clone()
@@ -1103,20 +1542,6 @@ async fn native_sqlite_http_dead_legacy_and_uncorrelated_prebind_owners_are_not_
             )
             .await;
             assert_eq!(refused["command"], "pij register");
-            let reason = if !same_address {
-                format!(
-                    "process, native session, or pane already belongs to seat `{}`",
-                    owner.id
-                )
-            } else if prebind {
-                "pre-bind seat requires its exact spawn id and pane".into()
-            } else {
-                "seat id belongs to a different process incarnation".into()
-            };
-            assert_eq!(
-                refused["meta"],
-                format!("native Copilot registration refused: {reason}")
-            );
             assert_eq!(registry.get(&owner.id).await.unwrap(), Some(owner.clone()));
             if !same_address {
                 assert!(registry.get(&contender.id).await.unwrap().is_none());

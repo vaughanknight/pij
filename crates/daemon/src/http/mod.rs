@@ -791,6 +791,12 @@ async fn register(
         }
 
         Err(RegistrationError::Refused(reason)) => refused("pij register", reason),
+        Err(RegistrationError::Retryable(reason)) => {
+            let mut answer: Envelope<()> =
+                Envelope::refused("pij register", ErrorKind::Refused, reason);
+            answer.details = Some(serde_json::json!({ "retryable": true }));
+            envelope(StatusCode::CONFLICT, &answer)
+        }
         Err(RegistrationError::Runtime(error)) => internal("pij register", error),
     }
 }

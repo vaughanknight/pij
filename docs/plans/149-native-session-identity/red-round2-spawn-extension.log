@@ -1,0 +1,35 @@
+COMMAND: node --test --test-name-pattern=spawned extension .copilot/extensions/pij/extension.test.mjs
+EXIT: 1
+BASELINE: 6be799ec248e1a4c2456aba97c7396e48bdc8834 production code with fix-round tests
+✖ spawned extension consumes and sends under allocated id and parent instead of saved session (95.522ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 142.930708
+
+✖ failing tests:
+
+test at .copilot/extensions/pij/extension.test.mjs:567:2
+✖ spawned extension consumes and sends under allocated id and parent instead of saved session (95.522ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'pij-saved-session'
+  - 'pij-allocated-child'
+         ^
+  
+      at TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-native-identity/.copilot/extensions/pij/extension.test.mjs:596:10)
+      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'pij-saved-session',
+    expected: 'pij-allocated-child',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

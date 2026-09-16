@@ -49,6 +49,16 @@ Self or the target's **current recorded parent** may assert/unset its role; an u
 
 Sources: [`identity.rs`](../../crates/daemon/src/http/identity.rs), [`role.rs`](../../crates/daemon/src/http/role.rs), [`types.rs`](../../crates/daemon/src/http/types.rs), [`governance.rs`](../../crates/daemon/src/http/governance.rs).
 
+## Native Copilot registration
+
+For a verified native Copilot `/v1/register` claim, `harness_session` normally identifies the durable seat in this machine's registry before pane/process heuristics. Restarting the same conversation reuses its id, adopts the observed host tuple and pane, and clears its tombstone without waiting for the old process or death sweep. Only live same-session rows compete: two live addresses return HTTP 409 with v2 `error:"refused"` and `details.retryable:true`. Tombstoned rows are history; selection prefers a live row, then greatest `proc_start`, then ascending id as a deterministic final tie. Queued jobs, parent, authoritative `seat_roles` assertion and Telegram reply binding retain that address. `pij state` reports the new process and no tombstone; `seat.native-resumed` records `old_proc`, `new_proc`, `old_pane`, `new_pane` and `reason:"native-session-resume"`.
+
+Explicit verified spawn intent is the exception: a live, unbound Copilot prebind with the exact spawn id and observed pane retains the spawner's allocated id and parent, even when the child resumes a saved conversation. The saved live address is retired with `seat.native-superseded` (`successor`, `spawn_id`, `reason:"native-spawn-prebind"`). Each address keeps its own queued jobs and bindings; nothing is retargeted. The allocated id binds normally, so the `/v1/spawn` waiter observes the child it requested rather than timing out on a discarded prebind.
+
+Same-session replacement relies on Copilot allowing only one live host per conversation through `inuse.<pid>.lock`. The daemon verifies the new host but does not probe incumbent liveness or enforce that external single-host guarantee. If Copilot violates it, the second claimant replaces the recorded tuple while the first may still hold an inbox long-poll: two receivers could temporarily share one address. This is an explicit dependency, not daemon-proven exclusivity.
+
+Different sessions cannot claim an existing session's id; same-pane new conversations retain the new-id/supersede behavior. The cross-machine guard would refuse if foreign provenance were ever recorded, but the SQLite registry clears `machine` on write: rows are local at rest, and that branch currently has only synthetic defence-in-depth coverage. Native clients refresh/retry typed races without inventing an identity; ordinary ownership refusals remain terminal. `/v1/adopt` preserves the same 409 `retryable:true` discriminator if its registration service returns `Retryable`; ordinary adoption does not currently enter the native owner-observation path.
+
 ## Verified paneless external admission
 
 `pij inbox register --json` is served through Rust authority for external

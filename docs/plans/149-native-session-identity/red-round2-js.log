@@ -1,0 +1,63 @@
+COMMAND: node --test .copilot/extensions/pij/store.test.mjs .copilot/extensions/pij/extension.test.mjs
+EXIT: 1
+BASELINE: 6be799ec248e1a4c2456aba97c7396e48bdc8834 production code with fix-round tests
+      at Test.run (node:internal/test_runner/test:1163:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'pij-test',
+    expected: 'pij-preallocated',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .copilot/extensions/pij/store.test.mjs:1670:2
+✖ spawn prebind cannot bypass ownership for relay allocation (0.217291ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-native-identity/.copilot/extensions/pij/store.test.mjs:1681:10)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
+      at Test.postRun (node:internal/test_runner/test:1235:19)
+      at Test.run (node:internal/test_runner/test:1163:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at .copilot/extensions/pij/store.test.mjs:1670:2
+✖ spawn prebind cannot bypass ownership for different native session (0.066083ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-native-identity/.copilot/extensions/pij/store.test.mjs:1681:10)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
+      at Test.postRun (node:internal/test_runner/test:1235:19)
+      at Test.run (node:internal/test_runner/test:1163:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at .copilot/extensions/pij/store.test.mjs:1709:1
+✖ saved native session alone cannot corroborate a wrong requested id with matching spawn (0.116458ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-native-identity/.copilot/extensions/pij/store.test.mjs:1711:9)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
+      at Test.postRun (node:internal/test_runner/test:1235:19)
+      at Test.run (node:internal/test_runner/test:1163:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    operator: 'throws',
+    diff: 'simple'
+  }

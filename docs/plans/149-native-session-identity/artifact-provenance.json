@@ -1,0 +1,699 @@
+{
+  "baseline_commit": "6be799ec248e1a4c2456aba97c7396e48bdc8834",
+  "source_commit": "2675854c93d823385018172cdd3fa31e5e46e037",
+  "binary_sha256": "0aa87ed15b8707808b1dc249feabb2d44a6263927598f273bf4f744cfa8e20c0",
+  "files_sha256": {
+    "crates/daemon/src/registration.rs": "a26060feb381df2b7f3177de67f64a89c7146d4e88417e8c5cc34cd3f625cfa6",
+    "crates/daemon/src/http/mod.rs": "dc28d6590ec46fb6f059eb2a110b212a9d154ef54e9d76ea4c9e866b187ce5fe",
+    "crates/daemon/src/http/identity.rs": "27cddac0f4eedcde2d5f5a9068fbaeace249a177fa4e9e1ca59f057b7c46f6af",
+    "crates/daemon/src/http/native_tests.rs": "0d5c3f5084bf21c6e6b57bacf78ae680d0a2b4170ef743443a91951bdd3e21d6",
+    ".copilot/extensions/pij/store.mjs": "4badb27858d3d7180a3b2f5103586df1916a3709483ee5a53416f56d23b37bf7",
+    ".copilot/extensions/pij/store.test.mjs": "b408dd5800d205318c2489ad4bcfff98ca1d247dd4da0c5e3b5b3729978dd79c",
+    ".copilot/extensions/pij/extension.test.mjs": "ab134bf30ea4f26e7f70e002c57e6dd44bfb0d412f8ed60dd3bb3edbd42a4051",
+    "docs/how/pij-rs-api.md": "e4bcb8db8ff8bd084d2cf6818ccedaa6b095fb68ef68ee75617b77d4879368ec",
+    "docs/plans/149-native-session-identity/native-resume-live.ts": "342c134ae3bd55ba16031e977f23077bad9ef9a8f4f116061b05eeb14965f4e0",
+    "skills/flow-pair/test/identity.test.ts": "65118198261b5feefe4e4586877d95e511141ec394b5cf3cd8374c04592d3033"
+  },
+  "round2": {
+    "baseline_commit": "6be799ec248e1a4c2456aba97c7396e48bdc8834",
+    "testing_environment": {
+      "RUST_TEST_THREADS": "1",
+      "VITEST_MAX_WORKERS": "1"
+    },
+    "baseline_red": {
+      "rust": {
+        "command": "cargo test -p pij-daemon --lib native_ -- --nocapture",
+        "exit": 101,
+        "passed": 63,
+        "failed": 5
+      },
+      "js": {
+        "command": "node --test .copilot/extensions/pij/store.test.mjs .copilot/extensions/pij/extension.test.mjs",
+        "exit": 1,
+        "failed": 11,
+        "caveat": "Original spawned-extension RED used an invalid fixture pane; excluded as proof. Corrected fixture rerun below."
+      },
+      "spawned_extension": {
+        "command": "node --test --test-name-pattern=\"spawned extension\" .copilot/extensions/pij/extension.test.mjs",
+        "exit": 1,
+        "actual_id": "pij-saved-session",
+        "expected_id": "pij-allocated-child"
+      }
+    },
+    "mutations": [
+      {
+        "name": "rust-owner-drift",
+        "path": "crates/daemon/src/registration.rs",
+        "command": [
+          "/Users/jordanknight/.cargo/bin/cargo",
+          "test",
+          "-p",
+          "pij-daemon",
+          "--lib",
+          "native_observed_owner_drift_",
+          "--",
+          "--nocapture"
+        ],
+        "exit": 101,
+        "failed": [
+          "thread 'registration::tests::native_observed_owner_drift_returns_retryable_without_retirement' (12717698) panicked at crates/daemon/src/registration.rs:2748:13:"
+        ],
+        "before": "        if dead_native\n            .iter()\n            .chain(handoff.and_then(|proof| proof.prebind.as_ref()))\n            .any(|observed| {\n                seats\n                    .iter()\n                    .find(|seat| seat.id == observed.id)\n                    .is_none_or(|current| !same_native_owner(observed, current))\n            })\n        {\n            return Err(RegistrationError::Retryable(\n                \"native owner changed during death observation; retry registration\".into(),\n            ));\n        }\n",
+        "after": ""
+      },
+      {
+        "name": "rust-live-ambiguity",
+        "path": "crates/daemon/src/registration.rs",
+        "command": [
+          "/Users/jordanknight/.cargo/bin/cargo",
+          "test",
+          "-p",
+          "pij-daemon",
+          "--lib",
+          "native_session_ambiguity_",
+          "--",
+          "--nocapture"
+        ],
+        "exit": 101,
+        "failed": [
+          "thread 'http::native_tests::native_session_ambiguity_returns_typed_retry_without_mutation' (12722229) panicked at crates/daemon/src/http/native_tests.rs:213:5:"
+        ],
+        "before": "            if seats\n                .iter()\n                .filter(|seat| {\n                    seat.harness == Harness::Copilot\n                        && seat.harness_session.as_deref() == Some(session)\n                        && seat.tombstoned_at.is_none()\n                        && handoff\n                            .and_then(|proof| proof.prebind.as_ref())\n                            .is_none_or(|prebind| prebind.id != seat.id)\n                })\n                .count()\n                > 1\n            {\n                return Err(RegistrationError::Retryable(\n                    \"native session has multiple Pij addresses; refresh the roster\".into(),\n                ));\n            }\n",
+        "after": ""
+      },
+      {
+        "name": "rust-pane-brake",
+        "path": "crates/daemon/src/registration.rs",
+        "command": [
+          "/Users/jordanknight/.cargo/bin/cargo",
+          "test",
+          "-p",
+          "pij-daemon",
+          "--lib",
+          "native_bootstrap_other_pane_",
+          "--",
+          "--nocapture"
+        ],
+        "exit": 101,
+        "failed": [
+          "thread 'registration::tests::native_bootstrap_other_pane_refusal_identifies_conflicting_address' (12727614) panicked at crates/daemon/src/registration.rs:2787:9:"
+        ],
+        "before": "                // --resume can first register a temporary bootstrap conversation.\n                // Only its verified current host may retire that predecessor.\n                if target.harness_session.as_deref() == Some(session) && claim.supersedes.is_none()\n                {\n                    claim.supersedes = seats\n                        .iter()\n                        .find(|seat| {\n                            seat.id != target.id\n                                && seat.harness == Harness::Copilot\n                                && !seat.relay\n                                && seat.tombstoned_at.is_none()\n                                && seat.proc == proc\n                                && seat.pane == claim.pane\n                                && seat\n                                    .harness_session\n                                    .as_deref()\n                                    .is_some_and(|old| old != session)\n                        })\n                        .map(|seat| seat.id.clone());\n                }\n",
+        "after": "                // --resume can first register a temporary bootstrap conversation.\n                // Only its verified current host may retire that predecessor.\n                if target.harness_session.as_deref() == Some(session) && claim.supersedes.is_none()\n                {\n                    claim.supersedes = seats\n                        .iter()\n                        .find(|seat| {\n                            seat.id != target.id\n                                && seat.harness == Harness::Copilot\n                                && !seat.relay\n                                && seat.tombstoned_at.is_none()\n                                && seat.proc == proc\n                                && seat\n                                    .harness_session\n                                    .as_deref()\n                                    .is_some_and(|old| old != session)\n                        })\n                        .map(|seat| seat.id.clone());\n                }\n"
+      },
+      {
+        "name": "rust-retirement",
+        "path": "crates/daemon/src/registration.rs",
+        "command": [
+          "/Users/jordanknight/.cargo/bin/cargo",
+          "test",
+          "-p",
+          "pij-daemon",
+          "--lib",
+          "native_",
+          "--",
+          "--nocapture"
+        ],
+        "exit": 101,
+        "failed": [
+          "thread 'http::native_tests::native_spawn_wait_resolves_prebound_child_resuming_saved_session' (12734727) panicked at crates/daemon/src/http/native_tests.rs:862:5:",
+          "thread 'http::native_tests::native_sqlite_http_prebind_precedes_saved_session_without_retargeting_work' (12736766) panicked at crates/daemon/src/http/native_tests.rs:213:5:"
+        ],
+        "before": "            .chain(spawn_predecessor)\n",
+        "after": ""
+      },
+      {
+        "name": "rust-spawn-correlation",
+        "path": "crates/daemon/src/registration.rs",
+        "command": [
+          "/Users/jordanknight/.cargo/bin/cargo",
+          "test",
+          "-p",
+          "pij-daemon",
+          "--lib",
+          "native_",
+          "--",
+          "--nocapture"
+        ],
+        "exit": 101,
+        "failed": [
+          "thread 'http::native_tests::native_session_rejects_unverified_spawn_correlation_without_retiring_owner' (12744095) panicked at crates/daemon/src/http/native_tests.rs:213:5:",
+          "thread 'registration::tests::native_saved_resume_cannot_borrow_unrelated_spawn_intent' (12749098) panicked at crates/daemon/src/registration.rs:1647:9:"
+        ],
+        "before": "    if let Some(spawn_id) = claim.spawn_id.as_deref()\n        && (spawn_id.is_empty()\n            || existing\n                .filter(|seat| seat.spawn_id.as_deref() == Some(spawn_id))\n                .or(predecessor)\n                .and_then(|seat| seat.spawn_id.as_deref())\n                != Some(spawn_id))\n    {\n        return Err(native_refusal(\n            \"spawn id has no matching pre-bind/current incarnation\",\n        ));\n    }\n",
+        "after": ""
+      },
+      {
+        "name": "rust-live-ranking",
+        "path": "crates/daemon/src/registration.rs",
+        "command": [
+          "/Users/jordanknight/.cargo/bin/cargo",
+          "test",
+          "-p",
+          "pij-daemon",
+          "--lib",
+          "native_session_live_address_",
+          "--",
+          "--nocapture"
+        ],
+        "exit": 101,
+        "failed": [
+          "thread 'http::native_tests::native_session_live_address_outranks_two_newer_tombstones' (12753421) panicked at crates/daemon/src/http/native_tests.rs:213:5:"
+        ],
+        "before": "                    seat.tombstoned_at.is_some(),\n",
+        "after": ""
+      },
+      {
+        "name": "rust-incarnation-ranking",
+        "path": "crates/daemon/src/registration.rs",
+        "command": [
+          "/Users/jordanknight/.cargo/bin/cargo",
+          "test",
+          "-p",
+          "pij-daemon",
+          "--lib",
+          "native_session_all_tombstones_",
+          "--",
+          "--nocapture"
+        ],
+        "exit": 101,
+        "failed": [
+          "thread 'http::native_tests::native_session_all_tombstones_resume_newest_process_not_first_id' (12757982) panicked at crates/daemon/src/http/native_tests.rs:213:5:"
+        ],
+        "before": "                    std::cmp::Reverse(seat.proc.map(|proc| proc.proc_start)),\n",
+        "after": ""
+      },
+      {
+        "name": "rust-adopt-discriminator",
+        "path": "crates/daemon/src/http/identity.rs",
+        "command": [
+          "/Users/jordanknight/.cargo/bin/cargo",
+          "test",
+          "-p",
+          "pij-daemon",
+          "--lib",
+          "adopt_registration_retryable_",
+          "--",
+          "--nocapture"
+        ],
+        "exit": 101,
+        "failed": [
+          "thread 'http::identity::tests::adopt_registration_retryable_error_preserves_conflict_discriminator' (12762311) panicked at crates/daemon/src/http/identity.rs:668:9:"
+        ],
+        "before": "        RegistrationError::Retryable(reason) => {\n            let mut answer: Envelope<()> = Envelope::refused(ADOPT, ErrorKind::Refused, reason);\n            answer.details = Some(json!({ \"retryable\": true }));\n            envelope(StatusCode::CONFLICT, &answer)\n        }\n",
+        "after": "        RegistrationError::Retryable(reason) => refused(ADOPT, reason),\n"
+      },
+      {
+        "name": "js-live-ambiguity",
+        "path": ".copilot/extensions/pij/store.mjs",
+        "command": [
+          "node",
+          "--test",
+          ".copilot/extensions/pij/store.test.mjs"
+        ],
+        "exit": 1,
+        "failed": [
+          "\u2716 two live native addresses remain retryable despite tombstoned history (0.288041ms)",
+          "\u2716 native session resolution precedes stale pane metadata and duplicate process candidates (0.149458ms)",
+          "\u2716 two live same-session addresses cannot hide behind an exact process or verified prebind (0.09ms)"
+        ],
+        "before": "\tif (candidates.filter((seat) => seat.tombstoned_at == null).length > 1)\n\t\tthrow new NativeError(\n\t\t\t\"Native session has multiple candidate Pij addresses; refreshing roster\",\n\t\t\ttrue,\n\t\t);\n",
+        "after": ""
+      },
+      {
+        "name": "js-live-ranking",
+        "path": ".copilot/extensions/pij/store.mjs",
+        "command": [
+          "node",
+          "--test",
+          ".copilot/extensions/pij/store.test.mjs"
+        ],
+        "exit": 1,
+        "failed": [
+          "\u2716 live native address outranks newer tombstones in adversarial alphabetical order (0.482375ms)"
+        ],
+        "before": "\t\t\tNumber(a.tombstoned_at != null) - Number(b.tombstoned_at != null) ||\n",
+        "after": ""
+      },
+      {
+        "name": "js-incarnation-ranking",
+        "path": ".copilot/extensions/pij/store.mjs",
+        "command": [
+          "node",
+          "--test",
+          ".copilot/extensions/pij/store.test.mjs"
+        ],
+        "exit": 1,
+        "failed": [
+          "\u2716 all-tombstoned native addresses select newest process with missing starts last and id tie break (0.462292ms)"
+        ],
+        "before": "\t\t\t(b.proc?.proc_start ?? -Infinity) - (a.proc?.proc_start ?? -Infinity) ||\n",
+        "after": ""
+      },
+      {
+        "name": "js-id-tie",
+        "path": ".copilot/extensions/pij/store.mjs",
+        "command": [
+          "node",
+          "--test",
+          ".copilot/extensions/pij/store.test.mjs"
+        ],
+        "exit": 1,
+        "failed": [
+          "\u2716 all-tombstoned native addresses select newest process with missing starts last and id tie break (0.483167ms)"
+        ],
+        "before": "(a.id < b.id ? -1 : a.id > b.id ? 1 : 0)",
+        "after": "0"
+      },
+      {
+        "name": "js-requested-id",
+        "path": ".copilot/extensions/pij/store.mjs",
+        "command": [
+          "node",
+          "--test",
+          ".copilot/extensions/pij/store.test.mjs"
+        ],
+        "exit": 1,
+        "failed": [
+          "\u2716 manual identity requests daemon allocation; exact process rollover supersedes predecessor (0.606625ms)",
+          "\u2716 saved native session alone cannot corroborate a wrong requested id with matching spawn (0.103541ms)",
+          "\u2716 same-session nomination cannot corroborate an unrelated requested identity (0.06275ms)",
+          "\u2716 exact native process cannot corroborate an incorrect requested id (0.066583ms)"
+        ],
+        "before": "\tif (requestedId && (!prior || prior.id !== requestedId) && !correlatedSuccessor)\n\t\tthrow new NativeError(\"Spawn prebind identity is not corroborated by the host process\", !prior);\n",
+        "after": ""
+      },
+      {
+        "name": "js-spawn-correlation",
+        "path": ".copilot/extensions/pij/store.mjs",
+        "command": [
+          "node",
+          "--test",
+          ".copilot/extensions/pij/store.test.mjs"
+        ],
+        "exit": 1,
+        "failed": [
+          "\u2716 spawn binding requires exact process, pane and correlation (0.301625ms)",
+          "\u2716 same-process A to B to A restores the retired native address and accepted journal (19.704708ms)",
+          "\u2716 correct requested id cannot corroborate an incorrect spawn correlation (0.225375ms)"
+        ],
+        "before": "\tif (requestedSpawn && (!prior || prior.spawn_id !== requestedSpawn))\n\t\tthrow new NativeError(\"Spawn correlation does not match observed process identity\");\n",
+        "after": ""
+      },
+      {
+        "name": "js-successor-correlation",
+        "path": ".copilot/extensions/pij/store.mjs",
+        "command": [
+          "node",
+          "--test",
+          ".copilot/extensions/pij/store.test.mjs"
+        ],
+        "exit": 1,
+        "failed": [
+          "\u2716 same-process native successor reload corroborates immutable launch id by spawn correlation (0.092916ms)",
+          "\u2716 spawned native rollover preserves correlation across extension reload (0.094083ms)"
+        ],
+        "before": " && !correlatedSuccessor)",
+        "after": ")"
+      },
+      {
+        "name": "js-prebind-tombstone",
+        "path": ".copilot/extensions/pij/store.mjs",
+        "command": [
+          "node",
+          "--test",
+          ".copilot/extensions/pij/store.test.mjs"
+        ],
+        "exit": 1,
+        "failed": [
+          "\u2716 spawn prebind cannot bypass ownership for tombstoned allocation (0.290583ms)"
+        ],
+        "before": "\t\t\t\t\t\tseat.tombstoned_at == null &&\n",
+        "after": ""
+      },
+      {
+        "name": "js-prebind-pane",
+        "path": ".copilot/extensions/pij/store.mjs",
+        "command": [
+          "node",
+          "--test",
+          ".copilot/extensions/pij/store.test.mjs"
+        ],
+        "exit": 1,
+        "failed": [
+          "\u2716 spawn prebind cannot bypass ownership for different pane (0.301125ms)"
+        ],
+        "before": "\t\t\t\t\t\tsamePane(seat, host) &&\n",
+        "after": ""
+      },
+      {
+        "name": "js-prebind-process",
+        "path": ".copilot/extensions/pij/store.mjs",
+        "command": [
+          "node",
+          "--test",
+          ".copilot/extensions/pij/store.test.mjs"
+        ],
+        "exit": 1,
+        "failed": [
+          "\u2716 spawn prebind cannot bypass ownership for bound process (0.286541ms)"
+        ],
+        "before": "\t\t\t\t\t\tseat.proc == null &&\n",
+        "after": ""
+      },
+      {
+        "name": "js-prebind-harness",
+        "path": ".copilot/extensions/pij/store.mjs",
+        "command": [
+          "node",
+          "--test",
+          ".copilot/extensions/pij/store.test.mjs"
+        ],
+        "exit": 1,
+        "failed": [
+          "\u2716 spawn prebind cannot bypass ownership for foreign harness (0.290083ms)"
+        ],
+        "before": "\t\t\t\t\t\tseat.harness === \"copilot\" &&\n",
+        "after": ""
+      },
+      {
+        "name": "js-candidate-harness",
+        "path": ".copilot/extensions/pij/store.mjs",
+        "command": [
+          "node",
+          "--test",
+          ".copilot/extensions/pij/store.test.mjs"
+        ],
+        "exit": 1,
+        "failed": [
+          "\u2716 foreign harness cannot nominate a native session or yield its occupied pane (0.447584ms)"
+        ],
+        "before": "seat !== prebind && seat.harness === \"copilot\" && seat.session === sessionId",
+        "after": "seat !== prebind && seat.session === sessionId"
+      }
+    ],
+    "production_copy": {
+      "snapshot": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-round2-mi4r7sn_/production-readonly.sqlite",
+      "snapshot_sha256": "1853577747618141a7fca4a9a73bad3f483ccb3cbf675cccf6bb7aa816a931b0",
+      "source": "read-only SQLite backup; production daemon not contacted",
+      "working_copy": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-round2-mi4r7sn_/production-proof/state/pij.sqlite",
+      "excluded_work_tables": {
+        "jobs": 9096,
+        "background_jobs": 82,
+        "spawn_records": 0
+      },
+      "sessions": [
+        [
+          "3ca048e4-9f2f-486c-a652-b85e60726922",
+          3,
+          "pij-satisfactory-earthworm,pij-organic-hoverfly,pij-isolated-mollusk",
+          0
+        ],
+        [
+          "47a987ea-9191-4543-a144-330009718afb",
+          2,
+          "pij-surviving-dajeil,pij-religious-rennala",
+          1
+        ],
+        [
+          "7a582862-748a-4b07-b35c-2dcd067b3e7b",
+          3,
+          "pij-harsh-anaconda,pij-fashionable-chameleon,pij-continental-flamingo",
+          1
+        ],
+        [
+          "d0d682ed-4249-498b-b974-1795c3476e12",
+          2,
+          "pij-scientific-bradley,pij-other-sobeck",
+          1
+        ]
+      ],
+      "addr": "127.0.0.1:63385",
+      "home": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-round2-mi4r7sn_/production-proof/home",
+      "copilot_home": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-round2-mi4r7sn_/production-proof/home/.copilot",
+      "claude_home": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-round2-mi4r7sn_/production-proof/home/.claude",
+      "tmux_socket": "pij-149-copy-75602de7-0d78-40a1-92a7-36e613121909",
+      "binary_sha256": "0aa87ed15b8707808b1dc249feabb2d44a6263927598f273bf4f744cfa8e20c0",
+      "proof_grade": "Real daemon HTTP/SQLite and OS-verified inert copilot executable; no native SDK/model claim",
+      "outcomes": [
+        {
+          "session": "3ca048e4-9f2f-486c-a652-b85e60726922",
+          "before": [
+            [
+              "pij-isolated-mollusk",
+              74559,
+              20260911080142,
+              1789428263272,
+              null
+            ],
+            [
+              "pij-organic-hoverfly",
+              27884,
+              20260911074855,
+              1789077407533,
+              null
+            ],
+            [
+              "pij-satisfactory-earthworm",
+              12695,
+              20260910100240,
+              1788998893952,
+              null
+            ]
+          ],
+          "claim": {
+            "id": "",
+            "harness": "copilot",
+            "harness_session": "3ca048e4-9f2f-486c-a652-b85e60726922",
+            "folder": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-round2-mi4r7sn_/production-proof",
+            "pid": 94982,
+            "proc_start": 20260915171006,
+            "relay": false,
+            "native_extension_delivery": true
+          },
+          "http_status": 200,
+          "response": {
+            "ok": true,
+            "command": "pij register",
+            "v": 2,
+            "data": {
+              "id": "pij-isolated-mollusk",
+              "harness": "copilot",
+              "session": "3ca048e4-9f2f-486c-a652-b85e60726922",
+              "extension_build": null,
+              "extension_path": null,
+              "pane": null,
+              "proc": {
+                "pid": 94982,
+                "proc_start": 20260915171006
+              },
+              "folder": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-round2-mi4r7sn_/production-proof",
+              "state": "idle",
+              "semantic_state": null,
+              "role": null,
+              "parent": null,
+              "relay": false,
+              "native_extension_delivery": true,
+              "binding": "rebound",
+              "proc_source": "harness",
+              "typing_grace_ms": 60000
+            },
+            "meta": "verified external shim callers resolve this paneless seat from their native host/session automatically; other clients must pass id pij-isolated-mollusk explicitly or export PIJ_SESSION_ID=pij-isolated-mollusk"
+          }
+        },
+        {
+          "session": "47a987ea-9191-4543-a144-330009718afb",
+          "before": [
+            [
+              "pij-religious-rennala",
+              42956,
+              20260915162251,
+              null,
+              null
+            ],
+            [
+              "pij-surviving-dajeil",
+              81520,
+              20260915085654,
+              1789428263788,
+              null
+            ]
+          ],
+          "claim": {
+            "id": "",
+            "harness": "copilot",
+            "harness_session": "47a987ea-9191-4543-a144-330009718afb",
+            "folder": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-round2-mi4r7sn_/production-proof",
+            "pid": 95072,
+            "proc_start": 20260915171006,
+            "relay": false,
+            "native_extension_delivery": true
+          },
+          "http_status": 200,
+          "response": {
+            "ok": true,
+            "command": "pij register",
+            "v": 2,
+            "data": {
+              "id": "pij-religious-rennala",
+              "harness": "copilot",
+              "session": "47a987ea-9191-4543-a144-330009718afb",
+              "extension_build": null,
+              "extension_path": null,
+              "pane": null,
+              "proc": {
+                "pid": 95072,
+                "proc_start": 20260915171006
+              },
+              "folder": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-round2-mi4r7sn_/production-proof",
+              "state": "idle",
+              "semantic_state": null,
+              "role": "worker",
+              "parent": null,
+              "relay": false,
+              "native_extension_delivery": true,
+              "binding": "rebound",
+              "proc_source": "harness",
+              "typing_grace_ms": 60000
+            },
+            "meta": "verified external shim callers resolve this paneless seat from their native host/session automatically; other clients must pass id pij-religious-rennala explicitly or export PIJ_SESSION_ID=pij-religious-rennala"
+          }
+        },
+        {
+          "session": "7a582862-748a-4b07-b35c-2dcd067b3e7b",
+          "before": [
+            [
+              "pij-continental-flamingo",
+              75739,
+              20260915150412,
+              null,
+              null
+            ],
+            [
+              "pij-fashionable-chameleon",
+              58724,
+              20260915092934,
+              1789448652057,
+              null
+            ],
+            [
+              "pij-harsh-anaconda",
+              2255,
+              20260914150741,
+              1789428263174,
+              "pij-monthly-nenneke"
+            ]
+          ],
+          "claim": {
+            "id": "",
+            "harness": "copilot",
+            "harness_session": "7a582862-748a-4b07-b35c-2dcd067b3e7b",
+            "folder": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-round2-mi4r7sn_/production-proof",
+            "pid": 95159,
+            "proc_start": 20260915171006,
+            "relay": false,
+            "native_extension_delivery": true
+          },
+          "http_status": 200,
+          "response": {
+            "ok": true,
+            "command": "pij register",
+            "v": 2,
+            "data": {
+              "id": "pij-continental-flamingo",
+              "harness": "copilot",
+              "session": "7a582862-748a-4b07-b35c-2dcd067b3e7b",
+              "extension_build": null,
+              "extension_path": null,
+              "pane": null,
+              "proc": {
+                "pid": 95159,
+                "proc_start": 20260915171006
+              },
+              "folder": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-round2-mi4r7sn_/production-proof",
+              "state": "idle",
+              "semantic_state": null,
+              "role": "worker",
+              "parent": null,
+              "relay": false,
+              "native_extension_delivery": true,
+              "binding": "rebound",
+              "proc_source": "harness",
+              "typing_grace_ms": 60000
+            },
+            "meta": "verified external shim callers resolve this paneless seat from their native host/session automatically; other clients must pass id pij-continental-flamingo explicitly or export PIJ_SESSION_ID=pij-continental-flamingo"
+          }
+        },
+        {
+          "session": "d0d682ed-4249-498b-b974-1795c3476e12",
+          "before": [
+            [
+              "pij-other-sobeck",
+              55935,
+              20260915092905,
+              null,
+              null
+            ],
+            [
+              "pij-scientific-bradley",
+              86748,
+              20260914144110,
+              1789428263620,
+              null
+            ]
+          ],
+          "claim": {
+            "id": "",
+            "harness": "copilot",
+            "harness_session": "d0d682ed-4249-498b-b974-1795c3476e12",
+            "folder": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-round2-mi4r7sn_/production-proof",
+            "pid": 95236,
+            "proc_start": 20260915171006,
+            "relay": false,
+            "native_extension_delivery": true
+          },
+          "http_status": 200,
+          "response": {
+            "ok": true,
+            "command": "pij register",
+            "v": 2,
+            "data": {
+              "id": "pij-other-sobeck",
+              "harness": "copilot",
+              "session": "d0d682ed-4249-498b-b974-1795c3476e12",
+              "extension_build": null,
+              "extension_path": null,
+              "pane": null,
+              "proc": {
+                "pid": 95236,
+                "proc_start": 20260915171006
+              },
+              "folder": "/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-round2-mi4r7sn_/production-proof",
+              "state": "idle",
+              "semantic_state": null,
+              "role": "worker",
+              "parent": null,
+              "relay": false,
+              "native_extension_delivery": true,
+              "binding": "rebound",
+              "proc_source": "harness",
+              "typing_grace_ms": 60000
+            },
+            "meta": "verified external shim callers resolve this paneless seat from their native host/session automatically; other clients must pass id pij-other-sobeck explicitly or export PIJ_SESSION_ID=pij-other-sobeck"
+          }
+        }
+      ],
+      "status": "passed"
+    },
+    "fixture_cleanup": {
+      "failed_command": "just self-check",
+      "failure": "ENOTEMPTY removing fp-test-BP1kEf/.git; only .git/ai/logs and .git/ai/working_logs remained",
+      "fix": "Reuse existing harness/test-utils.ts removeTemporaryTree (3 bounded native retries); no assertion changes",
+      "scope": "skills/flow-pair/test/identity.test.ts teardown only"
+    },
+    "live_receipt": "live-green-release.json",
+    "live_command": "node_modules/.bin/tsx docs/plans/149-native-session-identity/native-resume-live.ts /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-round2-mi4r7sn_/live-green-final-artifact.json",
+    "production_copy_command": "python3 /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-149-round2-mi4r7sn_/production-copy-proof.py",
+    "production_script_sha256": "f1f3f8d468f2bf39beddff06030c90f3b1be30b77a57efc5e678354918dcc7a6"
+  }
+}
