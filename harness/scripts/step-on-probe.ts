@@ -441,7 +441,7 @@ export async function runProbe(options: Options): Promise<{ code: number; output
 				"omp",
 				"--no-extensions",
 				"-e",
-				join(options.sourceRoot, ".pi/extensions/pij/index.ts"),
+				join(options.sourceRoot, ".omp/extensions/pij/index.ts"),
 				"--no-skills",
 				"--no-rules",
 				"--no-lsp",
