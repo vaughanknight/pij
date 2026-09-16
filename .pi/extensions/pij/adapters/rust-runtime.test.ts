@@ -210,6 +210,27 @@ function announceRuntime(
 }
 
 describe("RustRuntimeSession", () => {
+	it("keeps parked outcomes equal to the canonical Rust DeliveryFailure wire vocabulary", () => {
+		const rust = readFileSync(
+			new URL("../../../../crates/core/src/model.rs", import.meta.url),
+			"utf8",
+		);
+		const adapter = readFileSync(new URL("./rust-runtime.ts", import.meta.url), "utf8");
+		const declaration = /pub enum DeliveryFailure \{([\s\S]*?)^\}/m.exec(rust)?.[1];
+		const allowlist = /const PARKED_OUTCOMES = new Set\(\[([\s\S]*?)\]\)/.exec(adapter)?.[1];
+		if (declaration === undefined || allowlist === undefined) {
+			throw new Error("parked outcome wire declarations must remain readable by this seam test");
+		}
+		const wireOutcomes = Array.from(
+			declaration.matchAll(/#\[serde\(rename = "([^"]+)"\)\]/g),
+			(match) => match[1],
+		);
+		// A new variant without an explicit serde name must not escape the comparison.
+		expect(wireOutcomes).toHaveLength([...declaration.matchAll(/^\s*\w+,\s*$/gm)].length);
+		const parkedOutcomes = Array.from(allowlist.matchAll(/"([^"]+)"/g), (match) => match[1]);
+		expect(parkedOutcomes.sort()).toEqual(wireOutcomes.sort());
+	});
+
 	it.each([
 		"new",
 		"reload",
@@ -1991,16 +2012,18 @@ describe("extension-stream delivery", () => {
 		expect(client.heartbeats).toEqual([]);
 	});
 
-	it("visibly reports a parked outbound message once without clearing unrelated inbound mail", async () => {
+	it("warns once when an outbound native receiver becomes unavailable without clearing unrelated inbound mail", async () => {
 		const { pi, client } = await startSwallowing();
 		await client.push(message("still-pending-inbound"));
 		await client.push(message("outbound-failed", { from: client.id }), false);
-		await client.park(2, "undelivered:lease-exhausted", "pij-other");
-		await client.park(2, "undelivered:lease-exhausted", "pij-other");
+		const outcome = "undelivered:native-receiver-unavailable";
+		await client.park(2, outcome, "pij-other");
+		await client.park(2, outcome, "pij-other");
 		expect(pi.statuses.at(-1)).toBe("📨 1 pending");
-		expect(
-			pi.notices.filter((notice) => notice.level === "warning").map((notice) => notice.text),
-		).toEqual(["pij message outbound-failed to pij-other: undelivered:lease-exhausted"]);
+		const warnings = pi.notices.filter((notice) => notice.level === "warning");
+		expect(warnings).toEqual([{ level: "warning", text: expect.stringContaining(outcome) }]);
+		expect(warnings[0]?.text).toContain("outbound-failed");
+		expect(warnings[0]?.text).toContain("pij-other");
 	});
 
 	it("busy-seat lease reclaims never spend the three idle resend attempts", async () => {

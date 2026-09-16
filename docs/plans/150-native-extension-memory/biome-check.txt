@@ -1,0 +1,20 @@
+Checked 542 files in 313ms. No fixes applied.
+Found 1 info.
+BIOME_EXIT=0
+biome.json:2:13 deserialize ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  i The configuration schema version does not match the CLI version 2.4.14
+  
+    1 │ {
+  > 2 │ 	"$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
+      │ 	           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    3 │ 	"files": {
+    4 │ 		"includes": [
+  
+  i   Expected:                     2.4.14
+      Found:                        2.0.0
+  
+  
+  i Run the command biome migrate to migrate the configuration file.
+  
+

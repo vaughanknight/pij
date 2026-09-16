@@ -214,3 +214,6 @@ pocs/*/out/
 
 # machine-local Claude Code permissions (never versioned; lints red in the canonical checkout otherwise)
 .claude/settings.local.json
+
+# Native memory proof keeps private daemon keys and copied runtime code out of Git.
+docs/plans/150-native-extension-memory/evidence/*/runtime/

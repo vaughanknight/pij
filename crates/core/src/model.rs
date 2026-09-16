@@ -814,6 +814,9 @@ pub enum DeliveryFailure {
     /// An authorized operator released a running head with evidence.
     #[serde(rename = "undelivered:operator-released")]
     OperatorReleased,
+    /// The native receiver stopped renewing its lease, regardless of host liveness.
+    #[serde(rename = "undelivered:native-receiver-unavailable")]
+    NativeReceiverUnavailable,
 }
 
 impl DeliveryFailure {
@@ -823,6 +826,7 @@ impl DeliveryFailure {
             Self::LeaseExhausted => "undelivered:lease-exhausted",
             Self::HarnessSwallowed => "undelivered:harness-swallowed",
             Self::OperatorReleased => "undelivered:operator-released",
+            Self::NativeReceiverUnavailable => "undelivered:native-receiver-unavailable",
         }
     }
 }

@@ -35,6 +35,14 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
           return nativeId;
         },
         async getEvents() { return history; },
+        rpc: { eventLog: {
+          async tail() { return {cursor:String(history.length)}; },
+          async read({cursor='0',max}) {
+            const events=history.slice(Number(cursor),Number(cursor)+max);
+            const next=Number(cursor)+events.length;
+            return {events,cursor:String(next),hasMore:next<history.length,cursorStatus:'ok'};
+          }
+        } },
         async log(message, options) { emit({kind:'native-log',message,options}); },
         async disconnect() {}
       };
@@ -159,6 +167,8 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 						response.destroy();
 						return;
 					}
+				} else if (request.url === "/v1/inbox/heartbeat") {
+					data = { state: "live", lease_ms: 60000, renew_after_ms: 20000 };
 				} else if (request.url.startsWith("/v1/inbox?")) {
 					const query = new URLSearchParams(request.url.split("?")[1]);
 					assert.equal(query.get("seat"), registered.id);

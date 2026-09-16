@@ -1,0 +1,40 @@
+✔ native delivery proceeds during recent human typing without submitting the human draft (0.487125ms)
+✔ native delivery proceeds during unavailable typing sensor without submitting the human draft (0.287709ms)
+✔ native delivery retains human-consent while the human is typing (0.245417ms)
+✔ native delivery retains semantic-hold while the human is typing (0.083875ms)
+✔ native delivery retains native-target-session:original-native while the human is typing (0.084333ms)
+✔ semantic Hold survives observed typing and requires a fresh claim after clearance (0.512917ms)
+✔ semantic Hold survives unavailable typing and requires a fresh claim after clearance (0.2385ms)
+✔ shutdown during consent snapshot cancels old-context work without intent send or ACK (0.3105ms)
+✔ shutdown during consent semantic hold delay cancels old-context work without intent send or ACK (0.33725ms)
+✔ semantic consent HTTP wait is externally abortable and its deadline is not inbox renewal (151.170416ms)
+✔ invalid semantic consent or native proof holds receiving without hiding outgoing (6.403875ms)
+✔ invalid semantic consent or native proof holds receiving without hiding outgoing (4.168792ms)
+✔ incremental history: expired cursor cannot acknowledge or retry from fallback events (0.354875ms)
+✔ incremental history: accepted recovery spans pages without skipping consumption ancestry (0.459417ms)
+✔ receiver lease: non-live state enters failure backoff instead of renewing (0.38175ms)
+✔ receiver lease: malformed lease duration enters failure backoff instead of renewing (0.149375ms)
+✔ receiver lease: malformed renewal delay enters failure backoff instead of renewing (0.137833ms)
+✔ receiver lease: renewal at lease expiry enters failure backoff instead of renewing (0.12975ms)
+✔ receiver lease: repeated failures emit one unavailable episode (0.256459ms)
+✔ receiver lease: failed renewals back off exponentially with a ceiling (0.415125ms)
+✔ receiver lease: recovery resets backoff and allows a new failure episode (0.296542ms)
+✔ receiver lease: stop ignores a late renewal response without rescheduling (0.117083ms)
+✔ receiver lease: receive-held tears down renewal before a late timer fires (0.229667ms)
+✔ receiver lease: renews for twenty minutes independently of busy completion (1.925708ms)
+✔ receiver lease: renews for twenty minutes independently of operator Hold (1.646959ms)
+✔ incremental history: events not an array holds without ACK, reinjection or cursor rewind (0.2975ms)
+✔ incremental history: more than 128 events holds without ACK, reinjection or cursor rewind (0.169709ms)
+✔ incremental history: non-string cursor holds without ACK, reinjection or cursor rewind (0.123833ms)
+✔ incremental history: nonboolean hasMore holds without ACK, reinjection or cursor rewind (0.122625ms)
+✔ incremental history: nonadvancing hasMore holds without ACK, reinjection or cursor rewind (0.118417ms)
+ℹ tests 192
+ℹ suites 0
+ℹ pass 189
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 3
+ℹ todo 0
+ℹ duration_ms 7948.284041
+
+node --test .copilot/extensions/pij/*.test.mjs

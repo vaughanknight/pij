@@ -1,0 +1,97 @@
+Original store SHA: 71a062b22bfd973dc1419dfd9da389b32c84f4f8
+Exact current memory.test.mjs against original store, isolated at /var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij150-red-sENmiy
+Exit: 1
+{"events":20000,"serializedBytes":74415558,"baseline":5152464}
+{"sends":50,"polls":1,"fullReads":51,"heap":80935984,"growth":75783520}
+{"sends":50,"polls":2,"fullReads":52,"heap":157191984,"growth":152039520}
+{"sends":50,"polls":3,"fullReads":53,"heap":233467360,"growth":228314896}
+{"sends":50,"polls":4,"fullReads":54,"heap":309718424,"growth":304565960}
+{"sends":50,"polls":5,"fullReads":55,"heap":385960584,"growth":380808120}
+{"sends":50,"polls":6,"fullReads":56,"heap":462202960,"growth":457050496}
+
+✖ 50 deliveries over 60 MB history retain less than 32 MiB of heap (4006.464042ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4059.471625
+
+✖ failing tests:
+
+test at memory.test.mjs:11:2
+✖ 50 deliveries over 60 MB history retain less than 32 MiB of heap (4006.464042ms)
+  AssertionError [ERR_ASSERTION]: SIGABRT
+  
+  <--- Last few GCs --->
+  
+  [22306:0x82bc00000]     3974 ms: Mark-Compact 513.8 (517.0) -> 513.7 (523.0) MB, pooled: 0 MB, 8.12 / 0.00 ms  (average mu = 0.681, current mu = 0.532) allocation failure; scavenge might not succeed
+  
+  FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+  ----- Native stack trace -----
+  
+   1: 0x1025a3814 node::OOMErrorHandler(char const*, v8::OOMDetails const&) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+   2: 0x1026e297c v8::Utils::ReportOOMFailure(v8::internal::Isolate*, char const*, v8::OOMDetails const&) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+   3: 0x1026e2934 v8::internal::V8::FatalProcessOutOfMemory(v8::internal::Isolate*, char const*, v8::OOMDetails const&) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+   4: 0x1028bf550 v8::internal::Heap::stack() [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+   5: 0x1028bdc74 v8::internal::Heap::CollectGarbage(v8::internal::AllocationSpace, v8::internal::GarbageCollectionReason, v8::GCCallbackFlags) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+   6: 0x1028b5718 v8::internal::HeapAllocator::AllocateRawWithRetryOrFailSlowPath(int, v8::internal::AllocationType, v8::internal::AllocationOrigin, v8::internal::AllocationAlignment) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+   7: 0x10288daf8 v8::internal::MaybeHandle<v8::internal::SeqOneByteString> v8::internal::FactoryBase<v8::internal::Factory>::NewRawStringWithMap<v8::internal::SeqOneByteString>(int, v8::internal::Tagged<v8::internal::Map>, v8::internal::AllocationType) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+   8: 0x1029a7d18 v8::internal::JsonParser<unsigned char>::MakeString(v8::internal::JsonString const&, v8::internal::Handle<v8::internal::String>) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+   9: 0x1029aa4b8 v8::internal::JsonParser<unsigned char>::ParseJsonObject(v8::internal::Handle<v8::internal::Map>) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  10: 0x1029aa4e4 v8::internal::JsonParser<unsigned char>::ParseJsonObject(v8::internal::Handle<v8::internal::Map>) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  11: 0x1029aa4e4 v8::internal::JsonParser<unsigned char>::ParseJsonObject(v8::internal::Handle<v8::internal::Map>) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  12: 0x1029aaea8 v8::internal::JsonParser<unsigned char>::ParseJsonArray() [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  13: 0x1029a78c8 v8::internal::JsonParser<unsigned char>::ParseJson(v8::internal::DirectHandle<v8::internal::Object>) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  14: 0x1029a7780 v8::internal::JsonParser<unsigned char>::Parse(v8::internal::Isolate*, v8::internal::Handle<v8::internal::String>, v8::internal::Handle<v8::internal::Object>) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  15: 0x1037d0b40 v8::internal::Builtin_JsonParse(int, unsigned long*, v8::internal::Isolate*) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  16: 0x1030d9e94 Builtins_CEntry_Return1_ArgvOnStack_BuiltinExit [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  17: 0x1296b2900 
+  18: 0x1296b3984 
+  19: 0x10307b648 Builtins_AsyncFunctionAwaitResolveClosure [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  20: 0x1031505f8 Builtins_PromiseFulfillReactionJob [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  21: 0x10306aa50 Builtins_RunMicrotasks [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  22: 0x10303a7b0 Builtins_JSRunMicrotasksEntry [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  23: 0x1028177ac v8::internal::(anonymous namespace)::Invoke(v8::internal::Isolate*, v8::internal::(anonymous namespace)::InvokeParams const&) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  24: 0x102817e58 v8::internal::(anonymous namespace)::InvokeWithTryCatch(v8::internal::Isolate*, v8::internal::(anonymous namespace)::InvokeParams const&) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  25: 0x102817f48 v8::internal::Execution::TryRunMicrotasks(v8::internal::Isolate*, v8::internal::MicrotaskQueue*) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  26: 0x10283cb44 v8::internal::MicrotaskQueue::RunMicrotasks(v8::internal::Isolate*) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  27: 0x10283c960 v8::internal::MicrotaskQueue::PerformCheckpointInternal(v8::Isolate*) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  28: 0x1024f0898 node::InternalCallbackScope::Close() [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  29: 0x1024f0b98 node::InternalMakeCallback(node::Environment*, v8::Local<v8::Object>, v8::Local<v8::Object>, v8::Local<v8::Function>, int, v8::Local<v8::Value>*, node::async_context, v8::Local<v8::Value>) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  30: 0x1024f0e88 node::InternalMakeCallback(v8::Isolate*, v8::Local<v8::Object>, v8::Local<v8::Function>, int, v8::Local<v8::Value>*, node::async_context, v8::Local<v8::Value>) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  31: 0x102557858 node::Environment::CheckImmediate(uv_check_s*) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  32: 0x10777c214 uv__run_check [/opt/homebrew/Cellar/libuv/1.51.0/lib/libuv.1.dylib]
+  33: 0x107776b88 uv_run [/opt/homebrew/Cellar/libuv/1.51.0/lib/libuv.1.dylib]
+  34: 0x1024f13cc node::SpinEventLoopInternal(node::Environment*) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  35: 0x1025d2cfc node::NodeMainInstance::Run(node::ExitCode*, node::Environment*) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  36: 0x1025d2a90 node::NodeMainInstance::Run() [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  37: 0x10257903c node::Start(int, char**) [/opt/homebrew/Cellar/node/24.7.0/bin/node]
+  38: 0x18e66c4e4 start [/usr/lib/dyld]
+  
+  {"events":20000,"serializedBytes":74415558,"baseline":5152464}
+  {"sends":50,"polls":1,"fullReads":51,"heap":80935984,"growth":75783520}
+  {"sends":50,"polls":2,"fullReads":52,"heap":157191984,"growth":152039520}
+  {"sends":50,"polls":3,"fullReads":53,"heap":233467360,"growth":228314896}
+  {"sends":50,"polls":4,"fullReads":54,"heap":309718424,"growth":304565960}
+  {"sends":50,"polls":5,"fullReads":55,"heap":385960584,"growth":380808120}
+  {"sends":50,"polls":6,"fullReads":56,"heap":462202960,"growth":457050496}
+  
+  
+  null !== 0
+  
+      at TestContext.<anonymous> (file:///private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij150-red-sENmiy/memory.test.mjs:21:10)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.start (node:internal/test_runner/test:1003:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:358:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: null,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+

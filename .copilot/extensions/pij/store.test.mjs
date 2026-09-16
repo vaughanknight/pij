@@ -143,6 +143,26 @@ function fixture(overrides = {}) {
 		async getEvents() {
 			return history;
 		},
+		rpc: {
+			eventLog: {
+				async tail() {
+					const events = await native.getEvents();
+					if (!Array.isArray(events)) return undefined;
+					return { cursor: String(events.length) };
+				},
+				async read({ cursor = "0", max }) {
+					const history = await native.getEvents();
+					const events = history.slice(Number(cursor), Number(cursor) + max);
+					const next = Number(cursor) + events.length;
+					return {
+						events,
+						cursor: String(next),
+						hasMore: next < history.length,
+						cursorStatus: "ok",
+					};
+				},
+			},
+		},
 	};
 	const client = {
 		async consentSnapshot(consumer, signal) {
@@ -155,6 +175,8 @@ function fixture(overrides = {}) {
 			return { claims: await this.request(`/v1/inbox?${query}`, undefined, signal), hold: null };
 		},
 		async request(path, body, signal) {
+			if (path === "/v1/inbox/heartbeat")
+				return { state: "live", lease_ms: 60000, renew_after_ms: 20000 };
 			if (path === "/v1/register") {
 				trace.push("register");
 				return descriptor;
@@ -213,6 +235,7 @@ function discardedQueueFixture() {
 	const state = { processing: true, items: [], sends: 0, queueReads: 0, processingReads: 0 };
 	state.steeringMessages = [];
 	f.native.rpc = {
+		...f.native.rpc,
 		queue: {
 			pendingItems: async () => {
 				state.queueReads++;
@@ -384,7 +407,8 @@ test("native discard recovery: replayed historical boundary cannot authorize res
 test("native discard recovery: missing rpc holds visibly at a fresh boundary without ACK or resend", async (t) => {
 	const f = discardedQueueFixture();
 	t.after(() => f.bridge.stop());
-	delete f.native.rpc;
+	delete f.native.rpc.queue;
+	delete f.native.rpc.metadata;
 	const run = f.bridge.run();
 	await flush();
 	f.history.push({ type: "assistant.turn_end", id: "foreground-end", data: {} });
@@ -731,7 +755,7 @@ test("native consumption: missed callbacks recover consumption and final turn fr
 		},
 		{ type: "assistant.turn_end", id: "history-end", parentId: "history-answer", data: {} },
 	];
-	f.native.getEvents = async () => history;
+	f.native.getEvents = async () => (f.trace.includes("send") ? history : []);
 	const run = f.bridge.run();
 	await flush();
 	assert.equal(f.trace.includes("ack"), true);
@@ -887,7 +911,7 @@ test("native consumption: replayed tool turns and unrelated final turns cannot c
 		},
 		{ type: "abort", id: "global-abort", parentId: "tool-end", data: { reason: "user" } },
 	];
-	f.native.getEvents = async () => history;
+	f.native.getEvents = async () => (f.trace.includes("send") ? history : []);
 	const run = f.bridge.run();
 	await f.accepted.promise;
 	await flush();
@@ -2055,6 +2079,16 @@ async function deadlineHttpFixture(t, handler) {
 			body: raw ? JSON.parse(raw) : undefined,
 		};
 		requests.push(entry);
+		if (entry.url.pathname === "/v1/inbox/heartbeat") {
+			response.end(
+				JSON.stringify({
+					ok: true,
+					v: 2,
+					data: { state: "live", lease_ms: 60000, renew_after_ms: 20000 },
+				}),
+			);
+			return;
+		}
 		handler(entry, response);
 	});
 	t.after(
@@ -3611,5 +3645,329 @@ for (const snapshot of [
 			(await f.bridge.send({ to: "pij-peer", message: "outgoing while held" })).ok,
 			true,
 		);
+	});
+}
+
+test("incremental history: expired cursor cannot acknowledge or retry from fallback events", async (t) => {
+	const f = discardedQueueFixture();
+	t.after(() => f.bridge.stop());
+	const request = f.client.request;
+	f.client.request = async (...args) => {
+		const result = await request(...args);
+		if (args[0] === "/v1/inbox/ack") f.bridge.stop();
+		return result;
+	};
+	f.native.rpc.eventLog.read = async () => ({
+		events: [
+			{ type: "session.idle", id: "fallback-boundary", data: {} },
+			{ type: "user.message", id: "fallback-user", data: { messageId: "queued-native-1" } },
+		],
+		cursor: "rebased",
+		hasMore: false,
+		cursorStatus: "expired",
+	});
+	await f.bridge.run();
+	assert.equal(f.state.sends, 1);
+	assert.equal(f.trace.includes("ack"), false);
+	assert.equal(f.trace.includes("retry-intent"), false);
+	assert.ok(
+		f.reports.some(
+			({ kind, diagnostic }) => kind === "receive-held" && /cursor expired/.test(diagnostic),
+		),
+	);
+	f.bridge.stop();
+});
+
+test("incremental history: accepted recovery spans pages without skipping consumption ancestry", async (t) => {
+	const f = fixture({ delay: () => flush() });
+	t.after(() => f.bridge.stop());
+	f.records.set(claim.message.msg_id, {
+		state: "accepted",
+		message: claim.message,
+		nativeId: "paged-native",
+	});
+	f.history.push(
+		...Array.from({ length: 127 }, (_, i) => ({
+			type: "session.idle",
+			id: `historic-boundary-${i}`,
+			data: {},
+		})),
+		{ type: "user.message", id: "paged-user", data: { messageId: "paged-native" } },
+		{ type: "assistant.message", id: "paged-answer", parentId: "paged-user", data: {} },
+		{ type: "assistant.turn_end", id: "paged-end", parentId: "paged-answer", data: {} },
+	);
+	const run = f.bridge.run();
+	await f.accepted.promise;
+	await flush();
+	assert.equal(f.trace.includes("send"), false);
+	assert.equal(f.trace.filter((entry) => entry === "ack").length, 1);
+	assert.equal(f.trace.filter((entry) => entry === "claim").length, 2);
+	assert.ok(
+		f.reports.some(({ kind, eventId }) => kind === "native-completed" && eventId === "paged-end"),
+	);
+	f.bridge.stop();
+	await run;
+});
+
+async function receiverLeaseScenario(t, replies) {
+	const waits = [];
+	let attempts = 0;
+	const f = fixture({
+		async heartbeatDelay(ms, signal) {
+			waits.push(ms);
+			await flush();
+			if (waits.length === replies.length) f.bridge.stop();
+			signal.throwIfAborted();
+		},
+	});
+	t.after(() => f.bridge.stop());
+	f.client.request = async () => {
+		const reply = replies[attempts++];
+		if (reply instanceof Error) throw reply;
+		return reply;
+	};
+	await f.bridge.keepReceiverAlive();
+	return {
+		attempts,
+		waits,
+		unavailable: f.reports.filter(({ kind }) => kind === "receiver-lease-unavailable"),
+	};
+}
+
+for (const [name, change] of [
+	["non-live state", { state: "expired" }],
+	["malformed lease duration", { lease_ms: "60000" }],
+	["malformed renewal delay", { renew_after_ms: "20000" }],
+	["renewal at lease expiry", { renew_after_ms: 60000 }],
+]) {
+	test(`receiver lease: ${name} enters failure backoff instead of renewing`, async (t) => {
+		const result = await receiverLeaseScenario(t, [
+			{ state: "live", lease_ms: 60000, renew_after_ms: 20000, ...change },
+		]);
+		assert.equal(result.attempts, 1);
+		assert.deepEqual(result.waits, [250]);
+		assert.equal(result.unavailable.length, 1);
+	});
+}
+
+test("receiver lease: repeated failures emit one unavailable episode", async (t) => {
+	const result = await receiverLeaseScenario(t, [
+		new Error("connection refused"),
+		new Error("request timed out"),
+		new Error("connection reset"),
+	]);
+	assert.equal(result.attempts, 3);
+	assert.equal(result.unavailable.length, 1);
+});
+
+test("receiver lease: failed renewals back off exponentially with a ceiling", async (t) => {
+	const result = await receiverLeaseScenario(
+		t,
+		Array.from({ length: 8 }, () => new Error("connection refused")),
+	);
+	assert.equal(result.attempts, 8);
+	assert.deepEqual(result.waits, [250, 500, 1000, 2000, 4000, 5000, 5000, 5000]);
+});
+
+test("receiver lease: recovery resets backoff and allows a new failure episode", async (t) => {
+	const lease = { state: "live", lease_ms: 60000, renew_after_ms: 20000 };
+	const result = await receiverLeaseScenario(t, [
+		new Error("connection refused"),
+		new Error("connection refused"),
+		lease,
+		new Error("connection reset"),
+		new Error("connection reset"),
+		lease,
+	]);
+	assert.equal(result.attempts, 6);
+	assert.deepEqual(result.waits, [250, 500, 20000, 250, 500, 20000]);
+	assert.equal(result.unavailable.length, 2);
+});
+
+test("receiver lease: stop ignores a late renewal response without rescheduling", async (t) => {
+	const response = deferred();
+	const waits = [];
+	const f = fixture({
+		async heartbeatDelay(ms, signal) {
+			waits.push(ms);
+			signal.throwIfAborted();
+		},
+	});
+	t.after(() => f.bridge.stop());
+	f.client.request = () => response.promise;
+	const heartbeat = f.bridge.keepReceiverAlive();
+	f.bridge.stop();
+	response.resolve({ state: "live", lease_ms: 60000, renew_after_ms: 20000 });
+	await heartbeat;
+	assert.deepEqual(waits, []);
+	assert.equal(f.reports.filter(({ kind }) => kind === "receiver-lease-unavailable").length, 0);
+});
+
+test("receiver lease: receive-held tears down renewal before a late timer fires", async (t) => {
+	const tick = deferred();
+	let heartbeatSignal;
+	let renewals = 0;
+	const f = fixture({
+		async heartbeatDelay(_ms, signal) {
+			heartbeatSignal = signal;
+			await tick.promise;
+		},
+	});
+	t.after(() => {
+		f.bridge.stop();
+		tick.resolve();
+	});
+	const request = f.client.request;
+	f.client.request = (path, body, signal) => {
+		if (path === "/v1/inbox/heartbeat" && ++renewals > 1) f.bridge.stop();
+		return request(path, body, signal);
+	};
+	f.native.rpc.eventLog.read = async () => ({
+		events: [{ type: "user.message", id: "stale-user", data: { messageId: "native-message-137" } }],
+		cursor: "expired",
+		hasMore: false,
+		cursorStatus: "expired",
+	});
+	await f.bridge.run();
+	const abortedAtHold = heartbeatSignal?.aborted;
+	tick.resolve();
+	await f.bridge.heartbeat;
+	assert.equal(abortedAtHold, true);
+	assert.equal(renewals, 1);
+	assert.equal(f.reports.filter(({ kind }) => kind === "receive-held").length, 1);
+	assert.equal(f.trace.filter((entry) => entry === "unsubscribe").length, 1);
+	assert.equal(f.trace.filter((entry) => entry === "send").length, 1);
+	assert.equal(f.trace.includes("ack"), false);
+	assert.equal(f.trace.includes("retry-intent"), false);
+});
+
+for (const blockedBy of ["busy completion", "operator Hold"]) {
+	test(`receiver lease: renews for twenty minutes independently of ${blockedBy}`, async (t) => {
+		const ticks = [];
+		let renewals = 0;
+		let receiveWaits = 0;
+		const f = fixture({
+			async delay(_ms, signal) {
+				receiveWaits++;
+				await new Promise((resolve) => signal.addEventListener("abort", resolve, { once: true }));
+			},
+			async heartbeatDelay(ms, signal) {
+				const tick = deferred();
+				ticks.push({ ms, ...tick });
+				signal.addEventListener("abort", tick.resolve, { once: true });
+				try {
+					await tick.promise;
+					signal.throwIfAborted();
+				} finally {
+					signal.removeEventListener("abort", tick.resolve);
+				}
+			},
+		});
+		t.after(() => f.bridge.stop());
+		const request = f.client.request;
+		f.client.request = (path, body, signal) => {
+			if (path === "/v1/inbox/heartbeat") renewals++;
+			return request(path, body, signal);
+		};
+		if (blockedBy === "operator Hold")
+			f.client.claimInbox = async () => {
+				f.trace.push("claim");
+				return { claims: [], hold: { kind: "consent", reason: "human-consent" } };
+			};
+		const run = f.bridge.run();
+		await flush();
+		assert.equal(receiveWaits, 1, "receiving is blocked before the renewal clock advances");
+		for (let step = 0; step < 60; step++) {
+			assert.equal(renewals, step + 1);
+			assert.equal(ticks.length, step + 1);
+			assert.equal(ticks[step].ms, 20000);
+			ticks[step].resolve();
+			await flush();
+		}
+		assert.equal(renewals, 61, "the initial lease and all sixty renewals succeeded");
+		assert.equal(receiveWaits, 1, "renewal did not depend on advancing the receive loop");
+		assert.equal(f.trace.filter((entry) => entry === "claim").length, 1);
+		assert.equal(
+			f.trace.filter((entry) => entry === "ack").length,
+			blockedBy === "busy completion" ? 1 : 0,
+		);
+		assert.equal(
+			f.trace.filter((entry) => entry === "send").length,
+			blockedBy === "busy completion" ? 1 : 0,
+		);
+		assert.equal(
+			f.reports.filter(({ kind }) => ["receive-held", "receiver-lease-unavailable"].includes(kind))
+				.length,
+			0,
+		);
+		f.bridge.stop();
+		await Promise.all([run, f.bridge.heartbeat]);
+	});
+}
+
+for (const guard of [
+	"events not an array",
+	"more than 128 events",
+	"non-string cursor",
+	"nonboolean hasMore",
+	"nonadvancing hasMore",
+]) {
+	test(`incremental history: ${guard} holds without ACK, reinjection or cursor rewind`, async (t) => {
+		const f = fixture({ delay: () => flush() });
+		t.after(() => f.bridge.stop());
+		f.records.set(claim.message.msg_id, {
+			state: "accepted",
+			message: claim.message,
+			nativeId: "guarded-native",
+		});
+		const proof = [
+			{ type: "user.message", id: "guarded-user", data: { messageId: "guarded-native" } },
+			{ type: "session.idle", id: "guarded-idle", parentId: "guarded-user", data: {} },
+		];
+		const malformed = { events: proof, cursor: "501", hasMore: false, cursorStatus: "ok" };
+		if (guard === "events not an array") {
+			// Strings are iterable: deleting Array.isArray must not pass via an incidental TypeError.
+			malformed.events = "not-an-array";
+			malformed.cursor = "0";
+		} else if (guard === "more than 128 events") {
+			malformed.events = [
+				...Array.from({ length: 127 }, (_, i) => ({
+					type: "tool.execution_complete",
+					id: `unrelated-${i}`,
+					data: {},
+				})),
+				...proof,
+			];
+		} else if (guard === "non-string cursor") {
+			malformed.cursor = undefined;
+		} else if (guard === "nonboolean hasMore") {
+			malformed.hasMore = "false";
+		} else {
+			malformed.cursor = "500";
+			malformed.hasMore = true;
+		}
+		const cursors = [];
+		f.native.rpc.eventLog.tail = async () => ({ cursor: "tail" });
+		f.native.rpc.eventLog.read = async ({ cursor }) => {
+			cursors.push(cursor);
+			if (cursors.length === 1)
+				return { events: [], cursor: "500", hasMore: true, cursorStatus: "ok" };
+			if (cursors.length === 2) return malformed;
+			// A removed guard gets one observable bad read, never an unbounded replay loop.
+			f.bridge.stop();
+			return { events: [], cursor: "501", hasMore: false, cursorStatus: "ok" };
+		};
+		let claims = 0;
+		f.client.claimInbox = async () => {
+			if (claims++ === 0) return { claims: [claim], hold: null };
+			f.bridge.stop();
+			return { claims: [], hold: null };
+		};
+		await f.bridge.run();
+		assert.deepEqual(cursors, [undefined, "500"]);
+		assert.equal(f.reports.filter(({ kind }) => kind === "receive-held").length, 1);
+		assert.equal(f.trace.includes("ack"), false);
+		assert.equal(f.trace.includes("send"), false);
+		assert.equal(f.trace.includes("retry-intent"), false);
 	});
 }

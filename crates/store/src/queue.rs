@@ -412,7 +412,7 @@ impl Queue for SqliteQueue {
             "SELECT id, kind, serial_key, payload, dedupe_key, attempt, outcome FROM jobs \
              WHERE state = 'failed' AND kind IN (SELECT value FROM json_each(?1)) \
                AND outcome IN ('undelivered:lease-exhausted', 'undelivered:harness-swallowed', \
-                               'undelivered:operator-released') ORDER BY id",
+                               'undelivered:operator-released', 'undelivered:native-receiver-unavailable') ORDER BY id",
         )
         .bind(kinds)
         .fetch_all(&self.pool)
@@ -423,6 +423,9 @@ impl Queue for SqliteQueue {
                 let outcome = match row.try_get::<&str, _>("outcome").map_err(adapter_error)? {
                     "undelivered:lease-exhausted" => DeliveryFailure::LeaseExhausted,
                     "undelivered:harness-swallowed" => DeliveryFailure::HarnessSwallowed,
+                    "undelivered:native-receiver-unavailable" => {
+                        DeliveryFailure::NativeReceiverUnavailable
+                    }
                     _ => DeliveryFailure::OperatorReleased,
                 };
                 Ok(ParkedDelivery {
@@ -432,6 +435,32 @@ impl Queue for SqliteQueue {
                 })
             })
             .collect()
+    }
+
+    async fn recover_native_delivery(&self, job: JobId, recipient: &SeatId) -> Result<bool> {
+        require_current_schema(&self.pool).await?;
+        let Ok(id) = i64::try_from(job.0) else {
+            return Ok(false);
+        };
+        let mut tx = self.begin_write().await?;
+        let changed = sqlx::query(
+            "UPDATE jobs SET state = 'pending', worker = NULL, claimed_at = NULL, \
+                 acked_at = NULL, outcome = NULL, attempt = attempt + 1, not_before = unixepoch() \
+             WHERE id = ?1 AND serial_key = ?2 AND kind = 'delivery:' || serial_key \
+               AND state = 'failed' AND outcome = 'undelivered:native-receiver-unavailable' \
+               AND NOT EXISTS (SELECT 1 FROM jobs live WHERE live.id != jobs.id \
+                   AND live.state IN ('pending', 'running') AND live.dedupe_key = jobs.dedupe_key) \
+               AND NOT EXISTS (SELECT 1 FROM delivered_messages \
+                   WHERE recipient = jobs.serial_key AND msg_id = jobs.dedupe_key)",
+        )
+        .bind(id)
+        .bind(recipient.as_str())
+        .execute(&mut *tx)
+        .await
+        .map_err(adapter_error)?
+        .rows_affected();
+        tx.commit().await.map_err(adapter_error)?;
+        Ok(changed == 1)
     }
 
     async fn park_delivery(
@@ -449,14 +478,18 @@ impl Queue for SqliteQueue {
         let mut tx = self.begin_write().await?;
         let row = sqlx::query(
             "UPDATE jobs SET state = 'failed', outcome = ?4, acked_at = unixepoch() \
-             WHERE id = ?1 AND state = 'running' AND serial_key = ?2 \
+             WHERE id = ?1 AND serial_key = ?2 \
+               AND (state = 'running' OR (state = 'pending' AND ?4 = 'undelivered:native-receiver-unavailable')) \
                AND kind = 'delivery:' || serial_key AND attempt = ?3 \
                AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.command') END IS NULL \
+               AND (?4 != 'undelivered:native-receiver-unavailable' OR state != 'running' \
+                   OR worker != 'native-cli:' || serial_key OR claimed_at <= unixepoch() - ?5) \
                AND NOT EXISTS (SELECT 1 FROM jobs earlier \
                    WHERE earlier.serial_key = jobs.serial_key AND earlier.id < jobs.id \
                      AND earlier.state IN ('pending', 'running')) \
              RETURNING kind, serial_key, payload, dedupe_key, attempt",
         ).bind(id).bind(recipient.as_str()).bind(i64::from(attempt)).bind(evidence.outcome.as_str())
+            .bind(self.claim_lease_secs)
             .fetch_optional(&mut *tx).await.map_err(adapter_error)?;
         let job = row.as_ref().map(decode_job).transpose()?;
         let mut events = Vec::new();

@@ -984,6 +984,86 @@ async fn extension_short_lease_excludes_controls_and_stale_operator_attempts() {
 }
 
 #[tokio::test]
+async fn native_receiver_parking_and_manual_recovery_preserve_body_and_history() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.unwrap();
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).unwrap();
+    let spine = pij_store::SqliteSpine::new(pool.clone());
+    let recipient = SeatId::from("pij-reader");
+    let kinds = [String::from("delivery:pij-reader")];
+    let body = extension_body_job(&kinds[0], recipient.as_str(), "native-manual");
+    let id = queue.enqueue(body.clone()).await.unwrap();
+    let evidence = pij_core::ports::ParkingEvidence {
+        outcome: pij_core::model::DeliveryFailure::NativeReceiverUnavailable,
+        reason: "native-extension-unavailable",
+        at: 42,
+    };
+    let (parked, events) = queue
+        .park_delivery(id, &recipient, 0, &evidence, &spine)
+        .await
+        .unwrap();
+    assert_eq!(
+        parked,
+        Some(body.clone()),
+        "unclaimed mail must park without a fake claim"
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.kind == "delivery.parked")
+            .count(),
+        1
+    );
+    assert!(
+        queue
+            .claim(&kinds, recipient.as_str())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        !queue
+            .recover_native_delivery(id, &"someone-else".into())
+            .await
+            .unwrap()
+    );
+    assert!(queue.recover_native_delivery(id, &recipient).await.unwrap());
+    assert!(!queue.recover_native_delivery(id, &recipient).await.unwrap());
+    let (claimed_id, claimed) = queue
+        .claim(&kinds, "native-cli:pij-reader")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(claimed_id, id);
+    assert_eq!(claimed.payload, body.payload);
+    assert_eq!(claimed.attempt, 1);
+    assert!(
+        queue
+            .park_delivery(id, &recipient, 1, &evidence, &spine)
+            .await
+            .unwrap()
+            .0
+            .is_none(),
+        "a manual reader owns its ordinary claim lease while acknowledging"
+    );
+    queue
+        .ack_delivery(id, DeliveryOrigin::ReaderRead)
+        .await
+        .unwrap();
+    assert!(queue.peek_parked(&kinds).await.unwrap().is_empty());
+    assert!(!queue.recover_native_delivery(id, &recipient).await.unwrap());
+    let history: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM spine_events WHERE kind = 'delivery.parked'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        history, 1,
+        "manual recovery preserves the original parking evidence"
+    );
+}
+
+#[tokio::test]
 async fn delivery_enqueue_returns_the_persisted_not_before_after_backoff() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.expect("open");

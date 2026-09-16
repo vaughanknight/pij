@@ -2003,6 +2003,13 @@ mod tests {
         ) -> pij_core::error::Result<pij_core::ports::ReleaseOutcome> {
             self.inner.release_deferred(job).await
         }
+        async fn recover_native_delivery(
+            &self,
+            job: JobId,
+            recipient: &SeatId,
+        ) -> pij_core::error::Result<bool> {
+            self.inner.recover_native_delivery(job, recipient).await
+        }
         async fn claim_extension(
             &self,
             kinds: &[String],
@@ -2052,6 +2059,16 @@ mod tests {
         let tmux = Arc::new(FakeTmux::new());
         let interaction = Arc::new(InteractionGate::new(Arc::clone(&tmux) as Arc<dyn TmuxPort>));
         let event_bus = Arc::new(EventBus::new(Arc::new(FakeSpine::new()), 16).expect("event bus"));
+        let delivery = Arc::new(
+            crate::delivery::DeliveryService::new(
+                registry.clone(),
+                queue.clone(),
+                transport.clone(),
+                interaction.clone(),
+                event_bus.clone(),
+            )
+            .expect("delivery service"),
+        );
         let worker = Arc::new(
             DrainWorker::new(
                 Arc::clone(&registry) as Arc<dyn Registry>,
@@ -2089,7 +2106,7 @@ mod tests {
 
         let interval = crate::lifecycle::TickInterval::new(Duration::from_secs(1))
             .expect("validate production drain interval");
-        let loop_ = crate::start_resilient_delivery_drain(worker, interval);
+        let loop_ = crate::start_resilient_delivery_drain(worker, delivery, interval);
         tokio::task::yield_now().await;
         tokio::time::advance(Duration::from_secs(1)).await;
         queue.ack_called.notified().await;

@@ -289,9 +289,25 @@ impl DaemonClient {
     }
 
     /// Read at most one inbox message and acknowledge only after decoding.
-    pub async fn inbox(&self, seat: &SeatId, wait: bool) -> Envelope<Vec<Msg>> {
-        let claimed: Envelope<Vec<InboxClaim>> = self
-            .execute(
+    pub async fn inbox(
+        &self,
+        seat: &SeatId,
+        wait: bool,
+        caller: &CallerContext,
+    ) -> Envelope<Vec<Msg>> {
+        let native_cli = caller.copilot_session.is_some();
+        let claimed: Envelope<Vec<InboxClaim>> = if native_cli {
+            self.post(
+                "pij inbox",
+                "/v1/shim/inbox",
+                &serde_json::json!({
+                    "argv": if wait { vec!["inbox", "--wait"] } else { vec!["inbox"] },
+                    "caller": caller,
+                }),
+            )
+            .await
+        } else {
+            self.execute(
                 "pij inbox",
                 self.http
                     .get(format!("{}/v1/inbox", self.base_url))
@@ -300,7 +316,8 @@ impl DaemonClient {
                         ("wait", if wait { "true" } else { "false" }),
                     ]),
             )
-            .await;
+            .await
+        };
         if !claimed.ok {
             return retype_envelope(claimed);
         }
@@ -322,16 +339,29 @@ impl DaemonClient {
         let Some(claim) = claims.first() else {
             return Envelope::ok("pij inbox", messages);
         };
-        let acknowledgement = InboxAckRequest {
-            delivery_outcome: None,
-            seat: seat.clone(),
-            job_id: claim.job_id,
-            native: Default::default(),
-            control_outcome: None,
+        let acked: Envelope<serde_json::Value> = if native_cli {
+            self.post(
+                "pij inbox",
+                "/v1/shim/inbox/ack",
+                &serde_json::json!({
+                    "job_id": claim.job_id, "caller": caller,
+                }),
+            )
+            .await
+        } else {
+            self.post(
+                "pij inbox",
+                "/v1/inbox/ack",
+                &InboxAckRequest {
+                    delivery_outcome: None,
+                    seat: seat.clone(),
+                    job_id: claim.job_id,
+                    native: Default::default(),
+                    control_outcome: None,
+                },
+            )
+            .await
         };
-        let acked: Envelope<pij_core::model::JobId> = self
-            .post("pij inbox", "/v1/inbox/ack", &acknowledgement)
-            .await;
         let mut result = Envelope::ok("pij inbox", messages);
         if !acked.ok {
             result.meta = Some(format!(

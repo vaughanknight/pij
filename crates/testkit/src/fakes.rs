@@ -690,6 +690,37 @@ impl Queue for FakeQueue {
             .collect())
     }
 
+    async fn recover_native_delivery(&self, id: JobId, recipient: &SeatId) -> Result<bool> {
+        let mut state = self.state.lock().expect("fake queue mutex");
+        let Some(index) = state.parked.iter().position(|row| {
+            row.job_id == id
+                && row.job.serial_key == recipient.as_str()
+                && row.outcome == pij_core::model::DeliveryFailure::NativeReceiverUnavailable
+        }) else {
+            return Ok(false);
+        };
+        let key = &state.parked[index].job.dedupe_key;
+        if state.live.iter().any(|(_, job)| &job.dedupe_key == key)
+            || state
+                .claimed
+                .values()
+                .any(|(job, _)| &job.dedupe_key == key)
+            || state
+                .delivered
+                .iter()
+                .any(|(seat, msg, _)| seat == recipient.as_str() && msg == key)
+        {
+            return Ok(false);
+        }
+        let mut row = state.parked.remove(index);
+        row.job.attempt = row.job.attempt.saturating_add(1);
+        state.attempts.insert(id.0, row.job.attempt);
+        state.not_before.remove(&id.0);
+        state.live.push((id, row.job));
+        state.live.sort_by_key(|(id, _)| *id);
+        Ok(true)
+    }
+
     async fn park_delivery(
         &self,
         id: JobId,
@@ -700,23 +731,42 @@ impl Queue for FakeQueue {
     ) -> Result<(Option<Job>, Vec<Event>)> {
         let job = {
             let state = self.state.lock().expect("fake queue mutex");
-            let valid = state.claimed.get(&id.0).is_some_and(|(job, _)| {
+            if evidence.outcome == pij_core::model::DeliveryFailure::NativeReceiverUnavailable
+                && state.claimed.get(&id.0).is_some_and(|(_, worker)| {
+                    worker == &format!("native-cli:{recipient}")
+                        && state.claimed_at.get(&id.0).is_some_and(|at| {
+                            state.now.saturating_sub(*at) < Duration::from_secs(300)
+                        })
+                })
+            {
+                return Ok((None, Vec::new()));
+            }
+            let job = state.claimed.get(&id.0).map(|(job, _)| job).or_else(|| {
+                (evidence.outcome == pij_core::model::DeliveryFailure::NativeReceiverUnavailable)
+                    .then(|| state.live.iter().find(|(pending, _)| *pending == id))
+                    .flatten()
+                    .map(|(_, job)| job)
+            });
+            let valid = job.is_some_and(|job| {
                 job.serial_key == recipient.as_str()
                     && job.attempt == attempt
                     && job.kind == format!("delivery:{recipient}")
                     && serde_json::from_str::<serde_json::Value>(&job.payload)
                         .ok()
-                        .is_none_or(|body| {
+                        .is_some_and(|body| {
                             body.get("command").is_none_or(serde_json::Value::is_null)
                         })
             }) && !state
                 .live
                 .iter()
-                .any(|(earlier, job)| earlier < &id && job.serial_key == recipient.as_str());
+                .any(|(earlier, job)| earlier < &id && job.serial_key == recipient.as_str())
+                && !state.claimed.iter().any(|(earlier, (job, _))| {
+                    *earlier < id.0 && job.serial_key == recipient.as_str()
+                });
             if !valid {
                 return Ok((None, Vec::new()));
             }
-            state.claimed[&id.0].0.clone()
+            job.expect("validated live head").clone()
         };
         let mut events = pij_core::delivery::parked_events(id, &job, evidence)?;
         for event in &mut events {
@@ -724,6 +774,7 @@ impl Queue for FakeQueue {
         }
         let mut state = self.state.lock().expect("fake queue mutex");
         state.claimed.remove(&id.0);
+        state.live.retain(|(pending, _)| *pending != id);
         state.acked.push((
             id,
             Outcome::Failed {

@@ -1962,6 +1962,161 @@ async fn native_sqlite_http_hold_release_marker_ack_and_duplicate_contract() {
 }
 
 #[tokio::test]
+async fn native_cli_pane_session_claims_and_acks_without_self_reported_host_tuple() {
+    let store = FreshStore::new();
+    let services = sqlite_services(&store).await;
+    let (mut seat, _) = contract_identity();
+    seat.pane = Some("%native-cli".into());
+    services.registry.put(seat.clone()).await.unwrap();
+    let sent = services
+        .delivery
+        .send("pij-peer".into(), seat.id.clone(), "manual body")
+        .await
+        .unwrap();
+    let queue = services.queue.clone();
+    let delivery = services.delivery.clone();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    let wrong = json!({
+        "TMUX_PANE": seat.pane, "COPILOT_AGENT_SESSION_ID": "another-conversation",
+    });
+    native_http_response(
+        client
+            .post(format!("http://{addr}/v1/shim/inbox"))
+            .json(&json!({"argv":["inbox"], "caller":wrong})),
+        reqwest::StatusCode::BAD_REQUEST,
+    )
+    .await;
+    let caller = json!({
+        "TMUX_PANE": seat.pane, "COPILOT_AGENT_SESSION_ID": seat.harness_session,
+    });
+    let claimed = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/shim/inbox"))
+            .json(&json!({"argv":["inbox"], "caller":caller})),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    let claims: Vec<InboxClaim> = serde_json::from_value(claimed["data"].clone()).unwrap();
+    assert_eq!(claims.len(), 1);
+    assert_eq!(claims[0].message.msg_id, sent.msg_id);
+    assert_eq!(claims[0].message.body, "manual body");
+    native_http_response(
+        client
+            .post(format!("http://{addr}/v1/shim/inbox/ack"))
+            .json(&json!({"job_id":claims[0].job_id, "caller":wrong})),
+        reqwest::StatusCode::BAD_REQUEST,
+    )
+    .await;
+    assert!(
+        queue
+            .claimed_delivery(claims[0].job_id)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    let acked = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/shim/inbox/ack"))
+            .json(&json!({"job_id":claims[0].job_id, "caller":caller})),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(acked["data"], "reader-read");
+    assert!(
+        queue
+            .peek(&[delivery_kind(&seat.id)])
+            .await
+            .unwrap()
+            .is_none()
+    );
+    // An actual receiver lease changes manual admission, not pane attribution.
+    let (_, identity) = contract_identity();
+    delivery
+        .heartbeat_native_receiver(&seat.id, &identity)
+        .await
+        .unwrap();
+    let live_mail = delivery
+        .send("pij-peer".into(), seat.id.clone(), "for live receiver")
+        .await
+        .unwrap();
+    let before = queue.peek(&[delivery_kind(&seat.id)]).await.unwrap();
+    let refused = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/shim/inbox"))
+            .json(&json!({"argv":["inbox"], "caller":caller})),
+        reqwest::StatusCode::CONFLICT,
+    )
+    .await;
+    assert_eq!(refused["ok"], false);
+    assert_eq!(refused["error"], "refused");
+    assert_eq!(refused["details"]["code"], "native-receiver-lease-live");
+    assert_eq!(refused["details"]["retryable"], true);
+    assert!(
+        refused["details"]["expires_in_ms"]
+            .as_u64()
+            .is_some_and(|ms| ms > 0 && ms <= 60_000)
+    );
+    assert!(refused["meta"].as_str().unwrap().contains("lease"));
+    assert_eq!(
+        queue.peek(&[delivery_kind(&seat.id)]).await.unwrap(),
+        before
+    );
+    let extension = delivery
+        .claim_native_inbox(&seat.id, false, &identity)
+        .await
+        .unwrap();
+    assert_eq!(extension.claims[0].message.msg_id, live_mail.msg_id);
+    server.abort();
+}
+
+#[tokio::test]
+async fn native_receiver_heartbeat_http_is_identity_bound_and_independent_of_hold() {
+    let store = FreshStore::new();
+    let services = sqlite_services(&store).await;
+    let (mut seat, identity) = contract_identity();
+    seat.semantic_state = Some(SemanticState::Hold);
+    services.registry.put(seat.clone()).await.unwrap();
+    services
+        .delivery
+        .send("pij-peer".into(), seat.id.clone(), "held mail")
+        .await
+        .unwrap();
+    let queue = services.queue.clone();
+    let before = queue.peek(&[delivery_kind(&seat.id)]).await.unwrap();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    let mut request = json!({
+        "seat":seat.id, "native_session":identity.native_session, "pid":identity.pid,
+        "proc_start":identity.proc_start,
+    });
+    let response = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/inbox/heartbeat"))
+            .json(&request),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(response["data"]["state"], "live");
+    let lease = response["data"]["lease_ms"].as_u64().unwrap();
+    let renewal = response["data"]["renew_after_ms"].as_u64().unwrap();
+    assert!(renewal > 0 && renewal < lease);
+    assert_eq!(
+        queue.peek(&[delivery_kind(&seat.id)]).await.unwrap(),
+        before
+    );
+    request["proc_start"] = json!(identity.proc_start.unwrap() + 1);
+    native_http_response(
+        client
+            .post(format!("http://{addr}/v1/inbox/heartbeat"))
+            .json(&request),
+        reqwest::StatusCode::BAD_REQUEST,
+    )
+    .await;
+    server.abort();
+}
+
+#[tokio::test]
 async fn native_sqlite_malformed_claim_is_held_without_ack() {
     let store = FreshStore::new();
     let services = sqlite_services(&store).await;

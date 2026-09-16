@@ -142,6 +142,13 @@ impl Queue for CountingQueue {
         })
     }
 
+    async fn recover_native_delivery(&self, _job: JobId, _recipient: &SeatId) -> Result<bool> {
+        Err(PijError::Adapter {
+            adapter: "test/counting-queue".into(),
+            message: "enqueue-only fixture cannot recover native deliveries".into(),
+        })
+    }
+
     async fn claim_extension(
         &self,
         _kinds: &[String],

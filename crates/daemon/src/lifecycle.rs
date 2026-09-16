@@ -158,9 +158,25 @@ impl TickLoop {
         F: FnMut() -> Fut + Send + 'static,
         Fut: Future<Output = Result<()>> + Send + 'static,
     {
+        Self::start_validated_with_wake(interval, tick, std::future::pending::<()>)
+    }
+
+    /// Add an application-owned deadline/notification wake without a second task.
+    /// Shutdown and action serialization retain the ordinary scheduler contract.
+    pub(crate) fn start_validated_with_wake<F, Fut, W, Wake>(
+        interval: TickInterval,
+        tick: F,
+        wake: W,
+    ) -> Self
+    where
+        F: FnMut() -> Fut + Send + 'static,
+        Fut: Future<Output = Result<()>> + Send + 'static,
+        W: FnMut() -> Wake + Send + 'static,
+        Wake: Future<Output = ()> + Send + 'static,
+    {
         let (stop, stop_rx) = oneshot::channel();
         let schedule = tokio::time::interval_at(Instant::now() + interval.0, interval.0);
-        let joined = tokio::spawn(run_ticks(stop_rx, schedule, tick));
+        let joined = tokio::spawn(run_ticks(stop_rx, schedule, tick, wake));
         Self { stop, joined }
     }
 
@@ -178,20 +194,24 @@ impl TickLoop {
     }
 }
 
-async fn run_ticks<F, Fut>(
+async fn run_ticks<F, Fut, W, Wake>(
     mut stop_rx: oneshot::Receiver<()>,
     mut schedule: tokio::time::Interval,
     mut tick: F,
+    mut wake: W,
 ) -> Result<()>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<()>>,
+    W: FnMut() -> Wake,
+    Wake: Future<Output = ()>,
 {
     schedule.set_missed_tick_behavior(MissedTickBehavior::Delay);
     loop {
         tokio::select! {
             biased;
             _ = &mut stop_rx => return Ok(()),
+            _ = wake() => tick().await?,
             _ = schedule.tick() => tick().await?,
         }
     }
@@ -284,16 +304,21 @@ mod tests {
             let schedule = tokio::time::interval_at(Instant::now(), Duration::from_secs(1));
             stop.send(()).expect("receiver remains live");
 
-            run_ticks(stop_rx, schedule, {
-                let calls = Arc::clone(&calls);
-                move || {
+            run_ticks(
+                stop_rx,
+                schedule,
+                {
                     let calls = Arc::clone(&calls);
-                    async move {
-                        calls.fetch_add(1, Ordering::SeqCst);
-                        Ok(())
+                    move || {
+                        let calls = Arc::clone(&calls);
+                        async move {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            Ok(())
+                        }
                     }
-                }
-            })
+                },
+                std::future::pending::<()>,
+            )
             .await
             .expect("stop");
         }

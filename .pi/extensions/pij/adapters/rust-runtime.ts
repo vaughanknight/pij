@@ -78,6 +78,7 @@ const PARKED_OUTCOMES = new Set([
 	"undelivered:lease-exhausted",
 	"undelivered:harness-swallowed",
 	"undelivered:operator-released",
+	"undelivered:native-receiver-unavailable",
 ]);
 
 /** How much of an arriving body the announcement shows. */

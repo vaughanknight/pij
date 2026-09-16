@@ -98,9 +98,11 @@ The receiver serializes inbox messages until an owned native terminal event:
 correlated `session.idle` / `session.error`, or a final foreground
 `assistant.message` with no tool requests followed directly by `assistant.turn_end`.
 Unrelated interactions, subagent events, global abort, and an idle-looking pane
-cannot supply consumption or completion. Supported `session.getEvents()` history
-reads recover missing callbacks, backing off from 250ms to 5s only while proof is
-outstanding. Missing or unreadable history holds receiving without an unproven ACK.
+cannot supply consumption or completion. Supported `session.rpc.eventLog.tail()`
+and `.read()` APIs recover missing callbacks in cursor-based pages of at most 128
+durable events, backing off from 250ms to 5s only while proof is outstanding.
+No full `getEvents()` history is loaded. Missing APIs, unreadable pages or expired
+cursors hold receiving without an unproven ACK or reinjection.
 
 If an interrupt removes an accepted envelope before consumption, recovery waits
 for a fresh post-send turn/idle boundary. It requires all three facts: fresh
@@ -133,6 +135,55 @@ ordinary user/assistant interaction before starting its isolated daemon. A
 pre-join SDK/import failure can instead emit extension stderr or a native loader
 error; that is not proof of timeline visibility. No private acceptance-file or
 undocumented log-directory layout is required by the smoke.
+
+### Receiver memory and emergency manual pull
+
+The native receiver snapshots a tail cursor before each new message. Recovery of
+an accepted journal entry walks bounded pages, retains only that message's
+correlation metadata, and never treats old historical boundaries as fresh discard
+proof. Pending observation races do not retain history bodies or accumulate
+listeners for the lifetime of the session.
+
+Receiver presence is separate from the Copilot host's process and Working state.
+The extension renews its receiver lease through `/v1/inbox/heartbeat`, including
+while it waits for completion or operator Hold. The existing claim lease defaults
+to 60 seconds (`PIJ_RS_EXT_CLAIM_LEASE_SECS`); renewal is requested every third of
+that interval. The daemon wakes on receiver deadlines, parks pending/unacknowledged
+native bodies with `undelivered:native-receiver-unavailable`, emits
+`delivery.parked` with reason `native-extension-unavailable`, and refuses later
+sends with the receiver's seat named. It does not silently fall back to tmux.
+
+If only the extension died, run `pij inbox --json` inside the still-live Copilot
+seat's shell. The normal pane/session identity ladder authorizes this explicit
+pull and ACK; a different native session refuses. A live receiver lease refuses
+manual pull with `details.retryable:true` and `details.expires_in_ms`, even if the
+host looks idle or is on Hold. After extension death, wait up to the remaining
+lease (60 seconds by default); already-claimed mail is not manually reachable
+during that window. This protects against competing delivery, not lost mail.
+Once the lease expires or is absent, clear operator Hold and retry. Pending and
+running native bodies are first parked for receiver unavailability, then recovered
+with their original job/message IDs and parking history. Other parked outcomes
+are not recovered. Manual reads never renew extension presence. Paneless consumers
+still require the exact registered native-session/host tuple.
+
+Deploy memory and receiver-lease support together: build/restart the composed
+daemon using the operator-owned lifecycle, then reload/restart affected native
+extensions. No live daemon or global extension link is changed by the isolated
+proof below.
+
+```sh
+just copilot-native-memory-smoke --copilot-bin <official-copilot-launcher> \
+  --copilot-runtime-dir <installed-current-platform-package> \
+  --message-interval-seconds 1
+```
+
+This copies only the specified runtime code into a private cache and pins its
+version; it never copies authentication or touches the global cache. The proof
+uses a real Copilot host/extension and local Rust daemon, a deterministic local
+model, at least 60 MiB/20,000 historical events, 30 delivered messages, ten-second
+receiver RSS samples, extension-only termination, and actual native-shell CLI
+pull. Receipts live under plan 150's evidence directory; private runtime/state
+files are ignored by Git.
 
 Normal startup typing-sensor readiness waits are recorded in extension diagnostics,
 not shown as timeline outages. Inbox acquisition still waits for an available

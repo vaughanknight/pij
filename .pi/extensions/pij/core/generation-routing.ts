@@ -118,7 +118,8 @@ function renderShimSend(payload: unknown): string {
 		typeof outcome === "object" && outcome !== null
 			? (field(outcome, "outcome") ?? "?")
 			: (outcome ?? "?");
-	return `sent (rs) — msg ${text(payload, "msg_id") ?? "?"} — receipt ${String(word)}`;
+	const reason = text(outcome, "reason");
+	return `sent (rs) — msg ${text(payload, "msg_id") ?? "?"} — receipt ${String(word)}${reason === undefined ? "" : ` — ${reason}`}`;
 }
 
 function renderShimInbox(payload: unknown): string {

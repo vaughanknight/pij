@@ -78,6 +78,17 @@ pub enum PijError {
         fix: String,
     },
 
+    /// A manual pull must not compete with an attested native receiver.
+    #[error(
+        "{seat}: native receiver lease is live for another {expires_in_ms} ms — retry manual inbox after it expires"
+    )]
+    NativeReceiverLive {
+        /// The inbox whose receiver still owns delivery.
+        seat: SeatId,
+        /// Remaining receiver lease, rounded up to milliseconds.
+        expires_in_ms: u64,
+    },
+
     /// A seat exists but cannot currently receive.
     #[error("{seat}: not deliverable ({reason}) — the message was queued, not lost")]
     NotDeliverable {
