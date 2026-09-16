@@ -5,11 +5,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { FsChannel } from "../../.pi/extensions/pij/adapters/channel.js";
-import { DaemonTmux } from "../../.pi/extensions/pij/adapters/daemon-tmux.js";
-import { FsRegistry } from "../../.pi/extensions/pij/adapters/fs-registry.js";
-import type { SessionDescriptor } from "../../.pi/extensions/pij/core/types.js";
-import { Daemon } from "../../.pi/extensions/pij/daemon.js";
+import { FsChannel } from "../../.omp/extensions/pij/adapters/channel.js";
+import { DaemonTmux } from "../../.omp/extensions/pij/adapters/daemon-tmux.js";
+import { FsRegistry } from "../../.omp/extensions/pij/adapters/fs-registry.js";
+import type { SessionDescriptor } from "../../.omp/extensions/pij/core/types.js";
+import { Daemon } from "../../.omp/extensions/pij/daemon.js";
 
 const CHILD_FLAG = "--child";
 

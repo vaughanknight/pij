@@ -308,7 +308,7 @@ export class PrivateGovernanceFixture {
 			[
 				"--import",
 				pathToFileURL(require.resolve("tsx")).href,
-				join(this.projectRoot, ".pi/extensions/pij/cli.ts"),
+				join(this.projectRoot, ".omp/extensions/pij/cli.ts"),
 				...args,
 				"--json",
 			],

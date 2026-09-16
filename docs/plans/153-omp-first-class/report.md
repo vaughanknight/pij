@@ -224,3 +224,117 @@ Closing snapshot receipt: `✓ snapshot-check: briefing.md SHA matches snapshots
 Existing advisories remain: Biome schema 2.0.0 versus CLI 2.4.14; report-only package audit flags `git:github.com/ghoseb/pi-askuserquestion` (aggregate fail, 4 fail/13 warn); C11 warns about missing `Pij-Prime` in historical commits `7bec9160`, `8dd9a115`, and `bddccbe4`. No package changes or history rewrites.
 
 Encoded improvement: F1's pathspec-aware brake fixture now fails on the exact source-home regression the old fake hid. Observation `DL-003` is retained in `.harness/temp/agent/session-buffer.md` for prime-owned harvest. No deployed skills, main-checkout dependencies, or plan-151/152 runtime logic were changed. No push, PR, or merge.
+
+## Follow-up: self-check selector
+
+Baseline `eb9d00c3995f79aefb30102f570175a459f4d83b`, branch `153-followup-selfcheck-selector`. This corrects the earlier self-check proof claim: its exit was zero, but the Windows focused stage ran no files. The full-suite count did not establish that this separate stage exercised anything.
+
+### RED — actual current stage
+
+Before source changes, `just windows-compat` exited **0** with:
+
+```text
+=== windows-compat: focused-tests ===
+> vitest run .pi/extensions/pij/adapters/channel.test.ts .pi/extensions/pij/adapters/fakes.test.ts .pi/extensions/pij/adapters/fs-registry.test.ts .pi/extensions/pij/cli.inbox.integration.test.ts
+No test files found, exiting with code 0
+filter: .pi/extensions/pij/adapters/channel.test.ts, .pi/extensions/pij/adapters/fakes.test.ts, .pi/extensions/pij/adapters/fs-registry.test.ts, .pi/extensions/pij/cli.inbox.integration.test.ts
+include: .omp/extensions/**/*.test.ts, .pi/extensions/**/*.test.ts, harness/**/*.test.ts, skills/**/*.test.ts
+exclude:  node_modules, .pi/extensions/pij/**, .pi/git, .pi/npm
+windows-compat: all portable stages passed.
+```
+
+The project-wide `passWithNoTests: true` laundered the excluded discovery-symlink selectors into success. The focused stage now passes Vitest's native `--passWithNoTests=false`; no output parser or duplicated test discovery. The global setting is unchanged.
+
+### Selector inventory and changes
+
+Searched `justfile`, `harness/scripts`, and then `harness/driver` for both `.pi/extensions/pij` and `.omp/extensions/pij`, including paths assembled from separate string components.
+
+| File | Change |
+|---|---|
+| `harness/scripts/windows-compat.ts` | Four focused test selectors now use `.omp/extensions/pij`; explicit fail-on-empty flag. |
+| `harness/scripts/pane-signals-smoke.ts` | Five source imports use the canonical home. |
+| `harness/scripts/pij-cli.cjs` | Executable CLI source selection uses `.omp`. |
+| `harness/scripts/step-on-probe.ts` | OMP's explicit `-e` entrypoint uses `.omp`. |
+| `harness/driver/governance-fixture.ts` | Public CLI fixture selects the canonical source. |
+| `harness/driver/governance-external.ts` | External host selects the canonical CLI URL. |
+| `harness/driver/tmux.ts` | Shared tmux primitive import uses the canonical home. |
+| `harness/scripts/windows-compat.test.ts` | New regression executes the actual stage and Vitest in an empty temporary project. |
+
+`justfile` contained no literal Pij source selector and is unchanged. Remaining `.pi` references are intentional: the legacy bounce invocation parser, the **additional discovery-symlink dirty brake**, linker/discovery and portability fixtures, and the stale-install regression fixture. Removing the symlink brake would undo F1; it remains alongside `.omp`, not instead of it.
+
+### Fail-on-empty regression and GREEN
+
+`npm test -- --run harness/scripts/windows-compat.test.ts` before the flag:
+
+```text
+FAIL fails the focused stage when no files match despite project passWithNoTests
+AssertionError: expected +0 to be 1
+Test Files  1 failed (1)
+exit 1
+```
+
+The same test after the flag: **1 file / 1 test passed**. It skips unrelated static stages through a fixture npm launcher, runs real Vitest with `passWithNoTests: true` in the temporary project, and requires both the no-files diagnostic and focused-stage **exit 1**. Temporary projects are removed in `afterEach`.
+
+The first corrected `just windows-compat` run exited **0**, selecting actual files:
+
+```text
+=== windows-compat: focused-tests ===
+> vitest run --passWithNoTests=false .omp/extensions/pij/adapters/channel.test.ts .omp/extensions/pij/adapters/fakes.test.ts .omp/extensions/pij/adapters/fs-registry.test.ts .omp/extensions/pij/cli.inbox.integration.test.ts
+Test Files  3 passed | 1 skipped (4)
+     Tests  67 passed | 19 skipped (86)
+windows-compat: all portable stages passed.
+```
+
+This first run was **cold**, not the requested warm proof: the new worktree had no Rust binary, so all 17 private-daemon inbox tests skipped. Dependencies were linked with `just worktree-deps` (358 links); the warm gate builds this worktree's own `target/debug/pij-rs` and sets `PIJ_RS_BIN_REQUIRED=1` to prevent silently skipping the inbox suite.
+
+### Warm self-check
+
+Built with `/Users/jordanknight/.cargo/bin/cargo build -p pij-cli --bin pij-rs`, using the private worktree target directory. `just self-check` ran with `CARGO_TARGET_DIR` set to that directory and `PIJ_RS_BIN_REQUIRED=1`.
+
+Actual warm-stage receipt from the first full gate:
+
+```text
+=== windows-compat: focused-tests ===
+> vitest run --passWithNoTests=false .omp/extensions/pij/adapters/channel.test.ts .omp/extensions/pij/adapters/fakes.test.ts .omp/extensions/pij/adapters/fs-registry.test.ts .omp/extensions/pij/cli.inbox.integration.test.ts
+✓ .omp/extensions/pij/adapters/fakes.test.ts (14 tests)
+✓ .omp/extensions/pij/adapters/channel.test.ts (14 tests | 1 skipped)
+✓ .omp/extensions/pij/adapters/fs-registry.test.ts (41 tests | 1 skipped)
+✓ .omp/extensions/pij/cli.inbox.integration.test.ts (17 tests)
+Test Files  4 passed (4)
+     Tests  84 passed | 2 skipped (86)
+windows-compat: all portable stages passed.
+```
+
+That first full gate nevertheless exited **1** in the later smoke stage:
+
+```text
+smoke: file-watch-notify ... ✗
+"kind": "idle-timeout"
+"message": "waitIdle timed out after 30000ms"
+last output: Cloning into '<worktree>/.pi/git/github.com/ghoseb/pi-askuserquestion'...
+error: Recipe `self-check` failed on line 225 with exit code 1
+```
+
+The other ten smokes passed. The subsequent gate reuses the first-boot package cache; no timeout increase, assertion weakening, registration change, or production daemon restart.
+
+**Final warm `just self-check`: exit 0.** The requested Windows-focused excerpt from that successful gate:
+
+```text
+=== windows-compat: focused-tests ===
+Test Files  4 passed (4)
+     Tests  84 passed | 2 skipped (86)
+windows-compat: all portable stages passed.
+```
+
+The successful full gate also reported:
+
+```text
+Test Files  244 passed | 4 skipped (248)
+     Tests  5307 passed | 22 skipped (5329)
+smoke: file-watch-notify ... ✓
+✓ snapshot-check: briefing.md SHA matches snapshots (cdf5f5b25001...)
+```
+
+All **11 smokes passed**. Existing package audit findings remain report-only: `git:github.com/ghoseb/pi-askuserquestion`, 4 fail/13 warn; the Biome schema-version information is unchanged. `node harness/scripts/pij-cli.cjs --help` also exited **0**, exercising the canonical public CLI entrypoint. This is local macOS execution of the portable Windows lane, not a claim of native Windows execution.
+
+The encoded improvement is the fail-on-empty stage plus a real-runner negative regression, not another reminder to inspect logs. Observations `DL-001` and `DL-002` are retained in `.harness/temp/agent/session-buffer.md` for prime-owned harvest. No production daemon mutation, deployed-skill changes, push, PR, or merge.

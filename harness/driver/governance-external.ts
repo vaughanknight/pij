@@ -93,7 +93,7 @@ async function openHost(fixture: PrivateGovernanceFixture, name: string): Promis
 	delete env.TMUX_PANE;
 	delete env.PIJ_SESSION_ID;
 	const loader = pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href;
-	const shim = new URL("../../.pi/extensions/pij/cli.ts", import.meta.url);
+	const shim = new URL("../../.omp/extensions/pij/cli.ts", import.meta.url);
 	const host = fixture.start(
 		process.execPath,
 		[entry, loader, fileURLToPath(shim), "--session-id", session],

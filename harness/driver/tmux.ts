@@ -13,7 +13,7 @@ import {
 	pasteBuffer,
 	pressKey,
 	typeLiteral,
-} from "../../.pi/extensions/pij/adapters/tmux-keys.js";
+} from "../../.omp/extensions/pij/adapters/tmux-keys.js";
 import { DriverBootError, DriverPaneDeadError } from "./errors.js";
 
 // ─── Public types ──────────────────────────────────────────────────────────
