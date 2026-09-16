@@ -1,0 +1,840 @@
+{
+  "version": 1,
+  "label": "baseline-d64fa0e4",
+  "command": [
+    "/opt/homebrew/Cellar/node/24.7.0/bin/node",
+    "--import",
+    "tsx",
+    "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/docs/plans/154-tombstone-lift-all-harnesses/tombstone-lift-live.ts",
+    "--pij-bin",
+    "/tmp/pij-154-baseline-d64fa0e4",
+    "--omp-bin",
+    "/Users/jordanknight/.npm-global/bin/omp",
+    "--receipt",
+    "/tmp/pij-154-live-red-final.json",
+    "--label",
+    "baseline-d64fa0e4",
+    "--allow-recreated-pane-address"
+  ],
+  "started_at": "2026-09-16T05:07:45.920Z",
+  "ended_at": "2026-09-16T05:07:53.182Z",
+  "scope": "recreated pane incarnation, not original physical pane",
+  "status": "behavioral-red",
+  "runtime": {
+    "pij": {
+      "path": "/private/tmp/pij-154-baseline-d64fa0e4",
+      "sha256": "9c4b6d2253d6a58e3353c7f6bdc8d0fbadbf0aeef0ef5aa23376683e4d5c740a"
+    },
+    "omp": {
+      "path": "/Users/jordanknight/.local/bin/omp-18.1.22",
+      "sha256": "e75ea51aa20fa67564150d616afd69062f39e0e5ddb3b765741a0c045062c8eb"
+    },
+    "driver_sha256": "d65c719b1e9a122273af7164db601cafee41c1e223b9852ba796a4e85e0e977e",
+    "extension": {
+      "path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+      "sha256": "fdffa609cc58053be22e40c01e4270a76859b4483ae0c3365ff18e0d3dedbde4",
+      "files": 335
+    },
+    "provider_sha256": "ae0437b8bed6162445970bfd9a16cf89eb838a4914fea9637a8adf284ee1da2c"
+  },
+  "daemon_address": "127.0.0.1:51114",
+  "extension_proxy_address": "127.0.0.1:51115",
+  "registrations": [
+    {
+      "claim": {
+        "id": "pij-interim-tanith",
+        "harness": "omp",
+        "extension_build": "d64fa0e4e3",
+        "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+        "harness_session": "01a0a89d-2e73-7386-94ef-e36dd5c56787",
+        "folder": "/private/tmp/p154-6sGgrf/workspace",
+        "pane": "%0",
+        "pid": 99334,
+        "proc_start": 20260916150746,
+        "actual_model_observed": true,
+        "actual_model": "p154/pij-native-fixture",
+        "relay": false
+      },
+      "http_status": 200,
+      "envelope": {
+        "ok": true,
+        "command": "pij register",
+        "v": 2,
+        "data": {
+          "id": "pij-interim-tanith",
+          "harness": "omp",
+          "session": "01a0a89d-2e73-7386-94ef-e36dd5c56787",
+          "extension_build": "d64fa0e4e3",
+          "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+          "pane": "%0",
+          "proc": {
+            "pid": 99334,
+            "proc_start": 20260916150746
+          },
+          "folder": "/private/tmp/p154-6sGgrf/workspace",
+          "state": "idle",
+          "semantic_state": null,
+          "role": null,
+          "parent": null,
+          "relay": false,
+          "native_extension_delivery": false,
+          "binding": "created",
+          "proc_source": "pane",
+          "typing_grace_ms": 60000
+        }
+      }
+    },
+    {
+      "claim": {
+        "id": "pij-interim-tanith",
+        "harness": "omp",
+        "extension_build": "d64fa0e4e3",
+        "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+        "harness_session": "01a0a89d-2e73-7386-94ef-e36dd5c56787",
+        "folder": "/private/tmp/p154-6sGgrf/workspace",
+        "pane": "%0",
+        "pid": 2128,
+        "proc_start": 20260916150749,
+        "actual_model_observed": true,
+        "actual_model": "p154/pij-native-fixture",
+        "relay": false
+      },
+      "http_status": 200,
+      "envelope": {
+        "ok": true,
+        "command": "pij register",
+        "v": 2,
+        "data": {
+          "id": "pij-interim-tanith",
+          "harness": "omp",
+          "session": "01a0a89d-2e73-7386-94ef-e36dd5c56787",
+          "extension_build": "d64fa0e4e3",
+          "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+          "pane": "%0",
+          "proc": {
+            "pid": 2128,
+            "proc_start": 20260916150749
+          },
+          "folder": "/private/tmp/p154-6sGgrf/workspace",
+          "state": "idle",
+          "semantic_state": null,
+          "role": null,
+          "parent": null,
+          "relay": false,
+          "tombstoned_at": 1789535269571,
+          "tombstone_reason": "observed-dead",
+          "native_extension_delivery": false,
+          "binding": "rebound",
+          "proc_source": "pane",
+          "typing_grace_ms": 60000
+        }
+      }
+    },
+    {
+      "claim": {
+        "id": "pij-gradual-qatux",
+        "harness": "omp",
+        "extension_build": "d64fa0e4e3",
+        "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+        "harness_session": "01a0a89d-3946-75f2-ac06-7fda19e6b0a8",
+        "folder": "/private/tmp/p154-6sGgrf/workspace",
+        "pane": "%2",
+        "pid": 3285,
+        "proc_start": 20260916150750,
+        "actual_model_observed": true,
+        "actual_model": "p154/pij-native-fixture",
+        "relay": false
+      },
+      "http_status": 200,
+      "envelope": {
+        "ok": true,
+        "command": "pij register",
+        "v": 2,
+        "data": {
+          "id": "pij-gradual-qatux",
+          "harness": "omp",
+          "session": "01a0a89d-3946-75f2-ac06-7fda19e6b0a8",
+          "extension_build": "d64fa0e4e3",
+          "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+          "pane": "%2",
+          "proc": {
+            "pid": 3285,
+            "proc_start": 20260916150750
+          },
+          "folder": "/private/tmp/p154-6sGgrf/workspace",
+          "state": "idle",
+          "semantic_state": null,
+          "role": null,
+          "parent": null,
+          "relay": false,
+          "native_extension_delivery": false,
+          "binding": "created",
+          "proc_source": "pane",
+          "typing_grace_ms": 60000
+        }
+      }
+    },
+    {
+      "claim": {
+        "id": "pij-interim-tanith",
+        "harness": "omp",
+        "extension_build": "d64fa0e4e3",
+        "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+        "harness_session": "01a0a89d-3e53-7033-90a8-38ef69fdff27",
+        "folder": "/private/tmp/p154-6sGgrf/workspace",
+        "pane": "%0",
+        "pid": 4281,
+        "proc_start": 20260916150752,
+        "actual_model_observed": true,
+        "actual_model": "p154/pij-native-fixture",
+        "relay": false
+      },
+      "http_status": 200,
+      "envelope": {
+        "ok": true,
+        "command": "pij register",
+        "v": 2,
+        "data": {
+          "id": "pij-interim-tanith",
+          "harness": "omp",
+          "session": "01a0a89d-3e53-7033-90a8-38ef69fdff27",
+          "extension_build": "d64fa0e4e3",
+          "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+          "pane": "%0",
+          "proc": {
+            "pid": 4281,
+            "proc_start": 20260916150752
+          },
+          "folder": "/private/tmp/p154-6sGgrf/workspace",
+          "state": "idle",
+          "semantic_state": null,
+          "role": null,
+          "parent": null,
+          "relay": false,
+          "tombstoned_at": 1789535269571,
+          "tombstone_reason": "observed-dead",
+          "native_extension_delivery": false,
+          "binding": "rebound",
+          "proc_source": "pane",
+          "typing_grace_ms": 60000
+        }
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "successful_resume_has_no_tombstone",
+      "passed": false,
+      "actual": {
+        "descriptor": {
+          "id": "pij-interim-tanith",
+          "harness": "omp",
+          "pane": "%0",
+          "pid": 2128,
+          "proc_start": 20260916150749,
+          "folder": "/private/tmp/p154-6sGgrf/workspace",
+          "state": "idle",
+          "semantic_state": null,
+          "role": null,
+          "parent": null,
+          "relay": 0,
+          "tombstoned_at": 1789535269571,
+          "tombstone_reason": "observed-dead",
+          "seq": 6,
+          "spawn_id": null,
+          "model": null,
+          "provider": null,
+          "effort": null,
+          "cross_session_inbound_accept": null,
+          "harness_session": "01a0a89d-2e73-7386-94ef-e36dd5c56787",
+          "native_extension_delivery": 0,
+          "extension_build": "d64fa0e4e3",
+          "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+          "session": "01a0a89d-2e73-7386-94ef-e36dd5c56787",
+          "proc": {
+            "pid": 2128,
+            "proc_start": 20260916150749
+          }
+        },
+        "state": {
+          "ok": true,
+          "command": "pij state",
+          "v": 2,
+          "data": {
+            "id": "pij-interim-tanith",
+            "state": "idle",
+            "badge": "idle",
+            "last_event_at": 1789535270702,
+            "liveness": "active",
+            "pid": 2128,
+            "procStart": 20260916150749,
+            "cwd": "/private/tmp/p154-6sGgrf/workspace",
+            "harness": "omp",
+            "extension_build": "d64fa0e4e3",
+            "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+            "role": null,
+            "parent": null,
+            "boundModel": null,
+            "effort": null,
+            "pane": "%0",
+            "provider": null,
+            "semanticState": null,
+            "machine": "JordansacStudio.localdomain",
+            "tombstonedAt": 1789535269571,
+            "tombstoneReason": "observed-dead",
+            "statusPrev": null,
+            "statusNext": null,
+            "statusAt": null,
+            "statusSeq": null,
+            "statusStale": null,
+            "stateNote": null,
+            "assignment_id": null,
+            "refs": [],
+            "held": [],
+            "unsupported": [
+              {
+                "field": "lifecycle",
+                "why": "rs seats have no pending/bound/dissolved lifecycle field; binding evidence lives in `proc` and is reported through `liveness`"
+              },
+              {
+                "field": "activity",
+                "why": "no native work observation is published yet; mechanical idle is the legacy default, not evidence of inactivity"
+              },
+              {
+                "field": "ageMs",
+                "why": "not emitted; consumers may subtract last_event_at from their epoch-ms clock"
+              },
+              {
+                "field": "liveness:stale",
+                "why": "the card reports a live process-identity probe, not activity staleness; no native activity observer is published yet"
+              },
+              {
+                "field": "daemonLastTickAt",
+                "why": "no per-seat daemon tick is recorded in the rs store"
+              },
+              {
+                "field": "daemonTickAgeMs",
+                "why": "derived from the tick rs does not record"
+              },
+              {
+                "field": "daemonTickStale",
+                "why": "derived from the tick rs does not record"
+              },
+              {
+                "field": "failureReason",
+                "why": "rs records no per-seat failure reason on the descriptor"
+              },
+              {
+                "field": "bindHealth",
+                "why": "the TS pre-bind health classifier has no rs counterpart"
+              },
+              {
+                "field": "degraded",
+                "why": "derived from `bindHealth`"
+              },
+              {
+                "field": "degradedReason",
+                "why": "derived from `bindHealth`"
+              },
+              {
+                "field": "terminal",
+                "why": "rs records termination as `tombstonedAt` + `tombstoneReason`, which this card DOES carry \u2014 a different shape, not a missing fact"
+              },
+              {
+                "field": "watchdog",
+                "why": "rs has no watchdog block on the seat row"
+              }
+            ],
+            "session": "01a0a89d-2e73-7386-94ef-e36dd5c56787",
+            "generation": "rs"
+          }
+        }
+      }
+    },
+    {
+      "name": "seat_resumed_event",
+      "passed": false,
+      "actual": null
+    },
+    {
+      "name": "same_id_peer_message_lands",
+      "passed": false,
+      "actual": {
+        "marker": "PIJ_154_DELIVERY_32c40f8c-6a31-45d6-925a-bde25b56ff34",
+        "peer": "pij-gradual-qatux",
+        "envelope": {
+          "ok": false,
+          "command": "pij send",
+          "v": 2,
+          "meta": "pij-interim-tanith: seat is tombstoned (observed-dead) \u2014 the message was not queued because a tombstoned seat will never receive it",
+          "error": "refused"
+        },
+        "consumed": null
+      }
+    },
+    {
+      "name": "foreign_registration_http400",
+      "passed": false,
+      "actual": {
+        "expected": "seat pij-interim-tanith is retired (observed-dead, 1789535269571); a different session may not take it",
+        "actual": {
+          "at": "2026-09-16T05:07:53.025Z",
+          "claim": {
+            "id": "pij-interim-tanith",
+            "harness": "omp",
+            "extension_build": "d64fa0e4e3",
+            "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+            "harness_session": "01a0a89d-3e53-7033-90a8-38ef69fdff27",
+            "folder": "/private/tmp/p154-6sGgrf/workspace",
+            "pane": "%0",
+            "pid": 4281,
+            "proc_start": 20260916150752,
+            "actual_model_observed": true,
+            "actual_model": "p154/pij-native-fixture",
+            "relay": false
+          },
+          "raw_request": "{\"id\":\"pij-interim-tanith\",\"harness\":\"omp\",\"extension_build\":\"d64fa0e4e3\",\"extension_path\":\"/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij\",\"harness_session\":\"01a0a89d-3e53-7033-90a8-38ef69fdff27\",\"folder\":\"/private/tmp/p154-6sGgrf/workspace\",\"pane\":\"%0\",\"pid\":4281,\"proc_start\":20260916150752,\"actual_model_observed\":true,\"actual_model\":\"p154/pij-native-fixture\",\"relay\":false}",
+          "http_status": 200,
+          "envelope": {
+            "ok": true,
+            "command": "pij register",
+            "v": 2,
+            "data": {
+              "id": "pij-interim-tanith",
+              "harness": "omp",
+              "session": "01a0a89d-3e53-7033-90a8-38ef69fdff27",
+              "extension_build": "d64fa0e4e3",
+              "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+              "pane": "%0",
+              "proc": {
+                "pid": 4281,
+                "proc_start": 20260916150752
+              },
+              "folder": "/private/tmp/p154-6sGgrf/workspace",
+              "state": "idle",
+              "semantic_state": null,
+              "role": null,
+              "parent": null,
+              "relay": false,
+              "tombstoned_at": 1789535269571,
+              "tombstone_reason": "observed-dead",
+              "native_extension_delivery": false,
+              "binding": "rebound",
+              "proc_source": "pane",
+              "typing_grace_ms": 60000
+            }
+          },
+          "raw_response": "{\"ok\":true,\"command\":\"pij register\",\"v\":2,\"data\":{\"id\":\"pij-interim-tanith\",\"harness\":\"omp\",\"session\":\"01a0a89d-3e53-7033-90a8-38ef69fdff27\",\"extension_build\":\"d64fa0e4e3\",\"extension_path\":\"/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij\",\"pane\":\"%0\",\"proc\":{\"pid\":4281,\"proc_start\":20260916150752},\"folder\":\"/private/tmp/p154-6sGgrf/workspace\",\"state\":\"idle\",\"semantic_state\":null,\"role\":null,\"parent\":null,\"relay\":false,\"tombstoned_at\":1789535269571,\"tombstone_reason\":\"observed-dead\",\"native_extension_delivery\":false,\"binding\":\"rebound\",\"proc_source\":\"pane\",\"typing_grace_ms\":60000}}"
+        }
+      }
+    },
+    {
+      "name": "foreign_refusal_preserves_descriptor",
+      "passed": false,
+      "actual": {
+        "before": {
+          "id": "pij-interim-tanith",
+          "harness": "omp",
+          "pane": "%0",
+          "pid": 2128,
+          "proc_start": 20260916150749,
+          "folder": "/private/tmp/p154-6sGgrf/workspace",
+          "state": "idle",
+          "semantic_state": null,
+          "role": null,
+          "parent": null,
+          "relay": 0,
+          "tombstoned_at": 1789535269571,
+          "tombstone_reason": "observed-dead",
+          "seq": 6,
+          "spawn_id": null,
+          "model": null,
+          "provider": null,
+          "effort": null,
+          "cross_session_inbound_accept": null,
+          "harness_session": "01a0a89d-2e73-7386-94ef-e36dd5c56787",
+          "native_extension_delivery": 0,
+          "extension_build": "d64fa0e4e3",
+          "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+          "session": "01a0a89d-2e73-7386-94ef-e36dd5c56787",
+          "proc": {
+            "pid": 2128,
+            "proc_start": 20260916150749
+          }
+        },
+        "after": {
+          "id": "pij-interim-tanith",
+          "harness": "omp",
+          "pane": "%0",
+          "pid": 4281,
+          "proc_start": 20260916150752,
+          "folder": "/private/tmp/p154-6sGgrf/workspace",
+          "state": "idle",
+          "semantic_state": null,
+          "role": null,
+          "parent": null,
+          "relay": 0,
+          "tombstoned_at": 1789535269571,
+          "tombstone_reason": "observed-dead",
+          "seq": 9,
+          "spawn_id": null,
+          "model": null,
+          "provider": null,
+          "effort": null,
+          "cross_session_inbound_accept": null,
+          "harness_session": "01a0a89d-3e53-7033-90a8-38ef69fdff27",
+          "native_extension_delivery": 0,
+          "extension_build": "d64fa0e4e3",
+          "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+          "session": "01a0a89d-3e53-7033-90a8-38ef69fdff27",
+          "proc": {
+            "pid": 4281,
+            "proc_start": 20260916150752
+          }
+        }
+      }
+    }
+  ],
+  "lifecycle": [
+    {
+      "stage": "persisted-session",
+      "at": "2026-09-16T05:07:49.280Z",
+      "observed": {
+        "type": "message_end",
+        "at": "2026-09-16T05:07:49.248Z",
+        "pid": 99334,
+        "launch": "initial",
+        "session": "01a0a89d-2e73-7386-94ef-e36dd5c56787",
+        "session_file": "/tmp/p154-6sGgrf/sessions/2026-09-16T05-07-48-467Z_01a0a89d-2e73-7386-94ef-e36dd5c56787.jsonl",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "PIJ_NATIVE_OBSERVED"
+            }
+          ],
+          "api": "openai-completions",
+          "provider": "p154",
+          "model": "pij-native-fixture",
+          "usage": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 0,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "stop",
+          "timestamp": 1789535269239,
+          "responseId": "chatcmpl-f5f2548a-9dbd-493e-9b5d-991cc5d833bc",
+          "duration": 5.941041999999925,
+          "ttft": 5.507333999999901,
+          "completedAt": 1789535269248
+        }
+      },
+      "sha256": "b66bba7db2ccbfd5f6ee144a500383d64004be58a1367aa06e7e1c3b4ea815e0"
+    },
+    {
+      "stage": "process-death",
+      "at": "2026-09-16T05:07:49.417Z",
+      "pane": "%0",
+      "pid": 99334,
+      "signal": "SIGKILL",
+      "process_before": "99334 99166 Wed Sep 16 15:07:46 2026     /Users/jordanknight/.local/bin/omp-18.1.22 --no-extensions -e /tmp/p154-6sGgrf/observe.mjs -e /Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij/index.ts --no-skills --no-rules --no-title --no-tools --no-lsp --no-pty --thinking off --model p154/pij-native-fixture --session-dir /tmp/p154-6sGgrf/sessions --config /tmp/p154-6sGgrf/config.yml\n",
+      "terminal_exit": "1||kill",
+      "absent_process_exit": 1
+    },
+    {
+      "stage": "canonical-sweep",
+      "at": "2026-09-16T05:07:49.638Z",
+      "descriptor": {
+        "id": "pij-interim-tanith",
+        "harness": "omp",
+        "pane": "%0",
+        "pid": 99334,
+        "proc_start": 20260916150746,
+        "folder": "/private/tmp/p154-6sGgrf/workspace",
+        "state": "idle",
+        "semantic_state": null,
+        "role": null,
+        "parent": null,
+        "relay": 0,
+        "tombstoned_at": 1789535269571,
+        "tombstone_reason": "observed-dead",
+        "seq": 5,
+        "spawn_id": null,
+        "model": null,
+        "provider": null,
+        "effort": null,
+        "cross_session_inbound_accept": null,
+        "harness_session": "01a0a89d-2e73-7386-94ef-e36dd5c56787",
+        "native_extension_delivery": 0,
+        "extension_build": "d64fa0e4e3",
+        "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+        "session": "01a0a89d-2e73-7386-94ef-e36dd5c56787",
+        "proc": {
+          "pid": 99334,
+          "proc_start": 20260916150746
+        }
+      },
+      "panes": "%1\n"
+    },
+    {
+      "stage": "resumed-state",
+      "at": "2026-09-16T05:07:50.809Z",
+      "descriptor": {
+        "id": "pij-interim-tanith",
+        "harness": "omp",
+        "pane": "%0",
+        "pid": 2128,
+        "proc_start": 20260916150749,
+        "folder": "/private/tmp/p154-6sGgrf/workspace",
+        "state": "idle",
+        "semantic_state": null,
+        "role": null,
+        "parent": null,
+        "relay": 0,
+        "tombstoned_at": 1789535269571,
+        "tombstone_reason": "observed-dead",
+        "seq": 6,
+        "spawn_id": null,
+        "model": null,
+        "provider": null,
+        "effort": null,
+        "cross_session_inbound_accept": null,
+        "harness_session": "01a0a89d-2e73-7386-94ef-e36dd5c56787",
+        "native_extension_delivery": 0,
+        "extension_build": "d64fa0e4e3",
+        "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+        "session": "01a0a89d-2e73-7386-94ef-e36dd5c56787",
+        "proc": {
+          "pid": 2128,
+          "proc_start": 20260916150749
+        }
+      },
+      "envelope": {
+        "ok": true,
+        "command": "pij state",
+        "v": 2,
+        "data": {
+          "id": "pij-interim-tanith",
+          "state": "idle",
+          "badge": "idle",
+          "last_event_at": 1789535270702,
+          "liveness": "active",
+          "pid": 2128,
+          "procStart": 20260916150749,
+          "cwd": "/private/tmp/p154-6sGgrf/workspace",
+          "harness": "omp",
+          "extension_build": "d64fa0e4e3",
+          "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+          "role": null,
+          "parent": null,
+          "boundModel": null,
+          "effort": null,
+          "pane": "%0",
+          "provider": null,
+          "semanticState": null,
+          "machine": "JordansacStudio.localdomain",
+          "tombstonedAt": 1789535269571,
+          "tombstoneReason": "observed-dead",
+          "statusPrev": null,
+          "statusNext": null,
+          "statusAt": null,
+          "statusSeq": null,
+          "statusStale": null,
+          "stateNote": null,
+          "assignment_id": null,
+          "refs": [],
+          "held": [],
+          "unsupported": [
+            {
+              "field": "lifecycle",
+              "why": "rs seats have no pending/bound/dissolved lifecycle field; binding evidence lives in `proc` and is reported through `liveness`"
+            },
+            {
+              "field": "activity",
+              "why": "no native work observation is published yet; mechanical idle is the legacy default, not evidence of inactivity"
+            },
+            {
+              "field": "ageMs",
+              "why": "not emitted; consumers may subtract last_event_at from their epoch-ms clock"
+            },
+            {
+              "field": "liveness:stale",
+              "why": "the card reports a live process-identity probe, not activity staleness; no native activity observer is published yet"
+            },
+            {
+              "field": "daemonLastTickAt",
+              "why": "no per-seat daemon tick is recorded in the rs store"
+            },
+            {
+              "field": "daemonTickAgeMs",
+              "why": "derived from the tick rs does not record"
+            },
+            {
+              "field": "daemonTickStale",
+              "why": "derived from the tick rs does not record"
+            },
+            {
+              "field": "failureReason",
+              "why": "rs records no per-seat failure reason on the descriptor"
+            },
+            {
+              "field": "bindHealth",
+              "why": "the TS pre-bind health classifier has no rs counterpart"
+            },
+            {
+              "field": "degraded",
+              "why": "derived from `bindHealth`"
+            },
+            {
+              "field": "degradedReason",
+              "why": "derived from `bindHealth`"
+            },
+            {
+              "field": "terminal",
+              "why": "rs records termination as `tombstonedAt` + `tombstoneReason`, which this card DOES carry \u2014 a different shape, not a missing fact"
+            },
+            {
+              "field": "watchdog",
+              "why": "rs has no watchdog block on the seat row"
+            }
+          ],
+          "session": "01a0a89d-2e73-7386-94ef-e36dd5c56787",
+          "generation": "rs"
+        }
+      }
+    },
+    {
+      "stage": "peer-delivery",
+      "at": "2026-09-16T05:07:51.848Z",
+      "terminal": "\u2502 requests.                                                                                                                                                    \u2502\n\u2502 To reply or message a peer, call the pij_send tool ({ to, message }) \u2014 your id is stamped automatically. For control, pij_send takes { to, command:          \u2502\n\u2502 \"compact\" | \"new\" | \"reload\" } instead of message. Do NOT shell out to the pij CLI to send.                                                                  \u2502\n\u2502 To observe peers, use the pij CLI: \"pij list --here\" (peers), \"pij tail <id>\" / \"pij state <id>\" (watch one).                                                \u2502\n\u2502                                                                                                                                                              \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\n\n PIJ_NATIVE_OBSERVED                    \n\n\u256d\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502                                                                                                                                                              \u2502\n\u2502 \ud83d\udce6 pij                                                                                                                                                       \u2502\n\u2502                                                                                                                                                              \u2502\n\u2502 You are pij session pij-interim-tanith (PEER). This is context only \u2014 no action is required.                                                                 \u2502\n\u2502 Peers can reach you; their messages arrive inline as \"[pij-rs from <id>]\" on its own line, then the body, then \"[/pij]\". Only those injected messages are    \u2502\n\u2502 live instructions.                                                                                                                                           \u2502\n\u2502 Do NOT read, list, or act on files under your pij data/inbox directory \u2014 they are an internal transport log, not tasks, and replaying them re-runs old       \u2502\n\u2502 requests.                                                                                                                                                    \u2502\n\u2502 To reply or message a peer, call the pij_send tool ({ to, message }) \u2014 your id is stamped automatically. For control, pij_send takes { to, command:          \u2502\n\u2502 \"compact\" | \"new\" | \"reload\" } instead of message. Do NOT shell out to the pij CLI to send.                                                                  \u2502\n\u2502 To observe peers, use the pij CLI: \"pij list --here\" (peers), \"pij tail <id>\" / \"pij state <id>\" (watch one).                                                \u2502\n\u2502                                                                                                                                                              \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\n\n PIJ_NATIVE_OBSERVED                    \n\n                                                                                                                          rs\u00b7pij-interim-tanith \u00b7 ext d64fa0e4e3\n \u03c0 > \u2b22 Plan 154 local deterministic fixture > \ud83d\uddd1 p154-6sGgrf/workspace \u25b6\u2500\u25002%\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u254e\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2503\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500128K\u2500\n\u2570\u2500                                      \nrs pij-interim-tanith \u00b7 ext d64fa0e4e3"
+    },
+    {
+      "stage": "process-death",
+      "at": "2026-09-16T05:07:51.973Z",
+      "pane": "%0",
+      "pid": 2128,
+      "signal": "SIGKILL",
+      "process_before": " 2128  1974 Wed Sep 16 15:07:49 2026     /Users/jordanknight/.local/bin/omp-18.1.22 --no-extensions -e /tmp/p154-6sGgrf/observe.mjs -e /Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij/index.ts --no-skills --no-rules --no-title --no-tools --no-lsp --no-pty --thinking off --model p154/pij-native-fixture --session-dir /tmp/p154-6sGgrf/sessions --config /tmp/p154-6sGgrf/config.yml --resume /tmp/p154-6sGgrf/sessions/2026-09-16T05-07-48-467Z_01a0a89d-2e73-7386-94ef-e36dd5c56787.jsonl\n",
+      "terminal_exit": "1||kill",
+      "absent_process_exit": 1
+    },
+    {
+      "stage": "canonical-sweep",
+      "at": "2026-09-16T05:07:51.981Z",
+      "descriptor": {
+        "id": "pij-interim-tanith",
+        "harness": "omp",
+        "pane": "%0",
+        "pid": 2128,
+        "proc_start": 20260916150749,
+        "folder": "/private/tmp/p154-6sGgrf/workspace",
+        "state": "idle",
+        "semantic_state": null,
+        "role": null,
+        "parent": null,
+        "relay": 0,
+        "tombstoned_at": 1789535269571,
+        "tombstone_reason": "observed-dead",
+        "seq": 6,
+        "spawn_id": null,
+        "model": null,
+        "provider": null,
+        "effort": null,
+        "cross_session_inbound_accept": null,
+        "harness_session": "01a0a89d-2e73-7386-94ef-e36dd5c56787",
+        "native_extension_delivery": 0,
+        "extension_build": "d64fa0e4e3",
+        "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+        "session": "01a0a89d-2e73-7386-94ef-e36dd5c56787",
+        "proc": {
+          "pid": 2128,
+          "proc_start": 20260916150749
+        }
+      },
+      "panes": "%1\n%2\n"
+    }
+  ],
+  "events": [
+    {
+      "type": "event",
+      "machine": "JordansacStudio.localdomain",
+      "cursor": 5,
+      "event": {
+        "v": 1,
+        "at": 1789535269571,
+        "kind": "seat.tombstone",
+        "seat": "pij-interim-tanith",
+        "payload": "{\"observation\":{\"pane\":\"%0\",\"pane_present\":false,\"pid\":99334,\"proc_start\":20260916150746},\"reason\":\"observed-dead\"}"
+      }
+    },
+    {
+      "type": "event",
+      "machine": "JordansacStudio.localdomain",
+      "cursor": 8,
+      "event": {
+        "v": 1,
+        "at": 1789535272326,
+        "kind": "seat.tombstone",
+        "seat": "pij-gradual-qatux",
+        "payload": "{\"observation\":{\"pane\":\"%2\",\"pane_present\":false,\"pid\":3285,\"proc_start\":20260916150750},\"reason\":\"observed-dead\"}"
+      }
+    }
+  ],
+  "teardown": [
+    {
+      "name": "capture remaining owned panes",
+      "ok": true
+    },
+    {
+      "name": "owned tmux server and all panes",
+      "ok": true
+    },
+    {
+      "name": "registration proxy",
+      "ok": true
+    },
+    {
+      "name": "owned native daemon",
+      "ok": true
+    },
+    {
+      "name": "local provider",
+      "ok": true
+    },
+    {
+      "name": "all direct child handles reaped",
+      "ok": true
+    },
+    {
+      "name": "OMP host initial absent",
+      "ok": true
+    },
+    {
+      "name": "OMP host resumed absent",
+      "ok": true
+    },
+    {
+      "name": "OMP host peer absent",
+      "ok": true
+    },
+    {
+      "name": "OMP host foreign absent",
+      "ok": true
+    },
+    {
+      "name": "private root removed",
+      "ok": true
+    }
+  ],
+  "selection": "Omitted repeated polling commands, duplicate registration copies, unrelated event frames and warmup/provider payloads. Kept all registration envelopes, behavioral checks, lifecycle facts, peer-delivery terminal, retirement/resume events and owned teardown."
+}

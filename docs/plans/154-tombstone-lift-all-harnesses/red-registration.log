@@ -1,0 +1,60 @@
+COMMAND: /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --lib retired_ -- --nocapture
+EXIT: 101
+  left: 200
+ right: 400
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test registration::tests::retired_claude_session_resumes_with_bindings ... 
+thread 'registration::tests::retired_claude_session_resumes_with_bindings' (67311537) panicked at crates/daemon/src/registration.rs:1766:9:
+assertion `left == right` failed: Claude retained its tombstone
+  left: Some(154)
+ right: None
+FAILED
+test registration::tests::retired_codex_session_resumes_with_bindings ... 
+thread 'registration::tests::retired_codex_session_resumes_with_bindings' (67311553) panicked at crates/daemon/src/registration.rs:1766:9:
+assertion `left == right` failed: Codex retained its tombstone
+  left: Some(154)
+ right: None
+FAILED
+test registration::tests::retired_omp_session_resumes_with_bindings ... 
+thread 'registration::tests::retired_omp_session_resumes_with_bindings' (67311593) panicked at crates/daemon/src/registration.rs:1766:9:
+assertion `left == right` failed: Omp retained its tombstone
+  left: Some(154)
+ right: None
+FAILED
+test registration::tests::retired_pi_session_resumes_with_bindings ... 
+thread 'registration::tests::retired_pi_session_resumes_with_bindings' (67311638) panicked at crates/daemon/src/registration.rs:1766:9:
+assertion `left == right` failed: Pi retained its tombstone
+  left: Some(154)
+ right: None
+FAILED
+test registration::tests::retired_registration_accepts_spawn_or_observed_process_continuity ... 
+thread 'registration::tests::retired_registration_accepts_spawn_or_observed_process_continuity' (67311690) panicked at crates/daemon/src/registration.rs:1830:13:
+assertion `left == right` failed: spawn
+  left: Some(154)
+ right: None
+FAILED
+test registration::tests::retired_registration_does_not_treat_absence_or_foreign_harness_as_continuity ... 
+thread 'registration::tests::retired_registration_does_not_treat_absence_or_foreign_harness_as_continuity' (67311738) panicked at crates/daemon/src/registration.rs:1699:9:
+Ok((SeatDescriptor { id: SeatId("pij-retired-refusal"), machine: None, badge: None, last_event_at: None, harness: Omp, harness_session: Some("foreign-session"), extension_build: None, extension_path: None, pane: Some("%137"), proc: Some(ProcIdentity { pid: 777, proc_start: 126 }), folder: "/isolated/native-registration", state: Idle, semantic_state: None, role: None, parent: None, relay: false, tombstoned_at: Some(154), tombstone_reason: Some("observed-dead"), cross_session_inbound_accept: None, native_extension_delivery: false, spawn_id: None, model: None, provider: None, effort: None }, PutBinding { inserted: false, previous_proc: Some(ProcIdentity { pid: 4242, proc_start: 126 }) }))
+FAILED
+test registration::tests::retired_session_resume_does_not_replace_recorded_role ... 
+thread 'registration::tests::retired_session_resume_does_not_replace_recorded_role' (67311794) panicked at crates/daemon/src/registration.rs:1765:20:
+saved session revives its address: Runtime(Adapter { adapter: "daemon/registration", message: "E-RS-PARTIAL registration for pij-retired-session persisted but role assertion failed: role assertion refused: E-RS-ARG (pij-retired-session)" })
+FAILED
+
+failures:
+
+failures:
+    http::tests::retired_registration_refuses_foreign_session_without_writing
+    registration::tests::retired_claude_session_resumes_with_bindings
+    registration::tests::retired_codex_session_resumes_with_bindings
+    registration::tests::retired_omp_session_resumes_with_bindings
+    registration::tests::retired_pi_session_resumes_with_bindings
+    registration::tests::retired_registration_accepts_spawn_or_observed_process_continuity
+    registration::tests::retired_registration_does_not_treat_absence_or_foreign_harness_as_continuity
+    registration::tests::retired_session_resume_does_not_replace_recorded_role
+
+test result: FAILED. 1 passed; 8 failed; 0 ignored; 0 measured; 399 filtered out; finished in 0.20s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

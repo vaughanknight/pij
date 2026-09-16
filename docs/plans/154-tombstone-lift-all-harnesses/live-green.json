@@ -1,0 +1,870 @@
+{
+  "version": 1,
+  "label": "final-registration-fix",
+  "command": [
+    "/opt/homebrew/Cellar/node/24.7.0/bin/node",
+    "--import",
+    "tsx",
+    "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/docs/plans/154-tombstone-lift-all-harnesses/tombstone-lift-live.ts",
+    "--pij-bin",
+    "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/target/debug/pij-rs",
+    "--omp-bin",
+    "/Users/jordanknight/.npm-global/bin/omp",
+    "--receipt",
+    "/tmp/pij-154-live-release.json",
+    "--label",
+    "final-registration-fix",
+    "--allow-recreated-pane-address"
+  ],
+  "started_at": "2026-09-16T05:16:59.768Z",
+  "ended_at": "2026-09-16T05:17:07.577Z",
+  "scope": "recreated pane incarnation, not original physical pane",
+  "status": "passed",
+  "runtime": {
+    "pij": {
+      "path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/target/debug/pij-rs",
+      "sha256": "196f82eeab1cd3c3cfd8ae35e8a49816d874b0d51a8ca82905bb2ef0d4c4fee4"
+    },
+    "omp": {
+      "path": "/Users/jordanknight/.local/bin/omp-18.1.22",
+      "sha256": "e75ea51aa20fa67564150d616afd69062f39e0e5ddb3b765741a0c045062c8eb"
+    },
+    "driver_sha256": "d65c719b1e9a122273af7164db601cafee41c1e223b9852ba796a4e85e0e977e",
+    "extension": {
+      "path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+      "sha256": "fdffa609cc58053be22e40c01e4270a76859b4483ae0c3365ff18e0d3dedbde4",
+      "files": 335
+    },
+    "provider_sha256": "ae0437b8bed6162445970bfd9a16cf89eb838a4914fea9637a8adf284ee1da2c"
+  },
+  "daemon_address": "127.0.0.1:58837",
+  "extension_proxy_address": "127.0.0.1:58838",
+  "registrations": [
+    {
+      "claim": {
+        "id": "pij-gravitas-shortfall",
+        "harness": "omp",
+        "extension_build": "d64fa0e4e3",
+        "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+        "harness_session": "01a0a8a5-a2ca-710e-bf59-3187fa60f12c",
+        "folder": "/private/tmp/p154-olUEJs/workspace",
+        "pane": "%0",
+        "pid": 94378,
+        "proc_start": 20260916151700,
+        "actual_model_observed": true,
+        "actual_model": "p154/pij-native-fixture",
+        "relay": false
+      },
+      "http_status": 200,
+      "envelope": {
+        "ok": true,
+        "command": "pij register",
+        "v": 2,
+        "data": {
+          "id": "pij-gravitas-shortfall",
+          "harness": "omp",
+          "session": "01a0a8a5-a2ca-710e-bf59-3187fa60f12c",
+          "extension_build": "d64fa0e4e3",
+          "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+          "pane": "%0",
+          "proc": {
+            "pid": 94378,
+            "proc_start": 20260916151700
+          },
+          "folder": "/private/tmp/p154-olUEJs/workspace",
+          "state": "idle",
+          "semantic_state": null,
+          "role": null,
+          "parent": null,
+          "relay": false,
+          "native_extension_delivery": false,
+          "binding": "created",
+          "proc_source": "pane",
+          "typing_grace_ms": 60000
+        }
+      }
+    },
+    {
+      "claim": {
+        "id": "pij-gravitas-shortfall",
+        "harness": "omp",
+        "extension_build": "d64fa0e4e3",
+        "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+        "harness_session": "01a0a8a5-a2ca-710e-bf59-3187fa60f12c",
+        "folder": "/private/tmp/p154-olUEJs/workspace",
+        "pane": "%0",
+        "pid": 96746,
+        "proc_start": 20260916151703,
+        "actual_model_observed": true,
+        "actual_model": "p154/pij-native-fixture",
+        "relay": false
+      },
+      "http_status": 200,
+      "envelope": {
+        "ok": true,
+        "command": "pij register",
+        "v": 2,
+        "data": {
+          "id": "pij-gravitas-shortfall",
+          "harness": "omp",
+          "session": "01a0a8a5-a2ca-710e-bf59-3187fa60f12c",
+          "extension_build": "d64fa0e4e3",
+          "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+          "pane": "%0",
+          "proc": {
+            "pid": 96746,
+            "proc_start": 20260916151703
+          },
+          "folder": "/private/tmp/p154-olUEJs/workspace",
+          "state": "idle",
+          "semantic_state": null,
+          "role": null,
+          "parent": null,
+          "relay": false,
+          "native_extension_delivery": false,
+          "binding": "rebound",
+          "proc_source": "pane",
+          "typing_grace_ms": 60000
+        }
+      }
+    },
+    {
+      "claim": {
+        "id": "pij-free-bovid",
+        "harness": "omp",
+        "extension_build": "d64fa0e4e3",
+        "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+        "harness_session": "01a0a8a5-ad94-7083-9c52-64fc6759d030",
+        "folder": "/private/tmp/p154-olUEJs/workspace",
+        "pane": "%2",
+        "pid": 97638,
+        "proc_start": 20260916151704,
+        "actual_model_observed": true,
+        "actual_model": "p154/pij-native-fixture",
+        "relay": false
+      },
+      "http_status": 200,
+      "envelope": {
+        "ok": true,
+        "command": "pij register",
+        "v": 2,
+        "data": {
+          "id": "pij-free-bovid",
+          "harness": "omp",
+          "session": "01a0a8a5-ad94-7083-9c52-64fc6759d030",
+          "extension_build": "d64fa0e4e3",
+          "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+          "pane": "%2",
+          "proc": {
+            "pid": 97638,
+            "proc_start": 20260916151704
+          },
+          "folder": "/private/tmp/p154-olUEJs/workspace",
+          "state": "idle",
+          "semantic_state": null,
+          "role": null,
+          "parent": null,
+          "relay": false,
+          "native_extension_delivery": false,
+          "binding": "created",
+          "proc_source": "pane",
+          "typing_grace_ms": 60000
+        }
+      }
+    },
+    {
+      "claim": {
+        "id": "pij-gravitas-shortfall",
+        "harness": "omp",
+        "extension_build": "d64fa0e4e3",
+        "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+        "harness_session": "01a0a8a5-b38e-7497-8714-effa2b3741e0",
+        "folder": "/private/tmp/p154-olUEJs/workspace",
+        "pane": "%0",
+        "pid": 98824,
+        "proc_start": 20260916151706,
+        "actual_model_observed": true,
+        "actual_model": "p154/pij-native-fixture",
+        "relay": false
+      },
+      "http_status": 400,
+      "envelope": {
+        "ok": false,
+        "command": "pij register",
+        "v": 2,
+        "meta": "seat pij-gravitas-shortfall is retired (observed-dead, 1789535826231); a different session may not take it",
+        "error": "refused"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "successful_resume_has_no_tombstone",
+      "passed": true,
+      "actual": {
+        "descriptor": {
+          "id": "pij-gravitas-shortfall",
+          "harness": "omp",
+          "pane": "%0",
+          "pid": 96746,
+          "proc_start": 20260916151703,
+          "folder": "/private/tmp/p154-olUEJs/workspace",
+          "state": "idle",
+          "semantic_state": null,
+          "role": null,
+          "parent": null,
+          "relay": 0,
+          "seq": 6,
+          "spawn_id": null,
+          "model": null,
+          "provider": null,
+          "effort": null,
+          "cross_session_inbound_accept": null,
+          "harness_session": "01a0a8a5-a2ca-710e-bf59-3187fa60f12c",
+          "native_extension_delivery": 0,
+          "extension_build": "d64fa0e4e3",
+          "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+          "session": "01a0a8a5-a2ca-710e-bf59-3187fa60f12c",
+          "proc": {
+            "pid": 96746,
+            "proc_start": 20260916151703
+          }
+        },
+        "state": {
+          "ok": true,
+          "command": "pij state",
+          "v": 2,
+          "data": {
+            "id": "pij-gravitas-shortfall",
+            "state": "idle",
+            "badge": "idle",
+            "last_event_at": 1789535824830,
+            "liveness": "active",
+            "pid": 96746,
+            "procStart": 20260916151703,
+            "cwd": "/private/tmp/p154-olUEJs/workspace",
+            "harness": "omp",
+            "extension_build": "d64fa0e4e3",
+            "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+            "role": null,
+            "parent": null,
+            "boundModel": null,
+            "effort": null,
+            "pane": "%0",
+            "provider": null,
+            "semanticState": null,
+            "machine": "JordansacStudio.localdomain",
+            "tombstonedAt": null,
+            "tombstoneReason": null,
+            "statusPrev": null,
+            "statusNext": null,
+            "statusAt": null,
+            "statusSeq": null,
+            "statusStale": null,
+            "stateNote": null,
+            "assignment_id": null,
+            "refs": [],
+            "held": [],
+            "unsupported": [
+              {
+                "field": "lifecycle",
+                "why": "rs seats have no pending/bound/dissolved lifecycle field; binding evidence lives in `proc` and is reported through `liveness`"
+              },
+              {
+                "field": "activity",
+                "why": "no native work observation is published yet; mechanical idle is the legacy default, not evidence of inactivity"
+              },
+              {
+                "field": "ageMs",
+                "why": "not emitted; consumers may subtract last_event_at from their epoch-ms clock"
+              },
+              {
+                "field": "liveness:stale",
+                "why": "the card reports a live process-identity probe, not activity staleness; no native activity observer is published yet"
+              },
+              {
+                "field": "daemonLastTickAt",
+                "why": "no per-seat daemon tick is recorded in the rs store"
+              },
+              {
+                "field": "daemonTickAgeMs",
+                "why": "derived from the tick rs does not record"
+              },
+              {
+                "field": "daemonTickStale",
+                "why": "derived from the tick rs does not record"
+              },
+              {
+                "field": "failureReason",
+                "why": "rs records no per-seat failure reason on the descriptor"
+              },
+              {
+                "field": "bindHealth",
+                "why": "the TS pre-bind health classifier has no rs counterpart"
+              },
+              {
+                "field": "degraded",
+                "why": "derived from `bindHealth`"
+              },
+              {
+                "field": "degradedReason",
+                "why": "derived from `bindHealth`"
+              },
+              {
+                "field": "terminal",
+                "why": "rs records termination as `tombstonedAt` + `tombstoneReason`, which this card DOES carry \u2014 a different shape, not a missing fact"
+              },
+              {
+                "field": "watchdog",
+                "why": "rs has no watchdog block on the seat row"
+              }
+            ],
+            "session": "01a0a8a5-a2ca-710e-bf59-3187fa60f12c",
+            "generation": "rs"
+          }
+        }
+      }
+    },
+    {
+      "name": "seat_resumed_event",
+      "passed": true,
+      "actual": {
+        "type": "event",
+        "machine": "JordansacStudio.localdomain",
+        "cursor": 7,
+        "event": {
+          "v": 1,
+          "at": 1789535824830,
+          "kind": "seat.resumed",
+          "seat": "pij-gravitas-shortfall",
+          "payload": "{\"new_pane\":\"%0\",\"new_proc\":{\"pid\":96746,\"proc_start\":20260916151703},\"old_pane\":\"%0\",\"old_proc\":{\"pid\":94378,\"proc_start\":20260916151700},\"prior_reason\":\"observed-dead\"}"
+        }
+      }
+    },
+    {
+      "name": "same_id_peer_message_lands",
+      "passed": true,
+      "actual": {
+        "marker": "PIJ_154_DELIVERY_120ce81e-7d28-4da4-b12e-8559c7eb0c41",
+        "peer": "pij-free-bovid",
+        "envelope": {
+          "ok": true,
+          "command": "pij send",
+          "v": 2,
+          "data": {
+            "msg_id": "01a0a8a5-af8a-7192-a7e2-d402707dc72d",
+            "outcome": {
+              "outcome": "queued",
+              "reason": "extension-stream",
+              "next_retry_at": 0
+            },
+            "at": 1789535825803
+          },
+          "meta": "from pij-free-bovid; msg_id 01a0a8a5-af8a-7192-a7e2-d402707dc72d"
+        },
+        "consumed": {
+          "type": "message_end",
+          "at": "2026-09-16T05:17:05.830Z",
+          "pid": 96746,
+          "launch": "resumed",
+          "session": "01a0a8a5-a2ca-710e-bf59-3187fa60f12c",
+          "session_file": "/tmp/p154-olUEJs/sessions/2026-09-16T05-17-02-538Z_01a0a8a5-a2ca-710e-bf59-3187fa60f12c.jsonl",
+          "message": {
+            "role": "custom",
+            "customType": "pij",
+            "content": "[pij-rs from pij-free-bovid]\nPIJ_154_DELIVERY_120ce81e-7d28-4da4-b12e-8559c7eb0c41\n[/pij]",
+            "display": true,
+            "details": {
+              "pijMessageId": "01a0a8a5-af8a-7192-a7e2-d402707dc72d"
+            },
+            "attribution": "agent",
+            "timestamp": 1789535825808
+          }
+        }
+      }
+    },
+    {
+      "name": "foreign_registration_http400",
+      "passed": true,
+      "actual": {
+        "expected": "seat pij-gravitas-shortfall is retired (observed-dead, 1789535826231); a different session may not take it",
+        "actual": {
+          "at": "2026-09-16T05:17:07.347Z",
+          "claim": {
+            "id": "pij-gravitas-shortfall",
+            "harness": "omp",
+            "extension_build": "d64fa0e4e3",
+            "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+            "harness_session": "01a0a8a5-b38e-7497-8714-effa2b3741e0",
+            "folder": "/private/tmp/p154-olUEJs/workspace",
+            "pane": "%0",
+            "pid": 98824,
+            "proc_start": 20260916151706,
+            "actual_model_observed": true,
+            "actual_model": "p154/pij-native-fixture",
+            "relay": false
+          },
+          "raw_request": "{\"id\":\"pij-gravitas-shortfall\",\"harness\":\"omp\",\"extension_build\":\"d64fa0e4e3\",\"extension_path\":\"/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij\",\"harness_session\":\"01a0a8a5-b38e-7497-8714-effa2b3741e0\",\"folder\":\"/private/tmp/p154-olUEJs/workspace\",\"pane\":\"%0\",\"pid\":98824,\"proc_start\":20260916151706,\"actual_model_observed\":true,\"actual_model\":\"p154/pij-native-fixture\",\"relay\":false}",
+          "http_status": 400,
+          "envelope": {
+            "ok": false,
+            "command": "pij register",
+            "v": 2,
+            "meta": "seat pij-gravitas-shortfall is retired (observed-dead, 1789535826231); a different session may not take it",
+            "error": "refused"
+          },
+          "raw_response": "{\"ok\":false,\"command\":\"pij register\",\"v\":2,\"meta\":\"seat pij-gravitas-shortfall is retired (observed-dead, 1789535826231); a different session may not take it\",\"error\":\"refused\"}"
+        }
+      }
+    },
+    {
+      "name": "foreign_refusal_preserves_descriptor",
+      "passed": true,
+      "actual": {
+        "before": {
+          "id": "pij-gravitas-shortfall",
+          "harness": "omp",
+          "pane": "%0",
+          "pid": 96746,
+          "proc_start": 20260916151703,
+          "folder": "/private/tmp/p154-olUEJs/workspace",
+          "state": "idle",
+          "semantic_state": null,
+          "role": null,
+          "parent": null,
+          "relay": 0,
+          "tombstoned_at": 1789535826231,
+          "tombstone_reason": "observed-dead",
+          "seq": 13,
+          "spawn_id": null,
+          "model": null,
+          "provider": null,
+          "effort": null,
+          "cross_session_inbound_accept": null,
+          "harness_session": "01a0a8a5-a2ca-710e-bf59-3187fa60f12c",
+          "native_extension_delivery": 0,
+          "extension_build": "d64fa0e4e3",
+          "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+          "session": "01a0a8a5-a2ca-710e-bf59-3187fa60f12c",
+          "proc": {
+            "pid": 96746,
+            "proc_start": 20260916151703
+          }
+        },
+        "after": {
+          "id": "pij-gravitas-shortfall",
+          "harness": "omp",
+          "pane": "%0",
+          "pid": 96746,
+          "proc_start": 20260916151703,
+          "folder": "/private/tmp/p154-olUEJs/workspace",
+          "state": "idle",
+          "semantic_state": null,
+          "role": null,
+          "parent": null,
+          "relay": 0,
+          "tombstoned_at": 1789535826231,
+          "tombstone_reason": "observed-dead",
+          "seq": 13,
+          "spawn_id": null,
+          "model": null,
+          "provider": null,
+          "effort": null,
+          "cross_session_inbound_accept": null,
+          "harness_session": "01a0a8a5-a2ca-710e-bf59-3187fa60f12c",
+          "native_extension_delivery": 0,
+          "extension_build": "d64fa0e4e3",
+          "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+          "session": "01a0a8a5-a2ca-710e-bf59-3187fa60f12c",
+          "proc": {
+            "pid": 96746,
+            "proc_start": 20260916151703
+          }
+        }
+      }
+    }
+  ],
+  "lifecycle": [
+    {
+      "stage": "persisted-session",
+      "at": "2026-09-16T05:17:03.346Z",
+      "observed": {
+        "type": "message_end",
+        "at": "2026-09-16T05:17:03.299Z",
+        "pid": 94378,
+        "launch": "initial",
+        "session": "01a0a8a5-a2ca-710e-bf59-3187fa60f12c",
+        "session_file": "/tmp/p154-olUEJs/sessions/2026-09-16T05-17-02-538Z_01a0a8a5-a2ca-710e-bf59-3187fa60f12c.jsonl",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "PIJ_NATIVE_OBSERVED"
+            }
+          ],
+          "api": "openai-completions",
+          "provider": "p154",
+          "model": "pij-native-fixture",
+          "usage": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "totalTokens": 0,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0
+            }
+          },
+          "stopReason": "stop",
+          "timestamp": 1789535823290,
+          "responseId": "chatcmpl-1fe5405c-ab36-4a66-ba58-b9ebed962756",
+          "duration": 6.060042000000067,
+          "ttft": 5.619999999999891,
+          "completedAt": 1789535823299
+        }
+      },
+      "sha256": "9131ad37ad5844efe388953d2dfe16ff518c9a7f035f5f5b86652fc968d3a0c8"
+    },
+    {
+      "stage": "process-death",
+      "at": "2026-09-16T05:17:03.470Z",
+      "pane": "%0",
+      "pid": 94378,
+      "signal": "SIGKILL",
+      "process_before": "94378 94231 Wed Sep 16 15:17:00 2026     /Users/jordanknight/.local/bin/omp-18.1.22 --no-extensions -e /tmp/p154-olUEJs/observe.mjs -e /Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij/index.ts --no-skills --no-rules --no-title --no-tools --no-lsp --no-pty --thinking off --model p154/pij-native-fixture --session-dir /tmp/p154-olUEJs/sessions --config /tmp/p154-olUEJs/config.yml\n",
+      "terminal_exit": "1||kill",
+      "absent_process_exit": 1
+    },
+    {
+      "stage": "canonical-sweep",
+      "at": "2026-09-16T05:17:03.788Z",
+      "descriptor": {
+        "id": "pij-gravitas-shortfall",
+        "harness": "omp",
+        "pane": "%0",
+        "pid": 94378,
+        "proc_start": 20260916151700,
+        "folder": "/private/tmp/p154-olUEJs/workspace",
+        "state": "idle",
+        "semantic_state": null,
+        "role": null,
+        "parent": null,
+        "relay": 0,
+        "tombstoned_at": 1789535823721,
+        "tombstone_reason": "observed-dead",
+        "seq": 5,
+        "spawn_id": null,
+        "model": null,
+        "provider": null,
+        "effort": null,
+        "cross_session_inbound_accept": null,
+        "harness_session": "01a0a8a5-a2ca-710e-bf59-3187fa60f12c",
+        "native_extension_delivery": 0,
+        "extension_build": "d64fa0e4e3",
+        "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+        "session": "01a0a8a5-a2ca-710e-bf59-3187fa60f12c",
+        "proc": {
+          "pid": 94378,
+          "proc_start": 20260916151700
+        }
+      },
+      "panes": "%1\n"
+    },
+    {
+      "stage": "resumed-state",
+      "at": "2026-09-16T05:17:04.868Z",
+      "descriptor": {
+        "id": "pij-gravitas-shortfall",
+        "harness": "omp",
+        "pane": "%0",
+        "pid": 96746,
+        "proc_start": 20260916151703,
+        "folder": "/private/tmp/p154-olUEJs/workspace",
+        "state": "idle",
+        "semantic_state": null,
+        "role": null,
+        "parent": null,
+        "relay": 0,
+        "seq": 6,
+        "spawn_id": null,
+        "model": null,
+        "provider": null,
+        "effort": null,
+        "cross_session_inbound_accept": null,
+        "harness_session": "01a0a8a5-a2ca-710e-bf59-3187fa60f12c",
+        "native_extension_delivery": 0,
+        "extension_build": "d64fa0e4e3",
+        "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+        "session": "01a0a8a5-a2ca-710e-bf59-3187fa60f12c",
+        "proc": {
+          "pid": 96746,
+          "proc_start": 20260916151703
+        }
+      },
+      "envelope": {
+        "ok": true,
+        "command": "pij state",
+        "v": 2,
+        "data": {
+          "id": "pij-gravitas-shortfall",
+          "state": "idle",
+          "badge": "idle",
+          "last_event_at": 1789535824830,
+          "liveness": "active",
+          "pid": 96746,
+          "procStart": 20260916151703,
+          "cwd": "/private/tmp/p154-olUEJs/workspace",
+          "harness": "omp",
+          "extension_build": "d64fa0e4e3",
+          "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+          "role": null,
+          "parent": null,
+          "boundModel": null,
+          "effort": null,
+          "pane": "%0",
+          "provider": null,
+          "semanticState": null,
+          "machine": "JordansacStudio.localdomain",
+          "tombstonedAt": null,
+          "tombstoneReason": null,
+          "statusPrev": null,
+          "statusNext": null,
+          "statusAt": null,
+          "statusSeq": null,
+          "statusStale": null,
+          "stateNote": null,
+          "assignment_id": null,
+          "refs": [],
+          "held": [],
+          "unsupported": [
+            {
+              "field": "lifecycle",
+              "why": "rs seats have no pending/bound/dissolved lifecycle field; binding evidence lives in `proc` and is reported through `liveness`"
+            },
+            {
+              "field": "activity",
+              "why": "no native work observation is published yet; mechanical idle is the legacy default, not evidence of inactivity"
+            },
+            {
+              "field": "ageMs",
+              "why": "not emitted; consumers may subtract last_event_at from their epoch-ms clock"
+            },
+            {
+              "field": "liveness:stale",
+              "why": "the card reports a live process-identity probe, not activity staleness; no native activity observer is published yet"
+            },
+            {
+              "field": "daemonLastTickAt",
+              "why": "no per-seat daemon tick is recorded in the rs store"
+            },
+            {
+              "field": "daemonTickAgeMs",
+              "why": "derived from the tick rs does not record"
+            },
+            {
+              "field": "daemonTickStale",
+              "why": "derived from the tick rs does not record"
+            },
+            {
+              "field": "failureReason",
+              "why": "rs records no per-seat failure reason on the descriptor"
+            },
+            {
+              "field": "bindHealth",
+              "why": "the TS pre-bind health classifier has no rs counterpart"
+            },
+            {
+              "field": "degraded",
+              "why": "derived from `bindHealth`"
+            },
+            {
+              "field": "degradedReason",
+              "why": "derived from `bindHealth`"
+            },
+            {
+              "field": "terminal",
+              "why": "rs records termination as `tombstonedAt` + `tombstoneReason`, which this card DOES carry \u2014 a different shape, not a missing fact"
+            },
+            {
+              "field": "watchdog",
+              "why": "rs has no watchdog block on the seat row"
+            }
+          ],
+          "session": "01a0a8a5-a2ca-710e-bf59-3187fa60f12c",
+          "generation": "rs"
+        }
+      }
+    },
+    {
+      "stage": "peer-delivery",
+      "at": "2026-09-16T05:17:05.912Z",
+      "consumed": {
+        "type": "message_end",
+        "at": "2026-09-16T05:17:05.830Z",
+        "pid": 96746,
+        "launch": "resumed",
+        "session": "01a0a8a5-a2ca-710e-bf59-3187fa60f12c",
+        "session_file": "/tmp/p154-olUEJs/sessions/2026-09-16T05-17-02-538Z_01a0a8a5-a2ca-710e-bf59-3187fa60f12c.jsonl",
+        "message": {
+          "role": "custom",
+          "customType": "pij",
+          "content": "[pij-rs from pij-free-bovid]\nPIJ_154_DELIVERY_120ce81e-7d28-4da4-b12e-8559c7eb0c41\n[/pij]",
+          "display": true,
+          "details": {
+            "pijMessageId": "01a0a8a5-af8a-7192-a7e2-d402707dc72d"
+          },
+          "attribution": "agent",
+          "timestamp": 1789535825808
+        }
+      },
+      "terminal": "\u2502                                                                                                                                                              \u2502\n\u2502 You are pij session pij-gravitas-shortfall (PEER). This is context only \u2014 no action is required.                                                             \u2502\n\u2502 Peers can reach you; their messages arrive inline as \"[pij-rs from <id>]\" on its own line, then the body, then \"[/pij]\". Only those injected messages are    \u2502\n\u2502 live instructions.                                                                                                                                           \u2502\n\u2502 Do NOT read, list, or act on files under your pij data/inbox directory \u2014 they are an internal transport log, not tasks, and replaying them re-runs old       \u2502\n\u2502 requests.                                                                                                                                                    \u2502\n\u2502 To reply or message a peer, call the pij_send tool ({ to, message }) \u2014 your id is stamped automatically. For control, pij_send takes { to, command:          \u2502\n\u2502 \"compact\" | \"new\" | \"reload\" } instead of message. Do NOT shell out to the pij CLI to send.                                                                  \u2502\n\u2502 To observe peers, use the pij CLI: \"pij list --here\" (peers), \"pij tail <id>\" / \"pij state <id>\" (watch one).                                                \u2502\n\u2502                                                                                                                                                              \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\n\n PIJ_NATIVE_OBSERVED                    \n\n\u256d\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n\u2502                                                                                                                                                              \u2502\n\u2502 \ud83d\udce6 pij                                                                                                                                                       \u2502\n\u2502                                                                                                                                                              \u2502\n\u2502 [pij-rs from pij-free-bovid]                                                                                                                                 \u2502\n\u2502 PIJ_154_DELIVERY_120ce81e-7d28-4da4-b12e-8559c7eb0c41                                                                                                        \u2502\n\u2502 [/pij]                                                                                                                                                       \u2502\n\u2502                                                                                                                                                              \u2502\n\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\n\n PIJ_NATIVE_OBSERVED                    \n\n                                                                                                                      rs\u00b7pij-gravitas-shortfall \u00b7 ext d64fa0e4e3\n \u03c0 > \u2b22 Plan 154 local deterministic fixture > \ud83d\uddd1 p154-olUEJs/workspace \u25b6\u2500\u25002%\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u254e\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2503\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500128K\u2500\n\u2570\u2500                                      \nrs pij-gravitas-shortfall \u00b7 ext d64fa0e4e3"
+    },
+    {
+      "stage": "process-death",
+      "at": "2026-09-16T05:17:06.046Z",
+      "pane": "%0",
+      "pid": 96746,
+      "signal": "SIGKILL",
+      "process_before": "96746 96649 Wed Sep 16 15:17:03 2026     /Users/jordanknight/.local/bin/omp-18.1.22 --no-extensions -e /tmp/p154-olUEJs/observe.mjs -e /Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij/index.ts --no-skills --no-rules --no-title --no-tools --no-lsp --no-pty --thinking off --model p154/pij-native-fixture --session-dir /tmp/p154-olUEJs/sessions --config /tmp/p154-olUEJs/config.yml --resume /tmp/p154-olUEJs/sessions/2026-09-16T05-17-02-538Z_01a0a8a5-a2ca-710e-bf59-3187fa60f12c.jsonl\n",
+      "terminal_exit": "1||kill",
+      "absent_process_exit": 1
+    },
+    {
+      "stage": "canonical-sweep",
+      "at": "2026-09-16T05:17:06.265Z",
+      "descriptor": {
+        "id": "pij-gravitas-shortfall",
+        "harness": "omp",
+        "pane": "%0",
+        "pid": 96746,
+        "proc_start": 20260916151703,
+        "folder": "/private/tmp/p154-olUEJs/workspace",
+        "state": "idle",
+        "semantic_state": null,
+        "role": null,
+        "parent": null,
+        "relay": 0,
+        "tombstoned_at": 1789535826231,
+        "tombstone_reason": "observed-dead",
+        "seq": 13,
+        "spawn_id": null,
+        "model": null,
+        "provider": null,
+        "effort": null,
+        "cross_session_inbound_accept": null,
+        "harness_session": "01a0a8a5-a2ca-710e-bf59-3187fa60f12c",
+        "native_extension_delivery": 0,
+        "extension_build": "d64fa0e4e3",
+        "extension_path": "/Users/jordanknight/pi-hacking/fs3-tombstone-lift/.pi/extensions/pij",
+        "session": "01a0a8a5-a2ca-710e-bf59-3187fa60f12c",
+        "proc": {
+          "pid": 96746,
+          "proc_start": 20260916151703
+        }
+      },
+      "panes": "%1\n%2\n"
+    }
+  ],
+  "events": [
+    {
+      "type": "event",
+      "machine": "JordansacStudio.localdomain",
+      "cursor": 5,
+      "event": {
+        "v": 1,
+        "at": 1789535823721,
+        "kind": "seat.tombstone",
+        "seat": "pij-gravitas-shortfall",
+        "payload": "{\"observation\":{\"pane\":\"%0\",\"pane_present\":false,\"pid\":94378,\"proc_start\":20260916151700},\"reason\":\"observed-dead\"}"
+      }
+    },
+    {
+      "type": "event",
+      "machine": "JordansacStudio.localdomain",
+      "cursor": 7,
+      "event": {
+        "v": 1,
+        "at": 1789535824830,
+        "kind": "seat.resumed",
+        "seat": "pij-gravitas-shortfall",
+        "payload": "{\"new_pane\":\"%0\",\"new_proc\":{\"pid\":96746,\"proc_start\":20260916151703},\"old_pane\":\"%0\",\"old_proc\":{\"pid\":94378,\"proc_start\":20260916151700},\"prior_reason\":\"observed-dead\"}"
+      }
+    },
+    {
+      "type": "event",
+      "machine": "JordansacStudio.localdomain",
+      "cursor": 13,
+      "event": {
+        "v": 1,
+        "at": 1789535826231,
+        "kind": "seat.tombstone",
+        "seat": "pij-gravitas-shortfall",
+        "payload": "{\"observation\":{\"pane\":\"%0\",\"pane_present\":false,\"pid\":96746,\"proc_start\":20260916151703},\"reason\":\"observed-dead\"}"
+      }
+    },
+    {
+      "type": "event",
+      "machine": "JordansacStudio.localdomain",
+      "cursor": 14,
+      "event": {
+        "v": 1,
+        "at": 1789535826470,
+        "kind": "seat.tombstone",
+        "seat": "pij-free-bovid",
+        "payload": "{\"observation\":{\"pane\":\"%2\",\"pane_present\":false,\"pid\":97638,\"proc_start\":20260916151704},\"reason\":\"observed-dead\"}"
+      }
+    }
+  ],
+  "teardown": [
+    {
+      "name": "capture remaining owned panes",
+      "ok": true
+    },
+    {
+      "name": "owned tmux server and all panes",
+      "ok": true
+    },
+    {
+      "name": "registration proxy",
+      "ok": true
+    },
+    {
+      "name": "owned native daemon",
+      "ok": true
+    },
+    {
+      "name": "local provider",
+      "ok": true
+    },
+    {
+      "name": "all direct child handles reaped",
+      "ok": true
+    },
+    {
+      "name": "OMP host initial absent",
+      "ok": true
+    },
+    {
+      "name": "OMP host resumed absent",
+      "ok": true
+    },
+    {
+      "name": "OMP host peer absent",
+      "ok": true
+    },
+    {
+      "name": "OMP host foreign absent",
+      "ok": true
+    },
+    {
+      "name": "private root removed",
+      "ok": true
+    }
+  ],
+  "selection": "Omitted repeated polling commands, duplicate registration copies, unrelated event frames and warmup/provider payloads. Kept all registration envelopes, behavioral checks, lifecycle facts, peer-delivery terminal, retirement/resume events and owned teardown."
+}

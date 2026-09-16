@@ -1,0 +1,60 @@
+COMMAND: /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --lib
+EXIT: 101
+test registration::tests::native_requires_truthful_harness_session_and_complete_observed_tuple ... ok
+test registration::tests::native_saved_resume_cannot_borrow_unrelated_spawn_intent ... ok
+test registration::tests::native_session_cannot_resume_a_row_from_another_machine ... ok
+test registration::tests::native_session_fast_restart_does_not_consult_old_process ... ok
+test registration::tests::native_session_resume_lifts_tombstone_and_publishes_incarnation_change ... ok
+test registration::tests::native_supersedes_refuses_same_id_same_session_wrong_process_or_existing_target ... ok
+test registration::tests::native_transient_hold_never_masks_invalid_claims ... ok
+test registration::tests::native_transient_hold_requires_local_attested_native_owner ... ok
+test registration::tests::native_transient_hold_requires_present_matching_pane_at_roster_guard ... ok
+test registration::tests::ordinary_other_harness_registration_retains_existing_rebind_behavior ... ok
+test registration::tests::ordinary_registration_cannot_relabel_or_supersede_active_copilot_seat ... ok
+test registration::tests::ordinary_registration_never_inherits_native_capability ... FAILED
+test registration::tests::ordinary_registration_preserves_unchanged_attested_native_owner_and_binding ... ok
+test registration::tests::ordinary_registration_refuses_changed_native_owner_after_readoption ... ok
+test registration::tests::ordinary_withdrawal_preserves_session_and_does_not_enable_later_takeover ... ok
+test registration::tests::paneless_all_external_harnesses_bind_actual_host_not_cli_or_shell ... ok
+test registration::tests::paneless_allocator_reserves_existing_names_and_serializes_repeat_claims ... ok
+test registration::tests::paneless_ancestry_refuses_cycles_newer_parents_and_more_than_32_processes ... ok
+test registration::tests::paneless_dispatch_preserves_ordinary_empty_id_admission_for_other_harnesses ... ok
+test registration::tests::paneless_host_matcher_rejects_shell_text_forged_argv_and_unrecognized_node_entries ... ok
+test registration::tests::paneless_host_observation_has_a_wall_clock_bound ... ok
+test registration::tests::paneless_nearest_external_host_refuses_inherited_other_harness_session_without_writes ... ok
+test registration::tests::paneless_observed_session_argv_must_match_including_claude_fork_identity ... ok
+test registration::tests::paneless_rechecks_incarnation_after_observation_and_lock_wait ... ok
+test registration::tests::paneless_refuses_ambiguous_session_stale_tuple_and_false_push_attestation ... ok
+test registration::tests::paneless_refuses_missing_or_wrong_harness_ancestor_without_writes ... ok
+test registration::tests::paneless_repeated_cli_wrappers_reuse_host_address_without_mutation ... ok
+test registration::tests::paneless_requires_empty_id_exact_session_complete_tuple_and_pull_shape ... ok
+test registration::tests::paneless_sandwich_rechecks_cli_even_when_host_incarnation_is_unchanged ... ok
+test registration::tests::paneless_session_argv_conflict_refuses_before_registration ... ok
+test registration::tests::real_shell_process_is_not_an_actual_copilot_host ... ok
+test registration::tests::retired_claude_session_resumes_with_bindings ... ok
+test registration::tests::retired_codex_session_resumes_with_bindings ... ok
+test registration::tests::retired_omp_session_resumes_with_bindings ... ok
+test registration::tests::retired_pi_session_resumes_with_bindings ... ok
+test registration::tests::retired_registration_accepts_spawn_or_observed_process_continuity ... ok
+test registration::tests::retired_registration_does_not_treat_absence_or_foreign_harness_as_continuity ... ok
+test registration::tests::retired_session_resume_does_not_replace_recorded_role ... ok
+test registration::tests::shared_native_lock_converges_concurrent_claims_for_the_same_session ... ok
+test registration::tests::successful_registration_never_returns_a_tombstone ... ok
+
+failures:
+
+---- registration::tests::ordinary_registration_never_inherits_native_capability stdout ----
+
+thread 'registration::tests::ordinary_registration_never_inherits_native_capability' (67569861) panicked at crates/daemon/src/registration.rs:2636:17:
+assertion `left == right` failed
+  left: None
+ right: Some(1)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    registration::tests::ordinary_registration_never_inherits_native_capability
+
+test result: FAILED. 407 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.07s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

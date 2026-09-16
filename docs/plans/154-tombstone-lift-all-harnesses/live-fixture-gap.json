@@ -1,0 +1,11 @@
+{
+  "status": "precondition-or-execution-failed",
+  "facts": [
+    "Actual OMP registered, persisted its session, died, and was canonically tombstoned.",
+    "The first driver queried the live-only /v1/seats projection after retirement and failed before resume.",
+    "The corrected driver uses read-only private SQLite observations; this first failure is not behavioral RED."
+  ],
+  "error": "AssertionError [ERR_ASSERTION]: missing seat pij-typical-mongo\n    at seat (/Users/jordanknight/pi-hacking/fs3-tombstone-lift/docs/plans/154-tombstone-lift-all-harnesses/tombstone-lift-live.ts:370:2)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async <anonymous> (/Users/jordanknight/pi-hacking/fs3-tombstone-lift/docs/plans/154-tombstone-lift-all-harnesses/tombstone-lift-live.ts:549:15)\n    at async until (/Users/jordanknight/pi-hacking/fs3-tombstone-lift/docs/plans/154-tombstone-lift-all-harnesses/tombstone-lift-live.ts:249:17)\n    at async swept (/Users/jordanknight/pi-hacking/fs3-tombstone-lift/docs/plans/154-tombstone-lift-all-harnesses/tombstone-lift-live.ts:548:18)\n    at async <anonymous> (/Users/jordanknight/pi-hacking/fs3-tombstone-lift/docs/plans/154-tombstone-lift-all-harnesses/tombstone-lift-live.ts:748:18)",
+  "cleanup_ok": true,
+  "report": "report.md"
+}
