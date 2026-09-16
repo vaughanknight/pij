@@ -1,0 +1,152 @@
+{
+  "status": "passed",
+  "base": "e5bc1742",
+  "started": "2026-09-16T02:10:19.569Z",
+  "finished": "2026-09-16T02:16:25.291Z",
+  "provider": "deterministic-local-fixture-not-real-inference",
+  "identity": {
+    "node": "v24.7.0",
+    "pij": "pij-rs 0.1.0",
+    "pij_binary": "/Users/jordanknight/pi-hacking/fs3-native-memory/target/debug/pij-rs",
+    "pij_sha256": "40a69c1769b17681269eda6001b2a81d6f143c99f1a2718a4767ed09d3e6b4d9",
+    "copilot": "GitHub Copilot CLI 1.0.84-8.\nRun 'copilot update' to check for updates.",
+    "copilot_binary": "/Users/jordanknight/.local/bin/copilot",
+    "copilot_sha256": "02c95ab4968b2653f92cbdc664e7a7bf0d18bb0292896d2a2e7eda1edc5444c1",
+    "source_modules": {
+      "extension.mjs": "82d86ff3219e11600bd02e07ba0db3631de7e525b1a99e2f7a8aec987f74bbe4",
+      "store.mjs": "450ed6df65c6eb169c1790870621812f6fffe189c18361a3884c2d8849456008"
+    }
+  },
+  "isolation": {
+    "run": "/Users/jordanknight/pi-hacking/fs3-native-memory/docs/plans/150-native-extension-memory/evidence/ac6-post-rebase-e5bc1742-2026-09-16T02-10-04.492Z/runtime",
+    "home": "/Users/jordanknight/pi-hacking/fs3-native-memory/docs/plans/150-native-extension-memory/evidence/ac6-post-rebase-e5bc1742-2026-09-16T02-10-04.492Z/runtime/home",
+    "copilotHome": "/Users/jordanknight/pi-hacking/fs3-native-memory/docs/plans/150-native-extension-memory/evidence/ac6-post-rebase-e5bc1742-2026-09-16T02-10-04.492Z/runtime/home/.copilot",
+    "claudeHome": "/Users/jordanknight/pi-hacking/fs3-native-memory/docs/plans/150-native-extension-memory/evidence/ac6-post-rebase-e5bc1742-2026-09-16T02-10-04.492Z/runtime/home/.claude",
+    "claudeConfig": "/Users/jordanknight/pi-hacking/fs3-native-memory/docs/plans/150-native-extension-memory/evidence/ac6-post-rebase-e5bc1742-2026-09-16T02-10-04.492Z/runtime/home/.claude",
+    "state": "/Users/jordanknight/pi-hacking/fs3-native-memory/docs/plans/150-native-extension-memory/evidence/ac6-post-rebase-e5bc1742-2026-09-16T02-10-04.492Z/runtime/daemon",
+    "addr": "127.0.0.1:56007",
+    "workspace": "/Users/jordanknight/pi-hacking/fs3-native-memory/docs/plans/150-native-extension-memory/evidence/ac6-post-rebase-e5bc1742-2026-09-16T02-10-04.492Z/runtime/workspace",
+    "tmux_name": "ac6-bdcd3ef2-7c4",
+    "tmux_home": "/tmp/pij-memory-NRcmya",
+    "auth": "none",
+    "lease_ms": 60000,
+    "production_contacted": false,
+    "socket": "/private/tmp/pij-memory-NRcmya/tmux-501/ac6-bdcd3ef2-7c4"
+  },
+  "history": {
+    "path": "/Users/jordanknight/pi-hacking/fs3-native-memory/docs/plans/150-native-extension-memory/evidence/ac6-post-rebase-e5bc1742-2026-09-16T02-10-04.492Z/runtime/home/.copilot/session-state/aed5572b-8e90-4aec-b348-c422ae5a692a/events.jsonl",
+    "bootstrap_events": 8,
+    "synthetic_events": 20002,
+    "total_events": 20010,
+    "bytes": 84024862,
+    "sha256": "9ee8f5fc2143f08792467d300b9511f8382841b704af751b43b5a3de5010cb8a",
+    "last_event_id": "7b1857fe-0d1a-4b0f-bcce-ccfefea027d3",
+    "format": "real bootstrap event templates + chained synthetic user/assistant events + supported successful compaction summary",
+    "inference": "synthetic history, not a claim of 10,000 real inference turns"
+  },
+  "identity_resume": {
+    "before": "pij-melted-earthworm",
+    "after": "pij-melted-earthworm",
+    "old_host": 93168,
+    "new_host": 94428,
+    "proven_death": {
+      "pid": 93168,
+      "proc_start": 20260916121022,
+      "observed_at": "2026-09-16T02:10:23.707Z",
+      "evidence": "kill(pid, 0): ESRCH"
+    }
+  },
+  "completed_messages": 30,
+  "history_prefix_preserved_after_messages": true,
+  "rss_summary": {
+    "csv": "rss.csv",
+    "samples": 32,
+    "min_kib": 101744,
+    "max_kib": 112432,
+    "first": {
+      "at": "2026-09-16T02:10:25.899Z",
+      "elapsed_ms": 3,
+      "kind": "start",
+      "completed_messages": 0,
+      "pid": 94722,
+      "rss_kib": 112432,
+      "rss_mib": 109.796875
+    },
+    "last": {
+      "at": "2026-09-16T02:15:28.414Z",
+      "elapsed_ms": 302518,
+      "kind": "before-kill",
+      "completed_messages": 30,
+      "pid": 94722,
+      "rss_kib": 107040,
+      "rss_mib": 104.53125
+    }
+  },
+  "kill": {
+    "at": "2026-09-16T02:15:28.414Z",
+    "extension_pid": 94722,
+    "host_pid": 94428,
+    "pending_msg_id": "47047072-1d93-4811-b10e-1115198c91c6"
+  },
+  "dead_receiver": {
+    "park_observed_ms": 56495,
+    "lease_ms": 60000,
+    "parked": {
+      "seq": 135,
+      "at": 1789524984846,
+      "kind": "delivery.parked",
+      "seat": "pij-gothic-gayal",
+      "payload": "{\"jobId\":31,\"messageId\":\"47047072-1d93-4811-b10e-1115198c91c6\",\"outcome\":\"undelivered:native-receiver-unavailable\",\"reason\":\"native-extension-unavailable\",\"recipient\":\"pij-melted-earthworm\"}"
+    },
+    "next_send": {
+      "ok": true,
+      "command": "pij send",
+      "v": 2,
+      "data": {
+        "msg_id": "1317c035-1d16-4520-b53b-b3134d18e23f",
+        "outcome": {
+          "outcome": "refused",
+          "reason": "native-extension-unavailable: native receiver for pij-melted-earthworm has not renewed its lease"
+        },
+        "at": 1789524984946
+      },
+      "meta": "from pij-gothic-gayal; msg_id 1317c035-1d16-4520-b53b-b3134d18e23f"
+    },
+    "next_send_exit": 0,
+    "host_after_pid": 94428
+  },
+  "emergency_inbox": {
+    "caller": {
+      "pane": "%2",
+      "copilot_session": "aed5572b-8e90-4aec-b348-c422ae5a692a"
+    },
+    "messages": [
+      {
+        "from": "pij-gothic-gayal",
+        "to": "pij-melted-earthworm",
+        "body": "PIJ_MEMORY_PENDING_41e09e61-6556-4f6d-868b-34c76d8097dd",
+        "msg_id": "47047072-1d93-4811-b10e-1115198c91c6"
+      }
+    ],
+    "ack": [
+      {
+        "recipient": "pij-melted-earthworm",
+        "msg_id": "47047072-1d93-4811-b10e-1115198c91c6",
+        "origin": "reader-read",
+        "delivered_at": 1789524985
+      }
+    ],
+    "jobs": [
+      {
+        "id": 31,
+        "state": "done",
+        "outcome": null
+      }
+    ]
+  },
+  "cleanup": {
+    "owned_tmux_stopped": true,
+    "owned_daemon_stopped": true,
+    "retained": "Plan-local isolated runtime retained for evidence; daemon key and synthetic history stay inside private runtime directory. No production/global configuration was changed."
+  }
+}

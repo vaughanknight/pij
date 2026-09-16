@@ -2,7 +2,7 @@
 
 **Implementation SHA:** `7ccf0e581fb64fafeaac5f5a0289c8493e7490a1`  
 **Baseline SHA:** `71a062b22bfd973dc1419dfd9da389b32c84f4f8`  
-**Round-two status:** H1/H2 and regression gaps are fixed; all required pre-rebase gates pass. AC6 remains **provisional**, not complete: the reviewer could not reproduce the isolated smoke before the plan-149 identity fix. Prime owns the rebase; this handoff is **READY-FOR-REBASE**, not DONE or approval to ship. No production restart, global linking, push, PR or merge occurred.
+**Status:** H1/H2 and regression gaps are fixed; required pre-rebase gates passed. After prime rebased onto plan 149, **AC6 and the constrained memory gate both passed on `e5bc1742`**; fresh outputs are under [Post-rebase (e5bc1742)](#post-rebase-e5bc1742). This is isolated acceptance evidence, not production deployment or approval to ship. No production restart, global linking, push, PR or merge occurred.
 
 ## Implementation
 
@@ -86,9 +86,9 @@ pij-commit-trailers: warn — 0 missing across 2 harness commit(s) since merge-b
 
 **Existing audit risk, not hidden by the passing gate:** `git:github.com/ghoseb/pi-askuserquestion` reported **4 fail / 13 warn** findings, including critical Vitest-related and high undici/nanoid advisories. Repository policy is report-and-continue. No manifest/package changes were made. The attribution scan's applicability warnings concern the two pre-existing plan commits; new implementation/evidence commits use freshly derived C11 trailers.
 
-## AC6: provisional isolated native proof
+## AC6: historical pre-rebase native proof
 
-The original run passed with official Copilot launcher + pinned **1.0.84-8** runtime, the worktree extension and real Rust daemon. The independent reviewer subsequently failed **3/3** clean-tree attempts (`-7` once, `-8` twice) at `--resume must preserve Pij address after proven owner death`, before memory measurement. This is a plan-149 identity dependency, not reproducible AC6 acceptance on the current base. Retain the compact original evidence as historical only; re-run after prime's authorized rebase.
+The original run passed with official Copilot launcher + pinned **1.0.84-8** runtime, the worktree extension and real Rust daemon. The independent reviewer subsequently failed **3/3** clean-tree attempts (`-7` once, `-8` twice) at `--resume must preserve Pij address after proven owner death`, before memory measurement. That pre-rebase evidence remained provisional because of the plan-149 identity dependency. The fresh post-rebase run below now passes; this original evidence remains historical only.
 
 Only model inference used the deterministic local fixture. This was real host/SDK/extension/daemon execution, not production deployment or real-provider inference. Production is a **mixed 1.0.84-7/-8 fleet**. The reviewer compared both installed SDK contracts: `eventLog.tail/read`, cursor status and paging fields are identical; `-8` clarifies byte-budget-short pages with `hasMore:true`. The implementation continues on `hasMore`, never page length, so AC1–AC3 apply to both. An oversized single event with a nonadvancing cursor safely holds receiving; it cannot authorize ACK/reinjection.
 
@@ -178,3 +178,64 @@ Initial round-two `harness boot` passed worktree-deps/typecheck but its smoke fa
 - Round-two review gaps are now executable backpressure: the live-lease admission regression and Rust/TS vocabulary equality prevent the false "parked only" claim and dropped sender warning from silently recurring; per-page forced GC detects transient replay retention that end-only samples miss.
 
 Deploy the composed daemon and native extension together through the operator-owned lifecycle. Existing parked bodies remain recoverable by explicit manual pull; they are not silently replayed by a restarted extension. Plan 149's identity-selection region was not edited.
+
+## Post-rebase (e5bc1742)
+
+Prime rebased this branch onto main containing plan 149 (`571d275e`); no second rebase was performed. Both requested gates **PASS** on `e5bc1742`. `cargo test --workspace` belongs to prime and was not duplicated. This run changes evidence only.
+
+### AC6 — PASS
+
+The worktree-local binary was rebuilt first:
+
+```text
+CARGO_TARGET_DIR=/Users/jordanknight/pi-hacking/fs3-native-memory/target cargo build -p pij-cli --bin pij-rs
+Finished `dev` profile [unoptimized + debuginfo] target(s) in 44.94s
+exit 0
+```
+
+```sh
+just copilot-native-memory-smoke \
+  --copilot-bin /Users/jordanknight/.local/bin/copilot \
+  --copilot-runtime-dir /Users/jordanknight/.copilot/pkg/darwin-arm64/1.0.84-8 \
+  --output-dir /Users/jordanknight/pi-hacking/fs3-native-memory/docs/plans/150-native-extension-memory/evidence/ac6-post-rebase-e5bc1742-2026-09-16T02-10-04.492Z
+```
+
+Fresh terminal output (Node's existing experimental SQLite warning omitted):
+
+```json
+{"code":0,"output":"/Users/jordanknight/pi-hacking/fs3-native-memory/docs/plans/150-native-extension-memory/evidence/ac6-post-rebase-e5bc1742-2026-09-16T02-10-04.492Z"}
+```
+
+- **Run:** `2026-09-16T02:10:19.569Z`–`02:16:25.291Z`; official runtime **1.0.84-8**, real native extension/SDK and rebuilt Rust daemon, deterministic local inference only.
+- **Isolation:** daemon **127.0.0.1:56007**, socket **ac6-bdcd3ef2-7c4**, private HOME/config/state; production 7461 was not contacted. Owned tmux and daemon stopped successfully.
+- **Resume:** old host **93168** proven dead by `kill(pid, 0): ESRCH`; resumed host **94428** retained **pij-melted-earthworm**, session `aed5572b-8e90-4aec-b348-c422ae5a692a`. The previously failing identity prerequisite passed.
+- **History/delivery:** **20,010 events / 84,024,862 bytes**, history prefix unchanged; **30** native-consumed, model-completed, daemon-ACKed messages at the default **10-second interval**.
+- **Memory:** extension **94722**, **32 RSS samples over 302,518 ms**. Start **112,432 KiB / 109.796875 MiB**, minimum **101,744 KiB / 99.359375 MiB**, final **107,040 KiB / 104.53125 MiB**; maximum equals start. Full ten-second series is retained in CSV.
+- **Death/recovery:** verified extension-only SIGKILL left host **94428** alive. Pending job **31**, message `47047072-1d93-4811-b10e-1115198c91c6`, parked after **56,495 ms**, within the unchanged **60,000 ms** lease. Sender-addressed `delivery.parked` sequence **135** records `undelivered:native-receiver-unavailable`. The next CLI send returned RPC `ok:true` / exit 0 but delivery **refused**, with the receiver-unavailable reason.
+- **Manual inbox:** after Hold cleared, the actual Copilot `!` shell in pane **%2** returned that same message. Job **31** became `done`, with exactly one `reader-read` ACK; no extension revival or reinjection.
+
+[Compact fresh receipt](evidence/ac6-post-rebase-e5bc1742-2026-09-16T02-10-04.492Z/summary.json) · [Full RSS CSV](evidence/ac6-post-rebase-e5bc1742-2026-09-16T02-10-04.492Z/rss.csv) · [Actual manual inbox output](evidence/ac6-post-rebase-e5bc1742-2026-09-16T02-10-04.492Z/emergency-inbox.json). Repetitive raw receipts/transcripts remain only inside the ignored private runtime; the expired shell script was removed.
+
+### Constrained memory — PASS
+
+```sh
+node --test .copilot/extensions/pij/memory.test.mjs
+```
+
+Fresh output excerpts, exit **0**:
+
+```text
+{"events":20000,"serializedBytes":74415558,"baseline":5184712}
+{"sends":50,"polls":50,"fullReads":0,"heap":5602240,"growth":417528}
+{"historyEvents":20000,"historyBytes":74395557,"pages":158,"eventsRead":20002,"gcSamples":317,"acknowledgements":1,"sends":0,"fullReads":0,"baseline":5643832,"peak":7429864,"finalHeap":5948320,"growth":1786032}
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1933.188708
+```
+
+The parent test also passed (one test, zero failures; 2,101.677875 ms). Both child cases used the existing **512 MiB** heap cap and **32 MiB** retained-growth bound. Peak paged growth was **1,786,032 bytes**, with one ACK and no reinjection/full reads. Harness observation **WIN-001** records the resolved cross-plan proof; the existing recipe now demonstrates address-preserving resume plus bounded memory and recovery without private setup changes.
