@@ -108,7 +108,9 @@ export function fixtureReply(input: unknown): Record<string, unknown> {
 	return { role: "assistant", content: marker ? "PIJ_NATIVE_DONE" : "PIJ_NATIVE_OBSERVED" };
 }
 
-export async function startFixtureProvider(): Promise<{
+export async function startFixtureProvider(
+	options: { beforeReply?: (body: Record<string, unknown>) => Promise<void> } = {},
+): Promise<{
 	url: string;
 	requests: string[];
 	close: () => Promise<void>;
@@ -164,10 +166,12 @@ export async function startFixtureProvider(): Promise<{
 				response.write(
 					`data: ${JSON.stringify({ ...base, object: "chat.completion.chunk", choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`,
 				);
+				await options.beforeReply?.(body);
 				response.end(
 					`data: ${JSON.stringify({ ...base, object: "chat.completion.chunk", choices: [{ index: 0, delta: {}, finish_reason: finish }] })}\n\ndata: [DONE]\n\n`,
 				);
 			} else {
+				await options.beforeReply?.(body);
 				response.setHeader("Content-Type", "application/json");
 				response.end(
 					JSON.stringify({

@@ -95,7 +95,7 @@ from native history without re-injection. A crash across native acceptance and
 durable recording can remain ambiguous; this is not universal exactly-once delivery.
 
 The receiver serializes inbox messages until an owned native terminal event:
-correlated `session.idle` / `session.error`, or a final foreground
+correlated `session.idle` / `session.error` / foreground `abort`, or a final foreground
 `assistant.message` with no tool requests followed directly by `assistant.turn_end`.
 Unrelated interactions, subagent events, global abort, and an idle-looking pane
 cannot supply consumption or completion. Supported `session.rpc.eventLog.tail()`
@@ -103,6 +103,8 @@ and `.read()` APIs recover missing callbacks in cursor-based pages of at most 12
 durable events, backing off from 250ms to 5s only while proof is outstanding.
 No full `getEvents()` history is loaded. Missing APIs, unreadable pages or expired
 cursors hold receiving without an unproven ACK or reinjection.
+A correlated abort closes the consumed message's turn, not successful inference.
+Picker resubmission with a different native message ID never grants another Pij ACK.
 
 If an interrupt removes an accepted envelope before consumption, recovery waits
 for a fresh post-send turn/idle boundary. It requires all three facts: fresh
@@ -143,12 +145,29 @@ an accepted journal entry walks bounded pages, retains only that message's
 correlation metadata, and never treats old historical boundaries as fresh discard
 proof. Pending observation races do not retain history bodies or accumulate
 listeners for the lifetime of the session.
+At child startup, registration preserves the outgoing identity, then one bounded
+SDK history window establishes actual observation before the first receiver
+heartbeat or inbox claim. A recycled child cannot immediately hold itself on a
+stale lease merely because its local counters started at zero. Startup observation
+failure holds receiving but leaves the explicitly registered outgoing tool usable.
+
+Every awaited receiver SDK call (`eventLog.tail/read`, `queue.pendingItems`,
+`metadata.isProcessing`, `native.send`) has a 15-second deadline. A miss logs
+`receive-held` with the call name; ambiguous sends retain their durable intent.
+After three empty reads, a tail probe (at least one second apart) detects session
+movement independently of callbacks, including while the inbox is idle. Recovery
+reads a bounded chronological backward window, then continues only from a forward
+tail cursor. Missing overlap/correlated terminal proof holds without ACK or resend.
+Shutdown with outstanding work logs `receiver-stopped` and its job/message identity.
 
 Receiver presence is separate from the Copilot host's process and Working state.
-The extension renews its receiver lease through `/v1/inbox/heartbeat`, including
-while it waits for completion or operator Hold. The existing claim lease defaults
-to 60 seconds (`PIJ_RS_EXT_CLAIM_LEASE_SECS`); renewal is requested every third of
-that interval. The daemon wakes on receiver deadlines, parks pending/unacknowledged
+The extension sends actual `observed_at` / `observed_seq` progress through
+`/v1/inbox/heartbeat`, including while it waits for completion or operator Hold.
+Timers and empty pages do not count as observations. The lease defaults to 60 seconds
+(`PIJ_RS_EXT_CLAIM_LEASE_SECS`), with renewal every third of that interval. With
+outstanding deliveries, frozen progress does not extend the lease horizon; three
+renewal opportunities yield `native-receiver-stale`. `pij state` and `pij inbox`
+show that reason separately from an active host. The daemon wakes on receiver deadlines, parks pending/unacknowledged
 native bodies with `undelivered:native-receiver-unavailable`, emits
 `delivery.parked` with reason `native-extension-unavailable`, and refuses later
 sends with the receiver's seat named. It does not silently fall back to tmux.

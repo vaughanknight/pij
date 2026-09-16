@@ -336,8 +336,11 @@ impl DaemonClient {
             );
         }
         let messages: Vec<Msg> = claims.iter().map(|claim| claim.message.clone()).collect();
+        let mut result = Envelope::ok("pij inbox", messages);
+        result.meta = claimed.meta;
+        result.details = claimed.details;
         let Some(claim) = claims.first() else {
-            return Envelope::ok("pij inbox", messages);
+            return result;
         };
         let acked: Envelope<serde_json::Value> = if native_cli {
             self.post(
@@ -362,12 +365,18 @@ impl DaemonClient {
             )
             .await
         };
-        let mut result = Envelope::ok("pij inbox", messages);
         if !acked.ok {
-            result.meta = Some(format!(
+            let warning = format!(
                 "messages were received but acknowledgement failed; they may be read again: {}",
                 acked.meta.as_deref().unwrap_or("no reason given")
-            ));
+            );
+            match &mut result.meta {
+                Some(meta) => {
+                    meta.push_str("; ");
+                    meta.push_str(&warning);
+                }
+                None => result.meta = Some(warning),
+            }
         }
         result
     }

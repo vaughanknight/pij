@@ -60,19 +60,21 @@ async function startExtension() {
 		log: (message, options) => session.log(message, options),
 		capture: report,
 	});
-	const stop = () => {
+	const stop = (cause) => {
 		if (signal.aborted) return;
 		controller.abort();
-		bridge?.stop();
+		bridge?.stop(cause);
 		unsubscribe?.();
 		// A disconnected parent may never answer detach; only this extension process is stopped.
 		void Promise.race([session?.disconnect().catch(() => undefined), sleep(1000)]).finally(() =>
 			process.exit(0),
 		);
 	};
-	for (const event of ["SIGTERM", "SIGINT", "SIGHUP", "disconnect"]) process.once(event, stop);
-	process.stdin.once("end", stop);
-	process.stdin.once("close", stop);
+	for (const event of ["SIGTERM", "SIGINT", "SIGHUP", "disconnect"])
+		process.once(event, () => stop(event));
+	process.stdin.once("end", () => stop("stdin.end"));
+	process.stdin.once("close", () => stop("stdin.close"));
+	process.once("exit", (code) => bridge?.stop(`process.exit:${code}`));
 
 	try {
 		session = await joinSession({
@@ -101,7 +103,7 @@ async function startExtension() {
 		signal.throwIfAborted();
 		if (!session.sessionId || session.sessionId !== process.env.SESSION_ID)
 			throw new NativeError("Joined native session does not match extension parent context");
-		unsubscribe = session.on("session.shutdown", stop);
+		unsubscribe = session.on("session.shutdown", () => stop("session.shutdown"));
 
 		const pane = process.env.TMUX_PANE || undefined;
 		let paneProcess;

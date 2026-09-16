@@ -50,6 +50,9 @@ interface Options {
 	messages: number;
 	messageIntervalMs: number;
 	timeoutMs: number;
+	extensionRoot?: string;
+	fixture?: Parameters<typeof startFixtureProvider>[0];
+	scenario?: (context: NativeSmokeContext) => Promise<void>;
 }
 interface Seat {
 	id: string;
@@ -70,6 +73,34 @@ interface ProcessIdentity {
 	rss_kib: number;
 	started: string;
 	command: string;
+}
+
+/** Reuse the isolated host lifecycle for receiver failure scenarios, never production seats. */
+export interface NativeSmokeContext {
+	launch: (
+		resume?: Seat,
+		prompt?: string,
+	) => Promise<{
+		seat: Seat;
+		host: ProcessIdentity;
+		extension: ProcessIdentity;
+	}>;
+	api: (path: string, body?: unknown) => Promise<unknown>;
+	rows: (sql: string, ...params: string[]) => Record<string, unknown>[];
+	tmux: (args: string[], preserve?: boolean) => string;
+	until: <T>(
+		label: string,
+		timeout: number,
+		probe: () => T | undefined | Promise<T | undefined>,
+	) => Promise<T>;
+	env: NodeJS.ProcessEnv;
+	cwd: string;
+	state: string;
+	copilotHome: string;
+	output: string;
+	pijBin: string;
+	addr: string;
+	receipt: Record<string, unknown>;
 }
 
 function optionsFrom(args: string[]): Options {
@@ -185,7 +216,7 @@ function parseProcess(text: string): ProcessIdentity {
 }
 
 /** Seed only after the real bootstrap host exits. Compaction changes model context, not event history. */
-function seedHistory(path: string) {
+export function seedHistory(path: string, turns = 10_000) {
 	const original = readFileSync(path, "utf8");
 	assert(original.endsWith("\n"), "bootstrap history must end at a complete record");
 	const bootstrap = original
@@ -215,7 +246,7 @@ function seedHistory(path: string) {
 		count++;
 	};
 	try {
-		for (let index = 0; index < 10_000; index++) {
+		for (let index = 0; index < turns; index++) {
 			const interactionId = randomUUID();
 			const turnId = `memory-history-${index}`;
 			const user = {
@@ -239,10 +270,9 @@ function seedHistory(path: string) {
 		append("session.compaction_start", {});
 		append("session.compaction_complete", {
 			success: true,
-			summaryContent:
-				"Synthetic historical fixture: 10,000 completed source-inspection turns. All work is complete. Respond to new messages normally; do not call tools.",
-			preCompactionMessagesLength: 20_000,
-			messagesRemoved: 20_000,
+			summaryContent: `Synthetic historical fixture: ${turns} completed source-inspection turns. All work is complete. Respond to new messages normally; do not call tools.`,
+			preCompactionMessagesLength: turns * 2,
+			messagesRemoved: turns * 2,
 		});
 	} finally {
 		closeSync(descriptor);
@@ -262,12 +292,12 @@ function seedHistory(path: string) {
 		last_event_id: parentId,
 		format:
 			"real bootstrap event templates + chained synthetic user/assistant events + supported successful compaction summary",
-		inference: "synthetic history, not a claim of 10,000 real inference turns",
+		inference: `synthetic history, not a claim of ${turns} real inference turns`,
 	};
 }
 
 /** The proof monitor must not repeatedly deserialize the same large history either. */
-function eventTail(path: string, offset: number) {
+export function eventTail(path: string, offset: number) {
 	let cursor = offset;
 	let remainder = "";
 	const decoder = new StringDecoder("utf8");
@@ -471,7 +501,7 @@ export async function runMemorySmoke(options: Options): Promise<{ code: number; 
 		}
 		// Copilot hides some supported flags from --help. Actual native
 		// registration below, not help-text substring matches, proves support.
-		fixture = await startFixtureProvider();
+		fixture = await startFixtureProvider(options.fixture);
 		Object.assign(env, {
 			COPILOT_PROVIDER_BASE_URL: fixture.url,
 			COPILOT_PROVIDER_TYPE: "openai",
@@ -487,7 +517,7 @@ export async function runMemorySmoke(options: Options): Promise<{ code: number; 
 		for (const args of [[], ["--doctor-copilot"]])
 			assert.equal(
 				manageCopilotExtension({
-					pijRoot: ROOT,
+					pijRoot: options.extensionRoot ?? ROOT,
 					home,
 					copilotHome,
 					args,
@@ -509,7 +539,7 @@ export async function runMemorySmoke(options: Options): Promise<{ code: number; 
 			source_modules: Object.fromEntries(
 				["extension.mjs", "store.mjs"].map((name) => [
 					name,
-					sha(join(ROOT, ".copilot/extensions/pij", name)),
+					sha(join(options.extensionRoot ?? ROOT, ".copilot/extensions/pij", name)),
 				]),
 			),
 		};
@@ -717,354 +747,382 @@ export async function runMemorySmoke(options: Options): Promise<{ code: number; 
 			log("native-launch", { seat, host, extension });
 			return { seat, host, extension };
 		};
-		const nonce = `PIJ_MEMORY_BOOT_${randomUUID()}`;
-		const bootstrap = await launch(
-			undefined,
-			`${nonce}. Reply exactly PIJ_NATIVE_OBSERVED. Do not call tools.`,
-		);
-		const historyPath = join(copilotHome, "session-state", bootstrap.seat.session, "events.jsonl");
-		await until("real bootstrap model completion", options.timeoutMs, () => {
-			const events = readNativeEvents(historyPath);
-			return nativeMessages(events, nonce).length === 1 &&
-				events.some((event) => event.type === "assistant.turn_end")
-				? true
-				: undefined;
-		});
-		const teardown: Record<string, unknown> = {};
-		receipt.bootstrap = { ...bootstrap, teardown };
-		await stopSmokeNativeHost(
-			{ tmux, probe: (pid, signal) => process.kill(pid, signal) },
-			{ previous: bootstrap.seat, launch: bootstrap.seat, socket },
-			options.timeoutMs,
-			teardown,
-		);
-		await until("bootstrap extension exits before history append", options.timeoutMs, () => {
-			try {
-				process.kill(bootstrap.extension.pid, 0);
-				return undefined;
-			} catch (error) {
-				if ((error as NodeJS.ErrnoException).code === "ESRCH") return true;
-				throw error;
-			}
-		});
-		const seed = seedHistory(historyPath);
-		receipt.history = seed;
-		log("history-seeded", seed);
-		const tail = eventTail(historyPath, seed.bytes);
-		const target = await launch(bootstrap.seat);
-		verifyNativeLifecycleIdentity(bootstrap.seat, target.seat, "resume");
-		receipt.target = target;
-		assert.equal(
-			prefixSha(historyPath, seed.bytes),
-			seed.sha256,
-			"real resumed host must retain the complete seeded history",
-		);
-		const sender = await launch();
-		receipt.sender = sender;
-		const send = (body: string, msgId: string) => {
-			const args = [
-				"--json",
-				"--addr",
-				addr,
-				"--state-dir",
-				state,
-				"send",
-				"--from",
-				sender.seat.id,
-				"--to",
-				target.seat.id,
-				"--body",
-				body,
-				"--msg-id",
-				msgId,
-			];
-			const result = spawnSync(options.pijBin, args, {
-				env: {
-					...env,
-					PIJ_SESSION_ID: sender.seat.id,
-					TMUX_PANE: sender.seat.pane,
-					HARNESS_SESSION_ID: sender.seat.session,
-				},
+		if (options.scenario) {
+			await options.scenario({
+				launch,
+				api,
+				rows,
+				tmux,
+				until,
+				env,
 				cwd,
-				encoding: "utf8",
-				timeout: 15_000,
-				stdio: ["ignore", "pipe", "pipe"],
+				state,
+				copilotHome,
+				output: options.output,
+				pijBin: options.pijBin,
+				addr,
+				receipt,
 			});
-			if (result.error) throw result.error;
-			const outcome = {
-				at: new Date().toISOString(),
-				args,
-				status: result.status,
-				signal: result.signal,
-				stdout: result.stdout,
-				stderr: result.stderr,
-				envelope: object(JSON.parse(result.stdout)),
-			};
-			log("pij-send", outcome);
-			return outcome;
-		};
-		const sample = (kind: string) => {
-			const observed = inspect(target.extension.pid);
-			assert.equal(observed.started, target.extension.started, "extension PID was reused");
-			assert.equal(observed.command, target.extension.command, "extension process image changed");
-			const row = {
-				at: new Date().toISOString(),
-				elapsed_ms: Date.now() - sampleStarted,
-				kind,
-				completed_messages: messages.length,
-				pid: observed.pid,
-				rss_kib: observed.rss_kib,
-				rss_mib: observed.rss_kib / 1024,
-			};
-			rss.push(row);
-			appendFileSync(
-				join(options.output, "rss.csv"),
-				`${row.at},${row.elapsed_ms},${row.kind},${row.completed_messages},${row.pid},${row.rss_kib},${row.rss_mib}\n`,
-				{ mode: 0o600 },
+		} else {
+			const nonce = `PIJ_MEMORY_BOOT_${randomUUID()}`;
+			const bootstrap = await launch(
+				undefined,
+				`${nonce}. Reply exactly PIJ_NATIVE_OBSERVED. Do not call tools.`,
 			);
-			log("rss", row);
-		};
-		writeFileSync(
-			join(options.output, "rss.csv"),
-			"at,elapsed_ms,kind,completed_messages,pid,rss_kib,rss_mib\n",
-			{ flag: "wx", mode: 0o600 },
-		);
-		const sampleStarted = Date.now();
-		sample("start");
-		timer = setInterval(() => {
-			try {
-				sample("10s");
-			} catch (error) {
-				samplingError = error;
-			}
-		}, SAMPLE_MS);
-		for (let index = 0; index < options.messages; index++) {
-			const started = Date.now();
-			const marker = `PIJ_MEMORY_${index}_${randomUUID()}`;
-			const msgId = randomUUID();
-			const sent = send(`${marker}. Reply exactly PIJ_NATIVE_OBSERVED. Do not call tools.`, msgId);
-			assert.equal(sent.envelope.ok, true, "ordinary send must succeed");
-			const delivered = await until(
-				`native completion ${index + 1}/${options.messages}`,
+			const historyPath = join(
+				copilotHome,
+				"session-state",
+				bootstrap.seat.session,
+				"events.jsonl",
+			);
+			await until("real bootstrap model completion", options.timeoutMs, () => {
+				const events = readNativeEvents(historyPath);
+				return nativeMessages(events, nonce).length === 1 &&
+					events.some((event) => event.type === "assistant.turn_end")
+					? true
+					: undefined;
+			});
+			const teardown: Record<string, unknown> = {};
+			receipt.bootstrap = { ...bootstrap, teardown };
+			await stopSmokeNativeHost(
+				{ tmux, probe: (pid, signal) => process.kill(pid, signal) },
+				{ previous: bootstrap.seat, launch: bootstrap.seat, socket },
 				options.timeoutMs,
-				() => {
-					const events = tail();
-					const matching = nativeMessages(events, marker);
-					assert(matching.length <= 1, "native message delivered more than once");
-					const message = matching[0];
-					if (!message) return undefined;
-					const position = events.findIndex((event) => event.id === message.id);
-					const after = events.slice(position + 1);
-					const assistant = after.find(
-						(event) =>
-							event.type === "assistant.message" && event.data.content === "PIJ_NATIVE_OBSERVED",
-					);
-					const ended = after.find((event) => event.type === "assistant.turn_end");
-					const ack = rows(
-						"SELECT recipient, msg_id, origin, delivered_at FROM delivered_messages WHERE recipient = ? AND msg_id = ? AND origin = 'reader-read'",
-						target.seat.id,
-						msgId,
-					)[0];
-					return assistant && ended && ack ? { native: message, assistant, ended, ack } : undefined;
-				},
+				teardown,
 			);
-			messages.push({ index: index + 1, msg_id: msgId, marker, sent, ...delivered });
-			log("message-complete", messages.at(-1));
-			save();
-			await until("message pacing", Math.max(options.messageIntervalMs + 1000, 2000), () =>
-				Date.now() - started >= options.messageIntervalMs ? true : undefined,
+			await until("bootstrap extension exits before history append", options.timeoutMs, () => {
+				try {
+					process.kill(bootstrap.extension.pid, 0);
+					return undefined;
+				} catch (error) {
+					if ((error as NodeJS.ErrnoException).code === "ESRCH") return true;
+					throw error;
+				}
+			});
+			const seed = seedHistory(historyPath);
+			receipt.history = seed;
+			log("history-seeded", seed);
+			const tail = eventTail(historyPath, seed.bytes);
+			const target = await launch(bootstrap.seat);
+			verifyNativeLifecycleIdentity(bootstrap.seat, target.seat, "resume");
+			receipt.target = target;
+			assert.equal(
+				prefixSha(historyPath, seed.bytes),
+				seed.sha256,
+				"real resumed host must retain the complete seeded history",
 			);
-		}
-		assert.equal(prefixSha(historyPath, seed.bytes), seed.sha256);
-		receipt.history_prefix_preserved_after_messages = true;
-		assert(
-			rss.filter((row) => row.kind === "10s").length >= 3,
-			"RSS series must span at least three 10-second intervals",
-		);
-		// Leave real durable pending work, not a fabricated row, before killing just the receiver.
-		receipt.prekill_hold = await api("/v1/report", {
-			seat: target.seat.id,
-			argv: ["report", "state", "hold"],
-		});
-		assert.equal(object(receipt.prekill_hold).state, "hold");
-		const pendingId = randomUUID();
-		const pending = send(`PIJ_MEMORY_PENDING_${randomUUID()}`, pendingId);
-		assert.equal(pending.envelope.ok, true);
-		await until("pending native job retained before receiver death", options.timeoutMs, () =>
-			rows(
-				"SELECT id, state, payload FROM jobs WHERE serial_key = ? AND dedupe_key = ?",
-				target.seat.id,
-				pendingId,
-			).find((row) => row.state === "pending" || row.state === "running"),
-		);
-		assert.equal(
-			rows(
-				"SELECT msg_id FROM delivered_messages WHERE recipient = ? AND msg_id = ?",
-				target.seat.id,
-				pendingId,
-			).length,
-			0,
-		);
-		const hostNow = inspect(target.host.pid);
-		assert.equal(hostNow.started, target.host.started);
-		assert.equal(hostNow.command, target.host.command);
-		assert.equal(tmux(["display-message", "-p", "#{socket_path}"]), socket);
-		const childrenNow = descendants(hostNow);
-		assert.equal(childrenNow.length, 1, "refusing ambiguous or missing isolated extension");
-		const killTarget = childrenNow[0];
-		assert(
-			killTarget &&
-				killTarget.pid === target.extension.pid &&
-				killTarget.started === target.extension.started &&
-				killTarget.command === target.extension.command,
-			"kill target must still match verified extension identity and host ancestry",
-		);
-		sample("before-kill");
-		clearInterval(timer);
-		timer = undefined;
-		const killedAt = Date.now();
-		receipt.kill = {
-			at: new Date(killedAt).toISOString(),
-			signal: "SIGKILL",
-			extension: killTarget,
-			host: hostNow,
-			pending_msg_id: pendingId,
-			pending_send: pending,
-			socket,
-			tmux_name: socketName,
-		};
-		log("extension-only-kill", receipt.kill);
-		save();
-		process.kill(killTarget.pid, "SIGKILL");
-		await until("verified extension process exits", options.timeoutMs, () => {
-			try {
-				process.kill(killTarget.pid, 0);
-				return undefined;
-			} catch (error) {
-				if ((error as NodeJS.ErrnoException).code === "ESRCH") return true;
-				throw error;
+			const sender = await launch();
+			receipt.sender = sender;
+			const send = (body: string, msgId: string) => {
+				const args = [
+					"--json",
+					"--addr",
+					addr,
+					"--state-dir",
+					state,
+					"send",
+					"--from",
+					sender.seat.id,
+					"--to",
+					target.seat.id,
+					"--body",
+					body,
+					"--msg-id",
+					msgId,
+				];
+				const result = spawnSync(options.pijBin, args, {
+					env: {
+						...env,
+						PIJ_SESSION_ID: sender.seat.id,
+						TMUX_PANE: sender.seat.pane,
+						HARNESS_SESSION_ID: sender.seat.session,
+					},
+					cwd,
+					encoding: "utf8",
+					timeout: 15_000,
+					stdio: ["ignore", "pipe", "pipe"],
+				});
+				if (result.error) throw result.error;
+				const outcome = {
+					at: new Date().toISOString(),
+					args,
+					status: result.status,
+					signal: result.signal,
+					stdout: result.stdout,
+					stderr: result.stderr,
+					envelope: object(JSON.parse(result.stdout)),
+				};
+				log("pij-send", outcome);
+				return outcome;
+			};
+			const sample = (kind: string) => {
+				const observed = inspect(target.extension.pid);
+				assert.equal(observed.started, target.extension.started, "extension PID was reused");
+				assert.equal(observed.command, target.extension.command, "extension process image changed");
+				const row = {
+					at: new Date().toISOString(),
+					elapsed_ms: Date.now() - sampleStarted,
+					kind,
+					completed_messages: messages.length,
+					pid: observed.pid,
+					rss_kib: observed.rss_kib,
+					rss_mib: observed.rss_kib / 1024,
+				};
+				rss.push(row);
+				appendFileSync(
+					join(options.output, "rss.csv"),
+					`${row.at},${row.elapsed_ms},${row.kind},${row.completed_messages},${row.pid},${row.rss_kib},${row.rss_mib}\n`,
+					{ mode: 0o600 },
+				);
+				log("rss", row);
+			};
+			writeFileSync(
+				join(options.output, "rss.csv"),
+				"at,elapsed_ms,kind,completed_messages,pid,rss_kib,rss_mib\n",
+				{ flag: "wx", mode: 0o600 },
+			);
+			const sampleStarted = Date.now();
+			sample("start");
+			timer = setInterval(() => {
+				try {
+					sample("10s");
+				} catch (error) {
+					samplingError = error;
+				}
+			}, SAMPLE_MS);
+			for (let index = 0; index < options.messages; index++) {
+				const started = Date.now();
+				const marker = `PIJ_MEMORY_${index}_${randomUUID()}`;
+				const msgId = randomUUID();
+				const sent = send(
+					`${marker}. Reply exactly PIJ_NATIVE_OBSERVED. Do not call tools.`,
+					msgId,
+				);
+				assert.equal(sent.envelope.ok, true, "ordinary send must succeed");
+				const delivered = await until(
+					`native completion ${index + 1}/${options.messages}`,
+					options.timeoutMs,
+					() => {
+						const events = tail();
+						const matching = nativeMessages(events, marker);
+						assert(matching.length <= 1, "native message delivered more than once");
+						const message = matching[0];
+						if (!message) return undefined;
+						const position = events.findIndex((event) => event.id === message.id);
+						const after = events.slice(position + 1);
+						const assistant = after.find(
+							(event) =>
+								event.type === "assistant.message" && event.data.content === "PIJ_NATIVE_OBSERVED",
+						);
+						const ended = after.find((event) => event.type === "assistant.turn_end");
+						const ack = rows(
+							"SELECT recipient, msg_id, origin, delivered_at FROM delivered_messages WHERE recipient = ? AND msg_id = ? AND origin = 'reader-read'",
+							target.seat.id,
+							msgId,
+						)[0];
+						return assistant && ended && ack
+							? { native: message, assistant, ended, ack }
+							: undefined;
+					},
+				);
+				messages.push({ index: index + 1, msg_id: msgId, marker, sent, ...delivered });
+				log("message-complete", messages.at(-1));
+				save();
+				await until("message pacing", Math.max(options.messageIntervalMs + 1000, 2000), () =>
+					Date.now() - started >= options.messageIntervalMs ? true : undefined,
+				);
 			}
-		});
-		const parked = await until(
-			"dead native receiver parks pending job at its lease deadline",
-			LEASE_MS + 2000,
-			() =>
+			assert.equal(prefixSha(historyPath, seed.bytes), seed.sha256);
+			receipt.history_prefix_preserved_after_messages = true;
+			assert(
+				rss.filter((row) => row.kind === "10s").length >= 3,
+				"RSS series must span at least three 10-second intervals",
+			);
+			// Leave real durable pending work, not a fabricated row, before killing just the receiver.
+			receipt.prekill_hold = await api("/v1/report", {
+				seat: target.seat.id,
+				argv: ["report", "state", "hold"],
+			});
+			assert.equal(object(receipt.prekill_hold).state, "hold");
+			const pendingId = randomUUID();
+			const pending = send(`PIJ_MEMORY_PENDING_${randomUUID()}`, pendingId);
+			assert.equal(pending.envelope.ok, true);
+			await until("pending native job retained before receiver death", options.timeoutMs, () =>
 				rows(
-					"SELECT seq, at, kind, seat, payload FROM spine_events WHERE kind = 'delivery.parked' AND json_extract(payload, '$.recipient') = ? AND json_extract(payload, '$.messageId') = ? ORDER BY seq",
+					"SELECT id, state, payload FROM jobs WHERE serial_key = ? AND dedupe_key = ?",
 					target.seat.id,
 					pendingId,
-				).find((row) => {
-					const payload = object(JSON.parse(String(row.payload)));
-					return payload.reason === DEAD_REASON && payload.messageId === pendingId;
-				}),
-		);
-		const parkObservedMs = Date.now() - killedAt;
-		const hostAfter = inspect(target.host.pid);
-		assert.equal(
-			hostAfter.started,
-			target.host.started,
-			"Copilot host must remain alive after extension death",
-		);
-		assert.equal(
-			descendants(hostAfter).length,
-			0,
-			"host restarted receiver; this is not the dead-receiver scenario",
-		);
-		const nextId = randomUUID();
-		const next = send(`PIJ_MEMORY_AFTER_KILL_${randomUUID()}`, nextId);
-		const outcome = object(object(next.envelope.data).outcome);
-		assert.equal(outcome.outcome, "refused", "next real pij send must refuse a dead receiver");
-		assert(
-			String(outcome.reason).includes(DEAD_REASON) &&
-				String(outcome.reason).includes(target.seat.id),
-			"refusal must name dead native receiver and seat",
-		);
-		receipt.dead_receiver = {
-			park_observed_ms: parkObservedMs,
-			lease_ms: LEASE_MS,
-			parked,
-			next_send: next,
-			host_after: hostAfter,
-			inbox: await api(`/v1/inbox?seat=${encodeURIComponent(target.seat.id)}&peek=true`),
-			pending_jobs: rows(
-				"SELECT id, state, payload, outcome FROM jobs WHERE serial_key = ? AND dedupe_key = ?",
+				).find((row) => row.state === "pending" || row.state === "running"),
+			);
+			assert.equal(
+				rows(
+					"SELECT msg_id FROM delivered_messages WHERE recipient = ? AND msg_id = ?",
+					target.seat.id,
+					pendingId,
+				).length,
+				0,
+			);
+			const hostNow = inspect(target.host.pid);
+			assert.equal(hostNow.started, target.host.started);
+			assert.equal(hostNow.command, target.host.command);
+			assert.equal(tmux(["display-message", "-p", "#{socket_path}"]), socket);
+			const childrenNow = descendants(hostNow);
+			assert.equal(childrenNow.length, 1, "refusing ambiguous or missing isolated extension");
+			const killTarget = childrenNow[0];
+			assert(
+				killTarget &&
+					killTarget.pid === target.extension.pid &&
+					killTarget.started === target.extension.started &&
+					killTarget.command === target.extension.command,
+				"kill target must still match verified extension identity and host ancestry",
+			);
+			sample("before-kill");
+			clearInterval(timer);
+			timer = undefined;
+			const killedAt = Date.now();
+			receipt.kill = {
+				at: new Date(killedAt).toISOString(),
+				signal: "SIGKILL",
+				extension: killTarget,
+				host: hostNow,
+				pending_msg_id: pendingId,
+				pending_send: pending,
+				socket,
+				tmux_name: socketName,
+			};
+			log("extension-only-kill", receipt.kill);
+			save();
+			process.kill(killTarget.pid, "SIGKILL");
+			await until("verified extension process exits", options.timeoutMs, () => {
+				try {
+					process.kill(killTarget.pid, 0);
+					return undefined;
+				} catch (error) {
+					if ((error as NodeJS.ErrnoException).code === "ESRCH") return true;
+					throw error;
+				}
+			});
+			const parked = await until(
+				"dead native receiver parks pending job at its lease deadline",
+				LEASE_MS + 2000,
+				() =>
+					rows(
+						"SELECT seq, at, kind, seat, payload FROM spine_events WHERE kind = 'delivery.parked' AND json_extract(payload, '$.recipient') = ? AND json_extract(payload, '$.messageId') = ? ORDER BY seq",
+						target.seat.id,
+						pendingId,
+					).find((row) => {
+						const payload = object(JSON.parse(String(row.payload)));
+						return payload.reason === DEAD_REASON && payload.messageId === pendingId;
+					}),
+			);
+			const parkObservedMs = Date.now() - killedAt;
+			const hostAfter = inspect(target.host.pid);
+			assert.equal(
+				hostAfter.started,
+				target.host.started,
+				"Copilot host must remain alive after extension death",
+			);
+			assert.equal(
+				descendants(hostAfter).length,
+				0,
+				"host restarted receiver; this is not the dead-receiver scenario",
+			);
+			const nextId = randomUUID();
+			const next = send(`PIJ_MEMORY_AFTER_KILL_${randomUUID()}`, nextId);
+			const outcome = object(object(next.envelope.data).outcome);
+			assert.equal(outcome.outcome, "refused", "next real pij send must refuse a dead receiver");
+			assert(
+				String(outcome.reason).includes(DEAD_REASON) &&
+					String(outcome.reason).includes(target.seat.id),
+				"refusal must name dead native receiver and seat",
+			);
+			receipt.dead_receiver = {
+				park_observed_ms: parkObservedMs,
+				lease_ms: LEASE_MS,
+				parked,
+				next_send: next,
+				host_after: hostAfter,
+				inbox: await api(`/v1/inbox?seat=${encodeURIComponent(target.seat.id)}&peek=true`),
+				pending_jobs: rows(
+					"SELECT id, state, payload, outcome FROM jobs WHERE serial_key = ? AND dedupe_key = ?",
+					target.seat.id,
+					pendingId,
+				),
+				terminal: tmux(["capture-pane", "-p", "-J", "-S", "-2000", "-t", target.seat.pane]),
+			};
+			log("dead-receiver-visible", receipt.dead_receiver);
+			// AC7 uses Copilot's actual user-requested shell surface, not a driver-forged caller tuple.
+			receipt.emergency_ready = await api("/v1/report", {
+				seat: target.seat.id,
+				argv: ["report", "state", "ready"],
+			});
+			const shellQuote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+			const pullOutput = join(options.output, "emergency-inbox.json");
+			const pullError = join(options.output, "emergency-inbox.stderr");
+			const pullStatus = join(options.output, "emergency-inbox.status");
+			const pullIdentity = join(options.output, "emergency-inbox-identity.txt");
+			const pullScript = join(options.output, "emergency-inbox.sh");
+			const pullArgs = ["--json", "--addr", addr, "--state-dir", state, "inbox"];
+			writeFileSync(
+				pullScript,
+				`#!/bin/sh\nprintf '%s\\n' "$TMUX_PANE" "$COPILOT_AGENT_SESSION_ID" > ${shellQuote(pullIdentity)}\n${[options.pijBin, ...pullArgs].map(shellQuote).join(" ")} > ${shellQuote(pullOutput)} 2> ${shellQuote(pullError)}\nprintf '%s\\n' "$?" > ${shellQuote(pullStatus)}\n`,
+				{ flag: "wx", mode: 0o700 },
+			);
+			const shellCommand = `! /bin/sh ${shellQuote(pullScript)}`;
+			tmux(["send-keys", "-t", target.seat.pane, "-l", shellCommand]);
+			tmux(["send-keys", "-t", target.seat.pane, "Enter"]);
+			await until("actual Copilot shell executes emergency inbox", options.timeoutMs, () =>
+				existsSync(pullStatus) && readFileSync(pullStatus, "utf8").trim() ? true : undefined,
+			);
+			const [callerPane, callerSession] = readFileSync(pullIdentity, "utf8").trimEnd().split("\n");
+			assert.equal(
+				callerPane,
+				target.seat.pane,
+				"emergency pull must run inside the actual target pane",
+			);
+			assert.equal(
+				callerSession,
+				target.seat.session,
+				"native shell must supply matching COPILOT_AGENT_SESSION_ID",
+			);
+			const pull = object(JSON.parse(readFileSync(pullOutput, "utf8")));
+			assert.equal(readFileSync(pullStatus, "utf8").trim(), "0", readFileSync(pullError, "utf8"));
+			assert.equal(
+				pull.ok,
+				true,
+				"standard native shell inbox claim must succeed without a process tuple",
+			);
+			assert(
+				Array.isArray(pull.data) && pull.data.some((item) => object(item).msg_id === pendingId),
+				"manual pull must return the parked pending message",
+			);
+			const pullAck = rows(
+				"SELECT recipient, msg_id, origin, delivered_at FROM delivered_messages WHERE recipient = ? AND msg_id = ?",
 				target.seat.id,
 				pendingId,
-			),
-			terminal: tmux(["capture-pane", "-p", "-J", "-S", "-2000", "-t", target.seat.pane]),
-		};
-		log("dead-receiver-visible", receipt.dead_receiver);
-		// AC7 uses Copilot's actual user-requested shell surface, not a driver-forged caller tuple.
-		receipt.emergency_ready = await api("/v1/report", {
-			seat: target.seat.id,
-			argv: ["report", "state", "ready"],
-		});
-		const shellQuote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
-		const pullOutput = join(options.output, "emergency-inbox.json");
-		const pullError = join(options.output, "emergency-inbox.stderr");
-		const pullStatus = join(options.output, "emergency-inbox.status");
-		const pullIdentity = join(options.output, "emergency-inbox-identity.txt");
-		const pullScript = join(options.output, "emergency-inbox.sh");
-		const pullArgs = ["--json", "--addr", addr, "--state-dir", state, "inbox"];
-		writeFileSync(
-			pullScript,
-			`#!/bin/sh\nprintf '%s\\n' "$TMUX_PANE" "$COPILOT_AGENT_SESSION_ID" > ${shellQuote(pullIdentity)}\n${[options.pijBin, ...pullArgs].map(shellQuote).join(" ")} > ${shellQuote(pullOutput)} 2> ${shellQuote(pullError)}\nprintf '%s\\n' "$?" > ${shellQuote(pullStatus)}\n`,
-			{ flag: "wx", mode: 0o700 },
-		);
-		const shellCommand = `! /bin/sh ${shellQuote(pullScript)}`;
-		tmux(["send-keys", "-t", target.seat.pane, "-l", shellCommand]);
-		tmux(["send-keys", "-t", target.seat.pane, "Enter"]);
-		await until("actual Copilot shell executes emergency inbox", options.timeoutMs, () =>
-			existsSync(pullStatus) && readFileSync(pullStatus, "utf8").trim() ? true : undefined,
-		);
-		const [callerPane, callerSession] = readFileSync(pullIdentity, "utf8").trimEnd().split("\n");
-		assert.equal(
-			callerPane,
-			target.seat.pane,
-			"emergency pull must run inside the actual target pane",
-		);
-		assert.equal(
-			callerSession,
-			target.seat.session,
-			"native shell must supply matching COPILOT_AGENT_SESSION_ID",
-		);
-		const pull = object(JSON.parse(readFileSync(pullOutput, "utf8")));
-		assert.equal(readFileSync(pullStatus, "utf8").trim(), "0", readFileSync(pullError, "utf8"));
-		assert.equal(
-			pull.ok,
-			true,
-			"standard native shell inbox claim must succeed without a process tuple",
-		);
-		assert(
-			Array.isArray(pull.data) && pull.data.some((item) => object(item).msg_id === pendingId),
-			"manual pull must return the parked pending message",
-		);
-		const pullAck = rows(
-			"SELECT recipient, msg_id, origin, delivered_at FROM delivered_messages WHERE recipient = ? AND msg_id = ?",
-			target.seat.id,
-			pendingId,
-		);
-		assert.equal(pullAck.length, 1, "manual inbox pull must acknowledge exactly once");
-		receipt.emergency_inbox = {
-			command: shellCommand,
-			caller: { pane: callerPane, copilot_session: callerSession },
-			envelope: pull,
-			acknowledgement: pullAck,
-			jobs: rows(
-				"SELECT id, state, outcome FROM jobs WHERE serial_key = ? AND dedupe_key = ?",
-				target.seat.id,
-				pendingId,
-			),
-			terminal: tmux(["capture-pane", "-p", "-J", "-S", "-2000", "-t", target.seat.pane]),
-		};
-		log("emergency-inbox-claimed", receipt.emergency_inbox);
-		writeFileSync(
-			join(options.output, "native-new-events.jsonl"),
-			`${tail()
-				.map((event) => JSON.stringify(event))
-				.join("\n")}\n`,
-			{ flag: "wx", mode: 0o600 },
-		);
+			);
+			assert.equal(pullAck.length, 1, "manual inbox pull must acknowledge exactly once");
+			receipt.emergency_inbox = {
+				command: shellCommand,
+				caller: { pane: callerPane, copilot_session: callerSession },
+				envelope: pull,
+				acknowledgement: pullAck,
+				jobs: rows(
+					"SELECT id, state, outcome FROM jobs WHERE serial_key = ? AND dedupe_key = ?",
+					target.seat.id,
+					pendingId,
+				),
+				terminal: tmux(["capture-pane", "-p", "-J", "-S", "-2000", "-t", target.seat.pane]),
+			};
+			log("emergency-inbox-claimed", receipt.emergency_inbox);
+			writeFileSync(
+				join(options.output, "native-new-events.jsonl"),
+				`${tail()
+					.map((event) => JSON.stringify(event))
+					.join("\n")}\n`,
+				{ flag: "wx", mode: 0o600 },
+			);
+		}
 		receipt.status = "passed";
 		code = 0;
 	} catch (error) {

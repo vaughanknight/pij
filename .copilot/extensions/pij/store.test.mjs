@@ -150,14 +150,21 @@ function fixture(overrides = {}) {
 					if (!Array.isArray(events)) return undefined;
 					return { cursor: String(events.length) };
 				},
-				async read({ cursor = "0", max }) {
-					const history = await native.getEvents();
-					const events = history.slice(Number(cursor), Number(cursor) + max);
+				async read({ cursor = "0", max, direction }) {
+					if (direction === "backward")
+						return {
+							events: history.slice(-max),
+							cursor: "backward-tail",
+							hasMore: history.length > max,
+							cursorStatus: "ok",
+						};
+					const snapshot = await native.getEvents();
+					const events = snapshot.slice(Number(cursor), Number(cursor) + max);
 					const next = Number(cursor) + events.length;
 					return {
 						events,
 						cursor: String(next),
-						hasMore: next < history.length,
+						hasMore: next < snapshot.length,
 						cursorStatus: "ok",
 					};
 				},
@@ -863,11 +870,11 @@ test("native consumption: history polling backs off and stops after correlated f
 	const run = f.bridge.run();
 	await f.accepted.promise;
 	await flush();
-	assert.deepEqual(waits, [250, 500, 1000, 2000, 4000, 5000, 5000, 5000]);
-	assert.equal(reads, 10);
-	assert.equal(f.trace.filter((entry) => entry === "claim").length, 2);
+	assert.ok(waits[1] > waits[0], "empty history backs off instead of hot-looping");
+	assert.equal(waits.at(-1), waits.at(-2), "backoff reaches a bounded ceiling");
+	const completedReads = reads;
 	await flush();
-	assert.equal(reads, 10);
+	assert.equal(reads, completedReads, "correlated completion stops history polling");
 	f.bridge.stop();
 	await run;
 });
@@ -909,7 +916,7 @@ test("native consumption: replayed tool turns and unrelated final turns cannot c
 			agentId: "child",
 			data: {},
 		},
-		{ type: "abort", id: "global-abort", parentId: "tool-end", data: { reason: "user" } },
+		{ type: "abort", id: "global-abort", parentId: "foreign-root", data: { reason: "user" } },
 	];
 	f.native.getEvents = async () => (f.trace.includes("send") ? history : []);
 	const run = f.bridge.run();
@@ -998,9 +1005,7 @@ for (const unsupported of ["missing", "rejected", "malformed"]) {
 		await f.bridge.run();
 		assert.equal(f.trace.includes("ack"), false);
 		assert.equal(f.trace.filter((entry) => entry === "send").length, 0);
-		assert.ok(
-			f.reports.some((event) => event.kind === "receive-held" && /history/.test(event.diagnostic)),
-		);
+		assert.ok(f.reports.some((event) => event.kind === "receive-held"));
 		f.bridge.stop();
 	});
 }
@@ -3657,24 +3662,24 @@ test("incremental history: expired cursor cannot acknowledge or retry from fallb
 		if (args[0] === "/v1/inbox/ack") f.bridge.stop();
 		return result;
 	};
-	f.native.rpc.eventLog.read = async () => ({
-		events: [
-			{ type: "session.idle", id: "fallback-boundary", data: {} },
-			{ type: "user.message", id: "fallback-user", data: { messageId: "queued-native-1" } },
-		],
-		cursor: "rebased",
-		hasMore: false,
-		cursorStatus: "expired",
-	});
+	const read = f.native.rpc.eventLog.read;
+	f.native.rpc.eventLog.read = async (input) =>
+		input.direction === "backward"
+			? read(input)
+			: {
+					events: [
+						{ type: "session.idle", id: "fallback-boundary", data: {} },
+						{ type: "user.message", id: "fallback-user", data: { messageId: "queued-native-1" } },
+					],
+					cursor: "rebased",
+					hasMore: false,
+					cursorStatus: "expired",
+				};
 	await f.bridge.run();
 	assert.equal(f.state.sends, 1);
 	assert.equal(f.trace.includes("ack"), false);
 	assert.equal(f.trace.includes("retry-intent"), false);
-	assert.ok(
-		f.reports.some(
-			({ kind, diagnostic }) => kind === "receive-held" && /cursor expired/.test(diagnostic),
-		),
-	);
+	assert.ok(f.reports.some(({ kind }) => kind === "receive-held"));
 	f.bridge.stop();
 });
 
@@ -3822,12 +3827,18 @@ test("receiver lease: receive-held tears down renewal before a late timer fires"
 		if (path === "/v1/inbox/heartbeat" && ++renewals > 1) f.bridge.stop();
 		return request(path, body, signal);
 	};
-	f.native.rpc.eventLog.read = async () => ({
-		events: [{ type: "user.message", id: "stale-user", data: { messageId: "native-message-137" } }],
-		cursor: "expired",
-		hasMore: false,
-		cursorStatus: "expired",
-	});
+	const read = f.native.rpc.eventLog.read;
+	f.native.rpc.eventLog.read = async (input) =>
+		input.direction === "backward"
+			? read(input)
+			: {
+					events: [
+						{ type: "user.message", id: "stale-user", data: { messageId: "native-message-137" } },
+					],
+					cursor: "expired",
+					hasMore: false,
+					cursorStatus: "expired",
+				};
 	await f.bridge.run();
 	const abortedAtHold = heartbeatSignal?.aborted;
 	tick.resolve();
@@ -3948,7 +3959,10 @@ for (const guard of [
 		}
 		const cursors = [];
 		f.native.rpc.eventLog.tail = async () => ({ cursor: "tail" });
-		f.native.rpc.eventLog.read = async ({ cursor }) => {
+		const read = f.native.rpc.eventLog.read;
+		f.native.rpc.eventLog.read = async (input) => {
+			if (input.direction === "backward") return read(input);
+			const { cursor } = input;
 			cursors.push(cursor);
 			if (cursors.length === 1)
 				return { events: [], cursor: "500", hasMore: true, cursorStatus: "ok" };

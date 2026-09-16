@@ -105,7 +105,7 @@ function renderPhonehome(payload: unknown): string {
 
 function renderState(payload: unknown): string {
 	const head = `${text(payload, "id") ?? "?"}: ${text(payload, "state") ?? "?"} · ${text(payload, "liveness") ?? "?"}`;
-	const detail = ["cwd", "harness", "parent"].flatMap((key) => {
+	const detail = ["cwd", "harness", "parent", "native_receiver_reason"].flatMap((key) => {
 		const value = text(payload, key);
 		return value === undefined ? [] : [`${key}: ${value}`];
 	});

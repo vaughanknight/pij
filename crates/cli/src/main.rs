@@ -1781,6 +1781,9 @@ fn render_state(envelope: &Envelope<pij_daemon::http::StateCard>, json: bool) ->
         if let Some(first) = card.held.iter().min_by_key(|hold| hold.since_ms) {
             let _ = write!(output, " ({} since {} ms)", first.reason, first.since_ms);
         }
+        if let Some(reason) = &card.native_receiver_reason {
+            let _ = write!(output, "\nnative receiver: {reason}");
+        }
     }
     output
 }
@@ -2170,6 +2173,25 @@ mod tests {
         let json: serde_json::Value =
             serde_json::from_str(&super::render_state(&response, true)).expect("unadorned JSON");
         assert_eq!(json["data"]["held"].as_array().expect("holds").len(), 2);
+    }
+
+    #[test]
+    fn stale_native_receiver_diagnosis_survives_human_and_json_state_output() {
+        let card = serde_json::from_value::<pij_daemon::http::StateCard>(serde_json::json!({
+            "id":"pij-native", "state":"idle", "liveness":"active", "cwd":"/abs/tree",
+            "harness":"copilot", "unsupported":[],
+            "native_receiver_reason":"native-receiver-stale",
+        }))
+        .unwrap();
+        let response = pij_core::model::Envelope::ok("pij state", card);
+        assert!(super::render_state(&response, false).contains("native-receiver-stale"));
+        let json: serde_json::Value =
+            serde_json::from_str(&super::render_state(&response, true)).unwrap();
+        assert_eq!(
+            json["data"]["native_receiver_reason"],
+            "native-receiver-stale"
+        );
+        assert_eq!(json["data"]["liveness"], "active");
     }
 
     #[test]
