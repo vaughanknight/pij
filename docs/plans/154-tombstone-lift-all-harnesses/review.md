@@ -395,3 +395,257 @@ done
 | 4 | `justfile` / gate log | Split `cargo fmt --all` from `cargo fmt --all --check` so the recorded gate can fail. |
 | 5 | `registration.rs:944` | One comment: `seat.resumed` and `seat.native-resumed` are both emitted for a native retired resume, and neither currently has a consumer. |
 | 6 | `report.md` | One sentence noting `red-invariant.log` stops at the first loop case; the four per-harness REDs are in `red-registration.log`. |
+
+---
+
+# Round 2 — `86ed585c..23f5cb76`
+
+**Probe worktree**: `/Users/jordanknight/pi-hacking/pij-worktrees/s154-r2`, detached at `23f5cb76`, worktree-local `CARGO_TARGET_DIR`. Every mutant and probe ran there; the tree was restored byte-for-byte after each and verified by re-read. Production daemon touched once, read-only (`pij list --json`). Round-2 probes are preserved next to the round-1 ones in `reviewer-probes/` (`probes-r2.rs`, `apply-r2.py`).
+
+**Verdict: APPROVE.** Every finding I raised is fixed, each fix is killed by a named test when mutated, and the pre-fix tree goes red on the new tests. Two things are worth reading before merge — neither blocks: one requested mutant **cannot** go red because the guard it protects is unreachable (§ R.2b), and the F001 fix changes four retired paneless shapes from "mint a new id" to "refuse" (§ R.8). Both are described exactly, with the commands.
+
+## R.0 — What I re-ran
+
+| probe | what | result |
+|---|---|---|
+| P1 | invariant assertion at **both** `Ok` exits, whole daemon suite, on the new tree | **419 passed / 0 failed** |
+| P1-control | same injection + M1 (keep the tombstone on omp) | **exit 101**, `INVARIANT VIOLATED at the main Ok exit` |
+| M-r2-prefix-paneless | restore `86ed585c`'s `paneless_target` body | **8 red** — all six resume witnesses, plus the foreign refusal and the selection test |
+| M-r2-harness-gate | delete the new pre-rung harness gate | **3 red** — both new HTTP tests + the refusal loop |
+| M-r2-harness-rewrite | restore the unconditional `descriptor.harness = harness` | **419 passed — green** (§ R.2b) |
+| M-r2-continuity-deleted | delete the continuity block | **2 red** — incl. the exact-message loop |
+| M-r2-double-event | let a native resume also emit `seat.resumed` | **1 red** — `native_session_resume_lifts_tombstone_and_publishes_incarnation_change` |
+| R2a | five retired paneless attribute shapes, fix vs pre-fix | 1 resumes, 4 refuse (§ R.8) |
+| R2b | my round-1 F001 probes, verbatim | all six resume, address/parent/harness preserved |
+| R2c/R2d | my round-1 F002 probes, verbatim, plus the same-harness complement | cross-harness refused + named; same-harness still lifts |
+
+## R.1 — F001: fixed, and the fix is load-bearing
+
+My two round-1 shapes, re-run verbatim on the new tree:
+
+```
+PROBE R2b Claude/dead-host:  Ok(id=pij-retired-paneless-probe, tombstoned=None, parent=Some(SeatId("pij-original-parent")), harness=Claude)
+PROBE R2b Claude/live-host:  Ok(id=pij-retired-paneless-probe, tombstoned=None, parent=Some(SeatId("pij-original-parent")), harness=Claude)
+PROBE R2b Codex/dead-host:   Ok(id=pij-retired-paneless-probe, …, harness=Codex)
+PROBE R2b Codex/live-host:   Ok(id=pij-retired-paneless-probe, …, harness=Codex)
+PROBE R2b Copilot/dead-host: Ok(id=pij-retired-paneless-probe, …, harness=Copilot)
+PROBE R2b Copilot/live-host: Ok(id=pij-retired-paneless-probe, …, harness=Copilot)
+```
+
+The address is reused (not a fresh mint), the tombstone is cleared, the parent survives, the harness survives. The false `a subagent of <id>` refusal is gone on the live-host shape.
+
+**Pre-fix check, as asked.** I restored `86ed585c`'s `paneless_target` body onto the new tree — nothing else — and ran the daemon suite. Eight of the new tests go red, not six:
+
+```
+--- M-r2-prefix-paneless: exit 101
+    test result: FAILED. 411 passed; 8 failed
+    RED retired_paneless_claude_reuses_dead_host_address
+    RED retired_paneless_claude_reuses_same_host_address
+    RED retired_paneless_codex_reuses_dead_host_address
+    RED retired_paneless_codex_reuses_same_host_address
+    RED retired_paneless_copilot_reuses_dead_host_address
+    RED retired_paneless_copilot_reuses_same_host_address
+    RED retired_paneless_foreign_session_names_tombstone_without_writes
+    RED retired_paneless_selection_prefers_live_then_newest_then_id
+```
+
+The two extra REDs matter: `..._foreign_session_names_tombstone_without_writes` proves the *refusal* half (a foreign session holding the retired row's pid gets the AC3 diagnostic, not a lift and not the paneless "subagent" text), and `..._selection_prefers_live_then_newest_then_id` proves the tie-break is deterministic rather than iteration-order luck. Both would have been easy to skip.
+
+**The removed refusal case is honest.** `paneless_refuses_ambiguous_session_stale_tuple_and_false_push_attestation` lost its `8 => incumbent.tombstoned_at = Some(1)` row and shrank `0..10` to `0..9`. That row asserted the defect (a retired same-session incumbent must be refused), so keeping it would have pinned F001. The other eight shapes — stale tuple, foreign pid, pane, relay, native delivery, spawn id, duplicate address — are all still there, and the duplicate-address case is still reachable because the new "multiple Pij addresses" refusal only skips *retired* duplicates.
+
+## R.2 — F002: harness now gates every rung
+
+### R.2a The gate itself
+
+New code at `registration.rs:597-603`, before every rung and before the spawn/collision logic:
+
+```rust
+if let Some(seat) = existing
+    .filter(|seat| seat.tombstoned_at.is_some() && seat.harness.as_str() != claim.harness)
+{
+    return Err(retired_refusal(seat, &claim.harness));
+}
+```
+
+My round-1 probes, verbatim, now refused and named:
+
+```
+PROBE R2c process-rung cross-harness: seat pij-retired-cross is retired (observed-dead, 154); a different session may not take it; harness mismatch: row omp, claim pi
+PROBE R2c process-rung row-unchanged=true
+PROBE R2c spawn-rung  cross-harness: seat pij-retired-cross is retired (observed-dead, 154); a different session may not take it; harness mismatch: row omp, claim claude
+PROBE R2c spawn-rung  row-unchanged=true
+```
+
+And the complement I added, so the gate is a gate and not a wall — identical claims with a matching harness still lift, still across a foreign session, on both rungs:
+
+```
+PROBE R2d process-rung same-harness: Ok(id=pij-retired-same, harness=Omp, tombstoned=None)
+PROBE R2d spawn-rung  same-harness: Ok(id=pij-retired-same, harness=Omp, tombstoned=None)
+```
+
+Deleting the gate kills three tests, including both new HTTP-level ones:
+
+```
+--- M-r2-harness-gate: exit 101
+    test result: FAILED. 416 passed; 3 failed
+    RED http::tests::retired_registration_refuses_claude_spawn_continuity_on_omp_row
+    RED http::tests::retired_registration_refuses_pi_process_continuity_on_omp_row
+    RED registration::tests::retired_registration_does_not_treat_absence_or_foreign_harness_as_continuity
+```
+
+Those two HTTP tests are the right shape: they go through the real router and assert the whole v2 envelope plus `registry.get(&old.id) == Some(old)`, so "refused without writing" is proven at the boundary, not just in the service.
+
+The `harness_session` rung also lost its own `seat.harness == harness` conjunct, which is correct — it is now redundant with the gate, and leaving both would have hidden which one was doing the work.
+
+### R.2b The second half of the ruling is unfalsifiable — requested mutant does not go red
+
+The packet asked me to mutate `descriptor.harness` back to an unconditional assignment and name the red test. There isn't one:
+
+```
+--- M-r2-harness-rewrite: exit 0
+    test result: ok. 419 passed; 0 failed
+```
+
+This is not a coverage gap the coder should close — it is a consequence of the gate above, and it is provable rather than empirical:
+
+- `Harness::parse` and `Harness::as_str` are exact inverses over five lowercase spellings (`crates/core/src/model.rs:57-79`), so `seat.harness.as_str() != claim.harness` ⟺ `seat.harness != harness` for any claim that reached here (`claim.harness` must already have parsed at `:121`).
+- Therefore after the gate, `existing.tombstoned_at.is_some()` ⟹ `existing.harness == harness`. On every lift, `descriptor` is `existing.cloned()`, so `descriptor.harness = harness` is a **no-op by identity**.
+- `resuming` is also true for a *native, non-retired* resume — but `register_native_with_observer` refuses anything except `claim.harness == "copilot"` at `:239`, and `registration_target`'s native branch only selects `Harness::Copilot` rows, so the assignment is a no-op there too. The only surviving way to observe the guard is a non-copilot row whose `harness_session` exactly equals a native Copilot session uuid — a fixture, not a state the system can reach.
+
+So `if !resuming { descriptor.harness = harness; }` is correct, harmless, and untestable. I would keep it (it states the intent locally, next to the clear) but the report's claim "A lift no longer assigns `descriptor.harness`" is carried by the gate, not by this line. Worth one comment saying so, so a later reader does not go hunting for the test that pins it.
+
+## R.3 — F003: the loop now asserts what it refuses
+
+`missing-process` became `missing-recorded-process`, and the mutation is the right one: it now removes only `old.proc`, keeping `claim.pid`/`claim.proc_start`, so the claim is admissible and the *ladder* is what refuses it. Every one of the six shapes asserts its exact message, with the `foreign-harness` shape asserting the new `; harness mismatch: row omp, claim pi` suffix.
+
+Deleting the continuity block makes the loop red, which is what makes the assertions load-bearing:
+
+```
+--- M-r2-continuity-deleted: exit 101
+    test result: FAILED. 417 passed; 2 failed
+    RED http::tests::retired_registration_refuses_foreign_session_without_writing
+    RED registration::tests::retired_registration_does_not_treat_absence_or_foreign_harness_as_continuity
+```
+
+Round 1 that mutant left the loop green, because `refused()` accepted any `Refused`. It no longer can.
+
+The HTTP-side refusal test was generalised into `retired_registration_refusal_contract(harness, proof)` with three call sites. The shared body still asserts the exact meta string, the unchanged row and an unchanged spine tail — parameterising it did not dilute it.
+
+## R.4 — AC4 sentence excised
+
+```
+$ grep -rc 'the registration wins' docs/plans/154-tombstone-lift-all-harnesses/plan.md
+0
+```
+
+The replacement — *"The pre-existing `tombstone_if_unchanged` CAS is pinned by an interleaving test; the sweep cannot re-tombstone a re-registered incarnation"* — matches what `report.md:47` said was delivered (*"already had transactional whole-descriptor CAS; this is a new discriminating witness, not a newly discovered missing interlock"*), and matches my round-1 finding that the AC4 test passes unchanged on the pre-fix tree. Documentation correction, no reaper code touched — `reaper.rs` is not in the round-2 diffstat.
+
+## R.5 — Minor 2: exactly one event per transition
+
+`!native && let Some(previous) = retired` on the ordinary branch; the native branch keeps `seat.native-resumed` and now carries `prior_reason` too. Three tests assert the *list* of resume events, not just its presence:
+
+- ordinary retired lift → `["seat.resumed"]`
+- native retired resume → `["seat.native-resumed"]`
+- paneless retired resume → exactly one, `seat.resumed`
+
+Mutating the guard away is caught:
+
+```
+--- M-r2-double-event: exit 101
+    test result: FAILED. 418 passed; 1 failed
+    RED registration::tests::native_session_resume_lifts_tombstone_and_publishes_incarnation_change
+```
+
+Asserting the whole filtered list rather than "contains" is what makes this a real pin — a "contains" assertion would have stayed green under the mutant.
+
+## R.6 — Invariant still structurally total on the new tree
+
+F001 added a resume path through `paneless_target`, so the round-1 totality argument needed re-proving rather than re-quoting. Both `Ok` exits of `register_inner` re-asserted, whole suite:
+
+```
+--- P1 totality (all 419): exit 0
+    test result: ok. 419 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+Negative control, so it is not a decorative assertion:
+
+```
+--- P1 negative control: exit 101
+    INVARIANT VIOLATED at the main Ok exit: SeatDescriptor { id: SeatId("pij-registration-invariant"), … harness: Omp, …
+    test result: FAILED. 0 passed; 1 failed
+```
+
+The structural argument survives the new path unchanged: `descriptor` is still only ever `existing.cloned()` or `SeatDescriptor::new(…)`, and the paneless resume reaches the same `if resuming { descriptor.tombstoned_at = None; … }` clear. The paneless short-circuit exit at `:825` cannot return a tombstoned row for a different reason — it requires `existing == Some(&descriptor)`, and a cleared descriptor is never equal to its retired original.
+
+## R.7 — Gates, warm, on my checkout at `23f5cb76`
+
+```
+cargo fmt --all --check                                   exit 0
+cargo clippy --workspace --all-targets -- -D warnings     exit 0
+cargo test --workspace                                    1140 passed, 0 failed
+cargo test -p pij-daemon --lib                            419 passed, 0 failed
+just self-check                                           2 non-plan flakes, both reproduced as flakes (below)
+```
+
+**`just self-check` on my checkout, three runs, no plan-154 code involved** — the round-2 range contains **zero** TypeScript/JavaScript (`git diff --stat 86ed585c..23f5cb76 -- '*.ts' '*.mjs' '*.js'` is empty), so none of this can be the change:
+
+1. First run, fresh worktree, exit **127** at stage one: `local-path-check: node_modules/.bin/tsx: No such file or directory`. A new worktree has no deps; `just worktree-deps` fixes it. Worth encoding — the failure names a missing file, not the recipe that creates it.
+2. Second run, exit 1: `harness/scripts/worktree-deps.test.ts` failed in **teardown**, `ENOTEMPTY` removing its temp `git worktree` tree (`harness/test-utils.ts:34`, `rmSync` already has `force` + 3 retries). Re-run alone: **18/18 passed**. Flake.
+3. Third run: vitest **241 files / 5307 passed / 22 skipped**, green — confirming (2) was a flake. Smoke failed at `file-watch-notify` with `idle-timeout` again; warm re-run `npx tsx harness/scripts/smoke.ts file-watch-notify` → `✓` in **2.6 s**.
+
+That is DL-002 reproducing a **third** time, now on a brand-new worktree with a cold scenario cache. Two independent machine-states, three runs: the scenario's 30 s idle budget does not distinguish "hung" from "still cloning". The coder's own `gate-self-check.log` is exit 0 with all 11 scenarios, and prime already ruled the cold timing out of scope for this plan — recording it here only so the ledger has a third data point.
+
+The coder's `gate-rust.log:1` is now `cargo fmt --all --check && cargo clippy … && cargo build … && cargo test --workspace`, exit 0, 1140 passed — the formatting write is gone from the chain, so F004 is resolved and the recorded gate can now fail.
+
+## R.8 — One behaviour change the fix introduces, named precisely
+
+The F001 fix lets a retired row become the paneless target, which means the pre-existing pull-shape guard now runs *against a retired row* for the first time. Four retired attribute shapes that previously minted a fresh id are now hard refusals. Same fixture, fix vs pre-fix body:
+
+```
+PROBE R2a pane:            REFUSED paneless external registration refused: host process or native session conflicts with seat `pij-retired-shape`
+PROBE R2a relay:           REFUSED …
+PROBE R2a native-delivery: REFUSED …
+PROBE R2a spawn-id:        REFUSED …
+PROBE R2a clean:           RESUMED id=pij-retired-shape tombstoned=None
+
+PRE-FIX PROBE R2a pane:            RESUMED id=pij-complete-mawhrin   ← a NEW id, not the retired one
+PRE-FIX PROBE R2a relay:           RESUMED id=pij-complete-mawhrin
+PRE-FIX PROBE R2a native-delivery: RESUMED id=pij-complete-mawhrin
+PRE-FIX PROBE R2a spawn-id:        RESUMED id=pij-complete-mawhrin
+PRE-FIX PROBE R2a clean:           RESUMED id=pij-complete-mawhrin
+```
+
+The realistic trigger is a pij-spawned claude/codex/copilot peer (spawn always sets `spawn_id`, and a spawned peer has a pane) that dies, is swept, and whose session then returns headless — `claude --resume <session>` outside tmux. Pre-fix it silently got a new address; now it cannot register at all.
+
+**Why this is not a finding.** It is deliberate and documented: `docs/how/pij-rs-api.md:54` says *"Their existing live-owner, session and pull-shape restrictions remain stronger than the continuity ladder"*, and the new behaviour makes a retired row behave exactly like a **live** row of the same shape, which has refused since before this plan. Failing closed on an ambiguous host is the conservative direction, and production has **0 paneless seats** (`pij list --json`: 34 live — 16 copilot, 11 omp, 4 pi, 3 claude; 19 external-harness, none paneless, 5 with `spawn_id`), so nothing is exposed today.
+
+**What is worth one line of follow-up**: the refusal text. For a retired row the message is `host process or native session conflicts with seat pij-retired-shape`, which names neither the tombstone nor the actual disqualifier (`pane.is_some()`). That is the same diagnostic complaint I filed as round-1 F001 — the operator is told about a conflict that does not exist. Routing the retired branch through `retired_refusal` (or appending the shape) would close it. Non-blocking; nobody can hit it until a paneless seat exists.
+
+## R.9 — Round-1 findings, disposition
+
+| id | round-1 | round-2 |
+|---|---|---|
+| F001 | MEDIUM — paneless retired address abandoned or falsely refused | **fixed**, 8 tests, pre-fix red (§ R.1); residual shape named in § R.8 |
+| F002 | MEDIUM — ladder not harness-gated, lift rewrote `harness` | **fixed**, gate + 3 tests (§ R.2a); the `!resuming` half is unfalsifiable (§ R.2b) |
+| F003 | LOW — `missing-process` refused by admission, `refused()` accepted anything | **fixed**, exact messages, deletion-mutant red (§ R.3) |
+| F004 | LOW — `cargo fmt --all` preceded its own check | **fixed**, `gate-rust.log:1` is check-only |
+| F005 | LOW — `seat.resumed` has no consumer; native emitted both events | **half fixed** — the double emit is gone (§ R.5); still no consumer anywhere in the repo, which is fine for an audit fact but worth knowing |
+| F006 | LOW — AC4 witness passes pre-fix | **fixed** by excision (§ R.4) |
+| F007 | INFO — retired refusal discloses reason/timestamp | unchanged, and now also discloses the row's harness. Still bearer-authenticated, still a fact the claimant's own row carried. No action. |
+| minor | `red-invariant.log` stops at the first case | **fixed** — `report.md` now says so explicitly |
+
+## R.10 — Reproducing round 2
+
+```bash
+git worktree add --detach ~/pi-hacking/pij-worktrees/s154-r2 23f5cb76
+cd ~/pi-hacking/pij-worktrees/s154-r2 && export CARGO_TARGET_DIR=$PWD/target
+P=docs/plans/154-tombstone-lift-all-harnesses/reviewer-probes
+mkdir -p $P && cp ~/pi-hacking/fs3-tombstone-lift/$P/* $P/
+
+python3 $P/apply-r2.py mutants           # M-r2-*, one at a time, tree restored after each
+python3 $P/apply-r2.py probes            # R2a–R2d, printed with --nocapture
+python3 $P/apply-r2.py totality          # invariant at both Ok exits, whole suite
+python3 $P/apply-r2.py totality-control  # same, plus M1 — must panic
+```
+
+`apply-r2.py` resolves the repo root from its own path, edits `registration.rs` in place and restores it in a `finally`, verifying the restore by comparison. Run it only on a throwaway detached worktree.
