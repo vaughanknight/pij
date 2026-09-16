@@ -653,6 +653,12 @@ fn adopt_registration_error(error: RegistrationError) -> Response {
             answer.details = Some(json!({ "retryable": true }));
             envelope(StatusCode::CONFLICT, &answer)
         }
+        error @ RegistrationError::NativeSessionHold(_) => {
+            let mut answer: Envelope<()> =
+                Envelope::refused(ADOPT, ErrorKind::Refused, error.to_string());
+            answer.details = Some(json!({ "retryable": true, "hold": "native-session" }));
+            envelope(StatusCode::CONFLICT, &answer)
+        }
         RegistrationError::Runtime(error) => internal(ADOPT, error),
     }
 }

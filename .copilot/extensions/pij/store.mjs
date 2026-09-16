@@ -21,12 +21,13 @@ const nativeAttested = (seat) =>
 	nativeSession(seat) && seat.native_extension_delivery === true && seat.tombstoned_at == null;
 
 export class NativeError extends Error {
-	constructor(message, retryable = false, safeDiagnostic = message) {
+	constructor(message, retryable = false, safeDiagnostic = message, holdKind = undefined) {
 		super(message);
 		this.name = "NativeError";
 		this.retryable = retryable;
 		// Local NativeError text is authored here; remote/OS text must supply a safe projection.
 		this.safeDiagnostic = safeDiagnostic;
+		if (retryable && holdKind === "native-session") this.holdKind = holdKind;
 	}
 }
 
@@ -336,6 +337,9 @@ export class DaemonClient {
 					response.status === 429 ||
 					response.status >= 500,
 				hostRefusal ? envelope.meta.replaceAll(key, "[redacted]") : `Pij HTTP ${response.status}`,
+				registrationRetry && envelope.details.hold === "native-session"
+					? "native-session"
+					: undefined,
 			);
 		}
 		return envelope;
@@ -744,6 +748,7 @@ export class NativeBridge {
 		const signal = this.controller.signal;
 		let retry = INITIAL_RETRY_MS;
 		let failureEpisode = false;
+		let holdStarted;
 		try {
 			throwIfStopped(signal);
 			if (
@@ -791,7 +796,11 @@ export class NativeBridge {
 			});
 			while (!signal.aborted) {
 				try {
-					if (!this.registered) await this.register();
+					if (!this.registered) {
+						await this.register();
+						if (holdStarted !== undefined) this.emit("connection-ready");
+						holdStarted = undefined;
+					}
 					if (this.completion) await this.waitForCompletion();
 					throwIfStopped(signal);
 					const { claims, hold } = await this.client.claimInbox(this.tuple(), signal);
@@ -823,13 +832,25 @@ export class NativeBridge {
 					if (!(error instanceof InboxWaitDeadline)) {
 						if (!error.retryable) throw error;
 						this.registered = false;
-						if (!failureEpisode)
-							this.emit("reconnecting", {
-								diagnostic: error.message,
-								safeDiagnostic: error instanceof NativeError ? error.safeDiagnostic : null,
+						if (error instanceof NativeError && error.holdKind === "native-session") {
+							const now = performance.now();
+							holdStarted ??= now;
+							failureEpisode = false;
+							this.emit("registration-wait", {
+								holdKind: error.holdKind,
+								elapsedMs: now - holdStarted,
 								retryMs: retry,
 							});
-						failureEpisode = true;
+						} else {
+							holdStarted = undefined;
+							if (!failureEpisode)
+								this.emit("reconnecting", {
+									diagnostic: error.message,
+									safeDiagnostic: error instanceof NativeError ? error.safeDiagnostic : null,
+									retryMs: retry,
+								});
+							failureEpisode = true;
+						}
 					}
 					await this.delay(retry, signal);
 					retry = Math.min(retry * 2, MAX_RETRY_MS);
@@ -1174,9 +1195,29 @@ export async function resolveNativeHost({ parentPid, inspectProcess, pane, paneP
 /** Native timeline diagnostics share an episode across bootstrap and receive reconnects. */
 export function createNativeReporter({ log, capture }) {
 	let unavailable = false;
+	let registrationWaiting = false;
 	return (event) => {
-		if (event.kind === "registered" || event.kind === "connection-ready") unavailable = false;
+		if (event.kind === "registered" || event.kind === "connection-ready") {
+			unavailable = false;
+			registrationWaiting = false;
+		}
 		if (event.kind === "connection-ready") return;
+		if (event.kind === "registration-wait" && event.holdKind === "native-session") {
+			unavailable = false;
+			capture({
+				kind: event.kind,
+				holdKind: event.holdKind,
+				elapsedMs: event.elapsedMs,
+				retryMs: event.retryMs,
+			});
+			if (registrationWaiting || !(event.elapsedMs >= 10000)) return;
+			registrationWaiting = true;
+			return Promise.resolve()
+				.then(() =>
+					log("[pij native] waiting for this pane's resumed Copilot session", { level: "info" }),
+				)
+				.catch(() => capture({ kind: "native-diagnostic-unavailable", failureKind: event.kind }));
+		}
 		if (event.kind === "native-requeued") {
 			capture(event);
 			return Promise.resolve()
@@ -1188,6 +1229,7 @@ export function createNativeReporter({ log, capture }) {
 				event.kind,
 			)
 		) {
+			registrationWaiting = false;
 			if (unavailable && !["receive-held", "extension-unavailable"].includes(event.kind)) return;
 			unavailable = true;
 			const advice =
