@@ -2373,6 +2373,96 @@ async fn extension_identity_survives_sqlite_registration_readbacks_and_legacy_re
     pool.close().await;
 }
 
+async fn retired_registration_refusal_contract(harness: Harness, proof: Option<&str>) {
+    let old_proc = ProcIdentity {
+        pid: 154,
+        proc_start: 1,
+    };
+    let new_proc = ProcIdentity {
+        pid: 155,
+        proc_start: 2,
+    };
+    let mut old = SeatDescriptor::new("pij-retired-154", Harness::Omp, "/abs/tree");
+    old.proc = Some(old_proc);
+    old.harness_session = Some("saved-omp-session".into());
+    old.tombstoned_at = Some(154);
+    old.tombstone_reason = Some("observed-dead".into());
+    old.parent = Some("pij-original-parent".into());
+    if proof == Some("process") {
+        old.proc = Some(new_proc);
+    }
+    if proof == Some("spawn") {
+        old.spawn_id = Some("launch-154".into());
+    }
+    let registry = Arc::new(FakeRegistry::new().with_seat(old.clone()));
+    let spine = Arc::new(FakeSpine::new());
+    let mut services = test_services(
+        registry.clone(),
+        Arc::new(FakeQueue::new(1_024).unwrap()),
+        spine.clone(),
+    )
+    .await;
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(new_proc));
+    let before = spine
+        .tail(Some(&old.id), pij_core::model::Seq(0))
+        .await
+        .unwrap();
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/register"))
+        .bearer_auth("key")
+        .json(&serde_json::json!({
+            "id": old.id, "harness": harness.as_str(), "folder": "/abs/other-tree",
+            "pid": new_proc.pid, "proc_start": new_proc.proc_start,
+            "HARNESS_SESSION_ID": "foreign-omp-session", "parent": "pij-new-parent",
+            "spawn_id": if proof == Some("spawn") { old.spawn_id.as_deref() } else { None },
+        }))
+        .send()
+        .await
+        .unwrap();
+    let status = response.status();
+    let envelope: serde_json::Value = response.json().await.unwrap();
+    server.abort();
+    assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "{envelope}");
+    assert_eq!(envelope["v"], 2);
+    assert_eq!(envelope["command"], "pij register");
+    assert_eq!(envelope["ok"], false);
+    assert_eq!(envelope["error"], "refused");
+    let mut expected =
+        "seat pij-retired-154 is retired (observed-dead, 154); a different session may not take it"
+            .to_string();
+    if harness != old.harness {
+        expected.push_str(&format!(
+            "; harness mismatch: row omp, claim {}",
+            harness.as_str()
+        ));
+    }
+    assert_eq!(envelope["meta"], expected);
+    assert_eq!(registry.get(&old.id).await.unwrap(), Some(old.clone()));
+    assert_eq!(
+        spine
+            .tail(Some(&old.id), pij_core::model::Seq(0))
+            .await
+            .unwrap(),
+        before
+    );
+}
+
+#[tokio::test]
+async fn retired_registration_refuses_foreign_session_without_writing() {
+    retired_registration_refusal_contract(Harness::Omp, None).await;
+}
+
+#[tokio::test]
+async fn retired_registration_refuses_pi_process_continuity_on_omp_row() {
+    retired_registration_refusal_contract(Harness::Pi, Some("process")).await;
+}
+
+#[tokio::test]
+async fn retired_registration_refuses_claude_spawn_continuity_on_omp_row() {
+    retired_registration_refusal_contract(Harness::Claude, Some("spawn")).await;
+}
+
 #[tokio::test]
 async fn registration_corroborates_process_and_refuses_shared_process_aliases() {
     let identity = ProcIdentity {

@@ -1,0 +1,23 @@
+COMMAND: /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --lib death_sweep_preserves_registration_during_old_process_observation -- --nocapture
+EXIT: 101
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-tombstone-lift/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.57s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-043514ab0ddb16b1)
+
+running 1 test
+test reaper::tests::death_sweep_preserves_registration_during_old_process_observation ... 
+thread 'reaper::tests::death_sweep_preserves_registration_during_old_process_observation' (67502416) panicked at crates/daemon/src/reaper_tests.rs:456:5:
+assertion `left == right` failed: the stale death observation must not retire the newly registered incarnation
+  left: Some(1789534482888)
+ right: None
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    reaper::tests::death_sweep_preserves_registration_during_old_process_observation
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 407 filtered out; finished in 0.04s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

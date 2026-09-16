@@ -1,0 +1,30 @@
+COMMAND: /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --lib retired_registration_refuses_ -- --nocapture
+EXIT: 101
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.57s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-043514ab0ddb16b1)
+
+running 3 tests
+test http::tests::retired_registration_refuses_claude_spawn_continuity_on_omp_row ... 
+thread 'http::tests::retired_registration_refuses_claude_spawn_continuity_on_omp_row' (72010705) panicked at crates/daemon/src/http/tests.rs:2426:5:
+assertion `left == right` failed: {"command":"pij register","data":{"binding":"rebound","cross_session_inbound_accept":true,"extension_build":null,"extension_path":null,"folder":"/abs/other-tree","harness":"claude","id":"pij-retired-154","native_extension_delivery":false,"pane":null,"parent":"pij-original-parent","proc":{"pid":155,"proc_start":2},"relay":false,"role":null,"semantic_state":null,"session":"foreign-omp-session","spawn_id":"launch-154","state":"idle","typing_grace_ms":60000},"meta":"verified external shim callers resolve this paneless seat from their native host/session automatically; other clients must pass id pij-retired-154 explicitly or export PIJ_SESSION_ID=pij-retired-154","ok":true,"v":2}
+  left: 200
+ right: 400
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test http::tests::retired_registration_refuses_foreign_session_without_writing ... ok
+test http::tests::retired_registration_refuses_pi_process_continuity_on_omp_row ... 
+thread 'http::tests::retired_registration_refuses_pi_process_continuity_on_omp_row' (72010787) panicked at crates/daemon/src/http/tests.rs:2426:5:
+assertion `left == right` failed: {"command":"pij register","data":{"binding":"same","extension_build":null,"extension_path":null,"folder":"/abs/other-tree","harness":"pi","id":"pij-retired-154","native_extension_delivery":false,"pane":null,"parent":"pij-original-parent","proc":{"pid":155,"proc_start":2},"relay":false,"role":null,"semantic_state":null,"session":"foreign-omp-session","state":"idle","typing_grace_ms":60000},"meta":"verified external shim callers resolve this paneless seat from their native host/session automatically; other clients must pass id pij-retired-154 explicitly or export PIJ_SESSION_ID=pij-retired-154","ok":true,"v":2}
+  left: 200
+ right: 400
+FAILED
+
+failures:
+
+failures:
+    http::tests::retired_registration_refuses_claude_spawn_continuity_on_omp_row
+    http::tests::retired_registration_refuses_pi_process_continuity_on_omp_row
+
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 415 filtered out; finished in 0.10s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

@@ -1,0 +1,23 @@
+COMMAND: /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --lib retired_native_foreign_session_refusal_names_tombstone_even_with_same_process -- --nocapture
+EXIT: 101
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-tombstone-lift/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.13s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-043514ab0ddb16b1)
+
+running 1 test
+test registration::tests::retired_native_foreign_session_refusal_names_tombstone_even_with_same_process ... 
+thread 'registration::tests::retired_native_foreign_session_refusal_names_tombstone_even_with_same_process' (68912130) panicked at crates/daemon/src/registration.rs:1883:9:
+assertion `left == right` failed
+  left: "native Copilot registration refused: seat id belongs to a different native session"
+ right: "seat pij-retired-native is retired (observed-dead, 154); a different session may not take it"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    registration::tests::retired_native_foreign_session_refusal_names_tombstone_even_with_same_process
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 408 filtered out; finished in 0.02s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

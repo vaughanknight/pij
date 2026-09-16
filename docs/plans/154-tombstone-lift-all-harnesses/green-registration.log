@@ -1,0 +1,19 @@
+COMMAND: /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --lib retired_ -- --nocapture
+EXIT: 0
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-tombstone-lift/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.15s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-043514ab0ddb16b1)
+
+running 9 tests
+test http::native_tests::retired_or_prebind_copilot_cannot_be_relabelled_to_bypass_native_inbox ... ok
+test http::tests::retired_registration_refuses_foreign_session_without_writing ... ok
+test registration::tests::retired_claude_session_resumes_with_bindings ... ok
+test registration::tests::retired_codex_session_resumes_with_bindings ... ok
+test registration::tests::retired_omp_session_resumes_with_bindings ... ok
+test registration::tests::retired_pi_session_resumes_with_bindings ... ok
+test registration::tests::retired_registration_accepts_spawn_or_observed_process_continuity ... ok
+test registration::tests::retired_registration_does_not_treat_absence_or_foreign_harness_as_continuity ... ok
+test registration::tests::retired_session_resume_does_not_replace_recorded_role ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 399 filtered out; finished in 0.29s
+

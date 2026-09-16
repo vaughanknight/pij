@@ -1,0 +1,20 @@
+COMMAND: /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --lib successful_registration_never_returns_a_tombstone -- --nocapture
+EXIT: 101
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.50s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-043514ab0ddb16b1)
+
+running 1 test
+test registration::tests::successful_registration_never_returns_a_tombstone ... 
+thread 'registration::tests::successful_registration_never_returns_a_tombstone' (67312270) panicked at crates/daemon/src/registration.rs:1730:17:
+Omp/retired: successful registration returned SeatDescriptor { id: SeatId("pij-registration-invariant"), machine: None, badge: None, last_event_at: None, harness: Omp, harness_session: Some("00000000-0000-4000-8000-000000000137"), extension_build: None, extension_path: None, pane: Some("%137"), proc: Some(ProcIdentity { pid: 4242, proc_start: 126 }), folder: "/isolated/native-registration", state: Idle, semantic_state: None, role: None, parent: None, relay: false, tombstoned_at: Some(154), tombstone_reason: Some("observed-dead"), cross_session_inbound_accept: None, native_extension_delivery: false, spawn_id: None, model: None, provider: None, effort: None }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    registration::tests::successful_registration_never_returns_a_tombstone
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 407 filtered out; finished in 0.05s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

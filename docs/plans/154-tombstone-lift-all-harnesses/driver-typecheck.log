@@ -1,0 +1,3 @@
+COMMAND: /Users/jordanknight/pi-hacking/fs3-tombstone-lift/node_modules/.bin/tsc --noEmit --strict --module NodeNext --moduleResolution NodeNext --target ES2022 --types node --skipLibCheck /Users/jordanknight/pi-hacking/fs3-tombstone-lift/docs/plans/154-tombstone-lift-all-harnesses/tombstone-lift-live.ts
+EXIT: 0
+

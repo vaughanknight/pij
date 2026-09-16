@@ -1,0 +1,40 @@
+COMMAND: cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo build -p pij-cli --bin pij-rs && cargo test --workspace
+EXIT: 0
+MEASURED: 1140 passed; 0 failed; 8 ignored across 88 result lines. Selected output plus closing output follows.
+    Checking pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-tombstone-lift/crates/daemon)
+    Checking pij-cli v0.1.0 (/Users/jordanknight/pi-hacking/fs3-tombstone-lift/crates/cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.84s
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-tombstone-lift/crates/daemon)
+   Compiling pij-cli v0.1.0 (/Users/jordanknight/pi-hacking/fs3-tombstone-lift/crates/cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.82s
+test http::tests::retired_registration_refuses_claude_spawn_continuity_on_omp_row ... ok
+test http::tests::retired_registration_refuses_foreign_session_without_writing ... ok
+test http::tests::retired_registration_refuses_pi_process_continuity_on_omp_row ... ok
+test registration::tests::native_session_resume_lifts_tombstone_and_publishes_incarnation_change ... ok
+test registration::tests::retired_paneless_claude_reuses_dead_host_address ... ok
+test registration::tests::retired_paneless_claude_reuses_same_host_address ... ok
+test registration::tests::retired_paneless_codex_reuses_dead_host_address ... ok
+test registration::tests::retired_paneless_codex_reuses_same_host_address ... ok
+test registration::tests::retired_paneless_copilot_reuses_dead_host_address ... ok
+test registration::tests::retired_paneless_copilot_reuses_same_host_address ... ok
+test registration::tests::retired_paneless_foreign_session_names_tombstone_without_writes ... ok
+test registration::tests::retired_paneless_selection_prefers_live_then_newest_then_id ... ok
+test registration::tests::retired_registration_accepts_spawn_or_observed_process_continuity ... ok
+test registration::tests::retired_registration_does_not_treat_absence_or_foreign_harness_as_continuity ... ok
+test result: ok. 419 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.97s
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests pij_tmux
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests pij_transport
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

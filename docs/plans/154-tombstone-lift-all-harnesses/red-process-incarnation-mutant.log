@@ -1,0 +1,21 @@
+COMMAND: /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --lib retired_registration_does_not_treat_absence_or_foreign_harness_as_continuity -- --nocapture
+EXIT: 101
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-tombstone-lift/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.15s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-043514ab0ddb16b1)
+
+running 1 test
+test registration::tests::retired_registration_does_not_treat_absence_or_foreign_harness_as_continuity ... 
+thread 'registration::tests::retired_registration_does_not_treat_absence_or_foreign_harness_as_continuity' (67697827) panicked at crates/daemon/src/registration.rs:1734:9:
+Ok((SeatDescriptor { id: SeatId("pij-retired-refusal"), machine: None, badge: None, last_event_at: None, harness: Omp, harness_session: Some("foreign-session"), extension_build: None, extension_path: None, pane: Some("%137"), proc: Some(ProcIdentity { pid: 777, proc_start: 126 }), folder: "/isolated/native-registration", state: Idle, semantic_state: None, role: None, parent: None, relay: false, tombstoned_at: None, tombstone_reason: None, cross_session_inbound_accept: None, native_extension_delivery: false, spawn_id: None, model: None, provider: None, effort: None }, PutBinding { inserted: false, previous_proc: Some(ProcIdentity { pid: 777, proc_start: 125 }) }))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    registration::tests::retired_registration_does_not_treat_absence_or_foreign_harness_as_continuity
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 407 filtered out; finished in 0.09s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`
