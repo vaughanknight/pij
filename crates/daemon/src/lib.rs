@@ -135,6 +135,8 @@ pub struct Services {
     pub anomalies: Arc<http::anomalies::AnomalyService>,
     /// Persistent detached commands and completion delivery.
     pub background: Arc<background::BackgroundService>,
+    /// Row-consistent badge inputs and event freshness, without process fan-out.
+    pub status: pij_store::status::SqliteStatus,
     /// Whether this daemon is running entirely on fakes.
     pub offline: bool,
 }
@@ -389,6 +391,10 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         Arc::clone(&event_bus),
         Arc::clone(&liveness),
     ));
+    let status = pij_store::status::SqliteStatus::new(
+        spine_pool.clone(),
+        config.adapters.registry.is_real() && config.adapters.spine.is_real(),
+    );
     let governance = Arc::new(http::governance::GovernanceService::new(
         pij_store::SqliteOrchestration::new(spine_pool),
         Arc::clone(&event_bus),
@@ -424,6 +430,7 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         decisions,
         anomalies,
         background,
+        status,
         offline: config.is_fully_offline(),
     })
 }

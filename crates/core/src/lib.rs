@@ -26,6 +26,7 @@ pub mod names;
 pub mod orchestration;
 pub mod ports;
 pub mod report;
+pub mod status;
 pub mod watchdog;
 pub mod wire;
 

@@ -397,8 +397,14 @@ pub struct UnsupportedField {
 pub struct StateCard {
     /// TS `id` (cli.ts:3632).
     pub id: SeatId,
-    /// TS `state` (cli.ts:3634) — `idle` or `working`, observed.
+    /// Stored mechanical state; no production activity publisher exists yet.
     pub state: String,
+    /// Worst-first row-fact badge, identical to the roster; excludes live liveness.
+    #[serde(default)]
+    pub badge: String,
+    /// Highest-sequence seat event's epoch-ms timestamp; null without events.
+    #[serde(default, rename = "last_event_at")]
+    pub last_event_at: Option<u64>,
     /// TS `liveness` (cli.ts:3636).
     ///
     /// rs answers `active`, `dead` or **`recycled`**. That last word is NOT in

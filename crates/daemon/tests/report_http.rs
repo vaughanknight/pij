@@ -439,62 +439,37 @@ async fn report_state_accepts_every_word_the_two_generations_share() {
     server.abort();
 }
 
-// ─── REFUSAL BY NAME — the shapes rs cannot honour ──────────────────────────
-
-/// `failed` and `cancelled` are in TS's ruled vocabulary (`core/types.ts:110`,
-/// commented "never extend, rename, or reorder") and have NO rs counterpart
-/// (`crates/core/src/model.rs:104` carries six variants, not eight).
-///
-/// Both had an available near-fit — `failed`→`Done`, `cancelled`→`Done` — and
-/// both would have type-checked. Mapping either is a lie the caller cannot see,
-/// which is the single outcome ac-1144 names as worst. So they refuse BY NAME,
-/// and the refusal states the vocabulary rs actually has.
 #[tokio::test]
-async fn states_rs_does_not_have_refuse_by_name_instead_of_mapping_to_a_near_fit() {
+async fn report_state_accepts_failed_and_cancelled_and_preserves_them_after_reopen() {
     let (addr, server, _store, config) = daemon().await;
-
-    post_report(addr, Some(SEAT), &["report", "state", "ready"]).await;
-
     for word in ["failed", "cancelled"] {
-        let refusal = post_report(addr, Some(SEAT), &["report", "state", word]).await;
-        assert_eq!(refusal.status(), reqwest::StatusCode::BAD_REQUEST);
-        let meta = refusal
-            .json::<Envelope<serde_json::Value>>()
-            .await
-            .expect("envelope")
-            .meta
-            .unwrap_or_default();
-        assert!(
-            meta.contains(word),
-            "the refusal must name the state it cannot honour: {meta}"
-        );
-        assert!(
-            meta.contains("ready|waiting|hold|blocked|question|done"),
-            "and it must state the vocabulary rs does have: {meta}"
-        );
-    }
+        let response = post_report(addr, Some(SEAT), &["report", "state", word]).await;
+        assert_eq!(response.status(), reqwest::StatusCode::OK, "{word}");
+        let envelope: Envelope<serde_json::Value> = response.json().await.expect("report envelope");
+        assert!(envelope.ok);
 
-    // The discriminating arm: a near-fit mapping would have left the seat `Done`.
-    let services = pij_daemon::build_services(
-        &config,
-        std::path::Path::new("/tmp/pij-test-pane-signals-report"),
-    )
-    .await
-    .expect("reopen");
-    assert_eq!(
-        services
+        let response = post_state(addr, SEAT).await;
+        let envelope: Envelope<serde_json::Value> = response.json().await.expect("state envelope");
+        assert_eq!(envelope.data.expect("state")["semanticState"], word);
+
+        let services = pij_daemon::build_services(
+            &config,
+            std::path::Path::new("/tmp/pij-test-pane-signals-report"),
+        )
+        .await
+        .expect("reopen");
+        let seat = services
             .registry
             .get(&SeatId::from(SEAT))
             .await
             .expect("read")
-            .expect("seat")
-            .semantic_state,
-        Some(SemanticState::Ready),
-        "a refused state must leave the previous declaration untouched"
-    );
-
+            .expect("seat");
+        assert_eq!(serde_json::to_value(seat).unwrap()["semantic_state"], word);
+    }
     server.abort();
 }
+
+// ─── REFUSAL BY NAME — the shapes rs cannot honour ──────────────────────────
 
 /// Unsupported scoping refuses instead of silently writing a different subject.
 #[tokio::test]
@@ -632,8 +607,6 @@ async fn refusals_are_never_classifiable_as_route_absence() {
 
     let refusals: Vec<Vec<&str>> = vec![
         vec!["report", "verify", "nd-1"],
-        vec!["report", "state", "failed"],
-        vec!["report", "state", "cancelled"],
         vec!["report", "now", "did", "next", "--project", "slug"],
         vec!["report", "now", "", "next"],
         vec!["report", "now", "did\nnext", "x"],
@@ -1319,6 +1292,43 @@ async fn assignment_reports_survive_reopen_and_reach_node_and_state_readers() {
 }
 
 #[tokio::test]
+async fn scoped_report_clear_removes_only_its_assignment_declaration() {
+    let (addr, server, _store, _config) = daemon().await;
+    let task =
+        governance_request(addr, "task", &["task", "set", SEAT, "clear scoped blocker"]).await;
+    let id = task["task"]["id"].as_str().expect("task id");
+    let declared = post_report(
+        addr,
+        Some(SEAT),
+        &["report", "state", "blocked", "--assignment", id],
+    )
+    .await;
+    assert_eq!(declared.status(), reqwest::StatusCode::OK);
+    let cleared = post_report(addr, Some(SEAT), &["report", "clear"]).await;
+    assert_eq!(cleared.status(), reqwest::StatusCode::OK);
+    let card: serde_json::Value = post_state(addr, SEAT).await.json().await.unwrap();
+    assert!(card["data"]["semanticState"].is_null());
+    assert_eq!(
+        card["data"]["badge"], "blocked",
+        "unscoped clear leaves task testimony intact"
+    );
+
+    let cleared = post_report(addr, Some(SEAT), &["report", "clear", "--assignment", id]).await;
+    let status = cleared.status();
+    let receipt: serde_json::Value = cleared.json().await.unwrap();
+    assert_eq!(status, reqwest::StatusCode::OK, "{receipt}");
+    let card: serde_json::Value = post_state(addr, SEAT).await.json().await.unwrap();
+    assert_eq!(card["data"]["badge"], "idle");
+    let node = governance_request(addr, "node", &["node", "show", SEAT]).await;
+    assert!(
+        node["node"]["assignments"][0]["closed_at"].is_null(),
+        "clear is not task closure"
+    );
+    server.abort();
+    let _ = server.await;
+}
+
+#[tokio::test]
 async fn assignment_refusals_name_owner_and_leave_state_and_questions_untouched() {
     let (addr, server, _store, config) = daemon().await;
     let services =
@@ -1337,17 +1347,13 @@ async fn assignment_refusals_name_owner_and_leave_state_and_questions_untouched(
         (id, "E-RS-ASSIGNMENT-NOT-YOURS"),
         ("missing", "E-RS-ASSIGNMENT-UNKNOWN"),
     ] {
-        for (leaf, text) in [
-            ("state", "done"),
-            ("blocked", "blocked"),
-            ("question", "why?"),
+        for argv in [
+            vec!["report", "state", "done", "--assignment", assignment],
+            vec!["report", "blocked", "blocked", "--assignment", assignment],
+            vec!["report", "question", "why?", "--assignment", assignment],
+            vec!["report", "clear", "--assignment", assignment],
         ] {
-            let response = post_report(
-                addr,
-                Some(SEAT),
-                &["report", leaf, text, "--assignment", assignment],
-            )
-            .await;
+            let response = post_report(addr, Some(SEAT), &argv).await;
             let status = response.status();
             let body: serde_json::Value = response.json().await.expect("refusal");
             assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "{body}");

@@ -28,20 +28,6 @@
 
 use pij_core::model::{CARD_LIMIT, NOTE_LIMIT, SemanticState};
 
-/// Every semantic state the TypeScript generation accepts today —
-/// `SEMANTIC_STATES`, `.pi/extensions/pij/core/types.ts:110`, commented
-/// "HUMAN-RULED vocabulary, byte-exact: never extend, rename, or reorder".
-///
-/// rs's [`SemanticState`] carries six of these eight. The two it lacks are not
-/// an oversight to paper over; they are a divergence between the generations,
-/// and this constant exists so the gap is visible in the code rather than
-/// implied by an incomplete match arm.
-const TS_ONLY_STATES: [&str; 2] = ["failed", "cancelled"];
-
-/// The rs vocabulary, in the order [`SemanticState`] declares it. Named in every
-/// refusal, so a caller who typed a word rs lacks learns what it does have.
-const RS_STATE_WORDS: &str = "ready|waiting|hold|blocked|question|done";
-
 /// One parsed report invocation, including sequence-bound parent verification.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ReportCall {
@@ -73,8 +59,8 @@ pub(crate) enum ReportCall {
         target: String,
         assignment: Option<String>,
     },
-    /// `report clear` — `core/cli.ts:1746`.
-    Clear,
+    /// `report clear [--assignment <id>]`; no scope clears only the descriptor.
+    Clear { assignment_id: Option<String> },
 }
 
 /// A refusal, in the caller's own vocabulary.
@@ -126,9 +112,16 @@ pub(crate) fn parse_report(argv: &[String]) -> Result<ReportCall, Refusal> {
         "state" => parse_state_leaf(&positionals, &flags),
         "blocked" | "question" => parse_note_leaf(leaf, &positionals, &flags),
         "clear" => {
-            expect_positionals("report clear", &positionals, 0, "usage: pij report clear")?;
-            reject_unknown_flags("report clear", &flags, &[])?;
-            Ok(ReportCall::Clear)
+            expect_positionals(
+                "report clear",
+                &positionals,
+                0,
+                "usage: pij report clear [--assignment <id>]",
+            )?;
+            reject_unknown_flags("report clear", &flags, &["assignment"])?;
+            Ok(ReportCall::Clear {
+                assignment_id: single_value(&flags, "assignment")?.map(str::to_string),
+            })
         }
         "verify" => {
             expect_positionals(
@@ -308,26 +301,9 @@ fn parse_note_leaf(
 }
 
 /// Map a typed word onto rs's [`SemanticState`].
-///
-/// Three outcomes, and the middle one is the point: a word BOTH generations
-/// know, a word only TypeScript knows, and a word neither knows. Collapsing the
-/// middle into either neighbour is how `failed` would have quietly become
-/// `Done`.
 fn parse_semantic_state(word: &str) -> Result<SemanticState, Refusal> {
-    match word {
-        "ready" => Ok(SemanticState::Ready),
-        "waiting" => Ok(SemanticState::Waiting),
-        "hold" => Ok(SemanticState::Hold),
-        "blocked" => Ok(SemanticState::Blocked),
-        "question" => Ok(SemanticState::Question),
-        "done" => Ok(SemanticState::Done),
-        word if TS_ONLY_STATES.contains(&word) => Err(format!(
-            "rs has no semantic state '{word}'; supported states: {RS_STATE_WORDS}"
-        )),
-        other => Err(format!(
-            "invalid semantic state '{other}' ({RS_STATE_WORDS})"
-        )),
-    }
+    SemanticState::parse(word)
+        .ok_or_else(|| format!("invalid semantic state '{word}' ({})", SemanticState::WORDS))
 }
 
 /// The card-field rules the TypeScript generation enforces —
@@ -486,7 +462,9 @@ mod tests {
         );
         assert_eq!(
             parse_report(&argv(&["report", "clear", "--json"])),
-            Ok(ReportCall::Clear)
+            Ok(ReportCall::Clear {
+                assignment_id: None
+            })
         );
     }
 
@@ -499,16 +477,23 @@ mod tests {
         assert!(refusal.contains("only with --state question or --state blocked"));
     }
 
-    /// The discriminating arm for the whole "refuse by name" rule: both words
-    /// have a near-fit one line away in [`SemanticState`], and the refusal names
-    /// the word AND the vocabulary rs has.
     #[test]
-    fn typescript_only_states_refuse_by_name_and_name_the_rs_vocabulary() {
-        for word in TS_ONLY_STATES {
-            let refusal =
-                parse_report(&argv(&["report", "state", word])).expect_err("rs has no such state");
-            assert!(refusal.contains(word), "{refusal}");
-            assert!(refusal.contains(RS_STATE_WORDS), "{refusal}");
+    fn report_state_and_now_accept_failed_and_cancelled_without_substitution() {
+        for word in ["failed", "cancelled"] {
+            let ReportCall::State { state, .. } =
+                parse_report(&argv(&["report", "state", word])).expect("terminal state")
+            else {
+                panic!("expected a state declaration");
+            };
+            assert_eq!(serde_json::to_value(state).unwrap(), word);
+
+            let ReportCall::Now { state, .. } =
+                parse_report(&argv(&["report", "now", "a", "b", "--state", word]))
+                    .expect("card with terminal state")
+            else {
+                panic!("expected a card declaration");
+            };
+            assert_eq!(serde_json::to_value(state).unwrap(), word);
         }
     }
 
