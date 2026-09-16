@@ -124,12 +124,61 @@ copilot-native-smoke *ARGS:
 
 # Large native history, receiver death and manual inbox recovery on isolated services.
 copilot-native-memory-smoke *ARGS:
-    node_modules/.bin/tsx harness/scripts/copilot-native-memory-smoke.ts "$@"
+    @just _copilot-native-pinned-smoke harness/scripts/copilot-native-memory-smoke.ts "$@"
 
 # Receiver RPC deadlines, model-picker recovery and SDK disconnect on isolated services.
 copilot-native-progress-smoke *ARGS:
-    node_modules/.bin/tsx harness/scripts/copilot-native-progress-smoke.ts "$@"
+    @just _copilot-native-pinned-smoke harness/scripts/copilot-native-progress-smoke.ts "$@"
 
+
+# Recipe-only runtime prerequisite; no installation, topology workaround or updater.
+# COPILOT_BIN selects a launcher; COPILOT_VERSION defaults to the proven runtime.
+_copilot-native-pinned-smoke SCRIPT *ARGS:
+    #!/usr/bin/env node
+    const { execFileSync, spawnSync } = require("node:child_process");
+    const { readFileSync } = require("node:fs");
+    const { join } = require("node:path");
+    const pin = process.env.COPILOT_VERSION || "1.0.84-9";
+    const reject = (reason) => {
+        console.error(`PIJ_NATIVE_PREREQUISITE_VERSION: ${reason}`);
+        process.exit(2);
+    };
+    let binary = process.env.COPILOT_BIN || "copilot";
+    let runtime = join(process.env.HOME, ".copilot/pkg", `${process.platform}-${process.arch}`, pin);
+    const args = process.argv.slice(3);
+    const forwarded = [];
+    for (let i = 0; i < args.length; i++) {
+        if (args[i] === "--copilot-bin" || args[i] === "--copilot-runtime-dir") {
+            const flag = args[i];
+            const value = args[++i];
+            if (!value || value.startsWith("--")) reject(`${flag} needs a value`);
+            if (flag === "--copilot-bin") binary = value;
+            else runtime = value;
+        } else forwarded.push(args[i]);
+    }
+    let actual;
+    try {
+        const output = execFileSync(binary, ["--prefer-version", pin, "--version"], {
+            env: { ...process.env, COPILOT_OFFLINE: "true" },
+            encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"],
+        });
+        actual = output.match(/^GitHub Copilot CLI (\S+)\.$/m)?.[1];
+    } catch {
+        reject(`${binary} could not report version ${pin}; select an installed native launcher with COPILOT_BIN`);
+    }
+    if (actual !== pin) reject(`${binary} resolved ${actual || "unknown"}, expected COPILOT_VERSION=${pin}; runtime drift is not a product failure`);
+    try {
+        if (JSON.parse(readFileSync(join(runtime, "package.json"), "utf8")).version !== pin)
+            reject(`${runtime} does not contain COPILOT_VERSION=${pin}`);
+    } catch {
+        reject(`missing installed runtime ${runtime}; no automatic install`);
+    }
+    console.log(`copilot-native-smoke: ${binary} resolved ${pin}`);
+    const result = spawnSync("node_modules/.bin/tsx", [
+        process.argv[2], "--copilot-bin", binary, "--copilot-runtime-dir", runtime, ...forwarded,
+    ], { stdio: "inherit" });
+    if (result.error) reject(`could not launch smoke: ${result.error.message}`);
+    process.exit(result.status ?? 1);
 # Real-client draft-safety classifier; requires PIJ_STEP_ON_REAL=1 explicitly.
 step-on-probe *ARGS:
     node_modules/.bin/tsx harness/scripts/step-on-probe.ts "$@"

@@ -239,6 +239,8 @@ receiver still renews its daemon lease and accepts callbacks, but does not poll 
 the next delivery captures a fresh tail in `newCompletion`. Startup observation remains
 a single bounded read. Registration success resets its hold cadence before that read;
 a startup observation failure is `receive-held`, never a registration retry episode.
+Startup hold is immediately visible in extension stderr; `pij state` exposes the
+receiver reason only after the unrenewed lease expires, up to 60 seconds later.
 
 The extension treats `stale` as `receive-held`, not a malformed response or an
 infinite retry. `pij state` reports `native_receiver_reason:"native-receiver-stale"`

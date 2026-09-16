@@ -14,6 +14,7 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { NATIVE_RPC_DEADLINE_MS } from "../../.copilot/extensions/pij/store.mjs";
 import { object } from "./copilot-native-fixture.js";
 import {
 	eventTail,
@@ -436,13 +437,25 @@ async function scenario(context: NativeSmokeContext) {
 				),
 			};
 			// Model the scheduled child replacement with the real host SDK, not a forged heartbeat.
+			assert.equal(
+				object(await api("/v1/state", { id: target.seat.id })).native_receiver_reason,
+				"native-receiver-stale",
+				"this SDK-enable probe starts with the stale latch, not a healthy receiver",
+			);
 			const enableStarted = Date.now();
 			writeFileSync(`${probePrefix}.command.json`, JSON.stringify({ op: "enable-pij" }), {
 				mode: 0o600,
 			});
+			const registration = await until("replacement registers on the same host", TIMEOUT_MS, () =>
+				nativeLog(true).find(
+					(event) => event.kind === "registered" && Date.parse(String(event.at)) >= enableStarted,
+				),
+			);
+			const registeredAt = Date.parse(String(registration.at));
+			const replacementBudgetMs = NATIVE_RPC_DEADLINE_MS + 30_000;
 			const replacement = await until(
-				"replacement either observes or explicitly holds an unresponsive SDK",
-				20_000,
+				"registered replacement explicitly holds an unresponsive SDK",
+				Math.max(0, registeredAt + replacementBudgetMs - Date.now()),
 				async () => {
 					const card = object(await api("/v1/state", { id: target.seat.id }));
 					assert.equal(
@@ -450,46 +463,29 @@ async function scenario(context: NativeSmokeContext) {
 						target.host.pid,
 						"receiver replacement must not replace the Copilot host",
 					);
-					if (card.native_receiver_reason === undefined)
-						return { kind: "observing" as const, card };
 					const held = nativeLog(true).find(
 						(event) =>
 							event.kind === "receive-held" &&
-							Date.parse(String(event.at)) >= enableStarted &&
+							Date.parse(String(event.at)) >= registeredAt &&
 							typeof event.safeDiagnostic === "string" &&
-							/eventLog\.read deadline exceeded/.test(event.safeDiagnostic),
+							event.safeDiagnostic ===
+								`eventLog.read deadline exceeded (${NATIVE_RPC_DEADLINE_MS}ms)`,
 					);
 					return held ? { kind: "held" as const, card, held } : undefined;
 				},
 			);
-			if (replacement.kind === "observing") {
-				const afterRecycle = send("PIJ_PROGRESS_AFTER_RECYCLE");
-				const replacementAccepted = await until(
-					"same-host replacement accepts new delivery",
-					20_000,
-					() =>
-						nativeLog(true).find(
-							(event) => event.kind === "native-accepted" && event.msgId === afterRecycle.msgId,
-						),
-				);
-				await until("replacement observes consumption exactly once", 20_000, () =>
-					rows(
-						"SELECT msg_id FROM delivered_messages WHERE recipient = ? AND msg_id = ?",
-						target.seat.id,
-						afterRecycle.msgId,
-					).length === 1
-						? true
-						: undefined,
-				);
-				receipt.recycle = { kind: replacement.kind, afterRecycle, replacementAccepted };
-			} else {
-				assert.equal(replacement.card.native_receiver_reason, "native-receiver-stale");
-				receipt.recycle = {
-					kind: replacement.kind,
-					diagnostic: replacement.held,
-					note: "Actual SDK enable left startup read unresponsive; deadline held safely, not claimed healthy or retried.",
-				};
-			}
+			assert.equal(replacement.card.native_receiver_reason, "native-receiver-stale");
+			receipt.recycle = {
+				kind: replacement.kind,
+				registration,
+				enable_started: new Date(enableStarted).toISOString(),
+				registration_elapsed_ms: registeredAt - enableStarted,
+				held_after_registration_ms: Date.parse(String(replacement.held.at)) - registeredAt,
+				budget_ms: replacementBudgetMs,
+				diagnostic: replacement.held,
+				note: "Latched-stale SDK-enable probe: startup read held at its deadline; not a healthy-reload witness.",
+			};
+			console.log(JSON.stringify({ phase: "sdk-enable-held", ...object(receipt.recycle) }));
 			receipt.recycle = {
 				...object(receipt.recycle),
 				host_pid: target.host.pid,

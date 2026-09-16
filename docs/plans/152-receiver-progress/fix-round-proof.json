@@ -1,0 +1,496 @@
+{
+  "base": "fc4e7c36e6b54acfb8f04956e2b887ff908891da",
+  "runtime_pin": "1.0.84-9",
+  "production_contacted": false,
+  "prerequisite": {
+    "probe": "Controlled launcher executes real installed 1.0.85 index.js --no-auto-update --version, ignoring recipe preference; no fabricated version string.",
+    "diagnostic": "PIJ_NATIVE_PREREQUISITE_VERSION: /tmp/pij152-force-runtime-185 resolved 1.0.85, expected COPILOT_VERSION=1.0.84-9; runtime drift is not a product failure",
+    "memory": {
+      "exit": 2,
+      "elapsed_ms": 920
+    },
+    "progress": {
+      "exit": 2,
+      "elapsed_ms": 920
+    },
+    "ambient": "Bare ambient launcher can select 1.0.84-9 using --prefer-version; without selection it reports 1.0.85.",
+    "launcher_command": "exec node /Users/jordanknight/.copilot/pkg/darwin-arm64/1.0.85/index.js --no-auto-update --version"
+  },
+  "preliminary_attempts": {
+    "status": "operator-interrupted; not acceptance evidence",
+    "reason": "Two initial version checks unexpectedly started successful pinned smokes; tool timeout was only 30 seconds.",
+    "owned_tmux_stopped": true,
+    "owned_daemons_remaining": 0
+  },
+  "gates": {
+    "typecheck": {
+      "exit": 0
+    },
+    "native": {
+      "command": "just copilot-native-test",
+      "tests": 262,
+      "passed": 259,
+      "skipped": 3,
+      "failed": 0,
+      "exit": 0,
+      "artifact": "429"
+    },
+    "progress": {
+      "command": "just copilot-native-progress-smoke && just copilot-native-progress-smoke && just copilot-native-progress-smoke",
+      "exit": 0,
+      "elapsed_seconds": 237.68,
+      "artifact": "435",
+      "runs": [
+        {
+          "status": "passed",
+          "started": "2026-09-16T07:24:02.041Z",
+          "finished": "2026-09-16T07:25:20.704Z",
+          "elapsed_ms": 78663,
+          "identity": {
+            "copilot": "GitHub Copilot CLI 1.0.84-9.\nRun 'copilot update' to check for updates.",
+            "source_modules": {
+              "extension.mjs": "46c1a205821d192e6024c84280dc3c898a89e5fc4671ab8b9131d6440175e466",
+              "store.mjs": "ecdce862aea71ce61e330aef79533e3c7fa431f5d0a3f5bb995de316edfe3475"
+            }
+          },
+          "isolation": {
+            "addr": "127.0.0.1:49223",
+            "tmux_name": "ac6-4ab137c5-7bf",
+            "production_contacted": false,
+            "lease_ms": 60000
+          },
+          "next_accepted": true,
+          "lease_expiry": {
+            "elapsed_ms": 55486,
+            "bound_ms": 60000,
+            "parked": {
+              "seq": 21,
+              "at": 1789543504357,
+              "kind": "delivery.parked",
+              "seat": "pij-like-sniper",
+              "payload": "{\"jobId\":3,\"messageId\":\"718767ff-4453-4508-bc21-6a7e849eed9e\",\"outcome\":\"undelivered:native-receiver-unavailable\",\"reason\":\"native-extension-unavailable\",\"recipient\":\"pij-thoughtful-cockroach\"}"
+            }
+          },
+          "manual_inbox": {
+            "acknowledgements": [
+              {
+                "recipient": "pij-thoughtful-cockroach",
+                "msg_id": "718767ff-4453-4508-bc21-6a7e849eed9e",
+                "origin": "reader-read"
+              }
+            ],
+            "jobs": [
+              {
+                "id": 3,
+                "state": "done",
+                "dedupe_key": "718767ff-4453-4508-bc21-6a7e849eed9e",
+                "outcome": null
+              }
+            ]
+          },
+          "recycle": {
+            "kind": "held",
+            "registration": {
+              "at": "2026-09-16T07:25:05.441Z",
+              "kind": "registered",
+              "seat": "pij-thoughtful-cockroach",
+              "nativeSession": "9e082dfd-a9c6-476b-8d27-174389e2f43b",
+              "pid": 35314,
+              "procStart": 20260916172403,
+              "pane": "%1"
+            },
+            "enable_started": "2026-09-16T07:25:05.077Z",
+            "registration_elapsed_ms": 364,
+            "held_after_registration_ms": 15002,
+            "budget_ms": 45000,
+            "diagnostic": {
+              "at": "2026-09-16T07:25:20.443Z",
+              "kind": "receive-held",
+              "holdKind": null,
+              "safeDiagnostic": "eventLog.read deadline exceeded (15000ms)",
+              "retryMs": null
+            },
+            "note": "Latched-stale SDK-enable probe: startup read held at its deadline; not a healthy-reload witness.",
+            "host_pid": 35314,
+            "jobs": [
+              {
+                "id": 1,
+                "state": "done",
+                "dedupe_key": "03601643-eab1-4870-8862-670370b1a6cc",
+                "outcome": null
+              },
+              {
+                "id": 2,
+                "state": "done",
+                "dedupe_key": "a7fe8822-aadd-4bb9-ad42-74a37ebe367e",
+                "outcome": null
+              },
+              {
+                "id": 3,
+                "state": "done",
+                "dedupe_key": "718767ff-4453-4508-bc21-6a7e849eed9e",
+                "outcome": null
+              }
+            ]
+          },
+          "cleanup": {
+            "owned_tmux_stopped": true,
+            "owned_daemon_stopped": true,
+            "retained": "Plan-local isolated runtime retained for evidence; daemon key and synthetic history stay inside private runtime directory. No production/global configuration was changed."
+          }
+        },
+        {
+          "status": "passed",
+          "started": "2026-09-16T07:25:21.340Z",
+          "finished": "2026-09-16T07:26:39.929Z",
+          "elapsed_ms": 78589,
+          "identity": {
+            "copilot": "GitHub Copilot CLI 1.0.84-9.\nRun 'copilot update' to check for updates.",
+            "source_modules": {
+              "extension.mjs": "46c1a205821d192e6024c84280dc3c898a89e5fc4671ab8b9131d6440175e466",
+              "store.mjs": "ecdce862aea71ce61e330aef79533e3c7fa431f5d0a3f5bb995de316edfe3475"
+            }
+          },
+          "isolation": {
+            "addr": "127.0.0.1:49707",
+            "tmux_name": "ac6-c259d6d6-9cb",
+            "production_contacted": false,
+            "lease_ms": 60000
+          },
+          "next_accepted": true,
+          "lease_expiry": {
+            "elapsed_ms": 55459,
+            "bound_ms": 60000,
+            "parked": {
+              "seq": 21,
+              "at": 1789543583623,
+              "kind": "delivery.parked",
+              "seat": "pij-forthcoming-warbler",
+              "payload": "{\"jobId\":3,\"messageId\":\"f0048b5a-93e1-464f-8ce2-7acdc73a6c94\",\"outcome\":\"undelivered:native-receiver-unavailable\",\"reason\":\"native-extension-unavailable\",\"recipient\":\"pij-primary-antelope\"}"
+            }
+          },
+          "manual_inbox": {
+            "acknowledgements": [
+              {
+                "recipient": "pij-primary-antelope",
+                "msg_id": "f0048b5a-93e1-464f-8ce2-7acdc73a6c94",
+                "origin": "reader-read"
+              }
+            ],
+            "jobs": [
+              {
+                "id": 3,
+                "state": "done",
+                "dedupe_key": "f0048b5a-93e1-464f-8ce2-7acdc73a6c94",
+                "outcome": null
+              }
+            ]
+          },
+          "recycle": {
+            "kind": "held",
+            "registration": {
+              "at": "2026-09-16T07:26:24.574Z",
+              "kind": "registered",
+              "seat": "pij-primary-antelope",
+              "nativeSession": "949b4ab0-c078-49e1-a059-64712cc46651",
+              "pid": 91516,
+              "procStart": 20260916172522,
+              "pane": "%1"
+            },
+            "enable_started": "2026-09-16T07:26:24.270Z",
+            "registration_elapsed_ms": 304,
+            "held_after_registration_ms": 15001,
+            "budget_ms": 45000,
+            "diagnostic": {
+              "at": "2026-09-16T07:26:39.575Z",
+              "kind": "receive-held",
+              "holdKind": null,
+              "safeDiagnostic": "eventLog.read deadline exceeded (15000ms)",
+              "retryMs": null
+            },
+            "note": "Latched-stale SDK-enable probe: startup read held at its deadline; not a healthy-reload witness.",
+            "host_pid": 91516,
+            "jobs": [
+              {
+                "id": 1,
+                "state": "done",
+                "dedupe_key": "2756c217-2983-4d4d-830f-7236cd884fb9",
+                "outcome": null
+              },
+              {
+                "id": 2,
+                "state": "done",
+                "dedupe_key": "b9cd9a86-63bd-47d7-a6d5-bba71f1a2e42",
+                "outcome": null
+              },
+              {
+                "id": 3,
+                "state": "done",
+                "dedupe_key": "f0048b5a-93e1-464f-8ce2-7acdc73a6c94",
+                "outcome": null
+              }
+            ]
+          },
+          "cleanup": {
+            "owned_tmux_stopped": true,
+            "owned_daemon_stopped": true,
+            "retained": "Plan-local isolated runtime retained for evidence; daemon key and synthetic history stay inside private runtime directory. No production/global configuration was changed."
+          }
+        },
+        {
+          "status": "passed",
+          "started": "2026-09-16T07:26:40.606Z",
+          "finished": "2026-09-16T07:27:58.935Z",
+          "elapsed_ms": 78329,
+          "identity": {
+            "copilot": "GitHub Copilot CLI 1.0.84-9.\nRun 'copilot update' to check for updates.",
+            "source_modules": {
+              "extension.mjs": "46c1a205821d192e6024c84280dc3c898a89e5fc4671ab8b9131d6440175e466",
+              "store.mjs": "ecdce862aea71ce61e330aef79533e3c7fa431f5d0a3f5bb995de316edfe3475"
+            }
+          },
+          "isolation": {
+            "addr": "127.0.0.1:50254",
+            "tmux_name": "ac6-5caabb95-b13",
+            "production_contacted": false,
+            "lease_ms": 60000
+          },
+          "next_accepted": true,
+          "lease_expiry": {
+            "elapsed_ms": 55510,
+            "bound_ms": 60000,
+            "parked": {
+              "seq": 21,
+              "at": 1789543662882,
+              "kind": "delivery.parked",
+              "seat": "pij-sleeper-service",
+              "payload": "{\"jobId\":3,\"messageId\":\"11d364c3-9521-4b7d-90dc-15dcd126f2b4\",\"outcome\":\"undelivered:native-receiver-unavailable\",\"reason\":\"native-extension-unavailable\",\"recipient\":\"pij-worthy-pelican\"}"
+            }
+          },
+          "manual_inbox": {
+            "acknowledgements": [
+              {
+                "recipient": "pij-worthy-pelican",
+                "msg_id": "11d364c3-9521-4b7d-90dc-15dcd126f2b4",
+                "origin": "reader-read"
+              }
+            ],
+            "jobs": [
+              {
+                "id": 3,
+                "state": "done",
+                "dedupe_key": "11d364c3-9521-4b7d-90dc-15dcd126f2b4",
+                "outcome": null
+              }
+            ]
+          },
+          "recycle": {
+            "kind": "held",
+            "registration": {
+              "at": "2026-09-16T07:27:43.782Z",
+              "kind": "registered",
+              "seat": "pij-worthy-pelican",
+              "nativeSession": "15c1b61f-fee3-4a62-8344-cdd68d06adc4",
+              "pid": 47792,
+              "procStart": 20260916172642,
+              "pane": "%1"
+            },
+            "enable_started": "2026-09-16T07:27:43.540Z",
+            "registration_elapsed_ms": 242,
+            "held_after_registration_ms": 15016,
+            "budget_ms": 45000,
+            "diagnostic": {
+              "at": "2026-09-16T07:27:58.798Z",
+              "kind": "receive-held",
+              "holdKind": null,
+              "safeDiagnostic": "eventLog.read deadline exceeded (15000ms)",
+              "retryMs": null
+            },
+            "note": "Latched-stale SDK-enable probe: startup read held at its deadline; not a healthy-reload witness.",
+            "host_pid": 47792,
+            "jobs": [
+              {
+                "id": 1,
+                "state": "done",
+                "dedupe_key": "e8c5ec35-fbe3-454a-aba8-834755684fdb",
+                "outcome": null
+              },
+              {
+                "id": 2,
+                "state": "done",
+                "dedupe_key": "edaef958-f8ea-4b07-83e6-3362e5cb4ab1",
+                "outcome": null
+              },
+              {
+                "id": 3,
+                "state": "done",
+                "dedupe_key": "11d364c3-9521-4b7d-90dc-15dcd126f2b4",
+                "outcome": null
+              }
+            ]
+          },
+          "cleanup": {
+            "owned_tmux_stopped": true,
+            "owned_daemon_stopped": true,
+            "retained": "Plan-local isolated runtime retained for evidence; daemon key and synthetic history stay inside private runtime directory. No production/global configuration was changed."
+          }
+        }
+      ]
+    },
+    "fmt": {
+      "command": "cargo fmt --all --check",
+      "exit": 0
+    },
+    "clippy": {
+      "command": "cargo clippy --workspace --all-targets -- -D warnings",
+      "exit": 0
+    },
+    "memory": {
+      "command": "just copilot-native-memory-smoke",
+      "exit": 0,
+      "elapsed_seconds": 365.14,
+      "status": "passed",
+      "started": "2026-09-16T07:24:01.929Z",
+      "finished": "2026-09-16T07:30:06.401Z",
+      "identity": {
+        "node": "v24.7.0",
+        "pij": "pij-rs 0.1.0",
+        "pij_binary": "/Users/jordanknight/pi-hacking/fs3-receiver-progress/target/debug/pij-rs",
+        "pij_sha256": "d5f133bed05011fb0e6a50d64c8ccd520a58b87bb63250092128f3d55562269d",
+        "copilot": "GitHub Copilot CLI 1.0.84-9.\nRun 'copilot update' to check for updates.",
+        "copilot_binary": "/Users/jordanknight/.npm-global/lib/node_modules/@github/copilot/npm-loader.js",
+        "copilot_sha256": "8ba289084c305e25ea9ae09da860c31614c7eb32f6e7ec099aa71f74f2d4f130",
+        "source_modules": {
+          "extension.mjs": "46c1a205821d192e6024c84280dc3c898a89e5fc4671ab8b9131d6440175e466",
+          "store.mjs": "ecdce862aea71ce61e330aef79533e3c7fa431f5d0a3f5bb995de316edfe3475"
+        }
+      },
+      "history": {
+        "path": "/Users/jordanknight/pi-hacking/fs3-receiver-progress/docs/plans/150-native-extension-memory/evidence/ac6-2026-09-16T07-24-01.928Z-4535d3ba/runtime/home/.copilot/session-state/4cca956f-30d8-47c9-b011-dd202e68f36a/events.jsonl",
+        "bootstrap_events": 8,
+        "synthetic_events": 20002,
+        "total_events": 20010,
+        "bytes": 84024839,
+        "sha256": "a95c1b5b64661f330d0e52ed1d2875280f63ebe5dbad079dd274b7c5634715dc",
+        "last_event_id": "f1714fa1-4a0f-4887-b1a2-cefb5e201c0f",
+        "format": "real bootstrap event templates + chained synthetic user/assistant events + supported successful compaction summary",
+        "inference": "synthetic history, not a claim of 10000 real inference turns"
+      },
+      "history_prefix_preserved_after_messages": true,
+      "messages": 30,
+      "cadence_seconds": 10,
+      "rss": {
+        "samples": 32,
+        "elapsed_ms": 302470,
+        "pid": 37638,
+        "min_kib": 96992,
+        "max_kib": 108416,
+        "final_kib": 101728
+      },
+      "lease": {
+        "elapsed_ms": 56749,
+        "lease_ms": 60000,
+        "parked": {
+          "seq": 135,
+          "at": 1789543805950,
+          "kind": "delivery.parked",
+          "seat": "pij-breakable-roderika",
+          "payload": "{\"jobId\":31,\"messageId\":\"bda4d1d5-6ff1-4e26-856d-93d3b07a9ad8\",\"outcome\":\"undelivered:native-receiver-unavailable\",\"reason\":\"native-extension-unavailable\",\"recipient\":\"pij-fiscal-earthworm\"}"
+        }
+      },
+      "manual": {
+        "acknowledgement": [
+          {
+            "recipient": "pij-fiscal-earthworm",
+            "msg_id": "bda4d1d5-6ff1-4e26-856d-93d3b07a9ad8",
+            "origin": "reader-read",
+            "delivered_at": 1789543806
+          }
+        ],
+        "jobs": [
+          {
+            "id": 31,
+            "state": "done",
+            "outcome": null
+          }
+        ]
+      },
+      "cleanup": {
+        "owned_tmux_stopped": true,
+        "owned_daemon_stopped": true,
+        "retained": "Plan-local isolated runtime retained for evidence; daemon key and synthetic history stay inside private runtime directory. No production/global configuration was changed."
+      }
+    },
+    "rust": {
+      "command": "cargo test --workspace",
+      "passed": 1135,
+      "suites": 88,
+      "ignored": 8,
+      "filtered": 93,
+      "failed": 0,
+      "exit": 0,
+      "artifact": "444"
+    },
+    "self_check": {
+      "command": "just self-check",
+      "exit": 0,
+      "elapsed_seconds": 88.07,
+      "artifact": "452",
+      "vitest": {
+        "files_passed": 243,
+        "files_skipped": 4,
+        "passed": 5307,
+        "skipped": 22
+      },
+      "native": {
+        "passed": 259,
+        "skipped": 3,
+        "failed": 0
+      },
+      "smoke_scenarios": 11,
+      "windows_focused": {
+        "tests_run": 0,
+        "ownership": "F2 fixed separately on main at 84ca47f6; no change on this branch"
+      },
+      "audit": {
+        "policy": "report-only",
+        "flagged_entries": 1,
+        "total_entries": 4,
+        "fail": 4,
+        "warn": 13
+      },
+      "snapshot": "snapshot-check: briefing.md SHA matches snapshots (cdf5f5b25001...)",
+      "missing_historical_prime_trailers": [
+        "fc4e7c36",
+        "8df2bb0d",
+        "bb061988",
+        "aedf5ee3",
+        "0e907e46"
+      ]
+    }
+  },
+  "source_hashes": {
+    "harness/scripts/copilot-native-progress-smoke.ts": "c28667c2655e12d68cbc1f960ae08883a7c0b1f906f73f430f6743080357d501",
+    ".copilot/extensions/pij/store.d.mts": "a214b40fe48107a28912c8a8cf66595d1ac59941ae4d5838fac40116f2382b27",
+    "justfile": "c7171649f0422651b70f82d617c56380bff0a4e46ee641504770098d4f9a4b61",
+    ".copilot/extensions/pij/store.mjs": "ecdce862aea71ce61e330aef79533e3c7fa431f5d0a3f5bb995de316edfe3475",
+    ".copilot/extensions/pij/extension.mjs": "46c1a205821d192e6024c84280dc3c898a89e5fc4671ab8b9131d6440175e466"
+  },
+  "reviewed_source": "8df2bb0d",
+  "base_note": "Parent committed only review.md and packet-fix.md after the reviewed source tip; no coder rebase.",
+  "c11": {
+    "seat": "pij-worthy-brandon",
+    "prime": "pij-far-jackal",
+    "plan": "152-receiver-progress",
+    "prime_derivation": "role=prime"
+  },
+  "harness": {
+    "observation": "DL-006",
+    "encoded": "Registration-relative SDK deadline budget and shared runtime prerequisite in canonical recipes."
+  },
+  "cwd": "/Users/jordanknight/pi-hacking/fs3-receiver-progress",
+  "environment": {
+    "CARGO_TARGET_DIR": "/Users/jordanknight/pi-hacking/fs3-receiver-progress/target",
+    "PATH": "inherited unchanged; no runtime env override in the four accepted smoke runs"
+  }
+}

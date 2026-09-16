@@ -131,3 +131,38 @@ Fresh memory smoke also passed on **1.0.84-9**, **84,024,782 bytes / 20,010 even
 Final warm `just self-check` exited **0**: **243 Vitest files / 5307 tests passed**, **4 files / 22 tests skipped**; native **259 passed / 3 skipped**; all **11 smoke scenarios** passed. Closing snapshot proof: `snapshot-check: briefing.md SHA matches snapshots (cdf5f5b25001...)`. [Exact commands, content hashes, RED assertions and gate ledger](rebase-proof.json).
 
 **Composed-base caveats:** the Windows-focused stage still selects `.pi/extensions/pij/*`, now excluded after plan153's `.omp` migration: **zero focused tests ran**, despite exit 0. This is not fresh Windows coverage. Prime acknowledged the plan153 miss and assigned **pij-continued-bug** to fix selectors plus a zero-files-fails guard separately on main; no such change is included here. Package audit remains report-only (**4 fail / 13 warn** in one of four entries). Biome reports its existing schema-version info. C11 audit warns about missing historical prime attribution in **bb061988**, **aedf5ee3**, and **0e907e46**; no historical identity was fabricated or rewritten.
+
+## Fix round
+
+Applied prime's [F1/F3 rulings](packet-fix.md) against **8df2bb0d**, following the [independent review](review.md). No receiver or Rust behavior changed.
+
+- **F1:** the progress smoke imports the runtime-owned `NATIVE_RPC_DEADLINE_MS` (with a TypeScript declaration for this first TS consumer), waits for the actual replacement `registered` event, then measures **deadline + 30,000 ms = 45,000 ms** from that event. Registration latency no longer consumes the SDK-deadline allowance. It still requires the exact `eventLog.read deadline exceeded (15000ms)` diagnostic and the unchanged host/stale state.
+- **Branch decision:** removed the misleading healthy `observing` branch. This phase explicitly asserts the stale latch immediately before SDK enable and witnesses the real startup-read hold; it is not a healthy-reload acceptance claim. Healthy replacement remains separately covered by the receiver regression suite. The packet's 60-second lease and manual-ACK assertions are unchanged.
+- **F3:** both recipes share a recipe-only prerequisite, select `COPILOT_VERSION` (default **1.0.84-9**) through the actual launcher's `--prefer-version`, check the resolved CLI version and installed runtime metadata before launching the smoke, and refuse mismatches with **exit 2**. `COPILOT_BIN` or the existing CLI override selects another launcher; no install, updater, global linking or 1.0.85 topology workaround is added. The ambient npm loader can select the installed pin, so the acceptance commands need no runtime flags.
+- **Visibility caveat:** the API contract now states that startup hold appears immediately in extension stderr, while `pij state` exposes the receiver reason only after unrenewed lease expiry, up to **60 seconds** later.
+
+Real **1.0.85** prerequisite rejection was exercised through a controlled launcher that invokes the installed `index.js --no-auto-update --version` and ignores the requested preference, modeling a launcher unable to select the pin. It reports the actual runtime, not a fabricated version string. Both public recipes exited **2 in 0.92 seconds**, before starting private smoke resources:
+
+```text
+PIJ_NATIVE_PREREQUISITE_VERSION: /tmp/pij152-force-runtime-185 resolved 1.0.85, expected COPILOT_VERSION=1.0.84-9; runtime drift is not a product failure
+```
+
+The encoded harness improvement is the registration-relative budget plus shared version prerequisite, captured as **DL-006**. Production H1 remains unproved; a successful smoke still grades SDK enable as **HELD**, not healthy.
+
+Three consecutive **bare** `just copilot-native-progress-smoke` invocations passed without runtime flags or acceptance shortcuts (**237.68 s** including recipe startup). These are the recipe's ordinary small-session runs; the previous large-history/H2 evidence remains separate.
+
+| Run | Smoke elapsed | Enable → registered | Registered | Exact deadline hold | Registered → held | Exit |
+|---|---:|---:|---|---|---:|---:|
+| 1 | 78,663 ms | 364 ms | 07:25:05.441Z | 07:25:20.443Z | 15,002 ms | 0 |
+| 2 | 78,589 ms | 304 ms | 07:26:24.574Z | 07:26:39.575Z | 15,001 ms | 0 |
+| 3 | 78,329 ms | 242 ms | 07:27:43.782Z | 07:27:58.798Z | 15,016 ms | 0 |
+
+All timestamps are **2026-09-16 UTC**. All three runs preserved the host, accepted the next delivery after real abort/model-picker interaction, parked/recovered the same pending message, recorded one manual ACK, left jobs **1–3 done**, and stopped their owned tmux/daemon. The hold budget was **45,000 ms from registration** in each receipt.
+
+Bare `just copilot-native-memory-smoke` also exited **0**, in **365.14 s**, selecting **1.0.84-9**. It preserved the **84,024,839-byte / 20,010-event** seeded history and completed **30 native-consumed/model-completed/ACKed deliveries at default 10-second spacing**. Extension **37638** had **32 RSS samples over 302,470 ms**, **96,992–108,416 KiB**, ending **101,728 KiB**. Receiver death parked job **31** after **56,749 ms** under the unchanged **60,000 ms** lease; manual recovery recorded one `reader-read` ACK and final **done**. Both owned services stopped. [RSS series](evidence/fix-round/memory-rss.csv) · [delivery identities](evidence/fix-round/memory-deliveries.csv).
+
+Final gates: native **259 passed / 3 Linux skips**, Rust **1135 passed / 88 suites / 8 ignored**, fmt and strict all-target clippy **exit 0**. Warm `just self-check` exited **0 in 88.07 s**: **243 Vitest files / 5307 tests passed**, **4 files / 22 tests skipped**, native **259 / 3 skipped**, all **11 smoke scenarios** passed. Closing receipt: `snapshot-check: briefing.md SHA matches snapshots (cdf5f5b25001...)`.
+
+[Exact commands, source hashes, three registration/hold receipts and gate ledger](fix-round-proof.json). Parent's packet-only commit **fc4e7c36** is the actual fix-round base; reviewed product source remains **8df2bb0d**. The Windows-focused stage still ran **zero tests on this branch**; F2 is fixed separately on main at **84ca47f6**, not silently counted here. Report-only audit remains **4 fail / 13 warn** in one of four entries. Historical prime-trailer warnings now include **fc4e7c36** and **8df2bb0d** alongside the three noted above; no shared history was rewritten.
+
+Two preliminary invocations were accidentally given a 30-second outer tool deadline while expecting a version refusal; pin selection succeeded and started real smokes instead. Those interrupted attempts are **not acceptance evidence**. Their private tmux servers were explicitly stopped and no matching owned daemons remained. All six owned runtime trees, raw logs and temporary recovery scripts are archived under ignored `evidence/fix-round/runtime/`; only compact proof is retained in the commit.
