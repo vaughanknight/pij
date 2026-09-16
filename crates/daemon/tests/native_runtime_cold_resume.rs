@@ -1,5 +1,7 @@
 //! Cross-language contract proof, not real Copilot/SDK/model acceptance.
 //! Set PIJ_NATIVE_RUNTIME_MODULE to the exact runtime store.mjs in split worktrees.
+//! Same-native-session fast restart is governed by plan149 registration tests,
+//! not the superseded live-old-process veto that used to sit in this probe.
 //! After composition the default is repo/.copilot/extensions/pij/store.mjs.
 
 use std::path::{Path, PathBuf};
@@ -51,16 +53,6 @@ if (input.previous) {
     assert.equal(registration.supersedes, undefined, 'new process cannot supersede');
 }
 const moduleDigest = createHash('sha256').update(await readFile(input.module)).digest('hex');
-if (input.stage === 'live') {
-    await assert.rejects(client.request('/v1/register', registration, signal), error => {
-        assert.equal(error.retryable, false, 'live-owner refusal is terminal, never steal');
-        assert.match(error.message, /Pij HTTP 400:/);
-        assert.match(error.message, /"error":"refused"/);
-        assert.match(error.message, /different process incarnation/);
-        return true;
-    });
-    console.log(JSON.stringify({ registration, moduleDigest, refusedLiveOwner: true }));
-} else {
     const journal = new FileJournal(input.stateDir, registration);
     const acceptanceLog = join(input.stateDir, 'native-send-boundary.jsonl');
     const events = [];
@@ -141,7 +133,6 @@ if (input.stage === 'live') {
     } finally {
         bridge.stop();
     }
-}
 "#;
 
 struct Fixture {
@@ -357,28 +348,7 @@ async fn actual_runtime_chooser_and_journal_resume_through_http_sqlite_without_r
     let running = queue.claimed_delivery(job_id).await.unwrap().unwrap();
     let accepted = std::fs::read(initial["journalPath"].as_str().unwrap()).unwrap();
 
-    input["stage"] = json!("live");
     input["previous"] = initial.clone();
-    input["host"] = json!({ "pid": new_process.pid, "proc_start": new_process.proc_start, "pane": "%137-cross-old" });
-    let live = fixture.node(&module, &input).await;
-    assert_eq!(live["refusedLiveOwner"], true);
-    assert_eq!(live["moduleDigest"], initial["moduleDigest"]);
-    assert_eq!(
-        ProcLiveness::new()
-            .proc_start(old_process.pid)
-            .await
-            .unwrap(),
-        Some(old_process.proc_start)
-    );
-    assert_eq!(registry.get(&seat).await.unwrap(), Some(owner));
-    assert_eq!(
-        queue.claimed_delivery(job_id).await.unwrap(),
-        Some(running.clone())
-    );
-    assert_eq!(
-        std::fs::read(initial["journalPath"].as_str().unwrap()).unwrap(),
-        accepted
-    );
 
     fixture.kill_host(old_index, old_process).await;
     assert_eq!(
@@ -394,7 +364,7 @@ async fn actual_runtime_chooser_and_journal_resume_through_http_sqlite_without_r
     assert_eq!(pending.0, job_id);
     assert_eq!(pending.1.payload, running.payload);
     input["stage"] = json!("resume");
-    input["host"]["pane"] = json!("%137-cross-new");
+    input["host"] = json!({ "pid": new_process.pid, "proc_start": new_process.proc_start, "pane": "%137-cross-new" });
     let resumed = fixture.node(&module, &input).await;
     assert_eq!(resumed["acknowledged"], true);
     assert_eq!(resumed["moduleDigest"], initial["moduleDigest"]);

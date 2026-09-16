@@ -1,0 +1,82 @@
+[
+  {
+    "run": "ac0-registry",
+    "status": "passed"
+  },
+  {
+    "run": "ac0-registered-model",
+    "status": "failed",
+    "error": "PIJ_NATIVE_MEMORY_TIMEOUT: real SDK registers alternate model"
+  },
+  {
+    "run": "ac5-injected",
+    "status": "failed",
+    "error": "controlled stale cursor must recover through the actual SDK"
+  },
+  {
+    "run": "ac5-recovery",
+    "status": "failed",
+    "error": "PIJ_NATIVE_MEMORY_TIMEOUT: host disables actual Pij SDK extension connection"
+  },
+  {
+    "run": "ac5-large",
+    "status": "passed"
+  },
+  {
+    "run": "ac0-controls",
+    "status": "failed",
+    "error": "PIJ_NATIVE_MEMORY_TIMEOUT: model picker displays alternate local model"
+  },
+  {
+    "run": "ac0-large",
+    "status": "passed"
+  },
+  {
+    "run": "ac0-modelpicker",
+    "status": "failed",
+    "error": "PIJ_NATIVE_MEMORY_TIMEOUT: real SDK registers alternate model"
+  },
+  {
+    "run": "ac0-original",
+    "status": "failed",
+    "error": "PIJ_NATIVE_MEMORY_TIMEOUT: real abort event"
+  },
+  {
+    "run": "ac0-catalog",
+    "status": "failed",
+    "error": "PIJ_NATIVE_MEMORY_TIMEOUT: real SDK registers alternate model"
+  },
+  {
+    "run": "ac5-final",
+    "status": "passed"
+  },
+  {
+    "run": "ac0-streaming",
+    "status": "failed",
+    "error": "PIJ_NATIVE_MEMORY_TIMEOUT: real abort event"
+  },
+  {
+    "run": "ac0-baseline",
+    "status": "failed",
+    "error": "Copilot extension: linked; experimental enabled\nCopilot: refusing foreign symlink or real file/directory /Users/jordanknight/pi-hacking/fs3-receiver-progress/docs/plans/152-receiver-progress/evidence/ac0-baseline/runtime/home/.copilot/extensions/pij\n\n1 !== 0\n"
+  },
+  {
+    "run": "ac0-instrumented",
+    "status": "passed"
+  },
+  {
+    "run": "ac0-runtime9",
+    "status": "failed",
+    "error": "PIJ_NATIVE_MEMORY_TIMEOUT: actual model_picker model_change event"
+  },
+  {
+    "run": "ac5-recycle-final",
+    "status": "failed",
+    "error": "PIJ_NATIVE_MEMORY_TIMEOUT: replacement receiver proves SDK progress and renews stale lease"
+  },
+  {
+    "run": "ac5-recycle-verified",
+    "status": "failed",
+    "error": "PIJ_NATIVE_MEMORY_TIMEOUT: replacement receiver proves SDK progress and renews stale lease"
+  }
+]

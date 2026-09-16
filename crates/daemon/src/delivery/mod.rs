@@ -36,6 +36,10 @@ const OUTCOME_EVENT_KIND: &str = "delivery.outcome";
 /// message had been delivered to it without ever being able to read it.
 const PUSHED_EVENT_KIND: &str = "message.pushed";
 const NATIVE_RECEIVER_UNAVAILABLE: &str = "native-extension-unavailable";
+const NATIVE_RECEIVER_STALE: &str = "native-receiver-stale";
+const NATIVE_RECEIVER_STALE_RENEWALS: u32 = 3;
+const NATIVE_RECEIVER_RENEWAL_DIVISOR: u64 = 3;
+const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
 /// One claimed inbox row. Native clients acknowledge only after SDK acceptance;
 /// other readers acknowledge after decoding. Neither is evidence of model completion.
@@ -91,12 +95,18 @@ impl NativeInboxIdentity {
 struct NativeReceiverLease {
     identity: NativeInboxIdentity,
     renewed_at: tokio::time::Instant,
+    observed_at: u64,
+    observed_seq: u64,
+    progress_checked_at: tokio::time::Instant,
+    frozen_renewals: u32,
 }
 
-/// Native receiver presence, not host liveness or acknowledgement of any message.
+/// Native receiver observation lease, not host liveness or message acknowledgement.
 #[derive(Debug, Serialize)]
 pub struct NativeReceiverHeartbeat {
     state: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'static str>,
     lease_ms: u64,
     renew_after_ms: u64,
 }
@@ -266,14 +276,40 @@ impl DeliveryService {
         Arc::clone(&self.native_lock)
     }
 
-    /// Renew receiver presence independently of claims, Working, or Operator Hold.
-    /// The host tuple scopes the lease, but only receiver requests renew it.
-    /// Presence is attested by tuple knowledge under the machine bearer, not
-    /// process possession; the same authority already permits native claims.
+    /// Registration/claim attests the tuple, not event observation. Only the first
+    /// attestation of an incarnation starts a lease; repeats cannot clear a freeze
+    /// or move an existing expiry, even after parking removed all live queue rows.
+    pub async fn attest_native_receiver(
+        &self,
+        seat: &SeatId,
+        identity: &NativeInboxIdentity,
+    ) -> Result<NativeReceiverHeartbeat> {
+        self.update_native_receiver(seat, identity, None).await
+    }
+
+    /// Renew from actual observations, independently of Working or Operator Hold.
+    /// Empty reads and heartbeat timers must not advance either progress field.
     pub async fn heartbeat_native_receiver(
         &self,
         seat: &SeatId,
         identity: &NativeInboxIdentity,
+        observed_at: u64,
+        observed_seq: u64,
+    ) -> Result<NativeReceiverHeartbeat> {
+        if observed_at > MAX_SAFE_INTEGER || observed_seq > MAX_SAFE_INTEGER {
+            return Err(native_refusal(
+                "receiver progress must use nonnegative safe integers",
+            ));
+        }
+        self.update_native_receiver(seat, identity, Some((observed_at, observed_seq)))
+            .await
+    }
+
+    async fn update_native_receiver(
+        &self,
+        seat: &SeatId,
+        identity: &NativeInboxIdentity,
+        progress: Option<(u64, u64)>,
     ) -> Result<NativeReceiverHeartbeat> {
         let _guard = self.native_lock.lock().await;
         self.inbox_recipient(seat, identity)
@@ -282,19 +318,101 @@ impl DeliveryService {
             .ok_or_else(|| {
                 native_refusal("native receiver heartbeat requires current native registration")
             })?;
-        self.native_receivers.lock().await.insert(
-            seat.clone(),
-            NativeReceiverLease {
-                identity: identity.clone(),
-                renewed_at: tokio::time::Instant::now(),
-            },
-        );
-        self.native_receiver_changed.notify_one();
+        // Queue observation follows native admission, before the receiver map.
+        // peek includes pending, deferred and running work and mutates nothing.
+        let outstanding = self.queue.peek(&[delivery_kind(seat)]).await?.is_some();
+        let now = tokio::time::Instant::now();
         let lease_ms = self.extension_claim_lease_secs.saturating_mul(1_000);
+        let renew_after_ms = lease_ms / NATIVE_RECEIVER_RENEWAL_DIVISOR;
+        let mut receivers = self.native_receivers.lock().await;
+        let receiver = receivers
+            .entry(seat.clone())
+            .or_insert_with(|| NativeReceiverLease {
+                identity: identity.clone(),
+                renewed_at: now,
+                observed_at: 0,
+                observed_seq: 0,
+                progress_checked_at: now,
+                frozen_renewals: 0,
+            });
+        if receiver.identity != *identity {
+            *receiver = NativeReceiverLease {
+                identity: identity.clone(),
+                renewed_at: now,
+                observed_at: 0,
+                observed_seq: 0,
+                progress_checked_at: now,
+                frozen_renewals: 0,
+            };
+        }
+        if let Some((observed_at, observed_seq)) = progress {
+            if observed_at < receiver.observed_at
+                || (observed_at == receiver.observed_at && observed_seq < receiver.observed_seq)
+            {
+                return Err(native_refusal(
+                    "receiver observation progress must not regress",
+                ));
+            }
+            // The timestamp is observation authority. A replacement extension
+            // under the same host tuple can restart its local sequence counter.
+            let advanced = observed_at > receiver.observed_at;
+            receiver.observed_at = observed_at;
+            receiver.observed_seq = observed_seq;
+            if advanced {
+                receiver.frozen_renewals = 0;
+                receiver.progress_checked_at = now;
+            } else if receiver.frozen_renewals < NATIVE_RECEIVER_STALE_RENEWALS {
+                if !outstanding {
+                    receiver.frozen_renewals = 0;
+                    receiver.progress_checked_at = now;
+                } else if now.duration_since(receiver.progress_checked_at)
+                    >= Duration::from_millis(renew_after_ms)
+                {
+                    // Only a daemon-timed renewal opportunity counts. Bursts of
+                    // requests/claims cannot amplify the staleness threshold.
+                    receiver.frozen_renewals += 1;
+                    receiver.progress_checked_at = now;
+                }
+                if outstanding
+                    && now.duration_since(receiver.renewed_at) >= Duration::from_millis(lease_ms)
+                {
+                    // Missed requests do not grant extra renewal opportunities.
+                    receiver.frozen_renewals = NATIVE_RECEIVER_STALE_RENEWALS;
+                }
+            }
+            // Frozen heartbeats never move the last-progress lease horizon,
+            // including the grace before K. Otherwise K misses plus another
+            // whole lease would defer manual recovery beyond the stated bound.
+            if (advanced || !outstanding)
+                && receiver.frozen_renewals < NATIVE_RECEIVER_STALE_RENEWALS
+            {
+                receiver.renewed_at = now;
+            }
+        }
+        let stale = receiver.frozen_renewals >= NATIVE_RECEIVER_STALE_RENEWALS;
+        let remaining_ms = Duration::from_millis(lease_ms)
+            .saturating_sub(now.duration_since(receiver.renewed_at))
+            .as_millis() as u64;
+        // A sub-millisecond live renewal interval cannot be represented on wire.
+        let stale = stale || (outstanding && remaining_ms < 2);
+        if stale {
+            receiver.frozen_renewals = NATIVE_RECEIVER_STALE_RENEWALS;
+        }
+        let (lease_ms, renew_after_ms) = if stale {
+            (lease_ms, renew_after_ms)
+        } else {
+            (
+                remaining_ms,
+                renew_after_ms.min(remaining_ms.saturating_sub(1)),
+            )
+        };
+        drop(receivers);
+        self.native_receiver_changed.notify_one();
         Ok(NativeReceiverHeartbeat {
-            state: "live",
+            state: if stale { "stale" } else { "live" },
+            reason: stale.then_some(NATIVE_RECEIVER_STALE),
             lease_ms,
-            renew_after_ms: lease_ms / 3,
+            renew_after_ms,
         })
     }
 
@@ -308,6 +426,40 @@ impl DeliveryService {
             None => self.native_started_at,
         };
         renewed_at.elapsed() < Duration::from_secs(self.extension_claim_lease_secs)
+    }
+
+    /// Read the progress brake independently of host activity and lease expiry.
+    /// Kept after parking so operators can diagnose why manual recovery opened.
+    pub(crate) async fn native_receiver_reason(
+        &self,
+        seat: &SeatId,
+    ) -> Result<Option<&'static str>> {
+        let _guard = self.native_lock.lock().await;
+        let Some(recipient) = self.registry.get(seat).await? else {
+            return Ok(None);
+        };
+        if recipient.harness != Harness::Copilot || !recipient.native_extension_delivery {
+            return Ok(None);
+        }
+        let outstanding = self.queue.peek(&[delivery_kind(seat)]).await?.is_some();
+        let mut receivers = self.native_receivers.lock().await;
+        let Some(receiver) = receivers
+            .get_mut(seat)
+            .filter(|receiver| receiver.identity.matches(&recipient))
+        else {
+            // No receiver reconnected after boot; do not invent frozen-observation
+            // evidence, but keep its unavailability visible even after jobs park.
+            return Ok((self.native_started_at.elapsed()
+                >= Duration::from_secs(self.extension_claim_lease_secs))
+            .then_some(NATIVE_RECEIVER_UNAVAILABLE));
+        };
+        if outstanding
+            && receiver.renewed_at.elapsed() >= Duration::from_secs(self.extension_claim_lease_secs)
+        {
+            receiver.frozen_renewals = NATIVE_RECEIVER_STALE_RENEWALS;
+        }
+        Ok((receiver.frozen_renewals >= NATIVE_RECEIVER_STALE_RENEWALS)
+            .then_some(NATIVE_RECEIVER_STALE))
     }
 
     /// Wake at the earliest unchecked receiver lease, including the boot grace.
@@ -382,6 +534,17 @@ impl DeliveryService {
         let mut count = 0;
         while let Some((job_id, job)) = self.queue.peek(&kinds).await? {
             pij_core::delivery::require_recovery_authority(self.recovery_authority_shared)?;
+            // Preserve the diagnosis even when the receiver stopped heartbeats
+            // altogether. Release this lock before event publication/subscribers.
+            {
+                let mut receivers = self.native_receivers.lock().await;
+                if let Some(receiver) = receivers.get_mut(seat)
+                    && receiver.renewed_at.elapsed()
+                        >= Duration::from_secs(self.extension_claim_lease_secs)
+                {
+                    receiver.frozen_renewals = NATIVE_RECEIVER_STALE_RENEWALS;
+                }
+            }
             let queue = self.queue.clone();
             let spine = self.event_bus.raw_spine();
             let seat = seat.clone();
@@ -884,14 +1047,14 @@ impl DeliveryService {
         wait: bool,
         identity: &NativeInboxIdentity,
     ) -> Result<NativeInboxPage> {
-        // One inbound request proves presence. A server-side long-poll wake does not.
+        // Claim presence cannot renew a lease or erase progress history.
         if self
             .registry
             .get(seat)
             .await?
             .is_some_and(|seat| seat.harness == Harness::Copilot && seat.native_extension_delivery)
         {
-            self.heartbeat_native_receiver(seat, identity).await?;
+            self.attest_native_receiver(seat, identity).await?;
         }
         self.claim_inbox_inner(seat, wait, identity, None, false)
             .await
@@ -1170,6 +1333,25 @@ impl DeliveryService {
                         });
                     }
                 }
+            }
+            if !manual_native
+                && let Some(recipient) = observed
+                    .as_ref()
+                    .filter(|seat| seat.native_extension_delivery)
+                && self
+                    .native_receivers
+                    .lock()
+                    .await
+                    .get(seat)
+                    .is_some_and(|receiver| {
+                        receiver.identity.matches(recipient)
+                            && receiver.frozen_renewals >= NATIVE_RECEIVER_STALE_RENEWALS
+                    })
+            {
+                return Ok(NativeInboxPage {
+                    claims: Vec::new(),
+                    held_reason: Some(NATIVE_RECEIVER_STALE.to_string()),
+                });
             }
             if let Some(reason) = self
                 .revalidate_inbox_observation(seat, identity, observed.as_ref())
@@ -4239,11 +4421,16 @@ mod tests {
             .remove(0);
         seat.semantic_state = Some(SemanticState::Hold);
         fixture.registry.put(seat.clone()).await.unwrap();
-        for _ in 0..4 {
+        for observation in 1..=4 {
             tokio::time::advance(Duration::from_millis(
                 fixture.service.extension_claim_lease_secs * 500,
             ))
             .await;
+            fixture
+                .service
+                .heartbeat_native_receiver(&seat.id, &identity, observation, observation)
+                .await
+                .unwrap();
             let page = fixture
                 .service
                 .claim_native_inbox(&seat.id, false, &identity)
@@ -4324,7 +4511,7 @@ mod tests {
         ));
         fixture
             .service
-            .claim_native_inbox(&seat.id, false, &identity)
+            .heartbeat_native_receiver(&seat.id, &identity, 1, 1)
             .await
             .unwrap();
         let sent = fixture
@@ -4356,7 +4543,7 @@ mod tests {
         let identity = native_identity();
         fixture
             .service
-            .heartbeat_native_receiver(&seat.id, &identity)
+            .heartbeat_native_receiver(&seat.id, &identity, 0, 0)
             .await
             .unwrap();
         let sent = fixture
@@ -5187,7 +5374,7 @@ mod tests {
             .expect("replacement attested");
         fixture
             .service
-            .heartbeat_native_receiver(
+            .attest_native_receiver(
                 &"pij-native".into(),
                 &super::NativeInboxIdentity {
                     native_session: Some("native-138".into()),

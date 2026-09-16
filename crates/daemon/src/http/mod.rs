@@ -771,7 +771,7 @@ async fn register(
                 if let Err(error) = state
                     .services
                     .delivery
-                    .heartbeat_native_receiver(&descriptor.id, &identity)
+                    .attest_native_receiver(&descriptor.id, &identity)
                     .await
                 {
                     return internal("pij register", error);
@@ -1670,10 +1670,16 @@ struct InboxQuery {
 /// `peek=true` is observation-only and never changes queue state.
 async fn inbox(State(state): State<AppState>, Query(query): Query<InboxQuery>) -> Response {
     if query.peek {
-        return match state.services.delivery.peek_inbox(&query.seat).await {
-            Ok(claims) => envelope(StatusCode::OK, &Envelope::ok("pij inbox", claims)),
-            Err(error) => inbox_failure(error),
-        };
+        let result = state
+            .services
+            .delivery
+            .peek_inbox(&query.seat)
+            .await
+            .map(|claims| crate::delivery::NativeInboxPage {
+                claims,
+                held_reason: None,
+            });
+        return native_inbox_reply(&state, &query.seat, result).await;
     }
     let identity = crate::delivery::NativeInboxIdentity {
         native_session: query.native_session,
@@ -1685,10 +1691,7 @@ async fn inbox(State(state): State<AppState>, Query(query): Query<InboxQuery>) -
         .delivery
         .claim_native_inbox(&query.seat, query.wait, &identity)
         .await;
-    match result {
-        Ok(page) => native_inbox_response(page),
-        Err(error) => inbox_failure(error),
-    }
+    native_inbox_reply(&state, &query.seat, result).await
 }
 
 #[derive(Deserialize)]
@@ -1720,15 +1723,50 @@ async fn inbox_typing(
     }
 }
 
-fn native_inbox_response(page: crate::delivery::NativeInboxPage) -> Response {
+async fn native_inbox_reply(
+    state: &AppState,
+    seat: &SeatId,
+    result: Result<crate::delivery::NativeInboxPage>,
+) -> Response {
+    let reason = match state.services.delivery.native_receiver_reason(seat).await {
+        Ok(reason) => reason,
+        Err(error) => return internal("pij inbox", error),
+    };
+    match result {
+        Ok(page) => native_inbox_response(page, reason),
+        Err(error) => inbox_failure_with_reason(error, reason),
+    }
+}
+
+fn receiver_diagnostic<T>(answer: &mut Envelope<T>, reason: Option<&str>) {
+    if let Some(reason) = reason {
+        answer.details.get_or_insert_with(|| serde_json::json!({}))["native_receiver_reason"] =
+            serde_json::json!(reason);
+        match &mut answer.meta {
+            Some(meta) if !meta.contains(reason) => {
+                meta.push_str("; ");
+                meta.push_str(reason);
+            }
+            None => answer.meta = Some(reason.to_string()),
+            Some(_) => {}
+        }
+    }
+}
+
+fn native_inbox_response(page: crate::delivery::NativeInboxPage, reason: Option<&str>) -> Response {
     let mut answer = Envelope::ok("pij inbox", page.claims);
     answer.meta = page
         .held_reason
         .map(|reason| format!("native-consumer-held:{reason}"));
+    receiver_diagnostic(&mut answer, reason);
     envelope(StatusCode::OK, &answer)
 }
 
 fn inbox_failure(error: PijError) -> Response {
+    inbox_failure_with_reason(error, None)
+}
+
+fn inbox_failure_with_reason(error: PijError, reason: Option<&str>) -> Response {
     match &error {
         PijError::NativeReceiverLive { expires_in_ms, .. } => {
             let mut answer: Envelope<serde_json::Value> =
@@ -1738,6 +1776,7 @@ fn inbox_failure(error: PijError) -> Response {
                 "retryable": true,
                 "expires_in_ms": expires_in_ms,
             }));
+            receiver_diagnostic(&mut answer, reason);
             envelope(StatusCode::CONFLICT, &answer)
         }
         PijError::GovernanceRefused { code, record } if code == "E-RS-INBOX-AUTHORITY-SPLIT" => {
@@ -2071,17 +2110,28 @@ async fn heartbeat_inbox(
         proc_start: request.proc_start,
     };
     let Some(job_id) = request.job_id else {
+        let (Some(observed_at), Some(observed_seq)) = (request.observed_at, request.observed_seq)
+        else {
+            return refused(
+                "pij inbox",
+                "native receiver heartbeat requires observed_at and observed_seq",
+            );
+        };
         return match state
             .services
             .delivery
-            .heartbeat_native_receiver(&request.seat, &identity)
+            .heartbeat_native_receiver(&request.seat, &identity, observed_at, observed_seq)
             .await
         {
             Ok(heartbeat) => envelope(StatusCode::OK, &Envelope::ok("pij inbox", heartbeat)),
             Err(error) => inbox_failure(error),
         };
     };
-    if identity.native_session.is_some() || identity.pid.is_some() || identity.proc_start.is_some()
+    if identity.native_session.is_some()
+        || identity.pid.is_some()
+        || identity.proc_start.is_some()
+        || request.observed_at.is_some()
+        || request.observed_seq.is_some()
     {
         return refused("pij inbox", "native receiver heartbeat must omit job_id");
     }
@@ -2278,6 +2328,11 @@ async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequ
         Ok(holds) => holds,
         Err(error) => return internal("pij state", error),
     };
+    projection.card.native_receiver_reason =
+        match state.services.delivery.native_receiver_reason(&id).await {
+            Ok(reason) => reason.map(str::to_string),
+            Err(error) => return internal("pij state", error),
+        };
 
     envelope(StatusCode::OK, &Envelope::ok("pij state", projection))
 }
@@ -2355,6 +2410,7 @@ fn state_card(
                 None => "unbound",
             }
             .to_string(),
+            native_receiver_reason: None,
             pid: seat.proc.map(|proc| proc.pid),
             proc_start: seat.proc.map(|proc| proc.proc_start),
             cwd: seat.folder,

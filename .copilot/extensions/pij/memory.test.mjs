@@ -222,6 +222,8 @@ if (!process.env.PIJ_NATIVE_MEMORY_CHILD) {
 		];
 		let pages = 0;
 		let eventsRead = 0;
+		let startupPages = 0;
+		let startupEventsRead = 0;
 		let sends = 0;
 		let acknowledgements = 0;
 		let fullReads = 0;
@@ -253,7 +255,28 @@ if (!process.env.PIJ_NATIVE_MEMORY_CHILD) {
 					async tail() {
 						return { cursor: String(historyEvents + proof.length) };
 					},
-					async read({ cursor, max }) {
+					async read({ cursor, max, direction }) {
+						if (direction === "backward") {
+							sample();
+							const from = Math.max(0, historyEvents + proof.length - max);
+							const events = JSON.parse(
+								JSON.stringify([
+									...Array.from({ length: historyEvents - from }, (_, index) =>
+										historicEvent(from + index),
+									),
+									...proof,
+								]),
+							);
+							startupPages++;
+							startupEventsRead += events.length;
+							sample();
+							return {
+								events,
+								cursor: "startup-backward-tail",
+								hasMore: from > 0,
+								cursorStatus: "ok",
+							};
+						}
 						// Drain can stay in microtasks throughout: a timer cannot measure its peak.
 						// Sample before allocation to catch pages retained by the previous read,
 						// and after allocation to include the current RPC window.
@@ -349,6 +372,8 @@ if (!process.env.PIJ_NATIVE_MEMORY_CHILD) {
 				historyBytes,
 				pages,
 				eventsRead,
+				startupPages,
+				startupEventsRead,
 				gcSamples,
 				acknowledgements,
 				sends,

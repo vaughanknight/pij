@@ -115,6 +115,23 @@ describe("the explicit rs routing inventory", () => {
 		expect(rendered.text).toContain("refused");
 		expect(rendered.text).toContain(reason);
 	});
+
+	it("human state exposes stalled native observation beside active host liveness", () => {
+		const rendered = renderRsAnswer(
+			findRoute("state", undefined),
+			{
+				id: "pij-copilot",
+				state: "idle",
+				liveness: "active",
+				native_receiver_reason: "native-receiver-stale",
+			},
+			["state", "pij-copilot"],
+		);
+		expect(rendered.kind).toBe("rendered");
+		if (rendered.kind !== "rendered") throw new Error("state was not rendered");
+		expect(rendered.text).toContain("idle · active");
+		expect(rendered.text).toContain("native-receiver-stale");
+	});
 });
 
 describe("the tail false friend remains refused", () => {

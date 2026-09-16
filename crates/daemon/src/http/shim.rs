@@ -533,13 +533,7 @@ pub(crate) async fn shim_inbox(State(state): State<AppState>, body: axum::body::
             .claim_native_inbox(&reader.id, false, &identity)
             .await
     };
-    match result {
-        Ok(page) => super::envelope(
-            axum::http::StatusCode::OK,
-            &pij_core::model::Envelope::ok(INBOX, page.claims),
-        ),
-        Err(error) => super::inbox_failure(error),
-    }
+    super::native_inbox_reply(&state, &reader.id, result).await
 }
 
 /// The acknowledgement half of a routed inbox read.

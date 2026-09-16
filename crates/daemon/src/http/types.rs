@@ -230,6 +230,13 @@ pub struct InboxHeartbeatRequest {
     /// Host process start stamp.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proc_start: Option<u64>,
+    /// Latest actually observed event, in nonnegative safe-integer milliseconds.
+    /// Required for a native receiver heartbeat; never a timer or empty-read time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_at: Option<u64>,
+    /// Monotonic count of actual event observations, also a nonnegative safe integer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_seq: Option<u64>,
 }
 
 /// Acknowledgement for the single inbox claim a client decoded.
@@ -431,6 +438,13 @@ pub struct StateCard {
     /// something it must handle; a caller told `dead` would get something it
     /// would wrongly trust.
     pub liveness: String,
+    /// Native observation brake, independent of process liveness or mechanical state.
+    #[serde(
+        default,
+        rename = "native_receiver_reason",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub native_receiver_reason: Option<String>,
     /// TS `pid` (cli.ts:3638). `None` for a seat never bound to a process.
     pub pid: Option<u32>,
     /// The recorded process start time — the other half of the identity that

@@ -1,0 +1,164 @@
+{
+  "status": "passed",
+  "base": "b715be4f74dccacf86883d6aedcc30c91738fd07",
+  "started": "2026-09-16T05:42:03.886Z",
+  "finished": "2026-09-16T05:43:24.404Z",
+  "runtime": "1.0.84-9",
+  "identity": {
+    "node": "v24.7.0",
+    "pij": "pij-rs 0.1.0",
+    "pij_binary": "/Users/jordanknight/pi-hacking/fs3-receiver-progress/target/debug/pij-rs",
+    "pij_sha256": "ce0731e1ba92cf17cdbedc9fec01dc40643fbccd02428ba0d71442edaf6ffada",
+    "copilot": "GitHub Copilot CLI 1.0.84-9.\nRun 'copilot update' to check for updates.",
+    "copilot_binary": "/Users/jordanknight/.local/bin/copilot",
+    "copilot_sha256": "02c95ab4968b2653f92cbdc664e7a7bf0d18bb0292896d2a2e7eda1edc5444c1",
+    "source_modules": {
+      "extension.mjs": "fc695c7e3d7bc553092e82bd31c0456e5681eacfc390b631638ed4b25523fe14",
+      "store.mjs": "c571ee1ebadb60aa98456dded79481fc9666fe59b6f56f327946d2dd0548ff66"
+    }
+  },
+  "isolation": {
+    "addr": "127.0.0.1:63467",
+    "socket": "/private/tmp/pij-memory-7XQcRC/tmux-501/ac6-53eb478b-292",
+    "state": "/Users/jordanknight/pi-hacking/fs3-receiver-progress/docs/plans/152-receiver-progress/evidence/ac5-acceptance/runtime/daemon",
+    "production_contacted": false
+  },
+  "history": {
+    "path": "/Users/jordanknight/pi-hacking/fs3-receiver-progress/docs/plans/152-receiver-progress/evidence/ac5-acceptance/runtime/home/.copilot/session-state/bf3b6b2d-8157-4034-9bc3-38d0243a99ad/events.jsonl",
+    "bootstrap_events": 8,
+    "synthetic_events": 25002,
+    "total_events": 25010,
+    "bytes": 105037257,
+    "sha256": "549bbe414ecd6161c789b4b3da8a41f639463a942cd063e1e5373380a3a1fd9f",
+    "last_event_id": "959c0056-97a8-4caf-b4aa-3c7ad6102205",
+    "format": "real bootstrap event templates + chained synthetic user/assistant events + supported successful compaction summary",
+    "inference": "synthetic history, not a claim of 12500 real inference turns"
+  },
+  "sdk_fault": {
+    "kind": "controlled H2 empty cursor plus callback loss; NOT a production mechanism reproduction",
+    "real_tail_and_backward": true,
+    "store_sha256": "c571ee1ebadb60aa98456dded79481fc9666fe59b6f56f327946d2dd0548ff66"
+  },
+  "abort_control": "Esc produced no abort; Ctrl-C fallback",
+  "model_change": {
+    "at": "2026-09-16T05:42:10.822Z",
+    "elapsed_ms": 2298,
+    "changed": {
+      "id": "522dc39a-5611-4a90-94f6-cb2f5be69b28",
+      "type": "session.model_change",
+      "data": {
+        "source": "model_picker",
+        "contextTier": null,
+        "newModel": "progress-local/pij-progress-alternate",
+        "previousModel": "progress-local/pij-native-fixture",
+        "reasoningEffort": null
+      }
+    }
+  },
+  "receiver_rebaseline": {
+    "at": "2026-09-16T05:42:13.390Z",
+    "kind": "receiver-rebaselined",
+    "seat": "pij-realistic-gamefowl",
+    "nativeSession": "bf3b6b2d-8157-4034-9bc3-38d0243a99ad",
+    "msgId": "5421ec68-0b3c-4830-a52b-40cd3295cc3b",
+    "jobId": 1,
+    "gap": {
+      "afterEventId": "a2034a88-4c2b-4592-9807-e25e0ca91309",
+      "throughEventId": "bc745c58-209d-4645-84f1-9a9ed7331e2b",
+      "observed": 4,
+      "contiguous": true
+    }
+  },
+  "next_native_accepted": {
+    "at": "2026-09-16T05:42:13.433Z",
+    "kind": "native-accepted",
+    "seat": "pij-realistic-gamefowl",
+    "nativeSession": "bf3b6b2d-8157-4034-9bc3-38d0243a99ad",
+    "msgId": "d78ce894-5b41-4400-844e-8a244cfde20c",
+    "nativeMessageId": "bddb9384-824d-43ee-8152-9a7c88a9d6dc",
+    "grade": "native-accepted-not-model-complete"
+  },
+  "sdk_disconnect": {
+    "op": "disable-pij",
+    "target": {
+      "id": "user:pij",
+      "name": "pij",
+      "source": "user",
+      "status": "running",
+      "pid": 58869
+    },
+    "at": "2026-09-16T05:42:13.861Z",
+    "death": "verified owned extension PID ESRCH after host SDK disable"
+  },
+  "lease_expiry": {
+    "elapsed_ms": 54943,
+    "bound_ms": 60000,
+    "parked": {
+      "seq": 23,
+      "at": 1789537388501,
+      "kind": "delivery.parked",
+      "seat": "pij-printed-ziller",
+      "payload": "{\"jobId\":3,\"messageId\":\"9da71965-1e06-4e62-a5ac-79460446ea14\",\"outcome\":\"undelivered:native-receiver-unavailable\",\"reason\":\"native-extension-unavailable\",\"recipient\":\"pij-realistic-gamefowl\"}"
+    }
+  },
+  "manual": {
+    "exit": 0,
+    "details": {
+      "native_receiver_reason": "native-receiver-stale"
+    },
+    "acknowledgements": [
+      {
+        "recipient": "pij-realistic-gamefowl",
+        "msg_id": "9da71965-1e06-4e62-a5ac-79460446ea14",
+        "origin": "reader-read"
+      }
+    ],
+    "jobs": [
+      {
+        "id": 3,
+        "state": "done",
+        "dedupe_key": "9da71965-1e06-4e62-a5ac-79460446ea14",
+        "outcome": null
+      }
+    ]
+  },
+  "recycle": {
+    "kind": "held",
+    "diagnostic": {
+      "at": "2026-09-16T05:43:24.239Z",
+      "kind": "receive-held",
+      "holdKind": null,
+      "safeDiagnostic": "eventLog.read deadline exceeded (15000ms)",
+      "retryMs": null
+    },
+    "note": "Actual SDK enable left startup read unresponsive; deadline held safely, not claimed healthy or retried.",
+    "host_pid": 58329,
+    "jobs": [
+      {
+        "id": 1,
+        "state": "done",
+        "dedupe_key": "5421ec68-0b3c-4830-a52b-40cd3295cc3b",
+        "outcome": null
+      },
+      {
+        "id": 2,
+        "state": "done",
+        "dedupe_key": "d78ce894-5b41-4400-844e-8a244cfde20c",
+        "outcome": null
+      },
+      {
+        "id": 3,
+        "state": "done",
+        "dedupe_key": "9da71965-1e06-4e62-a5ac-79460446ea14",
+        "outcome": null
+      }
+    ],
+    "registered_at": "2026-09-16T05:43:09.237Z",
+    "registered_to_held_ms": 15002
+  },
+  "cleanup": {
+    "owned_tmux_stopped": true,
+    "owned_daemon_stopped": true,
+    "retained": "Plan-local isolated runtime retained for evidence; daemon key and synthetic history stay inside private runtime directory. No production/global configuration was changed."
+  }
+}

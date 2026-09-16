@@ -1,0 +1,49 @@
+COMMAND: node --test .copilot/extensions/pij/*.test.mjs
+EXIT: 0
+✔ incremental history: nonadvancing hasMore holds without ACK, reinjection or cursor rewind (0.1625ms)
+ℹ tests 245
+ℹ suites 0
+ℹ pass 242
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 3
+ℹ todo 0
+ℹ duration_ms 8667.506584
+
+
+Wall time: 8.76 seconds
+COMMAND: ~/.cargo/bin/cargo fmt --all --check && ~/.cargo/bin/cargo test --workspace && ~/.cargo/bin/cargo clippy --workspace --all-targets -- -D warnings
+EXIT: 0
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests pij_transport
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+    Checking pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-receiver-progress/crates/daemon)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.13s
+
+COMMAND: just self-check
+EXIT: 0
+  · scorecard:not-found: no Scorecard data for npm/%40tintinweb%2Fpi-subagents (404)
+  · vetter:meta: agent skipped: PIJ_VET_SKIP_AGENT=1
+
+⚠ REVIEW (report-only, not blocking): 1/4 entry flagged — aggregate fail
+  • git:github.com/ghoseb/pi-askuserquestion: fail (4 fail, 13 warn) — keep, or: npm run pkg disable git:github.com/ghoseb/pi-askuserquestion
+just snapshots-check
+npm run snapshots:check
+
+> pij@0.1.0 snapshots:check
+> tsx harness/scripts/snapshot-check.ts
+
+✓ snapshot-check: briefing.md SHA matches snapshots (cdf5f5b25001...)
+just pij-commit-trailers
+node_modules/.bin/tsx harness/scripts/pij-commit-trailers.ts "$@"
+pij-commit-trailers: warn — 1 missing across 1 harness commit(s) since merge-base with main
+b715be4f74dccacf86883d6aedcc30c91738fd07: missing Pij-Prime
+  Pij-Prime: cannot derive commit-time identity; do not substitute the current seat
+b715be4f74dccacf86883d6aedcc30c91738fd07: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime
+Advisory only: add derived trailers after a blank line alongside harness attribution; do not rewrite shared history automatically.

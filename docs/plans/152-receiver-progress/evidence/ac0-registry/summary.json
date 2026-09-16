@@ -1,0 +1,44 @@
+{
+  "status": "passed",
+  "started": "2026-09-16T04:06:04.935Z",
+  "finished": "2026-09-16T04:06:12.690Z",
+  "runtime": "1.0.84-8",
+  "subject": {
+    "node": "v24.7.0",
+    "pij": "pij-rs 0.1.0",
+    "pij_binary": "/Users/jordanknight/pi-hacking/fs3-receiver-progress/target/pij152-baseline",
+    "pij_sha256": "6b36b50d45d521b178278d513ff368c847b4837c85c9112bbceaa9f5a01f4ee9",
+    "copilot": "GitHub Copilot CLI 1.0.84-8.\nRun 'copilot update' to check for updates.",
+    "copilot_binary": "/Users/jordanknight/.local/bin/copilot",
+    "copilot_sha256": "02c95ab4968b2653f92cbdc664e7a7bf0d18bb0292896d2a2e7eda1edc5444c1",
+    "source_modules": {
+      "extension.mjs": "82d86ff3219e11600bd02e07ba0db3631de7e525b1a99e2f7a8aec987f74bbe4",
+      "store.mjs": "450ed6df65c6eb169c1790870621812f6fffe189c18361a3884c2d8849456008"
+    }
+  },
+  "daemon": "127.0.0.1:54508",
+  "abort_control": "Esc produced no abort; Ctrl-C fallback",
+  "model_change": {
+    "at": "2026-09-16T04:06:10.049Z",
+    "elapsed_ms": 2299,
+    "changed": {
+      "id": "64d04700-d713-469e-9eea-369dc5c9ee18",
+      "type": "session.model_change",
+      "data": {
+        "source": "model_picker",
+        "contextTier": null,
+        "newModel": "progress-local/pij-progress-alternate",
+        "previousModel": "progress-local/pij-native-fixture",
+        "reasoningEffort": null
+      }
+    }
+  },
+  "next_accepted": true,
+  "reads": [],
+  "mechanism_reproduced": false,
+  "cleanup": {
+    "owned_tmux_stopped": true,
+    "owned_daemon_stopped": true,
+    "retained": "Plan-local isolated runtime retained for evidence; daemon key and synthetic history stay inside private runtime directory. No production/global configuration was changed."
+  }
+}

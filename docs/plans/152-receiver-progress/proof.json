@@ -1,0 +1,28 @@
+{
+  "implementation": "d232e7ea01a438dea98db5618471b3ce49dbdb97",
+  "pre_work_tip": "b715be4f74dccacf86883d6aedcc30c91738fd07",
+  "source_base": "cf08eacd",
+  "red": [
+    {"case":"AC1/AC2/AC3-client/AC4 frozen pre-fix modules","command":"node --test /tmp/pij152-lzWWni/frozen/.copilot/extensions/pij/progress.test.mjs","exit":1,"tests":26,"failed":24,"passed":2,"output":"the native hang must not renew silently forever: 0 !== 1; H2 gap, progress and outstanding-exit assertions failed behaviorally"},
+    {"case":"AC3 genuine baseline Rust daemon, valid old heartbeat wire shape, inert isolated host","lease_seconds":3,"renewals_without_observation":3,"exit":1,"states":["live","live","live","live"],"lease_ms":[3000,3000,3000,3000],"queue":"original job remains unparked","output":"frozen receiver must stop renewing after K opportunities: 'live' !== 'stale'"},
+    {"case":"AC3 remove only frozen-renewal guard","command":"cargo test -p pij-daemon --lib native_frozen_progress_http_expires_at_k_and_manual_pull_preserves_identity -- --nocapture","exit":101,"output":"a frozen heartbeat must not add another lease before K: actual 60000, expected 40000","restored_in_finally":true},
+    {"case":"actual human state renderer hid stale receiver","command":"vitest run .pi/extensions/pij/core/generation-routing.test.ts -t 'human state exposes stalled native observation'","exit":1,"output":"expected 'pij-copilot: idle · active' to contain 'native-receiver-stale'"},
+    {"case":"correlated abort before picker resubmission","command":"node --test --test-name-pattern 'observed abort completes' .copilot/extensions/pij/progress.test.mjs","exit":1,"output":"actual undefined; expected owned-abort"},
+    {"case":"same-host receiver-local sequence reset","command":"cargo test -p pij-daemon --lib native_progress_http_idle_busy_hold_and_actual_recovery_are_distinct -- --nocapture","exit":101,"output":"HTTP 400 instead of 200: receiver observation progress must not regress"},
+    {"case":"100k-event replay timestamp inflation","command":"node --test --test-name-pattern 'fast replay cannot' .copilot/extensions/pij/progress.test.mjs","exit":1,"output":"replay watermark 199999 exceeds actual time 101000"},
+    {"case":"no receiver reconnects after daemon boot grace","command":"cargo test -p pij-daemon --lib native_receiver_absent_after_boot_grace_remains_visible_after_parking -- --nocapture","exit":101,"output":"actual Null; expected native-extension-unavailable"},
+    {"case":"healthy replacement sent zero progress before observing SDK","command":"node --test --test-name-pattern 'healthy replacement observes' .copilot/extensions/pij/progress.test.mjs","exit":1,"output":"replacement must not hold before proving its responsive SDK view: receive-held array instead of []"}
+  ],
+  "green": {
+    "native_all":{"command":"node --test .copilot/extensions/pij/*.test.mjs","exit":0,"tests":245,"passed":242,"skipped":3},
+    "workspace":{"command":"~/.cargo/bin/cargo test --workspace","exit":0,"passed":1117,"suites":88,"ignored":8},
+    "fmt":{"command":"~/.cargo/bin/cargo fmt --all --check","exit":0},
+    "clippy":{"command":"~/.cargo/bin/cargo clippy --workspace --all-targets -- -D warnings","exit":0},
+    "cold_resume":{"command":"PIJ_NATIVE_RUNTIME_MODULE=$PWD/.copilot/extensions/pij/store.mjs ~/.cargo/bin/cargo test --locked -p pij-daemon --test native_runtime_cold_resume -- --ignored --nocapture --test-threads=1","exit":0,"passed":1,"native_acceptances":1,"reinjections":0},
+    "self_check":{"command":"just self-check","exit":0,"vitest_passed":5309,"vitest_skipped":22,"windows_compat_passed":84,"windows_compat_skipped":2,"smoke_scenarios_passed":11,"snapshot":"cdf5f5b25001..."},
+    "modern_lease_probe":{"lease_seconds":3,"renewals_without_observation":3,"exit":0,"states":["live","live","live","stale"],"lease_ms":[3000,1892,791,3000],"queue_state":"failed","outcome":"undelivered:native-receiver-unavailable"},
+    "live_ac5":{"receipt":"evidence/ac5-acceptance/summary.json","status":"passed","runtime":"1.0.84-9","history_bytes":105037257,"history_events":25010,"park_after_disconnect_ms":54943,"manual_acknowledgements":1,"extra_sdk_enable_outcome":"held at 15000ms, not claimed healthy"}
+  },
+  "review":"Independent JS and Rust reviewers inspected scoped safety paths; timestamp inflation, absent-bootstrap diagnosis and bootstrap outgoing-identity ordering were corrected and re-reviewed. No remaining material findings reported.",
+  "gate_caveats":["Overlapping heavy suites caused existing process-observation and tmux-interleaving failures; final serial Rust gate and final self-check passed without weakening tests.","Cold Pi package installation caused one smoke timeout; warmed smoke and final self-check passed.","Package audit remains report-only: 1/4 entry flagged, 4 fail / 13 warn.","The pre-existing b715be4f plan commit lacks derivable Pij-Prime attribution; no shared history was rewritten."]
+}

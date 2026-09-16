@@ -1,0 +1,118 @@
+{
+  "status": "passed",
+  "started": "2026-09-16T06:28:21.599Z",
+  "finished": "2026-09-16T06:29:41.569Z",
+  "identity": {
+    "node": "v24.7.0",
+    "pij": "pij-rs 0.1.0",
+    "pij_binary": "/Users/jordanknight/pi-hacking/fs3-receiver-progress/target/debug/pij-rs",
+    "pij_sha256": "d5f133bed05011fb0e6a50d64c8ccd520a58b87bb63250092128f3d55562269d",
+    "copilot": "GitHub Copilot CLI 1.0.84-9.\nRun 'copilot update' to check for updates.",
+    "copilot_binary": "/Users/jordanknight/.local/bin/copilot",
+    "copilot_sha256": "02c95ab4968b2653f92cbdc664e7a7bf0d18bb0292896d2a2e7eda1edc5444c1",
+    "source_modules": {
+      "extension.mjs": "46c1a205821d192e6024c84280dc3c898a89e5fc4671ab8b9131d6440175e466",
+      "store.mjs": "ecdce862aea71ce61e330aef79533e3c7fa431f5d0a3f5bb995de316edfe3475"
+    }
+  },
+  "large_history": {
+    "path": "/Users/jordanknight/pi-hacking/fs3-receiver-progress/docs/plans/152-receiver-progress/evidence/ac5-rebase/runtime/home/.copilot/session-state/7e8a89bc-6b42-4f98-8133-5e50d15a0503/events.jsonl",
+    "bootstrap_events": 8,
+    "synthetic_events": 25002,
+    "total_events": 25010,
+    "bytes": 105037245,
+    "sha256": "8d638f028b47c0666292fb3df2c929f3f7e543fbea754c340ebf693974abfd44",
+    "last_event_id": "4482994b-0bb7-4005-aa7a-c086b445ccc2",
+    "format": "real bootstrap event templates + chained synthetic user/assistant events + supported successful compaction summary",
+    "inference": "synthetic history, not a claim of 12500 real inference turns"
+  },
+  "target": {
+    "seat": "pij-front-raven",
+    "session": "7e8a89bc-6b42-4f98-8133-5e50d15a0503",
+    "host": 31444,
+    "extension": 31905
+  },
+  "next_accepted": true,
+  "lease_expiry": {
+    "elapsed_ms": 54713,
+    "bound_ms": 60000,
+    "parked": {
+      "seq": 23,
+      "at": 1789540165660,
+      "kind": "delivery.parked",
+      "seat": "pij-rainy-chicken",
+      "payload": "{\"jobId\":3,\"messageId\":\"aba85289-5c57-4872-8796-89a85500e376\",\"outcome\":\"undelivered:native-receiver-unavailable\",\"reason\":\"native-extension-unavailable\",\"recipient\":\"pij-front-raven\"}"
+    }
+  },
+  "manual_inbox": {
+    "envelope": {
+      "ok": true,
+      "command": "pij inbox",
+      "v": 2,
+      "data": [
+        {
+          "from": "pij-rainy-chicken",
+          "to": "pij-front-raven",
+          "body": "PIJ_PROGRESS_MANUAL. Reply exactly PIJ_NATIVE_OBSERVED. Do not call tools.",
+          "msg_id": "aba85289-5c57-4872-8796-89a85500e376"
+        }
+      ],
+      "meta": "native-receiver-stale",
+      "details": {
+        "native_receiver_reason": "native-receiver-stale"
+      }
+    },
+    "acknowledgements": [
+      {
+        "recipient": "pij-front-raven",
+        "msg_id": "aba85289-5c57-4872-8796-89a85500e376",
+        "origin": "reader-read"
+      }
+    ],
+    "jobs": [
+      {
+        "id": 3,
+        "state": "done",
+        "dedupe_key": "aba85289-5c57-4872-8796-89a85500e376",
+        "outcome": null
+      }
+    ]
+  },
+  "recycle": {
+    "kind": "held",
+    "diagnostic": {
+      "at": "2026-09-16T06:29:41.387Z",
+      "kind": "receive-held",
+      "holdKind": null,
+      "safeDiagnostic": "eventLog.read deadline exceeded (15000ms)",
+      "retryMs": null
+    },
+    "note": "Actual SDK enable left startup read unresponsive; deadline held safely, not claimed healthy or retried.",
+    "host_pid": 31444,
+    "jobs": [
+      {
+        "id": 1,
+        "state": "done",
+        "dedupe_key": "e7a885e9-90cc-4164-b4e8-4097f1d93e6a",
+        "outcome": null
+      },
+      {
+        "id": 2,
+        "state": "done",
+        "dedupe_key": "4022a43d-8937-4e34-a0b5-11a0b6848fab",
+        "outcome": null
+      },
+      {
+        "id": 3,
+        "state": "done",
+        "dedupe_key": "aba85289-5c57-4872-8796-89a85500e376",
+        "outcome": null
+      }
+    ]
+  },
+  "cleanup": {
+    "owned_tmux_stopped": true,
+    "owned_daemon_stopped": true,
+    "retained": "Plan-local isolated runtime retained for evidence; daemon key and synthetic history stay inside private runtime directory. No production/global configuration was changed."
+  }
+}

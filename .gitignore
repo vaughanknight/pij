@@ -217,3 +217,4 @@ pocs/*/out/
 
 # Native memory proof keeps private daemon keys and copied runtime code out of Git.
 docs/plans/150-native-extension-memory/evidence/*/runtime/
+docs/plans/152-receiver-progress/evidence/*/runtime/

@@ -1,0 +1,462 @@
+✔ actual extension startup hold stays alive, backs off to five seconds and later delivers (124.749833ms)
+✔ actual extension startup hold escalates once at ten minutes and aborts a minute retry in the second hour (80.092209ms)
+✖ actual extension startup non-hold failure resets escalation and fast retries before recovery (82.3485ms)
+✔ actual extension startup hold aborts a pending retry without a native banner (78.130542ms)
+✔ actual extension bridge hold stays alive, backs off to five seconds and later delivers (101.712958ms)
+✔ actual extension bridge hold escalates once at ten minutes and aborts a minute retry in the second hour (78.541375ms)
+✖ actual extension bridge non-hold failure resets escalation and fast retries before recovery (77.35325ms)
+✔ actual extension bridge hold aborts a pending retry without a native banner (78.183666ms)
+✔ actual startup hold success starts a fresh bridge hold escalation episode (93.780167ms)
+✖ actual bridge re-registration hold escalates and success restores fast inbox polling (78.767792ms)
+✔ actual extension shell joins, registers, receives and exposes immutable outgoing tool (81.869208ms)
+﹣ Linux native host uses the kernel executable when comm is MainThread (0.072958ms) # SKIP
+﹣ Linux native host rejects a copilot task name on another executable (0.023542ms) # SKIP
+﹣ Linux replaced host reaches native registration and message acknowledgement (0.019ms) # SKIP
+✔ actual shell discovers local seats without remote pane collisions (78.283875ms)
+✔ actual extension shell acknowledges then waits for native completion before second delivery (103.244125ms)
+✔ actual extension shell delivers during recent human typing without a typing hold (80.424792ms)
+✔ actual extension shell delivers during unavailable typing sensor without a typing hold (77.557042ms)
+✔ actual HTTP target-session hold stops claims and ack with actionable native diagnostic (410.354ms)
+✔ actual HTTP empty page differs from human-consent hold and release delivers without another send (840.196667ms)
+✔ actual HTTP empty page differs from native-pane-changed hold and release delivers without another send (837.69125ms)
+✔ actual HTTP empty page differs from semantic-hold hold and release delivers without another send (838.359958ms)
+✔ two-live native ambiguity refreshes until one live address remains beside tombstoned history (840.686542ms)
+✔ spawned extension consumes and sends under allocated id and parent instead of saved session (84.12675ms)
+✔ retired native attachment retains its durable id across dropped registration response (338.935208ms)
+✔ actual HTTP 409 registration retry retains the native id and later consumes queued work (840.772875ms)
+✔ actual HTTP native-unavailable refusal re-registers and consumes queued work (341.872875ms)
+✔ actual HTTP stale native refusal stays held without reregister or acknowledgement (411.863375ms)
+✔ actual native rollover registers a new seat and consumes successor-targeted work (83.745208ms)
+✔ terminal bootstrap refusal names safe failure and restart without exposing remote text (77.068708ms)
+✔ actual shell cold resume nomination retains address through HTTP (77.059709ms)
+✔ actual shell cold resume nomination respects registration refusal (76.577459ms)
+✔ absent key does not block joined native tools and emits one native timeline diagnostic (894.824625ms)
+✔ absent daemon with readable key stays callable and quiet across network retries (901.224084ms)
+✔ prejoin rejection emits once to stderr without claiming native timeline visibility (39.456458ms)
+✔ transient registration hold is silent before ten seconds and reports once afterward (0.759833ms)
+✔ registration hold escalates once at ten minutes even when the initial notice was skipped (0.631709ms)
+✔ native diagnostic sink counts one call per failure episode and never logs raw remote secrets (0.172958ms)
+✔ registration wait episodes reset on success and do not hide unrelated failures (0.466417ms)
+✔ only a typed retryable registration 409 becomes a native-session hold (9.952708ms)
+✔ host is verified Copilot ancestor, not extension loader or pane shell (1.251292ms)
+✔ paneless native host remains truthful without inventing a pane (0.083542ms)
+✔ a pane not in actual ancestry refuses instead of hiding pane metadata (0.32025ms)
+✔ absence of native ancestor is explicit unsupported identity (0.087ms)
+✔ PID reuse during observation refuses stale host incarnation (0.098625ms)
+✔ kernel executable normalization strips only the exact trailing deletion marker (0.084042ms)
+✔ replaced Copilot host resolves even when the kernel marker changes between observations (0.08575ms)
+✔ a replaced executable with a lookalike basename still refuses (0.08575ms)
+✔ a replaced host with a changed ppid still refuses incarnation reuse (0.090834ms)
+✔ a replaced host with a changed proc_start still refuses incarnation reuse (0.101167ms)
+{"events":20000,"serializedBytes":74415558,"baseline":5210640}
+{"sends":50,"polls":1,"fullReads":0,"heap":5672760,"growth":462120}
+{"sends":50,"polls":2,"fullReads":0,"heap":5569672,"growth":359032}
+{"sends":50,"polls":3,"fullReads":0,"heap":5570168,"growth":359528}
+{"sends":50,"polls":4,"fullReads":0,"heap":5583224,"growth":372584}
+{"sends":50,"polls":5,"fullReads":0,"heap":5590904,"growth":380264}
+{"sends":50,"polls":6,"fullReads":0,"heap":5611472,"growth":400832}
+{"sends":50,"polls":7,"fullReads":0,"heap":5612608,"growth":401968}
+{"sends":50,"polls":8,"fullReads":0,"heap":6111248,"growth":900608}
+{"sends":50,"polls":9,"fullReads":0,"heap":5654720,"growth":444080}
+{"sends":50,"polls":10,"fullReads":0,"heap":6118664,"growth":908024}
+{"sends":50,"polls":11,"fullReads":0,"heap":5664976,"growth":454336}
+{"sends":50,"polls":12,"fullReads":0,"heap":6121288,"growth":910648}
+{"sends":50,"polls":13,"fullReads":0,"heap":5678392,"growth":467752}
+{"sends":50,"polls":14,"fullReads":0,"heap":5678720,"growth":468080}
+{"sends":50,"polls":15,"fullReads":0,"heap":5678720,"growth":468080}
+{"sends":50,"polls":16,"fullReads":0,"heap":5679408,"growth":468768}
+{"sends":50,"polls":17,"fullReads":0,"heap":5679632,"growth":468992}
+{"sends":50,"polls":18,"fullReads":0,"heap":5679664,"growth":469024}
+{"sends":50,"polls":19,"fullReads":0,"heap":5679872,"growth":469232}
+{"sends":50,"polls":20,"fullReads":0,"heap":5679872,"growth":469232}
+{"sends":50,"polls":21,"fullReads":0,"heap":5682160,"growth":471520}
+{"sends":50,"polls":22,"fullReads":0,"heap":5682104,"growth":471464}
+{"sends":50,"polls":23,"fullReads":0,"heap":5682104,"growth":471464}
+{"sends":50,"polls":24,"fullReads":0,"heap":5682104,"growth":471464}
+{"sends":50,"polls":25,"fullReads":0,"heap":5682104,"growth":471464}
+{"sends":50,"polls":26,"fullReads":0,"heap":5682104,"growth":471464}
+{"sends":50,"polls":27,"fullReads":0,"heap":5682104,"growth":471464}
+{"sends":50,"polls":28,"fullReads":0,"heap":5683520,"growth":472880}
+{"sends":50,"polls":29,"fullReads":0,"heap":5683520,"growth":472880}
+{"sends":50,"polls":30,"fullReads":0,"heap":5683520,"growth":472880}
+{"sends":50,"polls":31,"fullReads":0,"heap":5683520,"growth":472880}
+{"sends":50,"polls":32,"fullReads":0,"heap":5683520,"growth":472880}
+{"sends":50,"polls":33,"fullReads":0,"heap":5683520,"growth":472880}
+{"sends":50,"polls":34,"fullReads":0,"heap":5683520,"growth":472880}
+{"sends":50,"polls":35,"fullReads":0,"heap":5683520,"growth":472880}
+{"sends":50,"polls":36,"fullReads":0,"heap":5683520,"growth":472880}
+{"sends":50,"polls":37,"fullReads":0,"heap":5685544,"growth":474904}
+{"sends":50,"polls":38,"fullReads":0,"heap":5685544,"growth":474904}
+{"sends":50,"polls":39,"fullReads":0,"heap":5685544,"growth":474904}
+{"sends":50,"polls":40,"fullReads":0,"heap":5685544,"growth":474904}
+{"sends":50,"polls":41,"fullReads":0,"heap":5685544,"growth":474904}
+{"sends":50,"polls":42,"fullReads":0,"heap":5686240,"growth":475600}
+{"sends":50,"polls":43,"fullReads":0,"heap":5686240,"growth":475600}
+{"sends":50,"polls":44,"fullReads":0,"heap":5686240,"growth":475600}
+{"sends":50,"polls":45,"fullReads":0,"heap":5686552,"growth":475912}
+{"sends":50,"polls":46,"fullReads":0,"heap":5696440,"growth":485800}
+{"sends":50,"polls":47,"fullReads":0,"heap":5696440,"growth":485800}
+{"sends":50,"polls":48,"fullReads":0,"heap":5696440,"growth":485800}
+{"sends":50,"polls":49,"fullReads":0,"heap":5697288,"growth":486648}
+{"sends":50,"polls":50,"fullReads":0,"heap":5697288,"growth":486648}
+✔ bounded memory during delivery, completion and discard observation (236.571542ms)
+{"historyEvents":20000,"historyBytes":74395557,"pages":158,"eventsRead":20002,"startupPages":1,"startupEventsRead":128,"gcSamples":319,"acknowledgements":1,"sends":0,"fullReads":0,"baseline":5729128,"peak":7425792,"finalHeap":5950984,"growth":1696664}
+✔ accepted-journal replay bounds forced-GC peak across every history page (596.738959ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 835.864458
+
+✔ 50 deliveries and a 20k-event accepted replay over 60 MB history retain less than 32 MiB (891.877958ms)
+✔ AC1: eventLog.tail hangs hold at the SDK deadline without ACK or reinjection (4.057667ms)
+✔ AC1: eventLog.read hangs hold at the SDK deadline without ACK or reinjection (0.869208ms)
+✔ AC1: queue.pendingItems hangs hold at the SDK deadline without ACK or reinjection (1.337333ms)
+✔ AC1: metadata.isProcessing hangs hold at the SDK deadline without ACK or reinjection (0.730375ms)
+✔ AC1: native.send hangs hold at the SDK deadline without ACK or reinjection (0.511584ms)
+✔ AC1: stop cancels a hung native read before deadline and ignores late consumption (0.899666ms)
+✔ AC1: rejected SDK reads name the call without projecting private native errors (0.45425ms)
+✔ AC2 H1: a read hung after abort and model change holds the completion barrier (0.767625ms)
+✔ AC2 H2: empty stale cursor recovers correlated terminal from a bounded backward window (1.034709ms)
+✔ AC2: observed abort completes only its consumed native turn before picker resubmission (0.801958ms)
+✔ AC2: retained matched ancestry can recover terminal even when the user fell outside the window (0.779959ms)
+✔ AC2: inaccessible empty gap holds without spoofed completion, ACK or resend (0.972625ms)
+✔ AC2: inaccessible expired gap holds without spoofed completion, ACK or resend (0.563125ms)
+✔ AC2: inaccessible unrelated-terminal gap holds without spoofed completion, ACK or resend (0.50875ms)
+✔ AC2: inaccessible subagent-spoof gap holds without spoofed completion, ACK or resend (0.560167ms)
+✔ AC2: inaccessible consumption-only gap holds without spoofed completion, ACK or resend (0.504ms)
+✔ AC2: empty queue and fresh idle cannot authorize resend through a stale cursor (0.432792ms)
+✔ AC2: idle receiver probes independently of a blocked inbox and resumes only from a forward tail (0.893ms)
+✔ AC3: timers and empty idle pages do not manufacture observation progress (1.086958ms)
+✔ AC3: callback/history overlap counts once and observation time advances despite clock rollback (0.377ms)
+✔ AC3: fast replay cannot manufacture a future lease watermark (18.569791ms)
+✔ AC3: healthy replacement observes SDK history before its first stale-lease renewal (0.42725ms)
+✔ AC3: daemon stale lease is receive-held once, stops renewals and preserves outgoing tools (0.66675ms)
+✔ AC4: completed native work is not reported as outstanding on stop (0.714333ms)
+✔ AC4: shutdown logs one outstanding job identity before consumption (0.958459ms)
+✔ AC4: shutdown logs one outstanding job identity after consumption (0.364375ms)
+✖ AC4: actual extension process.exit:0 logs outstanding completion exactly once (35.458417ms)
+✖ AC4: actual extension session.shutdown logs outstanding completion exactly once (33.266625ms)
+✖ AC4: actual extension SIGTERM logs outstanding completion exactly once (33.16375ms)
+✔ native discard recovery: discarded enqueue resends once after the foreground idle boundary (8.645916ms)
+✔ native discard recovery: no resend while a potentially consuming turn is still processing (1.055042ms)
+✔ native discard recovery: queued item matched by native ID waits for later consumption (0.955792ms)
+✔ native discard recovery: queued item matched by exact display prefix waits for later consumption (0.705708ms)
+✔ native discard recovery: fresh consumption proof wins over empty queue and ACKs once (0.701292ms)
+✔ native discard recovery: replayed historical boundary cannot authorize resend (1.64725ms)
+✔ native discard recovery: missing rpc holds visibly at a fresh boundary without ACK or resend (0.700333ms)
+✔ native discard recovery: steering prefix vetoes duplicate injection (0.657042ms)
+✔ native discard recovery: inflight count vetoes duplicate injection (0.512ms)
+✔ native discard recovery: successful retry notice uses native timeline without message content (0.211ms)
+✔ terminal registration failure replaces retry advice without exposing raw diagnostics (0.163958ms)
+✔ terminal registration failure without safe identity detail never projects an arbitrary error (0.062458ms)
+✔ terminal banner projects only structured host refusal and redacts the daemon key (1.61425ms)
+✔ native discard recovery: a substring in another queued item does not claim ownership (1.177833ms)
+✔ native discard recovery: fresh history catches consumption during queue inspection (0.516333ms)
+✔ native discard recovery: stop during queue snapshot cannot rearm or send (0.4735ms)
+✔ native discard recovery: consumption during journal rearm restores acceptance without resend (0.710334ms)
+✔ native discard recovery: malformed inflight count -1 holds (0.455ms)
+✔ native discard recovery: malformed inflight count 0.5 holds (0.476833ms)
+✔ native discard recovery: malformed inflight count "1" holds (0.460416ms)
+✔ native discard recovery: malformed inflight count null holds (0.407875ms)
+✔ native discard recovery: missing queue API never authorizes resend (0.505417ms)
+✔ native discard recovery: missing processing API never authorizes resend (0.556375ms)
+✔ native discard recovery: malformed queue never authorizes resend (0.608333ms)
+✔ native discard recovery: malformed processing never authorizes resend (0.622458ms)
+✔ native discard recovery: queue error never authorizes resend (1.407667ms)
+✔ native discard recovery: processing error never authorizes resend (0.39925ms)
+✔ native discard recovery: concurrent journal rearm preserves one exclusive retry intent (88.108666ms)
+✔ native consumption: accepted send stays unacknowledged until matching user message (0.596792ms)
+✔ native consumption: missed callbacks recover consumption and final turn from history (0.47825ms)
+✔ native consumption: unrelated history and idle cannot acknowledge acceptance (0.511708ms)
+✔ native consumption: accepted duplicate recovers history without native resend (0.325ms)
+✔ native consumption: accepted duplicate without matching history stays unacknowledged (0.260834ms)
+✔ native consumption: history polling backs off and stops after correlated final completion (0.878208ms)
+✔ native consumption: replayed tool turns and unrelated final turns cannot complete owned work (0.768917ms)
+✔ native consumption: stop during history read ignores late proof without ACK or resend (0.370625ms)
+✔ native consumption: callbacks can prove consumption during an outstanding history read (0.265666ms)
+✔ native consumption: missing history API holds without ACK (0.183ms)
+✔ native consumption: rejected history API holds without ACK (0.154125ms)
+✔ native consumption: malformed history API holds without ACK (0.117459ms)
+✔ acceptance is persisted before tuple-bound acknowledgement, not model completion (0.195625ms)
+✔ busy native turn consumes immediate steering and journals its returned message ID (1.947208ms)
+✔ accepted duplicate after restart only acknowledges, never reinjects (0.22075ms)
+✔ ambiguous prior send holds without native send or ack; outgoing remains available (0.208333ms)
+✔ recipient mismatch holds without native send or ack; outgoing remains available (0.145375ms)
+✔ unsupported command holds without native send or ack; outgoing remains available (0.128875ms)
+✔ multiple claims holds without native send or ack; outgoing remains available (0.100625ms)
+✔ storage failure holds without native send or ack; outgoing remains available (0.129042ms)
+✔ duplicate id with changed body holds without native send or ack; outgoing remains available (0.116ms)
+✔ send rejection is ambiguous and never acknowledged or retried (0.166125ms)
+✔ native acceptance followed by failed persistence stays unacknowledged (0.125334ms)
+✔ late native completion after stop cannot acknowledge another generation (0.11925ms)
+✔ two run calls share a single consumer; buffered events never forward replies (0.150792ms)
+✔ outgoing tool ignores spoofed from, mints unique ids and returns queue grade (0.191416ms)
+✔ registration readback refuses {"native_extension_delivery":false} (0.083417ms)
+✔ registration readback refuses {"harness":"omp"} (0.045125ms)
+✔ registration readback refuses {"id":"another"} (0.0435ms)
+✔ registration readback refuses {"session":"another-native"} (0.043292ms)
+✔ registration readback refuses {"proc":{"pid":138,"proc_start":20260905120000}} (0.042667ms)
+✔ registration readback refuses {"pane":"%138"} (0.042583ms)
+✔ registration tolerates additive plan135 binding metadata (0.125917ms)
+✔ manual identity requests daemon allocation; exact process rollover supersedes predecessor (0.400459ms)
+✔ spawn binding requires exact process, pane and correlation (0.088083ms)
+✔ cold native resume nominates a unique attested address without trusting roster state (0.047834ms)
+✔ same native session nominates its durable address when tombstoned (0.031208ms)
+✔ same native session nominates its durable address when native delivery withdrawn (0.020791ms)
+✔ two live native addresses remain retryable despite tombstoned history (0.061542ms)
+✔ live native address outranks newer tombstones in adversarial alphabetical order (0.060375ms)
+✔ all-tombstoned native addresses select newest process with missing starts last and id tie break (0.052917ms)
+✔ same-session nomination leaves missing historical process verification to the daemon (0.025333ms)
+✔ foreign harness cannot nominate a native session or yield its occupied pane (0.0495ms)
+✔ same-process A to B to A restores the retired native address and accepted journal (20.943ms)
+✔ fresh native conversation nominates new address without retiring old pane owner locally (0.127667ms)
+✔ verified spawn allocation retains its id and parent over a correlated session address (0.070709ms)
+✔ fresh verified spawn keeps its allocated identity and journal separate from the saved session (33.5985ms)
+✔ verified spawn with a compatible saved session retains the allocated parent (0.160458ms)
+✔ spawn prebind cannot bypass ownership for relay allocation (0.100125ms)
+✔ spawn prebind cannot bypass ownership for different native session (0.03725ms)
+✔ spawn prebind cannot bypass ownership for tombstoned allocation (0.038292ms)
+✔ spawn prebind cannot bypass ownership for different pane (0.030125ms)
+✔ spawn prebind cannot bypass ownership for bound process (0.02525ms)
+✔ spawn prebind cannot bypass ownership for foreign harness (0.031458ms)
+✔ same-process native successor reload corroborates immutable launch id by spawn correlation (0.037334ms)
+✔ saved native session alone cannot corroborate a wrong requested id with matching spawn (0.065709ms)
+✔ native session resolution precedes stale pane metadata and duplicate process candidates (0.068708ms)
+✔ two live same-session addresses cannot hide behind an exact process or verified prebind (0.060375ms)
+✔ same-session nomination cannot corroborate an unrelated requested identity (0.044917ms)
+✔ exact native process cannot corroborate an incorrect requested id (0.049583ms)
+✔ correct requested id cannot corroborate an incorrect spawn correlation (0.050625ms)
+✔ process start uses daemon local C-locale packed stamp with calendar checks (0.218916ms)
+✔ real filesystem journal survives restart and hashes opaque ids with private modes (27.949ms)
+✔ real chooseRegistration and filesystem preserve accepted-before-ack across changed host (23.428875ms)
+✔ HTTP client reloads key on every request, binds tuple, keeps bounded non-JSON diagnostic (0.648125ms)
+✔ only typed HTTP 409 registration refusals permit retry (0.942125ms)
+✔ own inbox wait deadlines renew with bounded delay without re-registering or outage logs (1230.54625ms)
+✔ inbox wait renewal does not reset an existing outage episode (159.596417ms)
+✔ HTTP non-wait deadlines, body stalls and connection failures remain retryable (908.796458ms)
+✔ foreign TimeoutError remains retryable even after the own inbox deadline (151.95075ms)
+✔ external inbox abort is cancellation even with a TimeoutError reason (1.244083ms)
+✔ shutdown during inbox renewal delay does not claim or re-register (153.3985ms)
+✔ accepted-but-unacked reconnect reclaims and acknowledges without second native send (0.404042ms)
+✔ empty inbox waits back off with a ceiling rather than busy-loop (0.169042ms)
+✔ consent inbox holds back off with a ceiling rather than busy-loop (0.117084ms)
+✔ user-driven native shutdown cancels the blocked inbox consumer (0.293ms)
+✔ late stale claim after stop cannot reach native send (0.159959ms)
+✔ native success without native message ID is not accepted (0.198208ms)
+✔ daemon stale-incarnation refusal holds without transport fallback (0.165708ms)
+✔ HTTP skew and refused envelopes are never treated as successful claims (0.329541ms)
+✔ native consumer proof rejects undefined before injection and ack (0.158875ms)
+✔ native consumer proof rejects {"native_session":"stale-session","pid":137,"proc_start":20260905120000} before injection and ack (0.120209ms)
+✔ native consumer proof rejects {"native_session":"native-137","pid":999,"proc_start":20260905120000} before injection and ack (0.088291ms)
+✔ native consumer proof rejects {"native_session":"native-137","pid":137,"proc_start":1} before injection and ack (0.108458ms)
+✔ spawned native rollover preserves correlation across extension reload (0.087292ms)
+✔ outage emits one actionable reconnect diagnostic per failure episode (0.126584ms)
+✔ consent hold release delivers the queued claim without a second message (0.159917ms)
+✔ native-event diagnostics retain pre-observe ancestry for healthy session.idle (1.386125ms)
+✔ native-event diagnostics retain pre-observe ancestry for healthy session.error (0.547792ms)
+✔ native-event diagnostics identify rejected idle without declaring a stall (0.699417ms)
+✔ native-event diagnostics expose only scalar IDs and never callback or buffered bodies (0.386042ms)
+✔ post-ack barrier blocks next claim until current native completion, not outgoing (1.738792ms)
+✔ post-ack barrier retains session.idle before native send resolves (0.452584ms)
+✔ post-ack barrier retains session.error before native send resolves (0.309375ms)
+✔ post-ack barrier captures idle during acknowledgement but cannot overtake ack (0.4875ms)
+✔ post-ack barrier cannot release a later send from earlier generation events (0.580167ms)
+✔ post-ack barrier completes the owned final turn before a following foreground user (0.430542ms)
+✔ post-ack barrier rejects unproven foreground transition {"parentId":"unrelated-end"} (0.471958ms)
+✔ post-ack barrier rejects unproven foreground transition {"parentId":"owned-user"} (0.426375ms)
+✔ post-ack barrier rejects unproven foreground transition {"agentId":"subagent"} (0.406125ms)
+✔ post-ack barrier rejects unproven foreground transition {"data":{"messageId":"next-native"}} (0.348917ms)
+✔ post-ack barrier keeps accepted duplicate pending without completion evidence (0.307417ms)
+✔ post-ack barrier survives failed ack before reclaiming accepted duplicate (0.382708ms)
+✔ post-ack barrier shutdown disposes subscription and ignores late completion (0.373208ms)
+✔ post-ack barrier follows real native PoC ancestry with sibling ephemeral idles (0.527583ms)
+✔ post-ack interaction anchor repairs the direct product permission gap without inferring idle (0.524541ms)
+✔ post-ack interaction anchor accepts only the matched foreground assistant.turn_start (0.560292ms)
+✔ post-ack interaction anchor accepts only the matched foreground assistant.message (0.415083ms)
+✔ post-ack interaction anchor accepts only the matched foreground tool.execution_complete (0.385708ms)
+✔ post-ack interaction anchor rejects absent or blank binding undefined (0.364542ms)
+✔ post-ack interaction anchor rejects absent or blank binding "" (0.276584ms)
+✔ post-ack interaction anchor rejects absent or blank binding "   " (0.317916ms)
+✔ post-ack interaction anchor retains correlation before send acceptance (0.43575ms)
+✔ claim page preserves typed target and transient hold metadata without changing request data (0.63075ms)
+✔ malformed claim hold metadata is not silently downgraded to an empty inbox (0.155583ms)
+✔ only the exact native-unavailable inbox refusal is retryable (0.764125ms)
+✔ native-unavailable retries re-register with bounded backoff and stop cleanly (1.332792ms)
+✔ semantic consent preflight binds exact tuple and current bearer key over real HTTP (2.274667ms)
+✔ semantic consent rejects malformed hold and mismatched native identity over HTTP (4.533625ms)
+✔ semantic consent ignores typing metadata and needs only identity and operator Hold (4.210458ms)
+✔ new native send waits for semantic consent before creating durable intent (0.446667ms)
+✔ native delivery proceeds during recent human typing without submitting the human draft (0.504375ms)
+✔ native delivery proceeds during unavailable typing sensor without submitting the human draft (0.299083ms)
+✔ native delivery retains human-consent while the human is typing (0.180333ms)
+✔ native delivery retains semantic-hold while the human is typing (0.106417ms)
+✔ native delivery retains native-target-session:original-native while the human is typing (0.120625ms)
+✔ semantic Hold survives observed typing and requires a fresh claim after clearance (1.857583ms)
+✔ semantic Hold survives unavailable typing and requires a fresh claim after clearance (0.341ms)
+✔ shutdown during consent snapshot cancels old-context work without intent send or ACK (0.307833ms)
+✔ shutdown during consent semantic hold delay cancels old-context work without intent send or ACK (0.204958ms)
+✔ semantic consent HTTP wait is externally abortable and its deadline is not inbox renewal (152.065ms)
+✔ invalid semantic consent or native proof holds receiving without hiding outgoing (4.480875ms)
+✔ invalid semantic consent or native proof holds receiving without hiding outgoing (3.178708ms)
+✔ incremental history: expired cursor cannot acknowledge or retry from fallback events (0.37225ms)
+✔ incremental history: accepted recovery spans pages without skipping consumption ancestry (0.490208ms)
+✔ receiver lease: non-live state enters failure backoff instead of renewing (0.422833ms)
+✔ receiver lease: malformed lease duration enters failure backoff instead of renewing (0.160833ms)
+✔ receiver lease: malformed renewal delay enters failure backoff instead of renewing (0.184666ms)
+✔ receiver lease: renewal at lease expiry enters failure backoff instead of renewing (0.224166ms)
+✔ receiver lease: repeated failures emit one unavailable episode (0.362416ms)
+✔ receiver lease: failed renewals back off exponentially with a ceiling (0.466166ms)
+✔ receiver lease: recovery resets backoff and allows a new failure episode (0.393458ms)
+✔ receiver lease: stop ignores a late renewal response without rescheduling (0.159875ms)
+✔ receiver lease: receive-held tears down renewal before a late timer fires (0.315083ms)
+✔ receiver lease: renews for twenty minutes independently of busy completion (2.047333ms)
+✔ receiver lease: renews for twenty minutes independently of operator Hold (1.622541ms)
+✔ incremental history: events not an array holds without ACK, reinjection or cursor rewind (0.43325ms)
+✔ incremental history: more than 128 events holds without ACK, reinjection or cursor rewind (0.214ms)
+✔ incremental history: non-string cursor holds without ACK, reinjection or cursor rewind (0.169417ms)
+✔ incremental history: nonboolean hasMore holds without ACK, reinjection or cursor rewind (0.177541ms)
+✔ incremental history: nonadvancing hasMore holds without ACK, reinjection or cursor rewind (0.154291ms)
+ℹ tests 259
+ℹ suites 0
+ℹ pass 250
+ℹ fail 6
+ℹ cancelled 0
+ℹ skipped 3
+ℹ todo 0
+ℹ duration_ms 9280.063584
+
+✖ failing tests:
+
+test at .copilot/extensions/pij/extension.test.mjs:546:3
+✖ actual extension startup non-hold failure resets escalation and fast retries before recovery (82.3485ms)
+  AssertionError [ERR_ASSERTION]: successful registration must restore fast inbox polling
+  
+  1000 !== 250
+  
+      at TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-receiver-progress/.copilot/extensions/pij/extension.test.mjs:592:11)
+      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1000,
+    expected: 250,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .copilot/extensions/pij/extension.test.mjs:546:3
+✖ actual extension bridge non-hold failure resets escalation and fast retries before recovery (77.35325ms)
+  AssertionError [ERR_ASSERTION]: successful registration must restore fast inbox polling
+  
+  1000 !== 250
+  
+      at TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-receiver-progress/.copilot/extensions/pij/extension.test.mjs:592:11)
+      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 1000,
+    expected: 250,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .copilot/extensions/pij/extension.test.mjs:670:2
+✖ actual bridge re-registration hold escalates and success restores fast inbox polling (78.767792ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1000 !== 60000
+  
+      at TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-receiver-progress/.copilot/extensions/pij/extension.test.mjs:711:10)
+      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1000,
+    expected: 60000,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .copilot/extensions/pij/progress.test.mjs:748:3
+✖ AC4: actual extension process.exit:0 logs outstanding completion exactly once (35.458417ms)
+  AssertionError [ERR_ASSERTION]: file:///Users/jordanknight/pi-hacking/fs3-receiver-progress/.copilot/extensions/pij/extension.mjs:13
+  	HOLD_ESCALATED_RETRY_MS,
+  	^^^^^^^^^^^^^^^^^^^^^^^
+  SyntaxError: The requested module './store.mjs' does not provide an export named 'HOLD_ESCALATED_RETRY_MS'
+      at #_instantiate (node:internal/modules/esm/module_job:254:21)
+      at async ModuleJob.run (node:internal/modules/esm/module_job:363:5)
+      at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:683:26)
+      at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+  
+  Node.js v24.7.0
+  
+      at TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-receiver-progress/.copilot/extensions/pij/progress.test.mjs:784:11)
+      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at .copilot/extensions/pij/progress.test.mjs:748:3
+✖ AC4: actual extension session.shutdown logs outstanding completion exactly once (33.266625ms)
+  AssertionError [ERR_ASSERTION]: file:///Users/jordanknight/pi-hacking/fs3-receiver-progress/.copilot/extensions/pij/extension.mjs:13
+  	HOLD_ESCALATED_RETRY_MS,
+  	^^^^^^^^^^^^^^^^^^^^^^^
+  SyntaxError: The requested module './store.mjs' does not provide an export named 'HOLD_ESCALATED_RETRY_MS'
+      at #_instantiate (node:internal/modules/esm/module_job:254:21)
+      at async ModuleJob.run (node:internal/modules/esm/module_job:363:5)
+      at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:683:26)
+      at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+  
+  Node.js v24.7.0
+  
+      at TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-receiver-progress/.copilot/extensions/pij/progress.test.mjs:784:11)
+      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at .copilot/extensions/pij/progress.test.mjs:748:3
+✖ AC4: actual extension SIGTERM logs outstanding completion exactly once (33.16375ms)
+  AssertionError [ERR_ASSERTION]: file:///Users/jordanknight/pi-hacking/fs3-receiver-progress/.copilot/extensions/pij/extension.mjs:13
+  	HOLD_ESCALATED_RETRY_MS,
+  	^^^^^^^^^^^^^^^^^^^^^^^
+  SyntaxError: The requested module './store.mjs' does not provide an export named 'HOLD_ESCALATED_RETRY_MS'
+      at #_instantiate (node:internal/modules/esm/module_job:254:21)
+      at async ModuleJob.run (node:internal/modules/esm/module_job:363:5)
+      at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:683:26)
+      at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+  
+  Node.js v24.7.0
+  
+      at TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-receiver-progress/.copilot/extensions/pij/progress.test.mjs:784:11)
+      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+node exit=1

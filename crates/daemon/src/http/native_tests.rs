@@ -1822,10 +1822,13 @@ async fn native_sqlite_http_missing_registration_is_retryable_but_noncopilot_ide
 
 #[tokio::test]
 async fn native_http_pane_change_hold_preserves_retryable_wire_discriminator() {
-    let response = super::native_inbox_response(crate::delivery::NativeInboxPage {
-        claims: Vec::new(),
-        held_reason: Some("native-pane-changed".into()),
-    });
+    let response = super::native_inbox_response(
+        crate::delivery::NativeInboxPage {
+            claims: Vec::new(),
+            held_reason: Some("native-pane-changed".into()),
+        },
+        None,
+    );
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
@@ -2256,7 +2259,7 @@ async fn native_cli_pane_session_claims_and_acks_without_self_reported_host_tupl
     // An actual receiver lease changes manual admission, not pane attribution.
     let (_, identity) = contract_identity();
     delivery
-        .heartbeat_native_receiver(&seat.id, &identity)
+        .attest_native_receiver(&seat.id, &identity)
         .await
         .unwrap();
     let live_mail = delivery
@@ -2311,7 +2314,7 @@ async fn native_receiver_heartbeat_http_is_identity_bound_and_independent_of_hol
     let client = reqwest::Client::new();
     let mut request = json!({
         "seat":seat.id, "native_session":identity.native_session, "pid":identity.pid,
-        "proc_start":identity.proc_start,
+        "proc_start":identity.proc_start, "observed_at":0, "observed_seq":0,
     });
     let response = native_http_response(
         client
@@ -2336,7 +2339,556 @@ async fn native_receiver_heartbeat_http_is_identity_bound_and_independent_of_hol
         reqwest::StatusCode::BAD_REQUEST,
     )
     .await;
+    request["proc_start"] = json!(identity.proc_start);
+    request["observed_seq"] = json!(9_007_199_254_740_992_u64);
+    native_http_response(
+        client
+            .post(format!("http://{addr}/v1/inbox/heartbeat"))
+            .json(&request),
+        reqwest::StatusCode::BAD_REQUEST,
+    )
+    .await;
+    request["observed_seq"] = json!(0);
+    request.as_object_mut().unwrap().remove("observed_at");
+    native_http_response(
+        client
+            .post(format!("http://{addr}/v1/inbox/heartbeat"))
+            .json(&request),
+        reqwest::StatusCode::BAD_REQUEST,
+    )
+    .await;
     server.abort();
+}
+
+// HTTP/SQLite await real IO while lease time is explicitly advanced. Keep one
+// runnable task so Tokio does not auto-jump to reqwest's timeout during that IO.
+fn manual_receiver_clock() -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async {
+        loop {
+            tokio::task::yield_now().await;
+        }
+    })
+}
+
+async fn progress_heartbeat(
+    client: &reqwest::Client,
+    addr: std::net::SocketAddr,
+    request: &Value,
+) -> Value {
+    native_http_response(
+        client
+            .post(format!("http://{addr}/v1/inbox/heartbeat"))
+            .json(request),
+        reqwest::StatusCode::OK,
+    )
+    .await
+}
+
+#[tokio::test(start_paused = true)]
+async fn native_frozen_progress_http_expires_at_k_and_manual_pull_preserves_identity() {
+    let clock = manual_receiver_clock();
+    let host = HostFixture::spawn();
+    let (mut seat, _) = contract_identity();
+    seat.proc = Some(host.identity().await);
+    seat.pane = Some("%152-frozen".into());
+    let identity = NativeInboxIdentity {
+        native_session: seat.harness_session.clone(),
+        pid: seat.proc.map(|proc| proc.pid),
+        proc_start: seat.proc.map(|proc| proc.proc_start),
+    };
+    let store = FreshStore::new();
+    let services = native_host_services(&store, &seat.folder, &["%152-frozen"]).await;
+    let delivery = services.delivery.clone();
+    let queue = services.queue.clone();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    let registration = native_registration(&seat);
+    native_http_response(
+        client
+            .post(format!("http://{addr}/v1/register"))
+            .json(&registration),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    let request = json!({
+        "seat":seat.id, "native_session":identity.native_session, "pid":identity.pid,
+        "proc_start":identity.proc_start, "observed_at":100, "observed_seq":1,
+    });
+    let first_heartbeat = progress_heartbeat(&client, addr, &request).await;
+    let lease_ms = first_heartbeat["data"]["lease_ms"].as_u64().unwrap();
+    let renewal_ms = first_heartbeat["data"]["renew_after_ms"].as_u64().unwrap();
+    assert_eq!(lease_ms, renewal_ms * 3);
+    let first = delivery
+        .send("pij-peer".into(), seat.id.clone(), "running body")
+        .await
+        .unwrap();
+    let claim = native_http_claims(&client, addr, &seat.id, &identity)
+        .await
+        .remove(0);
+    let second = delivery
+        .send("pij-peer".into(), seat.id.clone(), "pending body")
+        .await
+        .unwrap();
+    let caller = json!({"TMUX_PANE":seat.pane, "COPILOT_AGENT_SESSION_ID":seat.harness_session});
+
+    // Bursts are not renewal opportunities. Re-register and GET attestation
+    // cannot rewrite the progress baseline or the last-progress expiry.
+    for _ in 0..6 {
+        let reply = progress_heartbeat(&client, addr, &request).await;
+        assert_eq!(reply["data"]["state"], "live");
+        assert_eq!(reply["data"]["lease_ms"], lease_ms);
+    }
+    for opportunity in 1..3 {
+        tokio::time::advance(Duration::from_millis(renewal_ms)).await;
+        let reply = progress_heartbeat(&client, addr, &request).await;
+        assert_eq!(reply["data"]["state"], "live");
+        assert_eq!(
+            reply["data"]["lease_ms"],
+            lease_ms - renewal_ms * opportunity,
+            "a frozen heartbeat must not add another lease before K"
+        );
+        assert!(
+            reply["data"]["renew_after_ms"].as_u64().unwrap()
+                < reply["data"]["lease_ms"].as_u64().unwrap()
+        );
+        native_http_response(
+            client
+                .post(format!("http://{addr}/v1/register"))
+                .json(&registration),
+            reqwest::StatusCode::OK,
+        )
+        .await;
+        assert!(
+            native_http_claims(&client, addr, &seat.id, &identity)
+                .await
+                .is_empty()
+        );
+        let refused = native_http_response(
+            client
+                .post(format!("http://{addr}/v1/shim/inbox"))
+                .json(&json!({"argv":["inbox"],"caller":caller})),
+            reqwest::StatusCode::CONFLICT,
+        )
+        .await;
+        assert_eq!(refused["details"]["code"], "native-receiver-lease-live");
+        assert_eq!(
+            refused["details"]["expires_in_ms"],
+            lease_ms - renewal_ms * opportunity
+        );
+        assert!(
+            queue
+                .claimed_delivery(claim.job_id)
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+    tokio::time::advance(Duration::from_millis(renewal_ms)).await;
+    let mut wrong = request.clone();
+    wrong["proc_start"] = json!(identity.proc_start.unwrap() + 1);
+    wrong["observed_at"] = json!(200);
+    wrong["observed_seq"] = json!(2);
+    native_http_response(
+        client
+            .post(format!("http://{addr}/v1/inbox/heartbeat"))
+            .json(&wrong),
+        reqwest::StatusCode::BAD_REQUEST,
+    )
+    .await;
+    let stale = progress_heartbeat(&client, addr, &request).await;
+    assert_eq!(
+        stale["data"],
+        json!({
+            "state":"stale", "reason":"native-receiver-stale",
+            "lease_ms":lease_ms, "renew_after_ms":renewal_ms,
+        })
+    );
+    assert_eq!(delivery.reconcile_native_receivers().await.unwrap(), 2);
+    let state = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/state"))
+            .json(&json!({"id":seat.id})),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(state["data"]["liveness"], "active");
+    assert_eq!(
+        state["data"]["native_receiver_reason"],
+        "native-receiver-stale"
+    );
+    let peek = native_http_response(
+        client
+            .get(format!("http://{addr}/v1/inbox"))
+            .query(&[("seat", seat.id.as_str()), ("peek", "true")]),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(
+        peek["details"]["native_receiver_reason"],
+        "native-receiver-stale"
+    );
+    assert!(
+        peek["meta"]
+            .as_str()
+            .unwrap()
+            .contains("native-receiver-stale")
+    );
+    let parked: Vec<InboxClaim> = serde_json::from_value(peek["data"].clone()).unwrap();
+    assert_eq!(
+        parked
+            .iter()
+            .map(|row| row.message.msg_id.as_str())
+            .collect::<Vec<_>>(),
+        vec![first.msg_id.as_str(), second.msg_id.as_str()]
+    );
+    assert_eq!(parked[0].job_id, claim.job_id);
+    for row in &peek["data"].as_array().unwrap()[..] {
+        assert_eq!(row["state"], "failed");
+        assert_eq!(row["outcome"], "undelivered:native-receiver-unavailable");
+    }
+
+    // Once parked, no-outstanding, repeated registration and claims still
+    // cannot erase the frozen-progress latch or bypass manual admission.
+    native_http_response(
+        client
+            .post(format!("http://{addr}/v1/register"))
+            .json(&registration),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    let held = native_http_response(
+        client.get(claim_url(addr, &seat.id, &identity)),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(held["data"], json!([]));
+    assert_eq!(
+        held["details"]["native_receiver_reason"],
+        "native-receiver-stale"
+    );
+    assert_eq!(
+        progress_heartbeat(&client, addr, &request).await["data"]["state"],
+        "stale"
+    );
+    let recovered = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/shim/inbox"))
+            .json(&json!({"argv":["inbox"],"caller":caller})),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(
+        recovered["details"]["native_receiver_reason"],
+        "native-receiver-stale"
+    );
+    let recovered: Vec<InboxClaim> = serde_json::from_value(recovered["data"].clone()).unwrap();
+    assert_eq!(recovered[0].job_id, claim.job_id);
+    assert_eq!(recovered[0].message, claim.message);
+    assert_eq!(recovered[0].attempt, claim.attempt + 1);
+    assert!(
+        queue
+            .claimed_delivery(claim.job_id)
+            .await
+            .unwrap()
+            .is_some(),
+        "manual claim is not an ACK"
+    );
+    let ack = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/shim/inbox/ack"))
+            .json(&json!({"job_id":claim.job_id,"caller":caller})),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(ack["data"], "reader-read");
+    assert!(
+        queue
+            .claimed_delivery(claim.job_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    server.abort();
+    clock.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn native_progress_http_idle_busy_hold_and_actual_recovery_are_distinct() {
+    let clock = manual_receiver_clock();
+    let store = FreshStore::new();
+    let services = sqlite_services(&store).await;
+    let (mut seat, identity) = contract_identity();
+    services.registry.put(seat.clone()).await.unwrap();
+    let delivery = services.delivery.clone();
+    let registry = services.registry.clone();
+    let queue = services.queue.clone();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    let mut request = json!({
+        "seat":seat.id, "native_session":identity.native_session, "pid":identity.pid,
+        "proc_start":identity.proc_start, "observed_at":0, "observed_seq":0,
+    });
+    let initial = progress_heartbeat(&client, addr, &request).await;
+    let lease_ms = initial["data"]["lease_ms"].as_u64().unwrap();
+    let renewal = Duration::from_millis(initial["data"]["renew_after_ms"].as_u64().unwrap());
+    for _ in 0..6 {
+        tokio::time::advance(renewal).await;
+        let reply = progress_heartbeat(&client, addr, &request).await;
+        assert_eq!(reply["data"]["state"], "live");
+        assert_eq!(
+            reply["data"]["lease_ms"], lease_ms,
+            "idle does not require invented observations"
+        );
+    }
+    let sent = delivery
+        .send("pij-peer".into(), seat.id.clone(), "held until observed")
+        .await
+        .unwrap();
+    let before = queue.peek(&[delivery_kind(&seat.id)]).await.unwrap();
+    seat.state = pij_core::model::SystemState::Working;
+    seat.semantic_state = Some(SemanticState::Hold);
+    registry.put(seat.clone()).await.unwrap();
+    for observation in 1..=4 {
+        tokio::time::advance(renewal).await;
+        request["observed_at"] = json!(observation * 100);
+        request["observed_seq"] = json!(observation);
+        let reply = progress_heartbeat(&client, addr, &request).await;
+        assert_eq!(reply["data"]["state"], "live");
+        assert_eq!(reply["data"]["lease_ms"], lease_ms);
+        assert_eq!(
+            queue.peek(&[delivery_kind(&seat.id)]).await.unwrap(),
+            before
+        );
+    }
+    for opportunity in 1..=3 {
+        tokio::time::advance(renewal).await;
+        let reply = progress_heartbeat(&client, addr, &request).await;
+        assert_eq!(
+            reply["data"]["state"],
+            if opportunity < 3 { "live" } else { "stale" }
+        );
+    }
+    let mut wrong = request.clone();
+    wrong["native_session"] = json!("wrong-conversation");
+    wrong["observed_at"] = json!(500);
+    wrong["observed_seq"] = json!(5);
+    native_http_response(
+        client
+            .post(format!("http://{addr}/v1/inbox/heartbeat"))
+            .json(&wrong),
+        reqwest::StatusCode::BAD_REQUEST,
+    )
+    .await;
+    assert_eq!(
+        progress_heartbeat(&client, addr, &request).await["data"]["state"],
+        "stale"
+    );
+    // Sequence alone is not progress. A restarted extension can reset its local
+    // sequence only with a genuinely newer observation; the host tuple is unchanged.
+    request["observed_seq"] = json!(5);
+    assert_eq!(
+        progress_heartbeat(&client, addr, &request).await["data"]["state"],
+        "stale"
+    );
+    request["observed_at"] = json!(500);
+    request["observed_seq"] = json!(1);
+    let resumed = progress_heartbeat(&client, addr, &request).await;
+    assert_eq!(resumed["data"]["state"], "live");
+    assert_eq!(resumed["data"]["lease_ms"], lease_ms);
+    let state = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/state"))
+            .json(&json!({"id":seat.id})),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert!(state["data"].get("native_receiver_reason").is_none());
+    assert_eq!(
+        queue.peek(&[delivery_kind(&seat.id)]).await.unwrap(),
+        before
+    );
+    seat.semantic_state = None;
+    registry.put(seat.clone()).await.unwrap();
+    let claimed = native_http_claims(&client, addr, &seat.id, &identity).await;
+    assert_eq!(claimed[0].message.msg_id, sent.msg_id);
+    assert_eq!(claimed[0].attempt, 0);
+    server.abort();
+    clock.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn native_progress_http_missing_heartbeats_leave_stale_diagnosis_after_parking() {
+    let clock = manual_receiver_clock();
+    let store = FreshStore::new();
+    let services = sqlite_services(&store).await;
+    let (seat, identity) = contract_identity();
+    services.registry.put(seat.clone()).await.unwrap();
+    let delivery = services.delivery.clone();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    let request = json!({
+        "seat":seat.id, "native_session":identity.native_session, "pid":identity.pid,
+        "proc_start":identity.proc_start, "observed_at":1, "observed_seq":1,
+    });
+    let initial = progress_heartbeat(&client, addr, &request).await;
+    delivery
+        .send("pij-peer".into(), seat.id.clone(), "SDK disconnected")
+        .await
+        .unwrap();
+    tokio::time::advance(Duration::from_millis(
+        initial["data"]["lease_ms"].as_u64().unwrap(),
+    ))
+    .await;
+    delivery.wait_native_receiver_deadline().await;
+    assert_eq!(delivery.reconcile_native_receivers().await.unwrap(), 1);
+    let state = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/state"))
+            .json(&json!({"id":seat.id})),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(
+        state["data"]["native_receiver_reason"],
+        "native-receiver-stale"
+    );
+    assert_eq!(
+        progress_heartbeat(&client, addr, &request).await["data"]["state"],
+        "stale"
+    );
+    server.abort();
+    clock.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn native_receiver_absent_after_boot_grace_remains_visible_after_parking() {
+    let clock = manual_receiver_clock();
+    let store = FreshStore::new();
+    let host = HostFixture::spawn();
+    let (mut seat, _) = contract_identity();
+    seat.proc = Some(host.identity().await);
+    seat.pane = Some("%152-absent".into());
+    let services = native_host_services(&store, &seat.folder, &["%152-absent"]).await;
+    services.registry.put(seat.clone()).await.unwrap();
+    let delivery = services.delivery.clone();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    delivery
+        .send(
+            "pij-peer".into(),
+            seat.id.clone(),
+            "receiver never reconnected",
+        )
+        .await
+        .unwrap();
+    tokio::time::advance(Duration::from_secs(60)).await;
+    delivery.wait_native_receiver_deadline().await;
+    assert_eq!(delivery.reconcile_native_receivers().await.unwrap(), 1);
+    let state = native_http_response(
+        client
+            .post(format!("http://{addr}/v1/state"))
+            .json(&json!({"id":seat.id})),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(state["data"]["liveness"], "active");
+    assert_eq!(
+        state["data"]["native_receiver_reason"],
+        "native-extension-unavailable"
+    );
+    let peek = native_http_response(
+        client
+            .get(format!("http://{addr}/v1/inbox"))
+            .query(&[("seat", seat.id.as_str()), ("peek", "true")]),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    assert_eq!(
+        peek["details"]["native_receiver_reason"],
+        "native-extension-unavailable"
+    );
+    server.abort();
+    clock.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn native_recycle_keeps_consumed_job_done_and_parks_only_unconsumed_work() {
+    let clock = manual_receiver_clock();
+    let store = FreshStore::new();
+    let services = sqlite_services(&store).await;
+    let (seat, identity) = contract_identity();
+    services.registry.put(seat.clone()).await.unwrap();
+    let delivery = services.delivery.clone();
+    let (addr, server) = spawn(router_with_config(services, config("native-key", &[]))).await;
+    let client = reqwest::Client::new();
+    let initial = progress_heartbeat(
+        &client,
+        addr,
+        &json!({
+            "seat":seat.id, "native_session":identity.native_session, "pid":identity.pid,
+            "proc_start":identity.proc_start, "observed_at":1, "observed_seq":1,
+        }),
+    )
+    .await;
+    let consumed = delivery
+        .send(
+            "pij-peer".into(),
+            seat.id.clone(),
+            "consumed; model still working",
+        )
+        .await
+        .unwrap();
+    let first = native_http_claims(&client, addr, &seat.id, &identity)
+        .await
+        .remove(0);
+    delivery
+        .acknowledge_inbox(&seat.id, first.job_id, &identity, None)
+        .await
+        .unwrap();
+    let unconsumed = delivery
+        .send(
+            "pij-peer".into(),
+            seat.id.clone(),
+            "accepted; consumption not yet proven",
+        )
+        .await
+        .unwrap();
+    let second = native_http_claims(&client, addr, &seat.id, &identity)
+        .await
+        .remove(0);
+    // Child replacement attests the same host; it neither requeues done work nor extends the lease.
+    delivery
+        .attest_native_receiver(&seat.id, &identity)
+        .await
+        .unwrap();
+    tokio::time::advance(Duration::from_millis(
+        initial["data"]["lease_ms"].as_u64().unwrap(),
+    ))
+    .await;
+    assert_eq!(delivery.reconcile_native_receivers().await.unwrap(), 1);
+    let peek = native_http_response(
+        client
+            .get(format!("http://{addr}/v1/inbox"))
+            .query(&[("seat", seat.id.as_str()), ("peek", "true")]),
+        reqwest::StatusCode::OK,
+    )
+    .await;
+    let parked: Vec<InboxClaim> = serde_json::from_value(peek["data"].clone()).unwrap();
+    assert_eq!(
+        parked
+            .iter()
+            .map(|claim| claim.message.msg_id.as_str())
+            .collect::<Vec<_>>(),
+        vec![unconsumed.msg_id.as_str()]
+    );
+    assert_eq!(parked[0].job_id, second.job_id);
+    assert!(
+        parked
+            .iter()
+            .all(|claim| claim.message.msg_id != consumed.msg_id)
+    );
+    server.abort();
+    clock.abort();
 }
 
 #[tokio::test]

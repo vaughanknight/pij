@@ -1,0 +1,1 @@
+{"ok":true,"command":"pij inbox","v":2,"data":[{"from":"pij-rainy-chicken","to":"pij-front-raven","body":"PIJ_PROGRESS_MANUAL. Reply exactly PIJ_NATIVE_OBSERVED. Do not call tools.","msg_id":"aba85289-5c57-4872-8796-89a85500e376"}],"meta":"native-receiver-stale","details":{"native_receiver_reason":"native-receiver-stale"}}

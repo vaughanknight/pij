@@ -630,6 +630,8 @@ async fn shipped_cli_native_inbox_uses_pane_session_ladder_and_acknowledges() {
                 pid: seat.proc.map(|proc| proc.pid),
                 proc_start: seat.proc.map(|proc| proc.proc_start),
             },
+            1,
+            1,
         )
         .await
         .unwrap();
