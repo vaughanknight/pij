@@ -1,0 +1,5 @@
+omp v18.1.22 --mode rpc --no-skills --no-rules --no-session --no-lsp
+private HOME; project .omp/extensions/probe/index.ts with .pi/extensions/probe symlink
+AC4_PROJECT_OMP_EXTENSION_DISCOVERED /private/var/folders/mv/9mcvlzg504b158ctlswmgwph0000gn/T/pij-153-omp-home-n1c9wqyp/.omp/extensions/probe
+{"type":"ready","protocolVersion":1,"supportedProtocolVersions":[1,2]}
+Marker emitted once; both discovery paths deduplicated. Global skill readlink -f ~/.claude/skills/pij: /Users/jordanknight/pi-hacking/pij/skills/pij

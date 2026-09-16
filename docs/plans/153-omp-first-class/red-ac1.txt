@@ -1,0 +1,371 @@
+
+> pij@0.1.0 test
+> vitest run --run .pi/extensions/pij/core/spawn.test.ts .pi/extensions/pij/index.spawn-schema.test.ts
+
+
+ RUN  v4.1.10 /Users/jordanknight/pi-hacking/fs3-omp-first-class
+
+(node:10061) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ .pi/extensions/pij/core/spawn.test.ts (155 tests | 7 failed) 17ms
+     ✓ launches the explicitly selected pi executable 1ms
+     ✓ args is empty when no model given 0ms
+     ✓ emits --model arg when model is provided 0ms
+     ✓ model with slash and dots produces correct discrete args (AC-09: no shell string) 0ms
+     ✓ args is an array of strings (no shell string — AC-09) 0ms
+       × omp launches its own executable and translates effort without a branch flag 3ms
+       × an executable path does not change the selected harness flag translation 1ms
+     ✓ always includes required env vars 0ms
+     ✓ exposes the spawner id as PIJ_PARENT_ID (who spawned me) 0ms
+     ✓ exports an explicit plan id under both harness join names 0ms
+     ✓ omits PIJ_SPAWN_TASK when no task given 0ms
+     ✓ sets PIJ_SPAWN_TASK when task given 0ms
+     ✓ task with double quotes survives env round-trip (no shell interpretation) 0ms
+     ✓ task with single quotes survives env round-trip 0ms
+     ✓ task with newlines and tabs survives env round-trip 0ms
+     ✓ task with shell metacharacters survives env round-trip 0ms
+     ✓ omits PIJ_PANE_ID when paneId not given 0ms
+     ✓ sets PIJ_PANE_ID when paneId is provided (optional pass-through) 1ms
+     ✓ omits PIJ_SPAWN_MODEL when model is not given (§H2) 0ms
+     ✓ sets PIJ_SPAWN_MODEL in env when model is given (§H2) 0ms
+     ✓ PIJ_SPAWN_MODEL matches the --model argv value (both emitted together) 0ms
+     ✓ threads the resolved provider through PIJ_SPAWN_PROVIDER 0ms
+     ✓ role 'parent' is passed through to PIJ_ROLE 0ms
+     ✓ --effort with a model rides as a :<level> suffix on the pi model id 0ms
+     ✓ keeps the Pi provider prefix unchanged when suffixing GPT-5.6 effort 0ms
+     ✓ --effort without a model is a no-op for pi (nothing to suffix) 0ms
+     ✓ no --effort → model rides unchanged (default-to-agent) 0ms
+     ✓ round-trips a basic payload 0ms
+     ✓ round-trips payload with slashes/dots in model name 0ms
+     ✓ keeps effort additive when parsing a legacy ready payload 0ms
+     ✓ round-trips payload with unicode in cwd 0ms
+     ✓ parseReadyBody returns null for invalid JSON 0ms
+     ✓ parseReadyBody returns null for empty string 0ms
+     ✓ parseReadyBody returns null when spawnId missing 0ms
+     ✓ parseReadyBody returns null when model missing 0ms
+     ✓ parseReadyBody returns null when cwd missing 0ms
+     ✓ parseReadyBody returns null when spawnId is not a string 0ms
+     ✓ parseReadyBody returns null for non-object JSON 0ms
+     ✓ parseReadyBody returns null for null JSON 0ms
+     ✓ is known before launch and deterministic for the same token+pid 0ms
+     ✓ distinct spawn tokens yield distinct allocation seeds 0ms
+     ✓ claude: cmd is 'claude', --dangerously-skip-permissions always (driven pane, no human to approve) 0ms
+     ✓ claude: a bare forkSessionId pins the session id WITHOUT --resume/--fork-session 0ms
+     ✓ control — forkSessionId WITH branchFrom still emits the full fork form 0ms
+     ✓ control — without a forkSessionId claude gets no --session-id at all 0ms
+     ✓ emits --model after --skip-permissions as discrete argv (AC-09: no shell string) 0ms
+     ✓ threads the pre-allocated id via PIJ_SESSION_ID + harness via PIJ_HARNESS 0ms
+     ✓ exports an explicit plan id under both harness join names 0ms
+     ✓ omits PIJ_PARENT_ID when no parentId given (caller unresolved) 0ms
+     ✓ sets PIJ_PARENT_ID to the spawner id when parentId given (who spawned me) 0ms
+     ✓ sets PIJ_SPAWN_TASK only when a task is given 0ms
+     ✓ copilot: cmd is 'copilot' with --yolo + --session-id (deterministic bind) 0ms
+     ✓ copilot: --model rides after --session-id as discrete argv 0ms
+     ✓ copilot: a pinned model always selects the long-context tier 0ms
+     ✓ claude --branch: --resume <from> --fork-session --session-id <new> after skip-permissions (AC-01) 0ms
+     ✓ claude --branch + --model: model rides last (fork onto another model) 0ms
+     ✓ pi focus fork uses the self-registering spawn env without a caller-owned pij id 0ms
+     ✓ no branchFrom → today's claude args are byte-identical (AC-05 regression) 0ms
+     ✓ codex: cmd is 'codex' with --dangerously-bypass-approvals-and-sandbox (driven pane, no human to approve) 0ms
+     ✓ codex: --model rides after the bypass flag as discrete argv (AC-09: no shell string) 0ms
+     ✓ codex: sets PIJ_PARENT_ID when given; NEVER a deterministic --session-id (discovery-bound, AC-02/05) 0ms
+     ✓ codex: sets PIJ_SPAWN_TASK only when a task is given 0ms
+     ✓ claude: appends --effort <level> after the model (flag-drift pin) 0ms
+     ✓ copilot: appends --effort <level> (same flag as claude) 0ms
+     ✓ codex: translates effort to -c model_reasoning_effort=<level> (no --effort flag) 0ms
+     ✓ unset effort → NO effort flag for any harness (default-to-agent) 0ms
+     ✓ carries (id, paneId, cwd, harness) with lifecycle 'pending' (F2/AC-01) 0ms
+     ✓ is NOT yet bound — no harnessSessionId, no initInjectedAt 0ms
+     ✓ carries plannedHarnessSessionId for copilot (the daemon binds to it) 0ms
+     ✓ stamps daemon-bound Copilot descriptors with github-copilot provider 0ms
+     ✓ omits plannedHarnessSessionId for claude (discovery-bound) 0ms
+     ✓ branched claude: carries plannedHarnessSessionId + branchedFrom, no transcriptsAtSpawn (AC-02) 0ms
+     ✓ omits branchedFrom for a normal (non-branch) spawn 0ms
+     ✓ persists the pinned model + effort before first inference (registry truth) 0ms
+     ✓ persists the explicit plan id on a daemon-bound descriptor 0ms
+     ✓ keeps model + effort additive for legacy/default spawns 0ms
+     ✓ persists structural parent pij-structural-parent and repository identity without changing spawn ownership 0ms
+     ✓ persists structural parent null and repository identity without changing spawn ownership 0ms
+     ✓ reports pinned model + effort for a daemon-bound spawn 0ms
+     ✓ reports explicit nulls for a pi/default spawn whose id is assigned at boot 0ms
+     ✓ carries warnings in JSON and appends them as human receipt lines 0ms
+     ✓ warns with the spawn cwd path when docs/plans/<id> is unresolved 0ms
+     ✓ reports opaque non-segment plan ids as not checked without probing the filesystem 0ms
+     ✓ is silent when the plan directory resolves or no plan id was supplied 0ms
+     ✓ no args → uses the env pane, default 1500ms, no instruction 0ms
+     ✓ joins non-flag tokens into the instruction (unquoted multi-word works) 0ms
+     ✓ --pane and --delay-ms override (space and = forms), instruction is the rest 0ms
+     ✓ ignores a non-numeric/negative delay (keeps the default) 0ms
+     ✓ worker #1 → split the orchestrator pane right (~1/3 column) 0ms
+     ✓ worker #2 → split worker-1's pane vertically (stacked below) + even out + pin width 0ms
+     ✓ worker #3+ → appends below the NEWEST peer (uncapped, evened) 0ms
+     ✓ parses --harness with --task/--model/--json (space and = forms) 0ms
+     ✓ parses --plan-id as an opaque identifier without path-shaped validation 0ms
+     ✓ rejects missing, empty, and whitespace-only plan-id values 0ms
+     ✓ accepts --branch as a boolean flag (default false) 0ms
+     ✓ accepts pi (Plan 021 — uniform spawn surface), requires --harness, rejects unknown 0ms
+     ✓ accepts codex (Plan 022 — 4th spawnable harness) 0ms
+     ✓ rejects unknown flags and missing values 0ms
+     × accepts omp as a harness, not a pi binary switch 1ms
+     × refuses a binary harness selector with the explicit harness repair 0ms
+     × accepts an executable path without selecting a different harness 0ms
+     × rejects an executable whose basename names a different harness 0ms
+     × refuses omp branching before a pane is created 0ms
+     ✓ parses --effort (space and = forms); unset → effort undefined (#3, AC-04) 0ms
+     ✓ pins an ambiguous Copilot-family bare id to github-copilot with a notice 0ms
+     ✓ preserves an explicit provider-qualified selection 0ms
+     ✓ qualifies a unique exact provider and leaves an unknown id unchanged 0ms
+     ✓ fails loud on non-Copilot provider ambiguity and lists actionable candidates 0ms
+     ✓ returns the explicit flag bin (flag beats env) 0ms
+     ✓ falls back to a known PIJ_PI_BIN env when no flag 0ms
+     ✓ defaults to pi when neither set, and ignores an unknown env (never mis-launches) 0ms
+     ✓ returns null when effort is supported / unset / model unknown 0ms
+     ✓ warns (never throws) when effort is unsupported, listing the model's levels 0ms
+     ✓ does not warn for supported GPT-5.6 effort none 0ms
+     ✓ does not warn for supported GPT-5.6 effort low 0ms
+     ✓ does not warn for supported GPT-5.6 effort medium 0ms
+     ✓ does not warn for supported GPT-5.6 effort high 0ms
+     ✓ does not warn for supported GPT-5.6 effort xhigh 0ms
+     ✓ does not warn for supported GPT-5.6 effort max 0ms
+     ✓ warns and continues for unsupported GPT-5.6 minimal with the corrected levels 0ms
+     ✓ counts EVERY live peer pane in the window regardless of harness (the asymmetry fix) 0ms
+     ✓ excludes own pane, dead/closed panes (not in windowPanes), and paneless descriptors 0ms
+     ✓ dedupes repeated pane ids 0ms
+     ✓ bound same-harness claude → ok {from: self's harnessSessionId, newSessionId} 0ms
+     ✓ unsupported harness (copilot today) → E-BRANCH (AC-04) 0ms
+     ✓ pi can spawn (Plan 021) but cannot fork → E-BRANCH (the bin mirrors this guard) 0ms
+     ✓ codex can spawn (Plan 022) but cannot fork-from-self → E-BRANCH (AC-07) 0ms
+     ✓ caller unresolved (self null) → E-BRANCH (AC-04) 0ms
+     ✓ harness mismatch (caller copilot, spawning claude) → E-BRANCH (AC-04) 0ms
+     ✓ caller not bound (no harnessSessionId) → E-BRANCH (AC-04) 0ms
+     ✓ parses <pane> + --harness + optional --id/--session-id/--json 0ms
+     ✓ teaches pi/omp seats that adopt is unnecessary 0ms
+     ✓ rejects missing --session-id/--parent values instead of consuming the next flag 0ms
+     ✓ requires a %N pane and a harness 0ms
+     ✓ returns null when --agent is absent (a normal colleague spawn) 0ms
+     ✓ puts the slug first and forwards every other flag verbatim 0ms
+     ✓ supports the --agent=<slug> inline form 0ms
+     ✓ undefined layout defaults to the side stack (uncapped) 0ms
+     ✓ explicit 'stack' is the same as the default 0ms
+     ✓ right/below split the CALLER's pane 0ms
+     ✓ right/below still honour the main+2 cap 0ms
+     ✓ window is cap-exempt 0ms
+     ✓ accepts stack|right|below|window 0ms
+     ✓ rejects an unknown layout 0ms
+     ✓ carries the tmux window id captured beside the pane id 0ms
+     ✓ stays ABSENT (no key) when the capture did not yield one 0ms
+     ✓ stamps the mechanical axis starting at birth; it holds until the bind verdict 0ms
+     ✓ PIJ_SESSION_ID wins outright, even with cwd cohabitants and a matching pane 0ms
+     ✓ env unset: a unique pane-exact match identifies the caller 0ms
+     ✓ pane matching runs against the FULL registry — a caller registered under a DIFFERENT folder still resolves (adopted-peer-in-worktree shape) 0ms
+     ✓ env unset + no pane match: cwd cohabitants NEVER become the parent (issue #20 kill) 0ms
+     ✓ ambiguous pane (duplicate registrations) yields NO parent, never a guess 0ms
+     ✓ nothing to go on — empty registry, no env, no pane — yields no parent 0ms
+     ✓ stamps compactingAt on the resolved descriptor (merge-law persist) 1ms
+     ✓ no id / unknown id → null, nothing written (unregistered pane compacts unchanged) 0ms
+ ❯ .pi/extensions/pij/index.spawn-schema.test.ts (1 test | 1 failed) 5ms
+   × pij_spawn requires an explicit known harness instead of inheriting pi 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 8 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .pi/extensions/pij/index.spawn-schema.test.ts > pij_spawn requires an explicit known harness instead of inheriting pi
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ .pi/extensions/pij/index.spawn-schema.test.ts:17:43
+     15|  } as unknown as ExtensionAPI);
+     16|  if (!schema) throw new Error("pij_spawn was not registered");
+     17|  expect(Value.Check(schema as never, {})).toBe(false);
+       |                                           ^
+     18|  expect(Value.Check(schema as never, { harness: "unknown" })).toBe(fal…
+     19|  for (const harness of ["omp", "pi", "claude", "copilot", "codex"]) {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/8]⎯
+
+ FAIL  .pi/extensions/pij/core/spawn.test.ts > buildSpawnCommand > explicit harness selection > omp launches its own executable and translates effort without a branch flag
+AssertionError: expected 'pi' to be 'omp' // Object.is equality
+
+Expected: "omp"
+Received: "pi"
+
+ ❯ .pi/extensions/pij/core/spawn.test.ts:86:23
+     84|     effort: "high",
+     85|    });
+     86|    expect(result.cmd).toBe("omp");
+       |                       ^
+     87|    expect(result.args).toEqual([
+     88|     "--auto-approve",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/8]⎯
+
+ FAIL  .pi/extensions/pij/core/spawn.test.ts > buildSpawnCommand > explicit harness selection > an executable path does not change the selected harness flag translation
+AssertionError: expected [] to deeply equal [ Array(3) ]
+
+- Expected
++ Received
+
+- [
+-   "--auto-approve",
+-   "--thinking",
+-   "high",
+- ]
++ []
+
+ ❯ .pi/extensions/pij/core/spawn.test.ts:106:24
+    104|    });
+    105|    expect(result.cmd).toBe("/opt/omp");
+    106|    expect(result.args).toEqual(["--auto-approve", "--thinking", "high"…
+       |                        ^
+    107|   });
+    108|  });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/8]⎯
+
+ FAIL  .pi/extensions/pij/core/spawn.test.ts > parseSpawnArgs (T018) > accepts omp as a harness, not a pi binary switch
+AssertionError: expected { ok: false, code: 'E-ARG', …(1) } to match object { ok: true, value: { harness: 'omp' } }
+(2 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "ok": true,
+-   "value": {
+-     "harness": "omp",
+-   },
++   "ok": false,
+  }
+
+ ❯ .pi/extensions/pij/core/spawn.test.ts:981:48
+    979|
+    980|  it("accepts omp as a harness, not a pi binary switch", () => {
+    981|   expect(parseSpawnArgs(["--harness", "omp"])).toMatchObject({
+       |                                                ^
+    982|    ok: true,
+    983|    value: { harness: "omp" },
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/8]⎯
+
+ FAIL  .pi/extensions/pij/core/spawn.test.ts > parseSpawnArgs (T018) > refuses a binary harness selector with the explicit harness repair
+AssertionError: expected { ok: true, …(1) } to match object { ok: false, code: 'E-ARG', …(1) }
+(10 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "code": "E-ARG",
+-   "message": StringContaining "--harness omp",
+-   "ok": false,
++   "ok": true,
+  }
+
+ ❯ .pi/extensions/pij/core/spawn.test.ts:988:63
+    986|
+    987|  it("refuses a binary harness selector with the explicit harness repai…
+    988|   expect(parseSpawnArgs(["--harness", "pi", "--bin", "omp"])).toMatchO…
+       |                                                               ^
+    989|    ok: false,
+    990|    code: "E-ARG",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/8]⎯
+
+ FAIL  .pi/extensions/pij/core/spawn.test.ts > parseSpawnArgs (T018) > accepts an executable path without selecting a different harness
+AssertionError: expected { ok: false, code: 'E-ARG', …(1) } to match object { ok: true, value: { …(2) } }
+(2 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "ok": true,
+-   "value": {
+-     "bin": "/opt/omp",
+-     "harness": "omp",
+-   },
++   "ok": false,
+  }
+
+ ❯ .pi/extensions/pij/core/spawn.test.ts:996:63
+    994|
+    995|  it("accepts an executable path without selecting a different harness"…
+    996|   expect(parseSpawnArgs(["--harness=omp", "--bin=/opt/omp"])).toMatchO…
+       |                                                               ^
+    997|    ok: true,
+    998|    value: { harness: "omp", bin: "/opt/omp" },
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/8]⎯
+
+ FAIL  .pi/extensions/pij/core/spawn.test.ts > parseSpawnArgs (T018) > rejects an executable whose basename names a different harness
+AssertionError: expected { ok: false, code: 'E-ARG', …(1) } to match object { ok: false, code: 'E-ARG', …(1) }
+
+- Expected
++ Received
+
+  {
+    "code": "E-ARG",
+-   "message": StringContaining "--harness omp",
++   "message": "--bin must be pi|omp (got '/opt/omp')",
+    "ok": false,
+  }
+
+ ❯ .pi/extensions/pij/core/spawn.test.ts:1003:68
+    1001|
+    1002|  it("rejects an executable whose basename names a different harness", …
+    1003|   expect(parseSpawnArgs(["--harness", "pi", "--bin", "/opt/omp"])).toM…
+       |                                                                    ^
+    1004|    ok: false,
+    1005|    code: "E-ARG",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/8]⎯
+
+ FAIL  .pi/extensions/pij/core/spawn.test.ts > parseSpawnArgs (T018) > refuses omp branching before a pane is created
+AssertionError: expected { ok: false, code: 'E-ARG', …(1) } to match object { ok: false, code: 'E-ARG', …(1) }
+
+- Expected
++ Received
+
+  {
+    "code": "E-ARG",
+-   "message": StringContaining "--branch",
++   "message": "--harness must be pi|claude|copilot|codex (got 'omp')",
+    "ok": false,
+  }
+
+ ❯ .pi/extensions/pij/core/spawn.test.ts:1012:18
+    1010|  it("refuses omp branching before a pane is created", () => {
+    1011|   const result = parseSpawnArgs(["--harness", "omp", "--branch"]);
+    1012|   expect(result).toMatchObject({
+       |                  ^
+    1013|    ok: false,
+    1014|    code: "E-ARG",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/8]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  8 failed | 148 passed (156)
+   Start at  14:24:48
+   Duration  639ms (transform 323ms, setup 0ms, import 644ms, tests 22ms, environment 0ms)
+
+
+::error file=/Users/jordanknight/pi-hacking/fs3-omp-first-class/.pi/extensions/pij/index.spawn-schema.test.ts,title=.pi/extensions/pij/index.spawn-schema.test.ts > pij_spawn requires an explicit known harness instead of inheriting pi,line=17,column=43::AssertionError: expected true to be false // Object.is equality%0A%0A- Expected%0A+ Received%0A%0A- false%0A+ true%0A%0A ❯ .pi/extensions/pij/index.spawn-schema.test.ts:17:43%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-omp-first-class/.pi/extensions/pij/core/spawn.test.ts,title=.pi/extensions/pij/core/spawn.test.ts > buildSpawnCommand > explicit harness selection > omp launches its own executable and translates effort without a branch flag,line=86,column=23::AssertionError: expected 'pi' to be 'omp' // Object.is equality%0A%0AExpected: "omp"%0AReceived: "pi"%0A%0A ❯ .pi/extensions/pij/core/spawn.test.ts:86:23%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-omp-first-class/.pi/extensions/pij/core/spawn.test.ts,title=.pi/extensions/pij/core/spawn.test.ts > buildSpawnCommand > explicit harness selection > an executable path does not change the selected harness flag translation,line=106,column=24::AssertionError: expected [] to deeply equal [ Array(3) ]%0A%0A- Expected%0A+ Received%0A%0A- [%0A-   "--auto-approve",%0A-   "--thinking",%0A-   "high",%0A- ]%0A+ []%0A%0A ❯ .pi/extensions/pij/core/spawn.test.ts:106:24%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-omp-first-class/.pi/extensions/pij/core/spawn.test.ts,title=.pi/extensions/pij/core/spawn.test.ts > parseSpawnArgs (T018) > accepts omp as a harness%2C not a pi binary switch,line=981,column=48::AssertionError: expected { ok: false, code: 'E-ARG', …(1) } to match object { ok: true, value: { harness: 'omp' } }%0A(2 matching properties omitted from actual)%0A%0A- Expected%0A+ Received%0A%0A  {%0A-   "ok": true,%0A-   "value": {%0A-     "harness": "omp",%0A-   },%0A+   "ok": false,%0A  }%0A%0A ❯ .pi/extensions/pij/core/spawn.test.ts:981:48%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-omp-first-class/.pi/extensions/pij/core/spawn.test.ts,title=.pi/extensions/pij/core/spawn.test.ts > parseSpawnArgs (T018) > refuses a binary harness selector with the explicit harness repair,line=988,column=63::AssertionError: expected { ok: true, …(1) } to match object { ok: false, code: 'E-ARG', …(1) }%0A(10 matching properties omitted from actual)%0A%0A- Expected%0A+ Received%0A%0A  {%0A-   "code": "E-ARG",%0A-   "message": StringContaining "--harness omp",%0A-   "ok": false,%0A+   "ok": true,%0A  }%0A%0A ❯ .pi/extensions/pij/core/spawn.test.ts:988:63%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-omp-first-class/.pi/extensions/pij/core/spawn.test.ts,title=.pi/extensions/pij/core/spawn.test.ts > parseSpawnArgs (T018) > accepts an executable path without selecting a different harness,line=996,column=63::AssertionError: expected { ok: false, code: 'E-ARG', …(1) } to match object { ok: true, value: { …(2) } }%0A(2 matching properties omitted from actual)%0A%0A- Expected%0A+ Received%0A%0A  {%0A-   "ok": true,%0A-   "value": {%0A-     "bin": "/opt/omp",%0A-     "harness": "omp",%0A-   },%0A+   "ok": false,%0A  }%0A%0A ❯ .pi/extensions/pij/core/spawn.test.ts:996:63%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-omp-first-class/.pi/extensions/pij/core/spawn.test.ts,title=.pi/extensions/pij/core/spawn.test.ts > parseSpawnArgs (T018) > rejects an executable whose basename names a different harness,line=1003,column=68::AssertionError: expected { ok: false, code: 'E-ARG', …(1) } to match object { ok: false, code: 'E-ARG', …(1) }%0A%0A- Expected%0A+ Received%0A%0A  {%0A    "code": "E-ARG",%0A-   "message": StringContaining "--harness omp",%0A+   "message": "--bin must be pi|omp (got '/opt/omp')",%0A    "ok": false,%0A  }%0A%0A ❯ .pi/extensions/pij/core/spawn.test.ts:1003:68%0A%0A
+
+::error file=/Users/jordanknight/pi-hacking/fs3-omp-first-class/.pi/extensions/pij/core/spawn.test.ts,title=.pi/extensions/pij/core/spawn.test.ts > parseSpawnArgs (T018) > refuses omp branching before a pane is created,line=1012,column=18::AssertionError: expected { ok: false, code: 'E-ARG', …(1) } to match object { ok: false, code: 'E-ARG', …(1) }%0A%0A- Expected%0A+ Received%0A%0A  {%0A    "code": "E-ARG",%0A-   "message": StringContaining "--branch",%0A+   "message": "--harness must be pi|claude|copilot|codex (got 'omp')",%0A    "ok": false,%0A  }%0A%0A ❯ .pi/extensions/pij/core/spawn.test.ts:1012:18%0A%0A
