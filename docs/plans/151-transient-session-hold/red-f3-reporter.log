@@ -1,0 +1,32 @@
+COMMAND: node --test '--test-name-pattern=hold escalates once at ten minutes' .copilot/extensions/pij/hold.test.mjs
+EXIT: 1
+✖ registration hold escalates once at ten minutes even when the initial notice was skipped (1.380166ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 47.134458
+
+✖ failing tests:
+
+test at .copilot/extensions/pij/hold.test.mjs:23:1
+✖ registration hold escalates once at ten minutes even when the initial notice was skipped (1.380166ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + "[pij native] waiting for this pane's resumed Copilot session"
+  - "[pij native] still waiting for this pane's resumed Copilot session after 10 min; pij delivery is unavailable in this window"
+  
+      at TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-transient-hold/.copilot/extensions/pij/hold.test.mjs:38:10)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: "[pij native] waiting for this pane's resumed Copilot session",
+    expected: "[pij native] still waiting for this pane's resumed Copilot session after 10 min; pij delivery is unavailable in this window",
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

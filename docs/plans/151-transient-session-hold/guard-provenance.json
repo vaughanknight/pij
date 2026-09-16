@@ -3,13 +3,13 @@
   "comparison": "Sequence comparison: existing Rust test text unchanged, only inserted tests",
   "files": {
     "crates/daemon/src/registration.rs": {
-      "existing_lines_unchanged": true,
+      "existing_test_lines_unchanged": true,
       "change_kinds": [
         "insert"
       ]
     },
     "crates/daemon/src/http/native_tests.rs": {
-      "existing_lines_unchanged": true,
+      "existing_test_lines_unchanged": true,
       "change_kinds": [
         "insert"
       ]

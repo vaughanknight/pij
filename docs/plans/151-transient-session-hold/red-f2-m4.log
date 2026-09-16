@@ -1,0 +1,21 @@
+COMMAND: /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --lib native_transient_hold_requires_present_matching_pane_at_roster_guard -- --nocapture
+EXIT: 101
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-transient-hold/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.14s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-043514ab0ddb16b1)
+
+running 1 test
+test registration::tests::native_transient_hold_requires_present_matching_pane_at_roster_guard ... 
+thread 'registration::tests::native_transient_hold_requires_present_matching_pane_at_roster_guard' (64659598) panicked at crates/daemon/src/registration.rs:1698:9:
+Err(NativeSessionHold(SeatId("pij-pane-owner")))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    registration::tests::native_transient_hold_requires_present_matching_pane_at_roster_guard
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 397 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

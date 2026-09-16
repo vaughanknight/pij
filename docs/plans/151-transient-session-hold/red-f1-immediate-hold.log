@@ -1,0 +1,33 @@
+COMMAND: /Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --lib native_transient_hold_yields_to_separate_pane_ownership_refusal -- --nocapture
+EXIT: 101
+   Compiling pij-daemon v0.1.0 (/Users/jordanknight/pi-hacking/fs3-transient-hold/crates/daemon)
+warning: value assigned to `held_owner` is never read
+    --> crates/daemon/src/registration.rs:1205:17
+     |
+1205 |                 held_owner = Some(&seat.id);
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `pij-daemon` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.37s
+     Running unittests src/lib.rs (target/debug/deps/pij_daemon-043514ab0ddb16b1)
+
+running 1 test
+test http::native_tests::native_transient_hold_yields_to_separate_pane_ownership_refusal ... 
+thread 'http::native_tests::native_transient_hold_yields_to_separate_pane_ownership_refusal' (64626257) panicked at crates/daemon/src/http/native_tests.rs:213:5:
+assertion `left == right` failed: HTTP envelope: {"command":"pij register","details":{"hold":"native-session","retryable":true},"error":"refused","meta":"native Copilot registration held: pane owned by seat `pij-aaa-copilot-owner`; awaiting resumed session","ok":false,"v":2}
+  left: 409
+ right: 400
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    http::native_tests::native_transient_hold_yields_to_separate_pane_ownership_refusal
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 397 filtered out; finished in 0.13s
+
+error: test failed, to rerun pass `-p pij-daemon --lib`

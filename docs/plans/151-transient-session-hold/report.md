@@ -1,6 +1,6 @@
 # Plan151 — transient native session hold
 
-**Source commit:** `6216e984dbd46cebf46c3c1812bd6dc9c9c660dc`.
+**Initial source commit:** `6216e984dbd46cebf46c3c1812bd6dc9c9c660dc`.
 **Baseline:** `f619fc05ca49d5cc0d127b38d568333fdb1e0267` (plan packet on main cf08eacd).
 AC0–AC6 verified. Rust and canonical gates exited0; the invalid Node directory invocation was corrected to the complete native test-file selection. No production daemon, Copilot seat or pane was changed. Prime owns PRD reconciliation, push, PR and merge.
 
@@ -121,7 +121,7 @@ Both **complete extension stderr snapshots** are retained (command/exit headers,
 
 The paused CLI cannot render native timeline RPCs during the control. Its captured timeline has zero waiting/unavailable lines; the exact one-line-after-threshold behavior is independently proven by the subprocess SDK fixture, not falsely claimed as a rendered15s native UI observation.
 
-The first uncontrolled native run's bootstrap ended in about190ms before registration; [live-red.json](live-red.json) is a **proof-gap receipt**, not a behavioral RED. [ac0-red.json](ac0-red.json) used the npm loader as pane process; only `ac0-exact-red.json` proves that the pane process itself is the recorded host. Earlier composed control: [live-stretch-green.json](live-stretch-green.json).
+The first uncontrolled native run's bootstrap ended in about190ms before registration; [live-red.json](live-red.json) retains the two **proof-gap facts**, not a behavioral RED, and points here. `ac0-exact-red.json` is the retained exact pane/host shape; `live-green-release.json` is the retained composed GREEN.
 
 ## AC5 — no transient identity or work leak
 
@@ -211,3 +211,133 @@ Encoded improvement: subprocess timeout output now says what was actually observ
 === ready ===
 [pij-native] {"at":"2026-09-16T03:22:31.140Z","kind":"registered","seat":"pij-specified-barnacle","nativeSession":"49c2573f-54b5-4b6f-94ee-80d5c4a3b96a","pid":17809,"procStart":20260916132215,"pane":"%1"}
 ```
+
+## Fix round
+
+**Fix source commit:** `b3f8378cb6a1a9f179ba64bf5f53925755967acc`.
+
+Authority: [packet-fix.md](packet-fix.md), following [review.md](review.md).
+The review's coverage-concentration note requires no change this round.
+
+### F4 — precise provenance scope
+
+**RED label:** `existing_lines_unchanged` implied production lines were unchanged.
+**GREEN evidence:** both fields are now `existing_test_lines_unchanged`; comparison
+confirmed precisely two key renames and unchanged measurement values. No behavioral
+RED applies: the test-only comparison was valid before this label correction.
+Repository search found no persisted writer; the original artifact was generated
+by a one-off comparison. Reviewer-owned findings and packet text remain unchanged.
+
+### Trim — discriminating evidence retained
+
+- Deleted `live-stretch-green.json`: another run of the same build/claim already preserved by `live-green-release.json`.
+- Deleted `ac0-red.json`: npm-loader pane shape was superseded by the exact pane/host proof in `ac0-exact-red.json`.
+- Reduced `live-red.json` to bootstrap-before-registration and the failed witness guard, plus this report pointer; it was never behavioral RED.
+
+The final native receipt, both distinct REDs, guard provenance, all existing gate
+and stderr logs, and the permanent isolated driver remain.
+
+### F1 — a separate ownership refusal wins
+
+Added `native_transient_hold_yields_to_separate_pane_ownership_refusal`:
+real HTTP/SQLite and owned OS-host fixtures put `pij-aaa-copilot-owner` before
+`pij-zzz-relay` in the same pane, then submit an unknown session from another host.
+The consumer must receive400 naming the relay, never a retryable hold naming the
+Copilot owner.
+
+- **RED M13**, [red-f1-immediate-hold.log](red-f1-immediate-hold.log): replace
+  `continue` with immediate `NativeSessionHold` return and remove the two comments;
+  retain the assignment only to preserve type inference. Compilation succeeded;
+  the assertion failed, **409 !=400**, naming `pij-aaa-copilot-owner`.
+- **RED requested deletion**, [red-f1-continue-deletion.log](red-f1-continue-deletion.log):
+  remove just the comments and `continue`, retaining the assignment. Compilation
+  succeeded;400 named `pij-aaa-copilot-owner` instead of `pij-zzz-relay`.
+- **GREEN restored guard**, [green-f1-f2.log](green-f1-f2.log): four focused hold
+  witnesses pass, including the new HTTP precedence witness. Both comments and
+  `continue` remain. Mutant-only unused-assignment warnings are not the failures.
+
+### F2 — HOLD requires a present matching pane
+
+Added one direct-roster test,
+`native_transient_hold_requires_present_matching_pane_at_roster_guard`, with
+same-process collisions for `(None,None)` and two different nonempty panes.
+It asserts the typed `Refused` variant, not merely an error.
+
+| Actual mutant run | Deleted term | Result |
+|---|---|---|
+| [red-f2-m3.log](red-f2-m3.log) | `&& claim.pane.is_some()` | exit101; `Err(NativeSessionHold(SeatId("pij-pane-owner")))` instead of `Refused` |
+| [red-f2-m4.log](red-f2-m4.log) | `&& seat.pane == claim.pane` | exit101; same assertion failure on the different-pane case |
+| [red-f2-m3-m4.log](red-f2-m3-m4.log) | both terms | exit101; same assertion failure |
+
+Each compiled and ran one test (0 passed/1 failed), not a compilation RED.
+Both terms restored: [green-f1-f2.log](green-f1-f2.log), exit0.
+This is explicitly a defence-in-depth tripwire: normal admission's upstream
+subagent guard rejects these same-process shapes before the roster scan.
+
+### F3 — bounded notification rate, no terminating retry deadline
+
+The new policy names `HOLD_ESCALATION_MS=600000` and
+`HOLD_ESCALATED_RETRY_MS=60000`. Both startup and bridge registration keep the
+initial10s quiet notice, then emit exactly one escalation on the first hold
+response at/after10 minutes and use60s abortable sleeps. There is no new timer,
+attempt limit or exit. Success/non-hold failure resets the episode and fast
+cadence; ordinary errors remain visible. A first observation already past10min
+shows the escalation instead of a stale initial notice.
+
+**RED against frozen pre-fix production modules**, with the new tests unchanged:
+
+```text
+red-f3-reporter.log: EXIT1, 0 passed/1 failed
+actual:   "[pij native] waiting for this pane's resumed Copilot session"
+expected: "[pij native] still waiting for this pane's resumed Copilot session after 10 min; pij delivery is unavailable in this window"
+
+red-f3-cadence.log: EXIT1, 0 passed/2 failed (startup and bridge)
+AssertionError: 2000 !== 60000
+```
+
+Receipts: [red-f3-reporter.log](red-f3-reporter.log),
+[red-f3-cadence.log](red-f3-cadence.log). These were assertions in running modules,
+not missing-export/import failures. Both production files were restored afterward.
+
+**GREEN**, [green-f3.log](green-f3.log):19 focused tests passed. The spawned actual
+extension processes use explicit SDK/HTTP/clock seams:599999ms no escalation,
+600000ms one escalation, actual60000ms sleep and no request at59999ms into it,
+second-hour holds without further lines, and EOF/native-shutdown cancellation
+of that pending minute sleep. Additional transitions prove non-hold failures and
+successful startup/bridge registration reset the episode/cadence and resume real
+fixture delivery/ACK. These are accelerated subprocess proofs, not a claim of
+two hours elapsed inside the real Copilot UI.
+
+The API paragraph now explicitly states no attempt/deadline limit, fork
+termination as the terminating bound, and continued60s retries after escalation.
+
+### Fix gates and current-native compatibility boundary
+
+All **requested** gates reran after composition and formatting, without concurrent
+Rust/tmux suites, using inherited PATH plus Cargo, `RUST_TEST_THREADS=1`,
+`VITEST_MAX_WORKERS=1`:
+
+| Gate | Observed result |
+|---|---|
+| fmt check → Clippy `--workspace --all-targets -- -D warnings` → CLI build → `cargo test --workspace` | exit0; **1119 passed,88 suites,8 ignored** — [gate-fix-rust.log](gate-fix-rust.log) |
+| `node --test .copilot/extensions/pij/*.test.mjs` | exit0; **227 passed,0 failed,3 skipped** — [gate-fix-native-js.log](gate-fix-native-js.log) |
+| `just self-check` | exit0 on this warm run; **241 Vitest files,5308 tests passed**, Windows84 passed, all11 smoke scenarios — [gate-fix-self-check.log](gate-fix-self-check.log) |
+
+Snapshot closing proof: `briefing.md SHA matches snapshots (cdf5f5b25001...)`.
+Report-only package audit still flags `git:github.com/ghoseb/pi-askuserquestion`
+(4 fail,13 warn); no package decision made. Three existing packet commits now
+warn for missing `Pij-Prime`: `f619fc05`, `08a18b97`, `2059d0da`. None was rewritten.
+The exact test-text comparison was repeated against `f619fc05`: both Rust files
+remain insertion-only within the compared test surfaces. F4 changed precisely
+two field labels, not measurement values.
+
+**Out-of-scope observation — Copilot1.0.85 composer drift:** the extra actual-native rerun launched the new extension and registered twice with HTTP200, then timed out at `initial empty composer` before `/restart` because1.0.85 uses horizontal rules and `❯`, while the shared `nativeComposer` parser recognizes `╻/┃/╹`. There were zero transient registration attempts, not a HOLD failure or fresh GREEN. [fix-native-ui-gap.json](fix-native-ui-gap.json) preserves the failure and old/new executable hashes; the earlier AC4 receipt remains proof for its recorded1.0.84-9 runtime. F3 is proven by accelerated extension subprocesses with explicit SDK/clock seams, not a fresh1.0.85 lifecycle run. Per prime's ruling, the shared parser and installed CLI remain unchanged; this drift is not pursued in plan151.
+
+### Fix harness harvest
+
+DL-001 is encoded in the independent precedence/pane witnesses and accelerated
+lifetime/cadence tests: a passing full suite alone did not defend those predicates.
+DL-002 is the measured upstream1.0.85 composer-format gap above. The next useful
+harness improvement is a versioned native-composer probe/fixture that reports
+unsupported UI immediately, rather than waiting60s. This remains a separate,
+explicit compatibility task; the scoped guard and escalation fixes are complete.

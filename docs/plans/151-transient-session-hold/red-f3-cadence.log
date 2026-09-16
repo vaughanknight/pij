@@ -1,0 +1,52 @@
+COMMAND: node --test '--test-name-pattern=actual extension (startup|bridge) hold escalates once' .copilot/extensions/pij/extension.test.mjs
+EXIT: 1
+✖ actual extension startup hold escalates once at ten minutes and aborts a minute retry in the second hour (92.315708ms)
+✖ actual extension bridge hold escalates once at ten minutes and aborts a minute retry in the second hour (86.929625ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 0
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 229.0315
+
+✖ failing tests:
+
+test at .copilot/extensions/pij/extension.test.mjs:480:3
+✖ actual extension startup hold escalates once at ten minutes and aborts a minute retry in the second hour (92.315708ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  2000 !== 60000
+  
+      at expectHold (file:///Users/jordanknight/pi-hacking/fs3-transient-hold/.copilot/extensions/pij/extension.test.mjs:417:10)
+      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+      at async TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-transient-hold/.copilot/extensions/pij/extension.test.mjs:501:4)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 2000,
+    expected: 60000,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at .copilot/extensions/pij/extension.test.mjs:480:3
+✖ actual extension bridge hold escalates once at ten minutes and aborts a minute retry in the second hour (86.929625ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  2000 !== 60000
+  
+      at expectHold (file:///Users/jordanknight/pi-hacking/fs3-transient-hold/.copilot/extensions/pij/extension.test.mjs:417:10)
+      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+      at async TestContext.<anonymous> (file:///Users/jordanknight/pi-hacking/fs3-transient-hold/.copilot/extensions/pij/extension.test.mjs:501:4)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 2000,
+    expected: 60000,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

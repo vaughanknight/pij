@@ -1,0 +1,61 @@
+COMMAND: just self-check
+EXIT: 0
+=== git:github.com/ghoseb/pi-askuserquestion ===
+✗ aggregate: fail (score=58, findings=20, 4970ms)
+  ⚠ lockfile-lint:policy: detected invalid host(s) for package: @anthropic-ai/sdk@0.91.1-a113c2e43a33c2a793dcf0014a78d1b20c6f41b3
+  ⚠ lockfile-lint:policy: expected: registry.npmjs.org
+  ⚠ lockfile-lint:policy: actual: ms-feed-17.pkgs.visualstudio.com
+  ⚠ lockfile-lint:policy: detected invalid host(s) for package: @aws-crypto/sha256-browser@5.2.0-d309a676248f5b245e4e857478c41f3f115a3f54
+  ⚠ lockfile-lint:policy: expected: registry.npmjs.org
+  ⚠ lockfile-lint:policy: actual: ms-feed-12.pkgs.visualstudio.com
+  ⚠ lockfile-lint:policy: detected invalid host(s) for package: @aws-crypto/sha256-js@5.2.0-8404ac4e69d84201343904e59dc6befb20f0e370
+  ⚠ lockfile-lint:policy: expected: registry.npmjs.org
+  ⚠ lockfile-lint:policy: actual: ms-feed-17.pkgs.visualstudio.com
+  ⚠ lockfile-lint:policy: detected invalid host(s) for package: @aws-crypto/supports-web-crypto@5.2.0-cf4f24af8ae3c92df7b08047263f09667856b64c
+  ⚠ npm-audit:@earendil-works/pi-coding-agent: @earendil-works/pi-coding-agent: moderate (undici)
+  ✗ npm-audit:@vitest/coverage-istanbul: @vitest/coverage-istanbul: critical (vitest)
+  ⚠ npm-audit:@vitest/mocker: @vitest/mocker: moderate (Vitest: Path Traversal / Arbitrary File Read via @vitest/mocker Redirect Mock)
+  ✗ npm-audit:nanoid: nanoid: high (nanoid: custom generators can loop indefinitely when size is zero)
+  ✗ npm-audit:undici: undici: high (undici vulnerable to downstream response desynchronization via retry interceptor; undici vulnerable to cross-user information disclosure and parse-time crash via degenerate private cache directives; undici vulnerable to CRLF Injection via blob-like body 'type' property)
+  ✗ npm-audit:vitest: vitest: critical (@vitest/mocker; When Vitest UI server is listening, arbitrary file can be read and executed; Vitest: Path Traversal / Arbitrary File Read via @vitest/mocker Redirect Mock)
+  · github-trust:no-token: GH_TOKEN unset — rate-limit at 60/hr may cause failures
+  ⚠ github-trust:no-license: ghoseb/pi-askuserquestion has no detected LICENSE
+  · scorecard:not-found: no Scorecard data for github.com/ghoseb/pi-askuserquestion (404)
+  · vetter:meta: agent skipped: PIJ_VET_SKIP_AGENT=1
+
+=== npm:pi-smart-fetch ===
+✓ aggregate: ok (score=100, findings=4, 161ms)
+  · lockfile-lint:no-lockfile: no package-lock.json — skipping lockfile-lint
+  · github-trust:not-github: source 'npm:pi-smart-fetch' is not a GitHub repo — skipping
+  · scorecard:not-found: no Scorecard data for npm/pi-smart-fetch (404)
+  · vetter:meta: agent skipped: PIJ_VET_SKIP_AGENT=1
+
+=== npm:@tintinweb/pi-subagents ===
+✓ aggregate: ok (score=100, findings=4, 211ms)
+  · lockfile-lint:no-lockfile: no package-lock.json — skipping lockfile-lint
+  · github-trust:not-github: source 'npm:@tintinweb/pi-subagents' is not a GitHub repo — skipping
+  · scorecard:not-found: no Scorecard data for npm/%40tintinweb%2Fpi-subagents (404)
+  · vetter:meta: agent skipped: PIJ_VET_SKIP_AGENT=1
+
+⚠ REVIEW (report-only, not blocking): 1/4 entry flagged — aggregate fail
+  • git:github.com/ghoseb/pi-askuserquestion: fail (4 fail, 13 warn) — keep, or: npm run pkg disable git:github.com/ghoseb/pi-askuserquestion
+just snapshots-check
+npm run snapshots:check
+
+> pij@0.1.0 snapshots:check
+> tsx harness/scripts/snapshot-check.ts
+
+✓ snapshot-check: briefing.md SHA matches snapshots (cdf5f5b25001...)
+just pij-commit-trailers
+node_modules/.bin/tsx harness/scripts/pij-commit-trailers.ts "$@"
+pij-commit-trailers: warn — 3 missing across 3 harness commit(s) since merge-base with main
+2059d0da6ea9be808d90dea62bffff2c2cf7c22b: missing Pij-Prime
+  Pij-Prime: cannot derive commit-time identity; do not substitute the current seat
+08a18b9735d72236eb27fd3c2259509f068377db: missing Pij-Prime
+  Pij-Prime: cannot derive commit-time identity; do not substitute the current seat
+f619fc05ca49d5cc0d127b38d568333fdb1e0267: missing Pij-Prime
+  Pij-Prime: cannot derive commit-time identity; do not substitute the current seat
+2059d0da6ea9be808d90dea62bffff2c2cf7c22b: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime
+08a18b9735d72236eb27fd3c2259509f068377db: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime
+f619fc05ca49d5cc0d127b38d568333fdb1e0267: Pij-Seat applicability unresolved (no unique registered native session); confirm whether the committer was the prime
+Advisory only: add derived trailers after a blank line alongside harness attribution; do not rewrite shared history automatically.
