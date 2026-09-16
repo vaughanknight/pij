@@ -789,6 +789,9 @@ send({ type: "ready", pid: process.pid });
 		expect(registered.data).not.toHaveProperty("binding");
 		const taught = await runPij(["inbox", "register"], env);
 		expect(taught.code).toBe(0);
+		// Plan 153 R1: the guidance names THIS harness and never collapses the two.
+		expect(taught.stdout).toContain(harness === "omp" ? "OMP" : "Pi");
+		expect(taught.stdout).not.toMatch(/pi\/omp/i);
 		expect(
 			(await http<{ seats: Descriptor[] }>("/v1/seats?scope=local")).data.seats.map(
 				(row) => row.id,
