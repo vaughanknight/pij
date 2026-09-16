@@ -517,13 +517,16 @@ impl RegistrationService {
                 .expect("validated native session");
             // An explicit address may not relabel a different conversation, even
             // when another row happens to match the claimed session.
-            if seats.iter().any(|seat| {
+            if let Some(seat) = seats.iter().find(|seat| {
                 seat.id.as_str() == claim.id
                     && seat
                         .harness_session
                         .as_deref()
                         .is_some_and(|old| old != session)
             }) {
+                if seat.tombstoned_at.is_some() {
+                    return Err(retired_refusal(seat));
+                }
                 return Err(native_refusal(
                     "seat id belongs to a different native session",
                 ));
@@ -720,13 +723,32 @@ impl RegistrationService {
         if let Some(error) = native_hold {
             return Err(error);
         }
-        let resuming = native
-            && existing.is_some_and(|seat| {
-                seat.harness_session == harness_session
-                    && (seat.proc != proc
-                        || seat.pane != claim.pane
-                        || seat.tombstoned_at.is_some())
-            });
+        let retired = existing.filter(|seat| seat.tombstoned_at.is_some());
+        if let Some(seat) = retired {
+            let continuous = (seat.harness == harness
+                && seat
+                    .harness_session
+                    .as_ref()
+                    .zip(harness_session.as_ref())
+                    .is_some_and(|(old, claimed)| old == claimed))
+                || seat
+                    .spawn_id
+                    .as_deref()
+                    .zip(claim.spawn_id.as_deref())
+                    .is_some_and(|(old, claimed)| !old.is_empty() && old == claimed)
+                || seat.proc.is_some_and(|old| Some(old) == proc);
+            if !continuous {
+                return Err(retired_refusal(seat));
+            }
+        }
+        let resuming = retired.is_some()
+            || native
+                && existing.is_some_and(|seat| {
+                    seat.harness_session == harness_session
+                        && (seat.proc != proc
+                            || seat.pane != claim.pane
+                            || seat.tombstoned_at.is_some())
+                });
         let mut descriptor = existing
             .cloned()
             .unwrap_or_else(|| SeatDescriptor::new(claimed_id, harness, claim.folder.clone()));
@@ -775,12 +797,15 @@ impl RegistrationService {
         if descriptor.effort.is_none() {
             descriptor.effort = claim.effort;
         }
-        if let Some(parent) = claim.parent.filter(|_| !native || existing.is_none()) {
+        if let Some(parent) = claim
+            .parent
+            .filter(|_| !resuming && (!native || existing.is_none()))
+        {
             descriptor.parent = Some(parent);
         }
         descriptor.relay = claim.relay;
         // Ordinary registration preserves only an unchanged current attested owner.
-        // Grants, transfers and revivals require verified native observation.
+        // Native-capability grants, transfers and revivals require verified native observation.
         // Compare before assignment: the clone still carries the incumbent's flag and tombstone.
         descriptor.native_extension_delivery = native
             || existing.is_some_and(|owner| {
@@ -898,7 +923,25 @@ impl RegistrationService {
             .put_reporting(descriptor.clone())
             .await
             .map_err(RegistrationError::Runtime)?;
-        if resuming {
+        if let Some(previous) = retired {
+            self.event_bus
+                .publish(Event {
+                    seq: None,
+                    v: wire::EVENT_VERSION,
+                    at: system_time_ms()?,
+                    kind: "seat.resumed".into(),
+                    seat: Some(descriptor.id.clone()),
+                    payload: serde_json::json!({
+                        "prior_reason": previous.tombstone_reason,
+                        "old_proc": previous.proc, "new_proc": descriptor.proc,
+                        "old_pane": previous.pane, "new_pane": descriptor.pane,
+                    })
+                    .to_string(),
+                })
+                .await
+                .map_err(RegistrationError::Runtime)?;
+        }
+        if native && resuming {
             let previous = existing.expect("resume has an existing seat");
             self.event_bus
                 .publish(Event {
@@ -949,6 +992,15 @@ impl RegistrationService {
         }
         Ok((descriptor, binding))
     }
+}
+
+fn retired_refusal(seat: &SeatDescriptor) -> RegistrationError {
+    RegistrationError::Refused(format!(
+        "seat {} is retired ({}, {}); a different session may not take it",
+        seat.id,
+        seat.tombstone_reason.as_deref().unwrap_or("unknown"),
+        seat.tombstoned_at.expect("retired seat"),
+    ))
 }
 
 fn native_refusal(reason: impl std::fmt::Display) -> RegistrationError {
@@ -1703,6 +1755,256 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn successful_registration_never_returns_a_tombstone() {
+        for harness in [
+            Harness::Omp,
+            Harness::Pi,
+            Harness::Claude,
+            Harness::Codex,
+            Harness::Copilot,
+        ] {
+            for state in ["new", "live", "retired"] {
+                let mut old = native_seat("pij-registration-invariant");
+                old.harness = harness;
+                old.native_extension_delivery = false;
+                if state == "retired" {
+                    old.tombstoned_at = Some(154);
+                    old.tombstone_reason = Some("observed-dead".into());
+                }
+                let seats = if state == "new" {
+                    Vec::new()
+                } else {
+                    vec![old.clone()]
+                };
+                let (service, registry) = native_service(seats, native_liveness()).await;
+                let mut claim = native_claim(old.id.as_str());
+                claim.harness = harness.as_str().into();
+                let (descriptor, _) = service
+                    .register_inner(
+                        claim,
+                        Some(SESSION.into()),
+                        super::RegistrationMode::Ordinary,
+                    )
+                    .await
+                    .expect("same-session observed registration succeeds");
+                assert!(
+                    descriptor.tombstoned_at.is_none(),
+                    "{harness:?}/{state}: successful registration returned {descriptor:?}"
+                );
+                assert_eq!(registry.get(&old.id).await.unwrap(), Some(descriptor));
+            }
+        }
+    }
+
+    async fn retired_session_resume_contract(harness: Harness, claimed_role: Option<&str>) {
+        let mut old = native_seat("pij-retired-session");
+        old.harness = harness;
+        old.native_extension_delivery = false;
+        old.parent = Some("pij-original-parent".into());
+        let (service, registry) = native_service(vec![old.clone()], native_liveness()).await;
+        service
+            .roles
+            .assert_role(&old.id, &old.id, Some("coder".into()))
+            .await
+            .unwrap();
+        old.tombstoned_at = Some(154);
+        old.tombstone_reason = Some("observed-dead".into());
+        registry.put(old.clone()).await.unwrap();
+        let conversation: pij_core::model::SeatId = "pij-telegram-chat-154".into();
+        service
+            .event_bus
+            .publish(pij_core::model::Event {
+                seq: None,
+                v: 1,
+                at: 1,
+                kind: "telegram.binding".into(),
+                seat: Some(conversation.clone()),
+                payload: serde_json::json!({"target":old.id,"outbound_msg_id":"before-resume"})
+                    .to_string(),
+            })
+            .await
+            .unwrap();
+        let spine = service.event_bus.raw_spine();
+        let binding = spine
+            .latest_matching(&conversation, &["telegram.binding"])
+            .await
+            .unwrap();
+        let mut claim = native_claim(old.id.as_str());
+        claim.harness = harness.as_str().into();
+        claim.pid = Some(OTHER_HOST.pid);
+        claim.proc_start = Some(OTHER_HOST.proc_start);
+        claim.pane = Some("%154-new".into());
+        claim.parent = Some("pij-unrelated-parent".into());
+        claim.role = claimed_role.map(str::to_string);
+        let (resumed, _) = service
+            .register_with_harness_session(claim, Some(SESSION.into()))
+            .await
+            .expect("saved session revives its address");
+        assert_eq!(
+            resumed.tombstoned_at, None,
+            "{harness:?} retained its tombstone"
+        );
+        assert_eq!(resumed.tombstone_reason, None);
+        assert_eq!(resumed.id, old.id);
+        assert_eq!(resumed.proc, Some(OTHER_HOST));
+        assert_eq!(resumed.pane.as_deref(), Some("%154-new"));
+        assert_eq!(resumed.parent, old.parent);
+        assert_eq!(resumed.role.as_deref(), Some("coder"));
+        assert_eq!(
+            service.roles.read_role(&old.id).await.unwrap().as_deref(),
+            Some("coder")
+        );
+        assert_eq!(
+            spine
+                .latest_matching(&conversation, &["telegram.binding"])
+                .await
+                .unwrap(),
+            binding
+        );
+        assert_eq!(
+            registry.get(&old.id).await.unwrap().unwrap().parent,
+            old.parent
+        );
+        let event = spine
+            .latest_matching(&old.id, &["seat.resumed"])
+            .await
+            .unwrap()
+            .expect("resume fact");
+        let payload: serde_json::Value = serde_json::from_str(&event.payload).unwrap();
+        assert_eq!(payload["prior_reason"], "observed-dead");
+        assert_eq!(payload["old_proc"], serde_json::json!(HOST));
+        assert_eq!(payload["new_proc"], serde_json::json!(OTHER_HOST));
+        assert_eq!(payload["old_pane"], "%137");
+        assert_eq!(payload["new_pane"], "%154-new");
+    }
+
+    #[tokio::test]
+    async fn retired_native_foreign_session_refusal_names_tombstone_even_with_same_process() {
+        let mut old = native_seat("pij-retired-native");
+        old.tombstoned_at = Some(154);
+        old.tombstone_reason = Some("observed-dead".into());
+        old.native_extension_delivery = false;
+        let (service, registry) = native_service(vec![old.clone()], native_liveness()).await;
+        let error = attest(
+            &service,
+            native_claim(old.id.as_str()),
+            Some("foreign-session"),
+            &native_tmux(),
+        )
+        .await
+        .expect_err("native foreign-session guard remains stronger than process continuity");
+        assert_eq!(
+            error.to_string(),
+            "seat pij-retired-native is retired (observed-dead, 154); a different session may not take it"
+        );
+        assert_eq!(registry.get(&old.id).await.unwrap(), Some(old));
+    }
+
+    #[tokio::test]
+    async fn retired_omp_session_resumes_with_bindings() {
+        retired_session_resume_contract(Harness::Omp, None).await;
+    }
+
+    #[tokio::test]
+    async fn retired_pi_session_resumes_with_bindings() {
+        retired_session_resume_contract(Harness::Pi, None).await;
+    }
+
+    #[tokio::test]
+    async fn retired_claude_session_resumes_with_bindings() {
+        retired_session_resume_contract(Harness::Claude, None).await;
+    }
+
+    #[tokio::test]
+    async fn retired_codex_session_resumes_with_bindings() {
+        retired_session_resume_contract(Harness::Codex, None).await;
+    }
+
+    #[tokio::test]
+    async fn retired_session_resume_does_not_replace_recorded_role() {
+        retired_session_resume_contract(Harness::Omp, Some("reviewer")).await;
+    }
+
+    #[tokio::test]
+    async fn retired_registration_accepts_spawn_or_observed_process_continuity() {
+        for proof in ["spawn", "process"] {
+            let mut old = native_seat("pij-retired-continuity");
+            old.harness = Harness::Omp;
+            old.native_extension_delivery = false;
+            old.harness_session = Some("previous-session".into());
+            old.spawn_id = Some("launch-154".into());
+            old.tombstoned_at = Some(154);
+            old.tombstone_reason = Some("closed".into());
+            let (service, _) = native_service(vec![old.clone()], native_liveness()).await;
+            let mut claim = native_claim(old.id.as_str());
+            claim.harness = "omp".into();
+            if proof == "spawn" {
+                claim.spawn_id = old.spawn_id;
+                claim.pid = Some(OTHER_HOST.pid);
+                claim.proc_start = Some(OTHER_HOST.proc_start);
+            }
+            let (resumed, _) = service
+                .register_with_harness_session(claim, Some("new-session".into()))
+                .await
+                .expect("independent continuity witness");
+            assert_eq!(resumed.tombstoned_at, None, "{proof}");
+            assert_eq!(resumed.harness_session.as_deref(), Some("new-session"));
+        }
+    }
+
+    #[tokio::test]
+    async fn retired_registration_does_not_treat_absence_or_foreign_harness_as_continuity() {
+        for shape in [
+            "foreign-session",
+            "missing-session",
+            "empty-spawn",
+            "missing-process",
+            "foreign-harness",
+            "recycled-pid",
+        ] {
+            let mut old = native_seat("pij-retired-refusal");
+            old.harness = Harness::Omp;
+            old.native_extension_delivery = false;
+            old.tombstoned_at = Some(154);
+            old.tombstone_reason = Some("observed-dead".into());
+            let mut claim = native_claim(old.id.as_str());
+            claim.harness = "omp".into();
+            claim.pid = Some(OTHER_HOST.pid);
+            claim.proc_start = Some(OTHER_HOST.proc_start);
+            let mut session = Some("foreign-session".to_string());
+            match shape {
+                "missing-session" => {
+                    old.harness_session = None;
+                    session = None;
+                }
+                "empty-spawn" => {
+                    old.spawn_id = Some(String::new());
+                    claim.spawn_id = Some(String::new());
+                }
+                "missing-process" => {
+                    old.proc = None;
+                    claim.pid = None;
+                    claim.proc_start = None;
+                }
+                "foreign-harness" => {
+                    claim.harness = "pi".into();
+                    session = old.harness_session.clone();
+                }
+                "recycled-pid" => {
+                    old.proc = Some(ProcIdentity {
+                        pid: OTHER_HOST.pid,
+                        proc_start: OTHER_HOST.proc_start - 1,
+                    });
+                }
+                _ => {}
+            }
+            let (service, registry) = native_service(vec![old.clone()], native_liveness()).await;
+            refused(service.register_with_harness_session(claim, session).await);
+            assert_eq!(registry.get(&old.id).await.unwrap(), Some(old), "{shape}");
+        }
+    }
+
+    #[tokio::test]
     async fn native_session_resume_lifts_tombstone_and_publishes_incarnation_change() {
         let mut old = native_seat("pij-durable");
         old.tombstoned_at = Some(1);
@@ -2442,7 +2744,7 @@ mod tests {
                     binding.previous_proc,
                     if change == 5 { None } else { old.proc }
                 );
-                assert_eq!(registered.tombstoned_at, old.tombstoned_at);
+                assert_eq!(registered.tombstoned_at, None);
                 assert_eq!(
                     registry.get(&old.id).await.expect("roster"),
                     Some(registered)

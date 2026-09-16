@@ -368,6 +368,122 @@ async fn death_sweep_matches_manual_candidates_and_commits_observation_once() {
     assert!(services.spine.tail(None, after).await.unwrap().is_empty());
 }
 
+struct SuspendedDeathProbe {
+    old_pid: u32,
+    replacement: ProcIdentity,
+    old_observations: AtomicUsize,
+    observed: tokio::sync::Notify,
+    release: tokio::sync::Notify,
+}
+
+#[async_trait]
+impl LivenessPort for SuspendedDeathProbe {
+    async fn proc_start(&self, pid: u32) -> Result<Option<u64>> {
+        if pid == self.old_pid {
+            // Suspend the final old-process observation, after the sweep has
+            // captured its raw snapshot and already found a death candidate.
+            if self.old_observations.fetch_add(1, Ordering::SeqCst) == 1 {
+                self.observed.notify_one();
+                self.release.notified().await;
+            }
+            Ok(None)
+        } else {
+            assert_eq!(pid, self.replacement.pid, "only the two incarnations exist");
+            Ok(Some(self.replacement.proc_start))
+        }
+    }
+}
+
+#[tokio::test]
+async fn death_sweep_preserves_registration_during_old_process_observation() {
+    let (mut services, _store) = services().await;
+    let mut expected = seat();
+    expected.harness_session = Some("saved-omp-session".into());
+    let before = services.registry.put(expected.clone()).await.unwrap();
+    let old_proc = expected.proc.unwrap();
+    let replacement = ProcIdentity {
+        pid: old_proc.pid + 1,
+        proc_start: old_proc.proc_start + 1,
+    };
+    let probe = Arc::new(SuspendedDeathProbe {
+        old_pid: old_proc.pid,
+        replacement,
+        old_observations: AtomicUsize::new(0),
+        observed: tokio::sync::Notify::new(),
+        release: tokio::sync::Notify::new(),
+    });
+    services.liveness = probe.clone();
+    let registration = crate::registration::RegistrationService::new(
+        services.registry.clone(),
+        services.liveness.clone(),
+        services.event_bus.clone(),
+        Vec::new(),
+        services.roles.clone(),
+    )
+    .with_native_lock(services.delivery.native_lock());
+    let claim = serde_json::from_value(json!({
+        "id": expected.id,
+        "harness": "omp",
+        "folder": expected.folder,
+        "pane": "%12",
+        "pid": replacement.pid,
+        "proc_start": replacement.proc_start,
+    }))
+    .expect("restart registration claim");
+
+    let (swept, registered) = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        tokio::join!(crate::death_sweep::sweep(&services), async {
+            probe.observed.notified().await;
+            let (registered, _) = registration
+                .register_with_harness_session(claim, expected.harness_session.clone())
+                .await
+                .expect("same-session restart registers while the old death probe is suspended");
+            assert_eq!(registered.id, expected.id);
+            assert_eq!(registered.proc, Some(replacement));
+            assert_eq!(registered.pane.as_deref(), Some("%12"));
+            assert_eq!(registered.tombstoned_at, None);
+            let committed = services.registry.get(&expected.id).await.unwrap().unwrap();
+            assert_eq!(committed.proc, Some(replacement));
+            assert_eq!(committed.tombstoned_at, None);
+            probe.release.notify_one();
+            committed
+        })
+    })
+    .await
+    .expect("registration and the interleaved sweep complete without sleeps");
+    let receipt = swept.expect("sweep handles the stale incarnation");
+    let current = services.registry.get(&expected.id).await.unwrap().unwrap();
+    assert_eq!(
+        current.tombstoned_at, None,
+        "the stale death observation must not retire the newly registered incarnation"
+    );
+    assert_eq!(
+        current, registered,
+        "the registration commit survives unchanged"
+    );
+    assert_eq!((receipt.before, receipt.after), (1, 1));
+    assert_eq!(receipt.candidates.len(), 1);
+    assert_eq!(receipt.candidates[0].seat, expected.id);
+    assert_eq!(receipt.candidates[0].process, "dead");
+    assert!(receipt.reaped.is_empty());
+    assert_eq!(receipt.unverifiable.len(), 1);
+    assert_eq!(receipt.unverifiable[0].seat, expected.id);
+    assert_eq!(receipt.unverifiable[0].reason, "incarnation-changed");
+    let events = services.spine.tail(None, before).await.unwrap();
+    assert!(
+        events
+            .iter()
+            .any(|event| event.kind == "seat.put" && event.seat.as_ref() == Some(&expected.id)),
+        "the restart must exercise the real registration mutation"
+    );
+    assert!(
+        events
+            .iter()
+            .all(|event| event.kind != "seat.tombstone" && event.kind != "death.notice"),
+        "stale death evidence emits neither a tombstone nor an obituary"
+    );
+}
+
 #[tokio::test]
 async fn death_sweep_notifies_living_parent_with_pinned_body_and_honest_receipt() {
     let (mut services, _store) = services().await;
