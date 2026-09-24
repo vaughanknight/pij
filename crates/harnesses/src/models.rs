@@ -512,6 +512,7 @@ pub(crate) fn models_for_harness(kind: Harness) -> Result<Vec<ModelRow>> {
             kind,
             "claude",
             &[
+                "claude-opus-5-5",
                 "claude-opus-5",
                 "claude-fable-5",
                 "claude-sonnet-5",
@@ -621,6 +622,16 @@ mod tests {
         assert!(rows.iter().any(|row| {
             row.runtime == "claude" && row.provider == "claude" && row.selector == "claude-fable-5"
         }));
+    }
+
+    #[test]
+    fn claude_catalog_offers_opus_5_5() {
+        let rows = super::models_for_harness(Harness::Claude).expect("claude aliases");
+        assert!(
+            rows.iter().any(|row| row.selector == "claude-opus-5-5"
+                && row.request_model_id == "claude-opus-5-5"),
+            "Opus 5.5 must be discoverable for claude spawns"
+        );
     }
 
     #[test]
