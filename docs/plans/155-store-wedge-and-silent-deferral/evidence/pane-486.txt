@@ -1,0 +1,58 @@
+
+
+  Ran 1 shell command
+
+⏺ /terms-of-use redirected to "not found". Trying the other likely URLs, one request each through the gate.
+
+  Ran 2 shell commands
+
+⏺ The Wowhead page only points elsewhere: the actual terms are maintained by "ZAM Network, LLC DBA Fanbyte". Getting that link.
+
+  Ran 1 shell command
+
+⏺ The terms live on corp.fanbyte.com, which isn't one of the Wowhead hosts the gate covers. Fetching it directly, once.
+
+  Ran 2 shell commands
+
+⏺ I'm noting the exact wording from Fanbyte's terms, which prohibit using crawlers, bots, or data mining tools to download content—directly applicable to what we're doing.
+
+  Ran 4 shell commands
+
+⏺ I've stopped the Wowhead crawl completely. Wowhead's terms explicitly prohibit downloading content with crawlers, even for private use, and whether to go on is your decision.
+
+  - Where the terms are: Wowhead's /tos page (fetched through the gate) only points to its parent company's terms at corp.fanbyte.com/legal/terms, last updated 2025-05-14. I
+    fetched that page once directly, since it isn't a Wowhead address.
+  - What they prohibit: downloading content "using any engine, software, tool, agent, device or mechanism (including spiders, robots, crawlers, data mining tools or the like)"
+    other than a normal browser, and they prohibit "datamine". Neither depends on whether the use is private.
+  - What they allow: use that is "personal … non-commercial … solely for your own internal use", with no reproducing or distributing. Keeping the data privately, backing it up to a
+    private GitHub release, or viewing it on a private LAN site isn't mentioned either way.
+  - Comments: they stay the posters' copyright, and other users may only view and use them through the site.
+  - What I stopped: the crawl script is no longer running, and the background fill is off. The roughly 8,000 cached pages are untouched.
+  - Your options:
+    a. stop crawling and keep the cached data for private use;
+    b. stop and delete it;
+    c. carry on, knowingly against the terms;
+    d. ask Wowhead/Fanbyte for permission or an API.
+
+    Tell me or the o-prime which you'd like. If you choose to resume, I'll restart the crawl.
+
+  The full write-up with exact quotes is in scratch/harness/s01-addon-docs/legal/wowhead-terms-answer.md, alongside the saved copy of the terms. It passed the gate and is pushed as
+  50e385c. I've sent it to s02, flagged the issue to the o-prime, and set my status card to hold.
+
+✻ Worked for 3m 8s · done 9:59 am
+
+※ recap: I own the addon docs and all Wowhead fetching for the Forever tracker. I've paused the Wowhead crawl because Wowhead's terms ban crawlers. Next, you decide: keep cached
+  data privately, delete it, resume, or ask Wowhead for permission.
+
+⏺ Background command "Watch for new gap work, blocks, or exit only" completed (exit code 0)
+
+⏺ That notification is the watcher seeing the crawl script exit, which was me stopping it. The Wowhead crawl stays paused until you decide on the terms-of-use question.
+
+✻ Cogitated for 3s · done 10:15 am
+                                                                                                                                            ✔ Update installed · Restart to update
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── doco ─
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  40% eldenring ⎇ main rs ⛓ pij-clinical-owl • Opus 5.5 • medium • 400k/1.0M • 4% ↻14:50
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 1 agent
+%486 2 53 57 180
