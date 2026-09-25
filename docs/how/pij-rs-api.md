@@ -89,6 +89,13 @@ The existing `GET /health` v2 response adds `data.retired_harnesses`, an array o
 
 ## Registration and tombstone continuity
 
+Native registration bounds each `ps` observation to **1 second** and the complete
+host/ancestry observation to **5 seconds**. These are fail-closed resource brakes,
+not identity policy; process-start sandwiches, executable and ancestry checks
+are unchanged. Timeout refusals name the observed PID and return HTTP 409 with
+`details.retryable:true`. Copilot extensions retry that existing typed response
+with ordinary registration backoff; it is not a `native-session` Hold.
+
 Every successful `/v1/register` returns and stores a live descriptor (`tombstoned_at: None`). An existing retired address is resumed only with the **same harness AND** at least one continuity witness: the same nonempty harness session (`HARNESS_SESSION_ID`, `harness_session` or `harnessSession`), the same nonempty `spawn_id`, or the recorded process incarnation corroborated by the daemon. Missing values and a matching pane alone prove nothing. Without continuity it returns HTTP400, v2 `error:"refused"`, with `seat <id> is retired (<reason>, <at>); a different session may not take it`, without changing the row; a different harness adds `; harness mismatch: row <h1>, claim <h2>` and is never adopted by a lift. Paneless Claude/Codex/Copilot session selection includes retired addresses, preferring live rows, then greatest `proc_start`, then ascending id; historical duplicates are not host owners. Their existing live-owner, session and pull-shape restrictions remain stronger than the continuity ladder. A lift clears both tombstone fields, keeps the address, harness, parent, authoritative role and Telegram bindings, updates the claimed process/pane, and emits exactly one resume event with `prior_reason`, `old_proc`, `new_proc`, `old_pane` and `new_pane`: `seat.native-resumed` for native Copilot, `seat.resumed` otherwise. Native ownership/HOLD checks, the verified spawn-prebind exception and the `revive` verb are unchanged.
 
 ## Native Copilot registration
