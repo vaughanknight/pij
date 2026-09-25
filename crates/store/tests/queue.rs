@@ -48,9 +48,10 @@ async fn deferral_diagnostics_contract(queue: &dyn Queue, spine: &dyn pij_core::
     for (reason, at, sampled) in [
         ("unrecognized", 1_000, true),
         ("unrecognized", 1_001, false),
-        ("composer-busy", 1_002, true),
-        ("composer-busy", 61_001, false),
-        ("composer-busy", 61_002, true),
+        ("composer-busy", 1_002, false),
+        ("composer-busy", 60_999, false),
+        ("composer-busy", 61_000, true),
+        ("unrecognized", 121_000, true),
     ] {
         let events = queue
             .record_delivery_deferral(id, reason, None, at, spine)
@@ -69,8 +70,8 @@ async fn deferral_diagnostics_contract(queue: &dyn Queue, spine: &dyn pij_core::
         [pij_core::model::DeliveryDeferral {
             job_id: id,
             msg_id: "preserved".into(),
-            reason: "composer-busy".into(),
-            count: 5,
+            reason: "unrecognized".into(),
+            count: 6,
             since_ms: 1_000,
         }]
     );
@@ -99,9 +100,12 @@ async fn deferral_diagnostics_contract(queue: &dyn Queue, spine: &dyn pij_core::
         .unwrap();
     assert_eq!(events.len(), 3);
     let payload: serde_json::Value = serde_json::from_str(&events[2].payload).unwrap();
-    assert_eq!(payload["deferral_count"], 5);
+    assert_eq!(payload["deferral_count"], 6);
     assert_eq!(payload["since_ms"], 1_000);
-    assert_eq!(payload["reason"], "composer-busy");
+    assert_eq!(payload["reason"], "unrecognized");
+    assert_eq!(payload["reason_changes"], 1);
+    let payload: serde_json::Value = serde_json::from_str(&events[1].payload).unwrap();
+    assert_eq!(payload["reason_changes"], 1, "reset after each sample");
 }
 
 #[tokio::test]
@@ -119,6 +123,58 @@ async fn sqlite_and_fake_deferrals_share_sampling_and_completion_contract() {
 }
 
 #[tokio::test]
+async fn alternating_deferrals_emit_at_most_sixty_events_per_hour() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.unwrap();
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).unwrap();
+    let spine = pij_store::SqliteSpine::new(pool);
+    let fake_queue = FakeQueue::new(1_024).unwrap();
+    let fake_spine = pij_testkit::fakes::FakeSpine::new();
+    for (queue, spine) in [
+        (&queue as &dyn Queue, &spine as &dyn pij_core::ports::Spine),
+        (&fake_queue, &fake_spine),
+    ] {
+        let seat = SeatId::from("pij-alternating");
+        let id = queue
+            .enqueue(job(
+                "delivery:pij-alternating",
+                seat.as_str(),
+                "alternating",
+            ))
+            .await
+            .unwrap();
+        let mut events = Vec::new();
+        for attempt in 0..720_u64 {
+            let reason = if attempt % 2 == 0 {
+                "human-typing"
+            } else {
+                "composer-busy"
+            };
+            events.extend(
+                queue
+                    .record_delivery_deferral(id, reason, None, 1_000 + attempt * 5_000, spine)
+                    .await
+                    .unwrap(),
+            );
+        }
+        assert_eq!(
+            events.len(),
+            60,
+            "reason alternation cannot bypass the job clock"
+        );
+        for (index, event) in events.iter().enumerate() {
+            let payload: serde_json::Value = serde_json::from_str(&event.payload).unwrap();
+            assert_eq!(payload["reason"], "human-typing");
+            assert_eq!(payload["reason_changes"], if index == 0 { 0 } else { 12 });
+        }
+        let facts = queue.delivery_deferrals(&seat).await.unwrap();
+        assert_eq!(facts[0].count, 720);
+        assert_eq!(facts[0].reason, "composer-busy");
+        assert_eq!(facts[0].since_ms, 1_000);
+    }
+}
+
+#[tokio::test]
 async fn deferrals_survive_reopen_and_terminal_rows_retain_history() {
     let fresh = FreshStore::new();
     let pool = pij_store::open(&fresh.path()).await.unwrap();
@@ -131,6 +187,13 @@ async fn deferrals_survive_reopen_and_terminal_rows_retain_history() {
         .record_delivery_deferral(id, "tap-unowned", None, 1_000, &spine)
         .await
         .unwrap();
+    assert!(
+        queue
+            .record_delivery_deferral(id, "composer-busy", None, 1_001, &spine)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     pool.close().await;
 
     let pool = pij_store::open(&fresh.path()).await.unwrap();
@@ -138,15 +201,25 @@ async fn deferrals_survive_reopen_and_terminal_rows_retain_history() {
     let spine = pij_store::SqliteSpine::new(pool.clone());
     assert!(
         queue
-            .record_delivery_deferral(id, "tap-unowned", None, 1_001, &spine)
+            .record_delivery_deferral(id, "composer-busy", None, 1_002, &spine)
             .await
             .unwrap()
             .is_empty(),
         "restart must not reset the rate limiter"
     );
     let facts = queue.delivery_deferrals(&seat).await.unwrap();
-    assert_eq!(facts[0].count, 2);
+    assert_eq!(facts[0].count, 3);
     assert_eq!(facts[0].since_ms, 1_000);
+    let events = queue
+        .record_delivery_deferral(id, "human-typing", None, 61_000, &spine)
+        .await
+        .unwrap();
+    let payload: serde_json::Value = serde_json::from_str(&events[0].payload).unwrap();
+    assert_eq!(
+        payload["reason_changes"], 2,
+        "unsampled changes survive restart"
+    );
+    assert_eq!(payload["reason"], "human-typing");
     assert_eq!(
         queue
             .claim(&[body.kind], "reader")
@@ -173,7 +246,7 @@ async fn deferrals_survive_reopen_and_terminal_rows_retain_history() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(history, ("tap-unowned".into(), 2, 1_000));
+    assert_eq!(history, ("human-typing".into(), 4, 1_000));
 }
 
 #[tokio::test]

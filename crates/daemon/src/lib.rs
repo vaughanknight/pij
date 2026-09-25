@@ -54,6 +54,9 @@ pub const BUILD: &str = concat!("pij-rs ", env!("CARGO_PKG_VERSION"));
 /// File naming the exact process that won the daemon bind.
 pub const DAEMON_RUNTIME_FILE: &str = "daemon.runtime.json";
 
+/// One shared grace period for admitted work and both store pools after producers stop.
+pub const SHUTDOWN_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// Durable process identity and launch facts used by `pij daemon bounce`.
 ///
 /// The pid and start stamp are indivisible: signalling a pid without first
@@ -218,15 +221,34 @@ impl Daemon {
                     })?
             },
         );
-        // Even failed producer joins must drain admitted, cancellation-shielded writes.
-        let admitted = self.delivery.flush().await;
-        self.event_bus.flush().await;
-        // Closing waits for acquired transactions and refuses writes that had
-        // not acquired yet. No detached old writer may cross daemon shutdown.
-        for pool in self.store_pools {
-            pij_store::migrate::close(&pool).await;
+        // Join work we own first. Both this join and physical pool cleanup share
+        // one deadline: leaked leases must never turn stop into another wedge.
+        let deadline = tokio::time::Instant::now() + SHUTDOWN_DRAIN_TIMEOUT;
+        let admitted = tokio::time::timeout_at(deadline, async {
+            let admitted = self.delivery.flush().await;
+            self.event_bus.flush().await;
+            admitted
+        })
+        .await;
+        let (spine_closed, background_closed) = tokio::join!(
+            pij_store::migrate::close(&self.store_pools[0], deadline),
+            pij_store::migrate::close(&self.store_pools[1], deadline),
+        );
+        if admitted.is_err() || !spine_closed || !background_closed {
+            // Role-labelled counts may refer to the same configured pool.
+            let checked_out = |pool: &pij_store::StorePool| {
+                u64::from(pool.size()).saturating_sub(pool.num_idle() as u64)
+            };
+            eprintln!(
+                "pij-rs shutdown drain expired after {}ms; spine_checked_out={} background_checked_out={}; continuing shutdown",
+                SHUTDOWN_DRAIN_TIMEOUT.as_millis(),
+                checked_out(&self.store_pools[0]),
+                checked_out(&self.store_pools[1]),
+            );
         }
-        admitted?;
+        if let Ok(admitted) = admitted {
+            admitted?;
+        }
         served?;
         drained?;
         bound?;

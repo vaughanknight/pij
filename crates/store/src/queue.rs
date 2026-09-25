@@ -704,7 +704,7 @@ impl Queue for SqliteQueue {
         owned_write(async move {
             let mut tx = begin_write(&pool).await?;
             let row = sqlx::query(
-                "SELECT serial_key, dedupe_key, deferral_reason, deferral_event_at_ms \
+                "SELECT serial_key, dedupe_key, deferral_reason, deferral_event_at_ms, deferral_reason_changes \
              FROM jobs WHERE id = ?1 AND state IN ('pending', 'running') \
                AND kind = 'delivery:' || serial_key",
             )
@@ -719,20 +719,25 @@ impl Queue for SqliteQueue {
             let previous: Option<String> = row.try_get("deferral_reason").map_err(adapter_error)?;
             let last_event: Option<i64> =
                 row.try_get("deferral_event_at_ms").map_err(adapter_error)?;
-            let publish = previous.as_deref() != Some(reason.as_str())
-                || last_event.is_none_or(|last| {
-                    at.saturating_sub(last) >= pij_core::delivery::DEFERRAL_EVENT_INTERVAL_MS as i64
-                });
+            let reason_changes = row
+                .try_get::<i64, _>("deferral_reason_changes")
+                .map_err(adapter_error)?
+                + i64::from(previous.as_deref().is_some_and(|previous| previous != reason));
+            let publish = last_event.is_none_or(|last| {
+                at.saturating_sub(last) >= pij_core::delivery::DEFERRAL_EVENT_INTERVAL_MS as i64
+            });
             let updated = sqlx::query(
                 "UPDATE jobs SET deferral_reason = ?2, deferral_count = deferral_count + 1, \
                  deferral_since_ms = COALESCE(deferral_since_ms, ?3), \
-                 deferral_event_at_ms = CASE WHEN ?4 THEN ?3 ELSE deferral_event_at_ms END \
+                 deferral_event_at_ms = CASE WHEN ?4 THEN ?3 ELSE deferral_event_at_ms END, \
+                 deferral_reason_changes = CASE WHEN ?4 THEN 0 ELSE ?5 END \
              WHERE id = ?1 RETURNING deferral_count, deferral_since_ms",
             )
             .bind(id)
             .bind(&reason)
             .bind(at)
             .bind(publish)
+            .bind(reason_changes)
             .fetch_one(&mut *tx)
             .await
             .map_err(adapter_error)?;
@@ -755,6 +760,7 @@ impl Queue for SqliteQueue {
                     &seat,
                     draft_sha.as_deref(),
                     at as u64,
+                    reason_changes as u64,
                 );
                 event.seq = Some(crate::spine::append_in_transaction(&mut tx, &event).await?);
                 events.push(event);

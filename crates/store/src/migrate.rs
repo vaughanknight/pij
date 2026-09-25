@@ -31,7 +31,7 @@ use pij_core::error::{PijError, Result};
 pub type StorePool = Pool<Sqlite>;
 
 /// The schema version this binary speaks.
-pub const SCHEMA_VERSION: u32 = 21;
+pub const SCHEMA_VERSION: u32 = 22;
 
 /// The embedded migration set. Compiled in, so a binary always carries the
 /// schema it expects rather than trusting a directory to be present.
@@ -55,17 +55,21 @@ pub(crate) async fn owned_write<T: Send + 'static>(
         })?
 }
 
-/// Close the pool and wait until every physical connection has finished.
+/// Close the pool and drain physical connections until the shared shutdown deadline.
 ///
-/// sqlx 0.8.6 can over-release idle-connection semaphore permits during close,
-/// allowing `Pool::close` to finish while a checked-out writer remains. Size is
-/// decremented only after the SQLite worker has shut down, so it is the drain
-/// witness. The pool is already closed: no new acquisition can prolong the wait.
-pub async fn close(pool: &StorePool) {
-    pool.close().await;
-    while pool.size() != 0 {
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+/// sqlx 0.8.6 can return from `Pool::close` with a checked-out writer remaining.
+/// Size is a secondary drain witness, never an unbounded wait: a leaked lease or
+/// stalled SQLite worker must not prevent stop/restart. Returns false on expiry;
+/// the composition root reports the remaining leases once for the entire drain.
+pub async fn close(pool: &StorePool, deadline: tokio::time::Instant) -> bool {
+    tokio::time::timeout_at(deadline, async {
+        pool.close().await;
+        while pool.size() != 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .is_ok()
 }
 
 async fn clean_connection(

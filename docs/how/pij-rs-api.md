@@ -54,6 +54,12 @@ absence of a response is not permission to duplicate it. Pool release/acquisitio
 flushes pending rollback work and repairs any remaining sqlx transaction depth
 before reuse, logging `recovery_count` for each detected connection.
 
+After producers stop, shutdown gives tracked delivery/publication work and both
+store pools one shared five-second drain deadline. On expiry it logs one line
+with role-labelled checked-out connection counts and continues shutdown; the
+roles can share a pool. Normal drains preserve admitted writes, but an expired
+drain cannot promise their completion. It never waits forever for a leaked lease.
+
 Every newly emitted daemon stdout/stderr line has a UTC RFC 3339 prefix,
 including multiline diagnostics. Existing appended log history is not rewritten.
 Orderly shutdown and panic unwind drain partial lines; SIGKILL cannot promise it.
@@ -377,9 +383,10 @@ historical diagnostics. Explicit extension `/v1/hold` scheduling remains in
 `held[]`; it is not counted as a daemon drain attempt.
 
 The job fact and any sampled `delivery.held` event commit atomically. First
-deferral and reason changes emit immediately; the same reason emits at most once
-per minute per job, surviving daemon restart. These events add `job_id` and
-`deferral_count` alongside `reason` and `since_ms`; a count is not a delivery ACK.
+deferral emits immediately, then at most one event per 60 seconds per job,
+regardless of reason changes and surviving daemon restart. Events add `job_id`,
+`deferral_count` and `reason_changes` (transitions since the previous event, zero
+on the first) alongside the current `reason` and `since_ms`; counts are not ACKs.
 Deferrals include composer safety, missing binding/pane/transport, pending
 consent, and transport errors. Diagnostic publication failure cannot bypass the
 original retry/backoff or consent policy.

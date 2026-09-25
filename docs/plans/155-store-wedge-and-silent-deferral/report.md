@@ -234,3 +234,80 @@ after a durable reservation, and shutdown must wait for physical resource
 completion rather than trusting an API's closed flag. Their failure injections
 now remain as deterministic regressions; deferral facts and timestamped output
 make the next incident diagnosable without guessing from an idle badge.
+
+## Fix round
+
+F1 replaces the unbounded physical-pool drain with one shared five-second
+deadline for tracked delivery/publication joins and both pool closes, after
+producer shutdown. Expiry logs one line with role-labelled checked-out counts
+and continues; normal admitted writes still drain before return. The previous
+claim that closure prevents an indefinite wait was wrong: it prevents growth,
+not a leaked lease. Expiry cannot promise completion of outstanding writes.
+
+Tracked delivery/publication work is joined before pool cleanup. Standalone
+`owned_write` tasks have no task registry; the bounded physical drain remains
+their fallback without introducing another write-admission registry.
+
+F2 derives the delayed process-observer fixture from 30% of
+`PROCESS_OBSERVATION_TIMEOUT`; production limits remain 1s per process / 5s
+per host. Virtual-clock tests retain deadline-boundary coverage.
+
+F3 samples against the job's clock regardless of reason. Migration 0022 retains
+pending reason-transition counts across restart; each event reports the current
+reason and `reason_changes` since the last event (first event zero). First
+deferral emits immediately, then at most one event per 60 seconds per job.
+
+F4 coverage boundary: native inbox-pull holds and `backoff_held` do not increment
+the durable deferral counter; native holds return reasons and are lease-bounded,
+while `backoff_held` terminates at `HELD_ATTEMPT_LIMIT`. No behavior change.
+
+### Behavioral proof
+
+- F1 RED: a real private daemon with both pool connections held exceeded the
+  six-second ceiling (`6.001334208s`, 0 passed / 1 failed). GREEN: the same case
+  and normal detached-write completion both pass (2/2, 5.12s); expiry emitted:
+  `pij-rs shutdown drain expired after 5000ms; spine_checked_out=1 background_checked_out=1; continuing shutdown`.
+- `cargo test -p pij-daemon --test review_regressions`: **20/20 runs passed** at
+  default parallelism, 14 tests each, zero hangs. Seven runs took roughly
+  5.5–5.6s in the test suite; successful-test stderr is captured, so this receipt
+  does not claim zero drain expiries. Total command wall time: 84.545s.
+- F3 RED: 720 alternating attempts emitted 720 events, expected 60. GREEN:
+  720 attempts at 5s intervals emit exactly 60 events against SQLite and the
+  fake; later samples report 12 transitions each. All four deferral tests pass,
+  including restart preservation, atomic failure, and terminal projection.
+- Default-parallel `cargo test --workspace`: exit 0, **1185 reported passes,
+  0 failures**, 8 ignored / 93 filtered across 92 result summaries, 184.07s.
+  Counts include helper subprocess summaries, not unique tests. The revised
+  observer fixture and both shutdown tests pass within this full run.
+- `cargo fmt --all --check`, strict workspace/all-target Clippy, and the native
+  CLI build pass. Native Node suite: **256 passed / 3 Linux-only skipped**,
+  0 failed, 9.06s. No isolated rerun was needed for these gates.
+
+[Compact fix-round receipts](fix-round-proof.json) retain the per-run results
+and complete Rust result-summary inventory. Original release evidence above
+remains historical; these fresh receipts supersede its gate verdict.
+
+Harness retrospective (DL-001): closing admission prevents growth, not
+termination. The retained stalled-resource test now proves the recovery path's
+bound; normal-completion proof separately defends durability. The observation
+was persisted in the compact ledger and drained. The failed RED fixture's
+private key/store directory was removed; no production resources were touched.
+
+### Final canonical gate
+
+Warm `just self-check` **exit 0**, 140.73s: 244 Vitest files / 5308 tests passed,
+4 files / 22 tests skipped; native 256 passed / 3 Linux-only skipped; Windows
+focused 84 passed / 2 skipped, with all portable stages passing; all 11 smokes
+passed. No gate needed an isolated rerun.
+
+Closing snapshot proof:
+`✓ snapshot-check: briefing.md SHA matches snapshots (cdf5f5b25001...)`.
+The report-only package audit still flags one of four packages
+(`pi-askuserquestion`: 4 fail / 13 warn). Biome schema skew is informational.
+Historical missing-prime trailer warnings remain on `8eef0985`, `bd5afa23`,
+and `62aba16f`; their attribution was not invented or rewritten.
+
+Fix committed with fresh `Pij-Seat: pij-worthy-brandon`,
+`Pij-Prime: pij-far-jackal`, and
+`Pij-Plan: 155-store-wedge-and-silent-deferral` trailers; the final handoff names
+the commit containing this report and its compact evidence.

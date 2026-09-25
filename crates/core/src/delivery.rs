@@ -97,8 +97,8 @@ pub fn parked_events(
 /// queued for a named inbox pull instead of racing a machine-speed timeout.
 pub const MAX_TYPED_FRAME_BYTES: usize = 8 * 1024;
 
-/// Repeated identical delivery deferrals publish at most once per minute per job.
-/// The first attempt and a reason transition always publish immediately.
+/// Delivery deferrals publish at most once per minute per job, regardless of reason.
+/// The first attempt publishes immediately; later samples summarize reason changes.
 pub const DEFERRAL_EVENT_INTERVAL_MS: u64 = 60_000;
 
 /// Build the sampled held fact from the queue's durable diagnostic authority.
@@ -108,6 +108,7 @@ pub fn delivery_deferral_event(
     seat: &SeatId,
     draft_sha: Option<&str>,
     at: u64,
+    reason_changes: u64,
 ) -> crate::model::Event {
     crate::model::Event {
         seq: None,
@@ -122,6 +123,7 @@ pub fn delivery_deferral_event(
             "reason": deferral.reason,
             "since_ms": deferral.since_ms,
             "deferral_count": deferral.count,
+            "reason_changes": reason_changes,
             "last_edit_at": null,
             "remaining_ms": null,
             "draft_sha": draft_sha,

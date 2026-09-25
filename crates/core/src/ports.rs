@@ -386,7 +386,8 @@ pub trait Queue: Send + Sync {
     /// rows are unchanged. Count and first-deferral time survive restarts.
     ///
     /// Commit the diagnostic and a sampled `delivery.held` event together: first
-    /// attempt, reason transitions, and once per minute for the same reason.
+    /// attempt, then at most once per minute per job regardless of reason. Each
+    /// sample carries the current reason and changes since the previous sample.
     /// Returned events already carry their durable sequence; publish with the
     /// existing committed-event bus. Real queue/spine must share one store; the
     /// fake appends before infallible mutation under the publisher ordering lock.

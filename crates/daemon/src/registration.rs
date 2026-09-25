@@ -3130,7 +3130,7 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn native_ps_admits_a_600ms_observation_without_weakening_identity() {
+    async fn native_ps_admits_a_delayed_observation_without_weakening_identity() {
         let (service, registry) = native_service(Vec::new(), native_liveness()).await;
         let mut claim = native_claim("pij-slow-observer");
         claim.pane = None;
@@ -3142,7 +3142,14 @@ mod tests {
                 |pid| async move {
                     tokio::task::spawn_blocking(move || {
                         let mut ps = std::process::Command::new("/bin/sh");
-                        ps.args(["-c", "/bin/sleep 0.6; printf '41 copilot /opt/copilot\\n'"]);
+                        let delay = super::PROCESS_OBSERVATION_TIMEOUT.mul_f64(0.3);
+                        ps.args([
+                            "-c",
+                            &format!(
+                                "/bin/sleep {}; printf '41 copilot /opt/copilot\\n'",
+                                delay.as_secs_f64()
+                            ),
+                        ]);
                         super::read_native_process_using(pid, &mut ps)
                     })
                     .await
@@ -3150,7 +3157,7 @@ mod tests {
                 },
             )
             .await;
-        let (seat, _) = result.expect("600ms ps response must fit the bounded host observation");
+        let (seat, _) = result.expect("delayed ps response must fit the bounded host observation");
         assert_eq!(seat.proc, Some(HOST));
         assert!(seat.native_extension_delivery);
         assert_eq!(
