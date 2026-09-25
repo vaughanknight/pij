@@ -388,7 +388,9 @@ regardless of reason changes and surviving daemon restart. Events add `job_id`,
 `deferral_count` and `reason_changes` (transitions since the previous event, zero
 on the first) alongside the current `reason` and `since_ms`; counts are not ACKs.
 Deferrals include composer safety, missing binding/pane/transport, pending
-consent, and transport errors. Diagnostic publication failure cannot bypass the
+consent, and transport errors. Not counted here: native Copilot inbox-pull holds
+(the reason is returned in the pull response and `native_receiver_reason` in
+`pij state`) and held-for-approval socket backoff, which stops at its attempt limit. Diagnostic publication failure cannot bypass the
 original retry/backoff or consent policy.
 Like other atomic queue/spine mutations, counted deferral publication refuses a
 real Queue paired with a fake Spine (`E-RS-INBOX-AUTHORITY-SPLIT`), rather than

@@ -394,3 +394,167 @@ cargo clippy --workspace --all-targets -- -D warnings ; just self-check
 ```
 
 Production daemon never contacted; every daemon in every probe was private and ephemeral. Both review worktrees removed.
+
+---
+
+# Round 2
+
+Range `8eef0985..99d95fc2`, one commit. Fresh detached worktree at `99d95fc2`, worktree-local deps and `CARGO_TARGET_DIR`. Machine load ran 39–86 on 16 cores throughout; the build itself landed at load 85.66. Every result below states its load, and nothing is counted from a rerun that isn't disclosed.
+
+## Verdict
+
+**APPROVE.** All four findings are fixed, each with a probe I ran myself, and the workspace gate I could not certify in round 1 now completes clean. Three report-only observations follow; none blocks.
+
+The F1 fix is the interesting one, and it is better than the minimum I asked for: rather than only bounding the pool drain, it puts one named deadline across *both* the tracked-work join and both pool closes, so shutdown as a whole has a ceiling instead of each piece having its own. The API doc states the cost of that honestly — "an expired drain cannot promise their completion" — which is the part that would have been tempting to leave out.
+
+| # | Severity | Location | Summary |
+|---|---|---|---|
+| R2-1 | report-only | `crates/daemon/src/lib.rs:239-247` | The expiry line reports `size - num_idle`, but the drain loop waits on `size() != 0`. In the only expiry mode I could actually observe, sqlx reports `size=1, num_idle=1`, so the line prints `0`. |
+| R2-2 | report-only | `crates/core/src/delivery.rs:126` | `reason_changes` has no reader anywhere in the repo. |
+| R2-3 | report-only | `docs/how/pij-rs-api.md:383-391` | The F4 coverage boundary is recorded in `report.md` but not next to the deferral-source enumeration that implies the opposite. |
+
+---
+
+## F1 — the shutdown drain has a named deadline
+
+### The bound, measured by my own probe
+
+I wrote my own test rather than rerun theirs. It leaks every lease both live pools can grant, never returns them, and measures wall-clock across `shutdown()`:
+
+```text
+REVIEWER-PROBE leaked 2 leases; s0_size=1 s1_size=1
+pij-rs shutdown drain expired after 5000ms; spine_checked_out=1 background_checked_out=1; continuing shutdown
+REVIEWER-PROBE shutdown returned after 5.095121125s; outcome_ok=false
+test store_shutdown_tests::reviewer_shutdown_bound_with_leaked_leases ... ok
+```
+
+`SHUTDOWN_DRAIN_TIMEOUT` + 95 ms, at load 43, with the leases never coming back. Round 1's equivalent condition ran 2 h 08 m.
+
+One note on my own probe, because it changed what it proves: my first version asserted `shutdown().unwrap()`, and it failed — starving *every* lease also starves the daemon's own background reconciliation, so `shutdown()` returns `Err(... pool timed out while waiting for an open connection)`. That is my fixture being more hostile than reality, not a defect: the deadline still fired at 5000 ms and shutdown still returned. I rewrote the probe to assert the bound and report the outcome separately (`outcome_ok=false` above) rather than quietly weaken the scenario.
+
+### MUTANT F — the deadline is load-bearing
+
+Reverting `migrate::close` to the round-1 shape (ignore the deadline parameter, poll `size()` forever):
+
+```text
+MUTANT F applied
+test store_shutdown_tests::shutdown_drains_detached_sql_before_returning ... ok
+test store_shutdown_tests::shutdown_returns_with_connections_never_returned ... FAILED
+REVIEWER-PROBE leaked 2 leases; s0_size=1 s1_size=1
+test store_shutdown_tests::reviewer_shutdown_bound_with_leaked_leases has been running for over 60 seconds
+```
+
+Their new test fails, my probe hangs to the 240 s ceiling, and the *normal* drain test still passes — so the new test discriminates the bound specifically rather than the drain generally. Restored, `dirty=0`.
+
+### Repeat runs
+
+`cargo test -p pij-daemon --test review_regressions`, default parallelism, unmodified source, **12 consecutive runs at load 76**:
+
+| | round 1 (`6d46c110`) | round 2 (`99d95fc2`) |
+|---|---|---|
+| runs | 9 | 12 |
+| hangs | 2 | **0** |
+| 14/14 passed | 7 | 12 |
+
+Nine runs finished in 0.59–0.78 s; three took 5.59–5.64 s and printed the expiry line. That 5.5 s tail is the deadline being spent, and the coder disclosed it unprompted ("this receipt does not claim zero drain expiries") rather than presenting 20 green runs as if nothing fired. Correct call — it is what led me to R2-1.
+
+### R2-1: the line reports a different quantity than the loop tests
+
+The drain waits on `size() != 0`. The expiry line prints `size() - num_idle()`. Those disagree in exactly one case, and it is the case that actually happens. I added a temporary raw dump next to the existing line and ran until expiries appeared — twice, byte-identical:
+
+```text
+REVIEWER-PROBE raw: admitted_err=false spine_closed=false background_closed=true \
+  s0_size=1 s0_idle=1 s1_size=0 s1_idle=1
+pij-rs shutdown drain expired after 5000ms; spine_checked_out=0 background_checked_out=0; continuing shutdown
+```
+
+So: the tracked-work join was fine (`admitted_err=false`), the background pool closed, and the spine pool's drain expired holding `size=1` — while simultaneously reporting that connection as **idle**. That is precisely the sqlx 0.8.6 over-release bookkeeping the code's own doc comment describes. `1 - 1 = 0`, so the operator-facing line reads `spine_checked_out=0 background_checked_out=0`: an expiry that reports nothing was holding anything.
+
+Across 20 runs of `review_regressions` I observed 5 expiries, **all** printing `0/0`. The count is accurate when a lease is genuinely held — my leaked-lease probe printed `1/1` — but the genuine-leak case is the one I had to construct, and the phantom case is the one that occurs on its own. Cheapest fix: print what the loop actually waited on (`size`, or `size` and `num_idle` both). Report-only: shutdown completes, the line fires, the deadline works; only its payload is uninformative. Instrumentation removed, `dirty=0`.
+
+### Your explicit question: joins or polls?
+
+**Both, in that order** — and the deadline does make the polling acceptable.
+
+`Daemon::shutdown` now joins the work it owns first (`delivery.flush()`, `event_bus.flush()`) inside `timeout_at(deadline, …)`, then runs both `migrate::close` calls against the *same* deadline. The polled `pool.size()` loop survives only as the fallback for standalone `owned_write` tasks, which have no registry to join.
+
+That is the right trade. Adding a write-admission registry would put global mutable bookkeeping on every store write to buy something only shutdown consumes — and round 1's defect was caused by trusting a derived signal (`size()`) as a liveness dependency, not by polling as such. With the deadline the poll is demoted from "the thing shutdown waits on" to "a witness we consult until the clock runs out", which is the correct status for a number sqlx does not guarantee. R2-1 is the residue of that same distrust: since `size()` is only a witness, the log should quote it rather than arithmetic derived from it.
+
+Two consequences worth stating plainly, both already in the API doc: a slow-but-legitimate flush now eats the same budget the pool close needs, and on expiry the flush's error is dropped rather than returned (`if let Ok(admitted) = admitted`). Both are the intended cost of "stop must terminate", and the doc says so in the sentence about not promising completion.
+
+---
+
+## F2 — fixture derived from the budget
+
+`PROCESS_OBSERVATION_TIMEOUT.mul_f64(0.3)` — 300 ms against the 1 s production limit, both limits unchanged (1 s per process, 5 s per host). Margin goes from 40% to 70%, and the test is renamed off the hardcoded number, so the next budget change can't leave a lying test name behind.
+
+**10/10 runs, load 41–53**, 0.34–0.39 s each. The whole test now finishes faster than the old fixture's sleep alone. Round 1's failure was at load 65; this has room.
+
+---
+
+## F3 — sampling is per job, and I pushed it past the ask
+
+You asked for alternating reasons over an hour at 5 s. I ran that, plus two cases the fix could plausibly have missed, counting `spine_events` rows directly rather than trusting returned values:
+
+```text
+STEADY:            attempts=720 returned_events=60 spine_rows=60 durable_count=720 since_ms=1000
+ALTERNATING:       attempts=720 returned_events=60 spine_rows=60 durable_count=720 since_ms=1000
+EVERY-ATTEMPT-NEW: attempts=720 returned_events=60 spine_rows=60 durable_count=720 since_ms=1000
+RESTART-EVERY-30s: attempts=720 reopens=120 spine_rows=60
+```
+
+- **ALTERNATING** was 720 in round 1 and is 60 now — the finding is closed.
+- **EVERY-ATTEMPT-NEW** gives all 720 attempts a *distinct* reason, the worst input the sampler can receive. Still 60.
+- **RESTART-EVERY-30s** reopens the store 120 times across the hour. Still 60 — so the sampling checkpoint really is durable, not process-local. That is what migration 0022 plus the pre-existing `deferral_event_at_ms` buy, and it is the case where a naive fix would have leaked 120 events.
+
+Durable `count=720` and `since_ms=1000` are preserved in every case, so the diagnostic did not get cheaper by losing facts. The coder's own test additionally pins `reason_changes == 12` on later samples, which is arithmetically right for 12 alternations per minute. Probe deleted, `dirty=0`.
+
+Contract updated in all three places that state it: `delivery.rs:100-101`, `ports.rs:389-390`, and `docs/how/pij-rs-api.md:385-389`. No stale "reason transitions emit immediately" survives — I grepped.
+
+**R2-2 (report-only).** `reason_changes` is emitted and never read: no consumer in `crates/`, `.omp/extensions/pij/`, or `.copilot/extensions/pij/` outside tests. Harmless, and the spine is a durable record whose value doesn't depend on a renderer existing. But the trade F3 makes is "transitions no longer interrupt the clock, they get summarized in the next sample" — and today that summary is only reachable by reading raw spine payloads, since `pij state` renders the current reason and count only. If the transition signal was worth keeping, something should surface it.
+
+The projection is genuinely unchanged: `ProjectedHold` (`http/mod.rs:2360-2365`) has no `deny_unknown_fields`, so the added field is ignored, and sampled events are still excluded by `job_id.is_none()`. `HeldEvent` still deserializes from the sampled payload via `#[serde(flatten)]`, so nothing in `held[]` shifted.
+
+---
+
+## F4 — coverage boundary
+
+Present, `report.md:260-262`: native inbox-pull holds and `backoff_held` do not increment the durable counter; native holds return reasons and are lease-bounded, `backoff_held` terminates at `HELD_ATTEMPT_LIMIT`. Accurate, and correctly labelled "no behavior change" — I asked for the boundary to be named, not closed.
+
+**R2-3 (report-only).** It lives in the plan report. The sentence that creates the wrong impression lives elsewhere: `docs/how/pij-rs-api.md:389-391` enumerates "Deferrals include composer safety, missing binding/pane/transport, pending consent, and transport errors" with no exclusions, and that doc outlives the plan. One clause there would put the boundary where someone will actually hit it.
+
+---
+
+## Gates, all on my checkout
+
+| Gate | Result |
+|---|---|
+| **`cargo test --workspace`** | **exit 0 — 92 result summaries, 1185 passed, 0 failed, 166 s, no hang** |
+| `cargo test -p pij-daemon --test review_regressions` ×12 | 0 hangs, 14/14 each |
+| `registration::tests::native_ps_admits_a_delayed_observation…` ×10 | 10/10, 0.34–0.39 s |
+| `cargo test -p pij-store --test queue -- deferral` | 4 passed |
+| `alternating_deferrals_emit_at_most_sixty_events_per_hour` | passed |
+| `cargo fmt --all --check` | exit 0 |
+| `cargo clippy --workspace --all-targets -- -D warnings` | 0 errors |
+| `node --test .copilot/extensions/pij/*.test.mjs` | exit 0 — 259 tests, 256 pass, 0 fail, 3 skipped |
+| `just self-check` (cold) | exit 1 — `file-watch-notify ✗` only |
+| `just self-check` (warm) | **exit 0** — 244 files / 5308 passed / 22 skipped, windows-compat all portable stages, 11/11 smokes ✓, `snapshot-check: briefing.md SHA matches (cdf5f5b25001…)` |
+
+The workspace gate is the headline: round 1 could not certify it because it hung, and it now completes in 166 s with 1185 passes and zero failures — matching the coder's reported figure exactly, independently reproduced at load 47.
+
+The cold `file-watch-notify` failure is the same per-worktree flake as the last four plans, and the captured message names the cause outright: `waitIdle timed out after 30000ms` with `Cloning…` still in the last 800 bytes. Green on the warm rerun. Still worth a harness ticket to pre-seed `.pi/git/` in `worktree-deps.mjs`; it has now cost five sessions one wasted self-check each.
+
+No isolated rerun was needed to reach any verdict above — every count is from an unmodified run at the stated load. Mutation and instrumentation were reverted and `git status --porcelain` verified empty after each. Production daemon never contacted; every daemon was private and ephemeral.
+
+```bash
+git worktree add --detach …/pij-worktrees/s155-r2 99d95fc2 && node harness/scripts/worktree-deps.mjs
+# my own probe: leak every lease, never return it, measure shutdown  -> 5.095121125s
+# temporary raw dump beside the expiry line                           -> s0_size=1 s0_idle=1 (twice)
+# MUTANT F: migrate::close ignores the deadline                       -> their test FAILED, my probe hung to 240s
+# my own sampling probe (steady / alternating / 720 distinct / 120 restarts), counted from spine_events
+for i in $(seq 1 12); do cargo test -p pij-daemon --test review_regressions; done   # 0 hangs
+for i in $(seq 1 10); do cargo test -p pij-daemon --lib registration::tests::native_ps_admits; done
+cargo test --workspace   # exit 0, 1185 passed, 0 failed, 166s
+cargo fmt --all --check ; cargo clippy --workspace --all-targets -- -D warnings
+node --test .copilot/extensions/pij/*.test.mjs ; just self-check
+```
