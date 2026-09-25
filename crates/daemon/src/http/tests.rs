@@ -128,6 +128,30 @@ impl Queue for CountingQueue {
         })
     }
 
+    async fn record_delivery_deferral(
+        &self,
+        _job: JobId,
+        _reason: &str,
+        _draft_sha: Option<&str>,
+        _at: u64,
+        _spine: &dyn Spine,
+    ) -> Result<Vec<Event>> {
+        Err(PijError::Adapter {
+            adapter: "test/counting-queue".into(),
+            message: "enqueue-only fixture cannot record delivery deferrals".into(),
+        })
+    }
+
+    async fn delivery_deferrals(
+        &self,
+        _recipient: &SeatId,
+    ) -> Result<Vec<pij_core::model::DeliveryDeferral>> {
+        Err(PijError::Adapter {
+            adapter: "test/counting-queue".into(),
+            message: "enqueue-only fixture cannot inspect delivery deferrals".into(),
+        })
+    }
+
     async fn defer(&self, _job: JobId, _delay: Duration) -> Result<pij_core::ports::DeferOutcome> {
         Err(pij_core::error::PijError::Adapter {
             adapter: "test/counting-queue".to_string(),
@@ -1698,6 +1722,104 @@ async fn typing_pending_holds_allow_bypass_rehold_and_restart_in_order() {
     assert_eq!(queue.live_len(), 0);
     assert_eq!(queue.acked().len(), 3);
     server.abort();
+}
+
+#[tokio::test]
+async fn state_projects_live_delivery_deferrals_and_clears_success_or_terminal_rows() {
+    for terminal in [false, true] {
+        let registry = Arc::new(FakeRegistry::new());
+        let seat = SeatId::from("pij-state-deferral");
+        let pane = "%state-deferral";
+        let mut descriptor = SeatDescriptor::new(seat.clone(), Harness::Claude, "/abs/tree");
+        descriptor.pane = Some(pane.into());
+        descriptor.proc = Some(ProcIdentity {
+            pid: 7,
+            proc_start: 11,
+        });
+        registry.put(descriptor).await.unwrap();
+        let queue = Arc::new(FakeQueue::new(1_024).unwrap());
+        let services =
+            test_services(registry.clone(), queue.clone(), Arc::new(FakeSpine::new())).await;
+        let tmux = Arc::new(FakeTmux::new().with_attached_tap(pane));
+        tmux.arrange_pane(pane);
+        let worker = crate::pointer::DrainWorker::new(
+            registry,
+            queue.clone(),
+            Arc::new(pij_testkit::fakes::FakeTransport::unreachable()),
+            tmux.clone(),
+            Arc::new(pij_harnesses::InteractionGate::new(tmux.clone())),
+            services.event_bus.clone(),
+            crate::pointer::PointerPolicy {
+                cadence: Duration::from_secs(90),
+                announcement_limit: 3,
+            },
+        )
+        .unwrap();
+        let message = Msg {
+            from: "sender".into(),
+            to: seat.clone(),
+            msg_id: "deferred-body".into(),
+            body: "preserved body".into(),
+            from_machine: None,
+            in_reply_to: None,
+            command: None,
+        };
+        let job_id = queue
+            .enqueue(Job {
+                kind: pij_core::delivery::delivery_kind(&seat),
+                serial_key: seat.to_string(),
+                payload: serde_json::to_string(&message).unwrap(),
+                dedupe_key: message.msg_id.clone(),
+                attempt: 0,
+            })
+            .await
+            .unwrap();
+        let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+        let client = reqwest::Client::new();
+        for _ in 0..3 {
+            assert_eq!(worker.drain_once().await.unwrap(), 1);
+        }
+        let response =
+            typing_post(&client, addr, "/v1/state", &serde_json::json!({"id": seat})).await;
+        let deferred = &response["data"]["deliveryDeferrals"][0];
+        assert_eq!(deferred["job_id"], job_id.0);
+        assert_eq!(deferred["msg_id"], message.msg_id);
+        assert_eq!(deferred["reason"], "unrecognized");
+        assert_eq!(deferred["count"], 3);
+        assert!(deferred["since_ms"].as_u64().is_some_and(|at| at > 0));
+
+        if terminal {
+            queue
+                .claim(&[pij_core::delivery::delivery_kind(&seat)], "terminal")
+                .await
+                .unwrap()
+                .unwrap();
+            queue
+                .ack(
+                    job_id,
+                    Outcome::Failed {
+                        reason: "recipient closed".into(),
+                    },
+                )
+                .await
+                .unwrap();
+        } else {
+            tmux.arrange_clear_composer(pane);
+            assert_eq!(worker.drain_once().await.unwrap(), 1);
+        }
+        let response =
+            typing_post(&client, addr, "/v1/state", &serde_json::json!({"id": seat})).await;
+        assert_eq!(response["data"]["deliveryDeferrals"], serde_json::json!([]));
+        assert_eq!(response["data"]["held"], serde_json::json!([]));
+        assert!(
+            queue
+                .peek(&[pij_core::delivery::delivery_kind(&seat)])
+                .await
+                .unwrap()
+                .is_none()
+        );
+        server.abort();
+    }
 }
 
 #[tokio::test]

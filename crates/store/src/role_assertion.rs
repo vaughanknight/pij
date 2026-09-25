@@ -5,7 +5,7 @@ use pij_core::model::{Event, SeatId};
 use pij_core::wire;
 use serde_json::json;
 
-use crate::migrate::{begin_write, require_current_schema};
+use crate::migrate::{begin_write, owned_write, require_current_schema};
 use crate::orchestration::SqliteOrchestration;
 use crate::spine::append_in_transaction;
 
@@ -52,8 +52,13 @@ impl SqliteOrchestration {
                 "record": { "seat": target, "role": role, "assigned_by": actor, "assigned_at": assigned_at },
             }).to_string(),
         };
-        let mut transaction = begin_write(&self.pool).await?;
-        let mutation = match role {
+        let pool = self.pool.clone();
+        let actor = actor.clone();
+        let target = target.clone();
+        let role = role.map(str::to_owned);
+        owned_write(async move {
+        let mut transaction = begin_write(&pool).await?;
+        let mutation = match role.as_deref() {
             Some(role) => sqlx::query(
                 "INSERT INTO seat_roles (seat, role, assigned_by, assigned_at) VALUES (?1, ?2, ?3, ?4) \
                  ON CONFLICT(seat) DO UPDATE SET role=excluded.role, assigned_by=excluded.assigned_by, assigned_at=excluded.assigned_at",
@@ -83,6 +88,7 @@ impl SqliteOrchestration {
         transaction.commit().await.map_err(adapter_error)?;
         event.seq = Some(seq);
         Ok(event)
+        }).await
     }
 }
 

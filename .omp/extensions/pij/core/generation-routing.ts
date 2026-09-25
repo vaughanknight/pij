@@ -109,7 +109,14 @@ function renderState(payload: unknown): string {
 		const value = text(payload, key);
 		return value === undefined ? [] : [`${key}: ${value}`];
 	});
-	return `${head}${detail.length === 0 ? "" : `\n  ${detail.join("  ·  ")}`}`;
+	const deferrals = field(payload, "deliveryDeferrals");
+	const deferred = Array.isArray(deferrals)
+		? deferrals.map(
+				(item) =>
+					`delivery deferred: ${text(item, "reason") ?? "?"} ×${String(field(item, "count"))} since ${String(field(item, "since_ms"))} ms`,
+			)
+		: [];
+	return `${head}${detail.length === 0 ? "" : `\n  ${detail.join("  ·  ")}`}${deferred.length === 0 ? "" : `\n${deferred.join("\n")}`}`;
 }
 
 function renderShimSend(payload: unknown): string {

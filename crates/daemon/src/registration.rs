@@ -57,6 +57,8 @@ enum RegistrationMode<'a> {
     Paneless(&'a [ProcIdentity]),
 }
 
+const HOST_OBSERVATION_TIMEOUT: Duration = Duration::from_secs(5);
+
 impl RegistrationService {
     pub(crate) fn new(
         registry: Arc<dyn Registry>,
@@ -152,7 +154,7 @@ impl RegistrationService {
                 ));
             }
         };
-        let ancestry = tokio::time::timeout(Duration::from_secs(2), async {
+        let ancestry = tokio::time::timeout(HOST_OBSERVATION_TIMEOUT, async {
             self.require_process(caller).await?;
             let mut ancestry = Vec::with_capacity(8);
             let mut current = caller;
@@ -202,7 +204,13 @@ impl RegistrationService {
             Ok(ancestry)
         })
         .await
-        .map_err(|_| paneless_refusal("host observation exceeded two seconds"))??;
+        .map_err(|_| {
+            RegistrationError::Retryable(format!(
+                "host observation for pid {} timed out after {}ms",
+                caller.pid,
+                HOST_OBSERVATION_TIMEOUT.as_millis(),
+            ))
+        })??;
         let host = ancestry.last().expect("observed external harness ancestor");
         claim.pid = Some(host.pid);
         claim.proc_start = Some(host.proc_start);
@@ -256,11 +264,17 @@ impl RegistrationService {
             }
         };
         tokio::time::timeout(
-            Duration::from_secs(2),
+            HOST_OBSERVATION_TIMEOUT,
             self.verify_native_host(identity, claim.pane.as_deref(), tmux, &mut observe),
         )
         .await
-        .map_err(|_| native_refusal("host observation exceeded two seconds"))??;
+        .map_err(|_| {
+            RegistrationError::Retryable(format!(
+                "host observation for pid {} timed out after {}ms",
+                identity.pid,
+                HOST_OBSERVATION_TIMEOUT.as_millis(),
+            ))
+        })??;
         let dead_native = self
             .observe_dead_native_owners(
                 &claim,
@@ -1501,18 +1515,20 @@ fn read_native_proc_file(path: &Path) -> std::result::Result<Option<Vec<u8>>, Re
     Ok(Some(bytes))
 }
 
+#[cfg(any(not(target_os = "linux"), test))]
+const PROCESS_OBSERVATION_TIMEOUT: Duration = Duration::from_secs(1);
+
 #[cfg(not(target_os = "linux"))]
 fn read_native_process(pid: u32) -> std::result::Result<Option<NativeProcess>, RegistrationError> {
-    use std::process::{Command, Stdio};
-    use std::time::Instant;
+    use std::process::Command;
 
     // One requested PID, never a machine-wide process census. The child, output,
     // and wall time are bounded independently of the async caller's lifetime.
-    const OUTPUT_LIMIT: u64 = 64 * 1024;
     // Darwin truncates `comm` paths when followed by another output column.
     // Read the kernel accounting name instead: the supported host basenames
     // fit, and is_copilot_host still independently checks argv/entrypoint.
-    let mut child = Command::new("/bin/ps")
+    let mut command = Command::new("/bin/ps");
+    command
         .args([
             "-ww",
             "-p",
@@ -1524,12 +1540,25 @@ fn read_native_process(pid: u32) -> std::result::Result<Option<NativeProcess>, R
             "-o",
             "args=",
         ])
-        .env("LC_ALL", "C")
+        .env("LC_ALL", "C");
+    read_native_process_using(pid, &mut command)
+}
+
+#[cfg(any(not(target_os = "linux"), test))]
+fn read_native_process_using(
+    pid: u32,
+    command: &mut std::process::Command,
+) -> std::result::Result<Option<NativeProcess>, RegistrationError> {
+    use std::process::Stdio;
+    use std::time::Instant;
+
+    const OUTPUT_LIMIT: u64 = 64 * 1024;
+    let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|error| native_refusal(format!("cannot observe host process: {error}")))?;
+        .map_err(|error| native_refusal(format!("cannot observe host process {pid}: {error}")))?;
     let stdout = child
         .stdout
         .take()
@@ -1541,16 +1570,24 @@ fn read_native_process(pid: u32) -> std::result::Result<Option<NativeProcess>, R
             .read_to_end(&mut output)
             .map(|_| output)
     });
-    let deadline = Instant::now() + Duration::from_millis(250);
+    let deadline = Instant::now() + PROCESS_OBSERVATION_TIMEOUT;
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break Ok(status),
             Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(5)),
-            result => {
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break Err(RegistrationError::Retryable(format!(
+                    "process observation for pid {pid} timed out after {}ms",
+                    PROCESS_OBSERVATION_TIMEOUT.as_millis(),
+                )));
+            }
+            Err(error) => {
                 let _ = child.kill();
                 let _ = child.wait();
                 break Err(native_refusal(format!(
-                    "process observation failed or timed out: {result:?}"
+                    "process observation for pid {pid} failed: {error}"
                 )));
             }
         }
@@ -3062,6 +3099,7 @@ mod tests {
         let (service, registry) = native_service(Vec::new(), native_liveness()).await;
         // SQL fixture initialization runs in real time; only the pending host probe is virtual.
         tokio::time::pause();
+        let started = tokio::time::Instant::now();
         let result = service
             .register_native_with_observer(
                 native_claim("pij-native"),
@@ -3074,17 +3112,95 @@ mod tests {
                 },
             )
             .await;
+        let error = result.expect_err("bounded observation");
+        // Tokio resolves virtual deadlines at millisecond timer precision.
         assert!(
-            result
-                .expect_err("bounded observation")
-                .to_string()
-                .contains("two seconds")
+            (Duration::from_secs(5)..=Duration::from_millis(5001)).contains(&started.elapsed())
         );
+        assert!(error.to_string().contains(&format!("pid {}", HOST.pid)));
+        assert!(matches!(error, RegistrationError::Retryable(_)));
         assert!(
             registry
                 .list(SeatFilter::default())
                 .await
                 .expect("roster")
+                .is_empty()
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn native_ps_admits_a_delayed_observation_without_weakening_identity() {
+        let (service, registry) = native_service(Vec::new(), native_liveness()).await;
+        let mut claim = native_claim("pij-slow-observer");
+        claim.pane = None;
+        let result = service
+            .register_native_with_observer(
+                claim,
+                Some(SESSION.into()),
+                &FakeTmux::new(),
+                |pid| async move {
+                    tokio::task::spawn_blocking(move || {
+                        let mut ps = std::process::Command::new("/bin/sh");
+                        let delay = super::PROCESS_OBSERVATION_TIMEOUT.mul_f64(0.3);
+                        ps.args([
+                            "-c",
+                            &format!(
+                                "/bin/sleep {}; printf '41 copilot /opt/copilot\\n'",
+                                delay.as_secs_f64()
+                            ),
+                        ]);
+                        super::read_native_process_using(pid, &mut ps)
+                    })
+                    .await
+                    .unwrap()
+                },
+            )
+            .await;
+        let (seat, _) = result.expect("delayed ps response must fit the bounded host observation");
+        assert_eq!(seat.proc, Some(HOST));
+        assert!(seat.native_extension_delivery);
+        assert_eq!(
+            registry.list(SeatFilter::default()).await.unwrap(),
+            vec![seat]
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn native_ps_never_answering_refuses_with_pid_within_total_bound() {
+        let (service, registry) = native_service(Vec::new(), native_liveness()).await;
+        let mut claim = native_claim("pij-stalled-observer");
+        claim.pane = None;
+        let started = std::time::Instant::now();
+        let error = service
+            .register_native_with_observer(
+                claim,
+                Some(SESSION.into()),
+                &FakeTmux::new(),
+                |pid| async move {
+                    tokio::task::spawn_blocking(move || {
+                        let mut ps = std::process::Command::new("/bin/sh");
+                        ps.args(["-c", "exec /bin/sleep 30"]);
+                        super::read_native_process_using(pid, &mut ps)
+                    })
+                    .await
+                    .unwrap()
+                },
+            )
+            .await
+            .expect_err("never-answering ps must refuse");
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(
+            error.to_string().contains(&format!("pid {}", HOST.pid)),
+            "{error}"
+        );
+        assert!(matches!(error, RegistrationError::Retryable(_)));
+        assert!(
+            registry
+                .list(SeatFilter::default())
+                .await
+                .unwrap()
                 .is_empty()
         );
     }
@@ -3146,14 +3262,16 @@ mod tests {
     async fn blocked_native_host_observation_does_not_block_unrelated_inbox_ack() {
         let (service, registry) = native_service(Vec::new(), native_liveness()).await;
         let queue = Arc::new(FakeQueue::new(1_024).expect("queue"));
-        let delivery = DeliveryService::new(
-            registry.clone(),
-            queue.clone(),
-            Arc::new(FakeTransport::unreachable()),
-            Arc::new(InteractionGate::new(Arc::new(FakeTmux::new()))),
-            service.event_bus.clone(),
-        )
-        .expect("delivery service");
+        let delivery = Arc::new(
+            DeliveryService::new(
+                registry.clone(),
+                queue.clone(),
+                Arc::new(FakeTransport::unreachable()),
+                Arc::new(InteractionGate::new(Arc::new(FakeTmux::new()))),
+                service.event_bus.clone(),
+            )
+            .expect("delivery service"),
+        );
         let service = service.with_native_lock(delivery.native_lock());
         let entered = Notify::new();
         let release = Notify::new();
@@ -4228,19 +4346,24 @@ mod tests {
     async fn paneless_host_observation_has_a_wall_clock_bound() {
         let (service, registry) = native_service(Vec::new(), paneless_liveness()).await;
         tokio::time::pause();
-        let error = service
-            .register_paneless_with_observer(
-                paneless_claim(Harness::Copilot),
-                Some(SESSION.into()),
-                |_| {
+        let started = tokio::time::Instant::now();
+        let claim = paneless_claim(Harness::Copilot);
+        let caller_pid = claim.pid.unwrap();
+        let error =
+            service
+                .register_paneless_with_observer(claim, Some(SESSION.into()), |_| {
                     std::future::pending::<
                         std::result::Result<Option<NativeProcess>, RegistrationError>,
                     >()
-                },
-            )
-            .await
-            .expect_err("bounded paneless host observation");
-        assert!(error.to_string().contains("two seconds"));
+                })
+                .await
+                .expect_err("bounded paneless host observation");
+        // Tokio resolves virtual deadlines at millisecond timer precision.
+        assert!(
+            (Duration::from_secs(5)..=Duration::from_millis(5001)).contains(&started.elapsed())
+        );
+        assert!(error.to_string().contains(&format!("pid {caller_pid}")));
+        assert!(matches!(error, RegistrationError::Retryable(_)));
         assert!(!registry.calls().iter().any(|call| call.starts_with("put:")));
     }
 

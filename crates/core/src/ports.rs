@@ -381,6 +381,32 @@ pub trait Queue: Send + Sync {
     /// rather than by sleeping and hoping nothing else claims the row meanwhile.
     async fn retry(&self, job: JobId, delay: Duration) -> Result<()>;
 
+    /// Record one deferred attempt on a live destination job without changing its
+    /// claim, attempt, eligibility, message, or delivery evidence. Absent/terminal
+    /// rows are unchanged. Count and first-deferral time survive restarts.
+    ///
+    /// Commit the diagnostic and a sampled `delivery.held` event together: first
+    /// attempt, then at most once per minute per job regardless of reason. Each
+    /// sample carries the current reason and changes since the previous sample.
+    /// Returned events already carry their durable sequence; publish with the
+    /// existing committed-event bus. Real queue/spine must share one store; the
+    /// fake appends before infallible mutation under the publisher ordering lock.
+    async fn record_delivery_deferral(
+        &self,
+        job: JobId,
+        reason: &str,
+        draft_sha: Option<&str>,
+        at: u64,
+        spine: &dyn Spine,
+    ) -> Result<Vec<Event>>;
+
+    /// Read diagnostic facts for this recipient's live delivery jobs only.
+    /// Completion hides active state but retains the historical job fields.
+    async fn delivery_deferrals(
+        &self,
+        recipient: &SeatId,
+    ) -> Result<Vec<crate::model::DeliveryDeferral>>;
+
     /// Return a live delivery (pending or running) to pending until `delay` elapses.
     /// Clears worker/claim ownership and preserves attempt, body, and delivery evidence.
     /// Zero delay makes a deferred row immediately eligible. Non-delivery jobs are

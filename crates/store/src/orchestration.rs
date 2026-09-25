@@ -9,7 +9,7 @@ use pij_core::orchestration::{
     VerifiedDescriptor, derive_parent, plan_descriptor_reconciliation,
 };
 
-use crate::migrate::{begin_write, require_current_schema};
+use crate::migrate::{begin_write, owned_write, require_current_schema};
 
 /// Result of recording an immutable spawn owner.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -99,36 +99,41 @@ impl SqliteOrchestration {
     pub async fn record_spawn(&self, record: &SpawnRecord) -> Result<SpawnRecordOutcome> {
         require_current_schema(&self.pool).await?;
         let recorded_at = sql_i64(record.recorded_at, "spawn recorded_at")?;
-        let mut tx = begin_write(&self.pool).await?;
-        let inserted = sqlx::query(
-            "INSERT INTO spawn_records (spawn_id, spawner, recorded_at) VALUES (?1, ?2, ?3) \
+        let pool = self.pool.clone();
+        let record = record.clone();
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
+            let inserted = sqlx::query(
+                "INSERT INTO spawn_records (spawn_id, spawner, recorded_at) VALUES (?1, ?2, ?3) \
              ON CONFLICT(spawn_id) DO NOTHING",
-        )
-        .bind(&record.spawn_id)
-        .bind(record.spawner.as_str())
-        .bind(recorded_at)
-        .execute(&mut *tx)
-        .await
-        .map_err(adapter_error)?
-        .rows_affected();
-        if inserted == 1 {
+            )
+            .bind(&record.spawn_id)
+            .bind(record.spawner.as_str())
+            .bind(recorded_at)
+            .execute(&mut *tx)
+            .await
+            .map_err(adapter_error)?
+            .rows_affected();
+            if inserted == 1 {
+                tx.commit().await.map_err(adapter_error)?;
+                return Ok(SpawnRecordOutcome::Recorded);
+            }
+            let existing: String =
+                sqlx::query_scalar("SELECT spawner FROM spawn_records WHERE spawn_id = ?1")
+                    .bind(&record.spawn_id)
+                    .fetch_one(&mut *tx)
+                    .await
+                    .map_err(adapter_error)?;
             tx.commit().await.map_err(adapter_error)?;
-            return Ok(SpawnRecordOutcome::Recorded);
-        }
-        let existing: String =
-            sqlx::query_scalar("SELECT spawner FROM spawn_records WHERE spawn_id = ?1")
-                .bind(&record.spawn_id)
-                .fetch_one(&mut *tx)
-                .await
-                .map_err(adapter_error)?;
-        tx.commit().await.map_err(adapter_error)?;
-        if existing == record.spawner.as_str() {
-            Ok(SpawnRecordOutcome::Existing)
-        } else {
-            Ok(SpawnRecordOutcome::Conflict {
-                existing_spawner: SeatId(existing),
-            })
-        }
+            if existing == record.spawner.as_str() {
+                Ok(SpawnRecordOutcome::Existing)
+            } else {
+                Ok(SpawnRecordOutcome::Conflict {
+                    existing_spawner: SeatId(existing),
+                })
+            }
+        })
+        .await
     }
 
     /// Read the spawn record for a descriptor, if this binary created it.
@@ -174,7 +179,7 @@ impl SqliteOrchestration {
     ) -> Result<ReconcileDecision> {
         require_current_schema(&self.pool).await?;
         let decision = plan_descriptor_reconciliation(left, right);
-        let ReconcileDecision::Merge(plan) = &decision else {
+        let ReconcileDecision::Merge(plan) = decision else {
             return Ok(decision);
         };
 
@@ -185,7 +190,9 @@ impl SqliteOrchestration {
             serde_json::to_string(&plan.mismatches.iter().map(field_name).collect::<Vec<_>>())
                 .map_err(json_error)?;
 
-        let mut tx = begin_write(&self.pool).await?;
+        let pool = self.pool.clone();
+        owned_write(async move {
+        let mut tx = begin_write(&pool).await?;
         // Reconciliation does not attest a new incarnation. Its candidate may
         // only supply capability for the process/session/pane still stored here.
         let survivor_updated = sqlx::query(
@@ -251,14 +258,19 @@ impl SqliteOrchestration {
         .await
         .map_err(adapter_error)?;
         tx.commit().await.map_err(adapter_error)?;
-        Ok(decision)
+        Ok(ReconcileDecision::Merge(plan))
+        })
+        .await
     }
 
     /// Assign or replace one seat's role atomically.
     pub async fn assign_role(&self, assignment: &RoleAssignment) -> Result<()> {
         require_current_schema(&self.pool).await?;
         let at = sql_i64(assignment.assigned_at, "role assigned_at")?;
-        let mut tx = begin_write(&self.pool).await?;
+        let pool = self.pool.clone();
+        let assignment = assignment.clone();
+        owned_write(async move {
+        let mut tx = begin_write(&pool).await?;
         sqlx::query(
             "INSERT INTO seat_roles (seat, role, assigned_by, assigned_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(seat) DO UPDATE SET role=excluded.role, assigned_by=excluded.assigned_by, assigned_at=excluded.assigned_at",
         )
@@ -271,19 +283,26 @@ impl SqliteOrchestration {
         .map_err(adapter_error)?;
         tx.commit().await.map_err(adapter_error)?;
         Ok(())
+        })
+        .await
     }
 
     /// Remove one seat's role; an already-unassigned seat is unchanged.
     pub async fn clear_role(&self, seat: &SeatId) -> Result<()> {
         require_current_schema(&self.pool).await?;
-        let mut tx = begin_write(&self.pool).await?;
-        sqlx::query("DELETE FROM seat_roles WHERE seat=?1")
-            .bind(seat.as_str())
-            .execute(&mut *tx)
-            .await
-            .map_err(adapter_error)?;
-        tx.commit().await.map_err(adapter_error)?;
-        Ok(())
+        let pool = self.pool.clone();
+        let seat = seat.clone();
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
+            sqlx::query("DELETE FROM seat_roles WHERE seat=?1")
+                .bind(seat.as_str())
+                .execute(&mut *tx)
+                .await
+                .map_err(adapter_error)?;
+            tx.commit().await.map_err(adapter_error)?;
+            Ok(())
+        })
+        .await
     }
 
     /// Read one complete role assignment, or `None` for an unassigned seat.
@@ -319,7 +338,11 @@ impl SqliteOrchestration {
     ) -> Result<StreamReservation> {
         require_current_schema(&self.pool).await?;
         let at = sql_i64(at, "stream created_at")?;
-        let mut tx = begin_write(&self.pool).await?;
+        let pool = self.pool.clone();
+        let plan = plan.clone();
+        let actor = actor.clone();
+        owned_write(async move {
+        let mut tx = begin_write(&pool).await?;
         let result = sqlx::query(
             "INSERT INTO streams \
              (id, project, ordinal, slug, branch, worktree, base_ref, created_by, created_at) \
@@ -357,6 +380,8 @@ impl SqliteOrchestration {
         } else {
             StreamReservation::Conflict
         })
+        })
+        .await
     }
 
     /// Atomically claim a request-less baton. Request-backed claims use `grant_baton`.
@@ -368,22 +393,25 @@ impl SqliteOrchestration {
             ));
         }
         let acquired_at = sql_i64(lease.acquired_at, "lease acquired_at")?;
-        let mut tx = begin_write(&self.pool).await?;
-        let inserted = sqlx::query(
-            "INSERT INTO baton_leases (baton, holder, lease_id, acquired_at, request_id) \
+        let pool = self.pool.clone();
+        let lease = lease.clone();
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
+            let inserted = sqlx::query(
+                "INSERT INTO baton_leases (baton, holder, lease_id, acquired_at, request_id) \
              VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(baton) DO NOTHING",
-        )
-        .bind(&lease.baton)
-        .bind(lease.holder.as_str())
-        .bind(&lease.lease_id)
-        .bind(acquired_at)
-        .bind(&lease.request_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(adapter_error)?
-        .rows_affected();
-        if inserted == 1 {
-            sqlx::query(
+            )
+            .bind(&lease.baton)
+            .bind(lease.holder.as_str())
+            .bind(&lease.lease_id)
+            .bind(acquired_at)
+            .bind(&lease.request_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(adapter_error)?
+            .rows_affected();
+            if inserted == 1 {
+                sqlx::query(
                 "INSERT INTO baton_lease_history (baton, holder, lease_id, action, at, request_id) \
                  VALUES (?1, ?2, ?3, 'claimed', ?4, ?5)",
             )
@@ -395,20 +423,22 @@ impl SqliteOrchestration {
             .execute(&mut *tx)
             .await
             .map_err(adapter_error)?;
+                tx.commit().await.map_err(adapter_error)?;
+                return Ok(LeaseClaim::Claimed);
+            }
+            let row = sqlx::query("SELECT holder, lease_id FROM baton_leases WHERE baton=?1")
+                .bind(&lease.baton)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(adapter_error)?;
+            let held = LeaseClaim::Held {
+                holder: SeatId(row.try_get("holder").map_err(adapter_error)?),
+                lease_id: row.try_get("lease_id").map_err(adapter_error)?,
+            };
             tx.commit().await.map_err(adapter_error)?;
-            return Ok(LeaseClaim::Claimed);
-        }
-        let row = sqlx::query("SELECT holder, lease_id FROM baton_leases WHERE baton=?1")
-            .bind(&lease.baton)
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(adapter_error)?;
-        let held = LeaseClaim::Held {
-            holder: SeatId(row.try_get("holder").map_err(adapter_error)?),
-            lease_id: row.try_get("lease_id").map_err(adapter_error)?,
-        };
-        tx.commit().await.map_err(adapter_error)?;
-        Ok(held)
+            Ok(held)
+        })
+        .await
     }
 
     /// Release exactly the caller's request-less claim; request-backed leases require evidence.
@@ -421,12 +451,17 @@ impl SqliteOrchestration {
     ) -> Result<bool> {
         require_current_schema(&self.pool).await?;
         let at = sql_i64(at, "lease released_at")?;
-        let mut tx = begin_write(&self.pool).await?;
+        let pool = self.pool.clone();
+        let baton = baton.to_owned();
+        let holder = holder.clone();
+        let lease_id = lease_id.to_owned();
+        owned_write(async move {
+        let mut tx = begin_write(&pool).await?;
         let removed =
             sqlx::query("DELETE FROM baton_leases WHERE baton=?1 AND holder=?2 AND lease_id=?3 AND request_id IS NULL")
-                .bind(baton)
+                .bind(&baton)
                 .bind(holder.as_str())
-                .bind(lease_id)
+                .bind(&lease_id)
                 .execute(&mut *tx)
                 .await
                 .map_err(adapter_error)?
@@ -436,9 +471,9 @@ impl SqliteOrchestration {
                 "INSERT INTO baton_lease_history (baton, holder, lease_id, action, at) \
                  VALUES (?1, ?2, ?3, 'released', ?4)",
             )
-            .bind(baton)
+            .bind(&baton)
             .bind(holder.as_str())
-            .bind(lease_id)
+            .bind(&lease_id)
             .bind(at)
             .execute(&mut *tx)
             .await
@@ -446,6 +481,8 @@ impl SqliteOrchestration {
         }
         tx.commit().await.map_err(adapter_error)?;
         Ok(removed == 1)
+        })
+        .await
     }
 
     /// Read the current holder, if any.

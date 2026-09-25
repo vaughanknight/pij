@@ -198,8 +198,8 @@ function fixture(t, { consume = true, claims = true, boundary = false } = {}) {
 			await gate([], 0, signal);
 			return { claims: [], hold: null };
 		},
-		async consentSnapshot() {
-			return { semantic_hold: false };
+		async nativeSnapshot() {
+			return { native_consumer: claim.native_consumer };
 		},
 	};
 	const bridge = new store.NativeBridge({
@@ -282,7 +282,7 @@ const storeSource = `
 				if(path==='/v1/inbox/ack') return body.job_id;
 				throw new Error('Unexpected '+path);
 			}
-			async consentSnapshot() { return {semantic_hold:false}; }
+			async nativeSnapshot() { return {native_consumer:${JSON.stringify(claim.native_consumer)}}; }
 			async claimInbox(_tuple,signal) {
 				if(!this.claimed) {this.claimed=true;return {claims:[${JSON.stringify(claim)}],hold:null};}
 				await new Promise((resolve)=>signal.addEventListener('abort',resolve,{once:true}));

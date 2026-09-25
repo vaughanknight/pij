@@ -6,7 +6,9 @@ use pij_core::ports::{Registry, SeatFilter};
 use pij_core::status::badge_of;
 use sqlx::{Row, sqlite::SqliteRow};
 
-use crate::migrate::{StorePool, require_current_schema};
+use crate::migrate::{
+    STORE_WAIT_TIMEOUT, StorePool, begin_write, owned_write, require_current_schema,
+};
 use crate::registry::row_to_descriptor;
 
 // Both sources use the same indexed joins. The adapter source is for in-memory
@@ -73,6 +75,29 @@ impl SqliteStatus {
             pool,
             registry_in_pool,
         }
+    }
+
+    /// Prove schema access and write-lock availability without changing rows.
+    ///
+    /// # Errors
+    /// A bounded unhealthy result if the pool, schema or writer is unavailable.
+    pub async fn check_health(&self) -> Result<()> {
+        let pool = self.pool.clone();
+        tokio::time::timeout(
+            STORE_WAIT_TIMEOUT,
+            owned_write(async move {
+                require_current_schema(&pool).await?;
+                let tx = begin_write(&pool).await?;
+                tx.rollback().await.map_err(error)
+            }),
+        )
+        .await
+        .map_err(|_| {
+            error(format!(
+                "store health deadline exceeded ({}ms)",
+                STORE_WAIT_TIMEOUT.as_millis()
+            ))
+        })?
     }
 
     /// Read all rows or one id; one SQL snapshot supplies every status field.

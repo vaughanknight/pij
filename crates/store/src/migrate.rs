@@ -12,8 +12,13 @@
 //!    newer schema means, and a half-understood schema corrupts quietly. Never
 //!    limp.
 
+use std::future::Future;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
+
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
-use sqlx::{Pool, Sqlite};
+use sqlx::{Connection, Pool, Sqlite, SqliteConnection, TransactionManager};
 
 use pij_core::error::{PijError, Result};
 
@@ -26,11 +31,64 @@ use pij_core::error::{PijError, Result};
 pub type StorePool = Pool<Sqlite>;
 
 /// The schema version this binary speaks.
-pub const SCHEMA_VERSION: u32 = 20;
+pub const SCHEMA_VERSION: u32 = 22;
 
 /// The embedded migration set. Compiled in, so a binary always carries the
 /// schema it expects rather than trusting a directory to be present.
 pub static MIGRATIONS: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+
+/// Maximum wait for a free pooled connection or SQLite's write lock.
+pub const STORE_WAIT_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Run an admitted write independently of request cancellation.
+///
+/// Inputs must be owned before admission. Dropping the waiter never drops the
+/// transaction between its BEGIN acknowledgement and COMMIT/ROLLBACK.
+pub(crate) async fn owned_write<T: Send + 'static>(
+    work: impl Future<Output = Result<T>> + Send + 'static,
+) -> Result<T> {
+    tokio::spawn(work)
+        .await
+        .map_err(|error| PijError::Adapter {
+            adapter: "store".to_string(),
+            message: format!("owned write task failed: {error}"),
+        })?
+}
+
+/// Close the pool and drain physical connections until the shared shutdown deadline.
+///
+/// sqlx 0.8.6 can return from `Pool::close` with a checked-out writer remaining.
+/// Size is a secondary drain witness, never an unbounded wait: a leaked lease or
+/// stalled SQLite worker must not prevent stop/restart. Returns false on expiry;
+/// the composition root reports the remaining leases once for the entire drain.
+pub async fn close(pool: &StorePool, deadline: tokio::time::Instant) -> bool {
+    tokio::time::timeout_at(deadline, async {
+        pool.close().await;
+        while pool.size() != 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .is_ok()
+}
+
+async fn clean_connection(
+    connection: &mut SqliteConnection,
+    recovered: &AtomicU64,
+) -> std::result::Result<bool, sqlx::Error> {
+    // Flush any Transaction::drop rollback already queued on the SQLite worker
+    // before examining its depth; normal drop cleanup is not a poisoned lease.
+    connection.ping().await?;
+    if !connection.is_in_transaction() {
+        return Ok(true);
+    }
+    let count = recovered.fetch_add(1, Ordering::Relaxed) + 1;
+    eprintln!("pij-rs store: open transaction at pool boundary; recovery_count={count}");
+    while connection.is_in_transaction() {
+        <Sqlite as sqlx::Database>::TransactionManager::rollback(connection).await?;
+    }
+    Ok(true)
+}
 
 /// Open a store at `path` (or in memory when empty), migrating it forward.
 ///
@@ -52,13 +110,25 @@ pub async fn open(path: &str) -> Result<Pool<Sqlite>> {
     // A daemon that loses the last few writes on power loss has lost seat
     // truth; NORMAL is the WAL-appropriate setting, FULL is the paranoid one.
     .synchronous(SqliteSynchronous::Normal)
-    .foreign_keys(true);
+    .foreign_keys(true)
+    .busy_timeout(STORE_WAIT_TIMEOUT);
 
+    let recovered = Arc::new(AtomicU64::new(0));
+    let released = Arc::clone(&recovered);
     let pool = SqlitePoolOptions::new()
         // Do not warm up siblings against the old schema: migration pins the
         // first connection before runtime readers can grow the pool.
         .min_connections(0)
         .max_connections(if path.is_empty() { 1 } else { 4 })
+        .acquire_timeout(STORE_WAIT_TIMEOUT)
+        .after_release(move |connection, _| {
+            let recovered = Arc::clone(&released);
+            Box::pin(async move { clean_connection(connection, &recovered).await })
+        })
+        .before_acquire(move |connection, _| {
+            let recovered = Arc::clone(&recovered);
+            Box::pin(async move { clean_connection(connection, &recovered).await })
+        })
         .connect_with(options)
         .await
         .map_err(|error| PijError::Adapter {

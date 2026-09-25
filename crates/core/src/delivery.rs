@@ -5,7 +5,7 @@
 //! queueing, or make future delivery impossible.
 
 use crate::error::{PijError, Result};
-use crate::model::{Msg, SeatDescriptor, SeatId, SemanticState};
+use crate::model::{Msg, SeatDescriptor, SeatId};
 use serde::{Deserialize, Serialize};
 
 /// Quiet interval after the last human keystroke before send-keys delivery resumes.
@@ -97,6 +97,41 @@ pub fn parked_events(
 /// queued for a named inbox pull instead of racing a machine-speed timeout.
 pub const MAX_TYPED_FRAME_BYTES: usize = 8 * 1024;
 
+/// Delivery deferrals publish at most once per minute per job, regardless of reason.
+/// The first attempt publishes immediately; later samples summarize reason changes.
+pub const DEFERRAL_EVENT_INTERVAL_MS: u64 = 60_000;
+
+/// Build the sampled held fact from the queue's durable diagnostic authority.
+#[must_use]
+pub fn delivery_deferral_event(
+    deferral: &crate::model::DeliveryDeferral,
+    seat: &SeatId,
+    draft_sha: Option<&str>,
+    at: u64,
+    reason_changes: u64,
+) -> crate::model::Event {
+    crate::model::Event {
+        seq: None,
+        v: 1,
+        at,
+        kind: "delivery.held".into(),
+        seat: Some(seat.clone()),
+        payload: serde_json::json!({
+            "job_id": deferral.job_id,
+            "msg_id": deferral.msg_id,
+            "seat": seat,
+            "reason": deferral.reason,
+            "since_ms": deferral.since_ms,
+            "deferral_count": deferral.count,
+            "reason_changes": reason_changes,
+            "last_edit_at": null,
+            "remaining_ms": null,
+            "draft_sha": draft_sha,
+        })
+        .to_string(),
+    }
+}
+
 /// Why the interaction gate deferred a pane-bound delivery.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DeliveryDeferralReason {
@@ -130,8 +165,6 @@ pub enum QueueReason {
     Busy,
     /// The recipient exists but has not bound to a process yet.
     PreBind,
-    /// The operator deliberately parked the recipient temporarily.
-    OperatorHold,
     /// The selected transport cannot currently reach the recipient.
     Unreachable,
 }
@@ -143,7 +176,6 @@ impl QueueReason {
         match self {
             Self::Busy => "busy",
             Self::PreBind => "pre-bind",
-            Self::OperatorHold => "operator-hold",
             Self::Unreachable => "unreachable",
         }
     }
@@ -239,8 +271,8 @@ pub fn select_rung(
 /// Select a route without performing IO.
 ///
 /// Tombstones dominate every transient fact: a dead seat is never given an
-/// immortal queue row. Pre-bind, operator hold, and transport unreachability are
-/// temporary and therefore queue honestly.
+/// immortal queue row. Pre-bind and transport unreachability are temporary and
+/// therefore queue honestly. Self-reported status never gates the inbox.
 ///
 /// **`Working` is deliberately NOT decided here.** It used to be — a busy
 /// recipient queued before the transport was ever consulted — and u-uds found at
@@ -278,16 +310,13 @@ pub fn route(
 }
 
 /// Route an already-authorized control, including controls addressed to self.
-/// Tombstones, holds, pre-bind and transport reachability remain authoritative.
+/// Tombstones, pre-bind and transport reachability remain authoritative.
 #[must_use]
 pub fn route_control(recipient: &SeatDescriptor, transport_reachable: bool) -> DeliveryRoute {
     if recipient.tombstoned_at.is_some() {
         return DeliveryRoute::Tombstoned {
             reason: recipient.tombstone_reason.clone(),
         };
-    }
-    if recipient.semantic_state == Some(SemanticState::Hold) {
-        return DeliveryRoute::Queue(QueueReason::OperatorHold);
     }
     if recipient.proc.is_none() {
         return DeliveryRoute::Queue(QueueReason::PreBind);
@@ -316,7 +345,18 @@ mod tests {
     }
 
     #[test]
-    fn controls_route_to_self_without_weakening_body_or_hold_policy() {
+    fn self_reported_hold_still_routes_incoming_messages() {
+        let mut seat = bound_recipient();
+        seat.semantic_state = Some(SemanticState::Hold);
+        assert_eq!(
+            route(&SeatId::from("pij-sender"), None, &seat, true),
+            Ok(DeliveryRoute::Transport),
+            "a status report cannot revoke the inbox needed for the awaited ruling"
+        );
+    }
+
+    #[test]
+    fn controls_route_to_self_without_weakening_body_or_tombstone_policy() {
         let mut seat = bound_recipient();
         assert!(matches!(
             route(&seat.id, None, &seat, true),
@@ -324,10 +364,7 @@ mod tests {
         ));
         assert_eq!(super::route_control(&seat, true), DeliveryRoute::Transport);
         seat.semantic_state = Some(SemanticState::Hold);
-        assert_eq!(
-            super::route_control(&seat, true),
-            DeliveryRoute::Queue(QueueReason::OperatorHold)
-        );
+        assert_eq!(super::route_control(&seat, true), DeliveryRoute::Transport);
         seat.tombstoned_at = Some(1);
         assert!(matches!(
             super::route_control(&seat, true),
@@ -373,7 +410,7 @@ mod tests {
         seat.semantic_state = Some(SemanticState::Hold);
         assert_eq!(
             route(&from, None, &seat, true),
-            Ok(DeliveryRoute::Queue(QueueReason::OperatorHold))
+            Ok(DeliveryRoute::Transport)
         );
 
         seat.semantic_state = None;

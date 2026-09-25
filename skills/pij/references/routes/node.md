@@ -64,6 +64,11 @@ Everything under `report` is a first-person claim about yourself. `report verify
 
 States: `blocked|question|hold|waiting|ready|failed|cancelled|done`. Mechanical liveness/activity is derived, not a writable semantic state; do not invent `working`. Existing now/state outputs and events stay unchanged. Use `--note` with question/blocked; report clear removes a state, not a durable decision. Record now/next at both edges of work (invariant 12), at the seat's own altitude. Query anomalies unscoped when supervising status cards: project/here filters may hide node-keyed stale status.
 
+Self-reported status never gates delivery or inbox claims: `hold` means the seat
+is reporting a pause, not closing the inbox needed for the awaited ruling.
+No operator mailbox-hold field is set by `report state`. Per-job typing holds,
+actual recipient consent and native receiver/context checks remain separate.
+
 Actively working has no semantic state word. If done, run `pij report state done`; do not self-pause a watchdog. Inline markdown is supported in report text (`code`, emphasis and links), but newlines are refused. Shell-quote backticks with single quotes so they are not executed. Did/next cap at 280 characters each and notes at 200 after whitespace collapsing; over-limit text is refused, never silently truncated (`http/report.rs` owns this boundary).
 
 ## Durable decisions

@@ -116,6 +116,27 @@ describe("the explicit rs routing inventory", () => {
 		expect(rendered.text).toContain(reason);
 	});
 
+	it("human state exposes counted delivery deferrals and drops them after completion", () => {
+		const card = {
+			id: "pij-waiting",
+			state: "idle",
+			liveness: "active",
+			deliveryDeferrals: [
+				{ job_id: 12, msg_id: "waiting", reason: "unrecognized", count: 1029, since_ms: 1000 },
+			],
+		};
+		const render = (payload: unknown) =>
+			renderRsAnswer(findRoute("state", undefined), payload, ["state", "pij-waiting"]);
+		const waiting = render(card);
+		expect(waiting.kind).toBe("rendered");
+		if (waiting.kind !== "rendered") throw new Error("state was not rendered");
+		expect(waiting.text).toContain("delivery deferred: unrecognized ×1029 since 1000 ms");
+		const completed = render({ ...card, deliveryDeferrals: [] });
+		expect(completed.kind).toBe("rendered");
+		if (completed.kind !== "rendered") throw new Error("state was not rendered");
+		expect(completed.text).not.toContain("delivery deferred:");
+	});
+
 	it("human state exposes stalled native observation beside active host liveness", () => {
 		const rendered = renderRsAnswer(
 			findRoute("state", undefined),

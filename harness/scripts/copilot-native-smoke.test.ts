@@ -1620,7 +1620,7 @@ describe("native lifecycle assertion boundaries, not live CLI proof", () => {
 	});
 });
 
-// 136/137: native typing no longer holds; semantic Hold, consent and native-target isolation still do.
+// Native typing and self-reported status never hold delivery; consent and native-target isolation still do.
 describe("AC6 delivery-while-typing witness boundaries, not live CLI proof", () => {
 	const seat = {
 		id: "pij-target",
@@ -1936,7 +1936,6 @@ describe("final typing API diagnostics before teardown", () => {
 		io.seats = async () => [current];
 		const observed = {
 			state: "observed",
-			semantic_hold: true,
 			retry_after_ms: 123,
 			observed_at_ms: 888,
 		};

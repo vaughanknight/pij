@@ -25,7 +25,7 @@ use pij_core::ports::{
     ParkedDelivery, Queue, ReleaseOutcome,
 };
 
-use crate::migrate::require_current_schema;
+use crate::migrate::{begin_write, owned_write, require_current_schema};
 
 /// A [`Queue`] backed by the SQLite store.
 pub struct SqliteQueue {
@@ -64,24 +64,6 @@ impl SqliteQueue {
             claim_lease_secs,
             delivered_id_capacity,
         })
-    }
-
-    /// Begin a transaction that intends to WRITE (delegates to the shared rule).
-    ///
-    /// `BEGIN IMMEDIATE`, never the default `BEGIN DEFERRED`, and this is not a
-    /// tuning preference — it is a correctness fix measured here. A deferred
-    /// transaction takes a READ lock first and upgrades on its first write; when
-    /// two of them try to upgrade at once, SQLite returns SQLITE_BUSY
-    /// **immediately and does not invoke the busy handler**, because waiting can
-    /// never resolve a deadlock in which both parties already hold read locks.
-    /// So `busy_timeout` — 5s by default in sqlx — buys nothing at all, and the
-    /// contention test failed with "database is locked" while every retry knob
-    /// looked correctly set.
-    ///
-    /// `BEGIN IMMEDIATE` takes the write lock up front, so the second writer
-    /// WAITS (and the busy timeout finally means something) instead of failing.
-    async fn begin_write(&self) -> Result<sqlx::Transaction<'_, Sqlite>> {
-        crate::migrate::begin_write(&self.pool).await
     }
 
     /// How many rows are live (pending or running) — the dedupe assertion
@@ -133,7 +115,11 @@ impl SqliteQueue {
         };
         let mut result = ExtensionClaim::default();
 
-        let mut tx = self.begin_write().await?;
+        let pool = self.pool.clone();
+        let claim_lease_secs = self.claim_lease_secs;
+        let worker = worker.to_owned();
+        owned_write(async move {
+        let mut tx = begin_write(&pool).await?;
         if let Some(lease) = extension_lease {
             if lease.renew_working {
                 // A live busy recipient is a one-directional safety interlock:
@@ -147,7 +133,7 @@ impl SqliteQueue {
                 )
                 .bind(lease_secs)
                 .bind(&kinds_json)
-                .bind(worker)
+                .bind(&worker)
                 .execute(&mut *tx)
                 .await
                 .map_err(adapter_error)?;
@@ -223,7 +209,7 @@ impl SqliteQueue {
                AND claimed_at <= unixepoch() - ?1 \
                AND kind IN (SELECT value FROM json_each(?2))",
         )
-        .bind(self.claim_lease_secs)
+        .bind(claim_lease_secs)
         .bind(&kinds_json)
         .execute(&mut *tx)
         .await
@@ -259,7 +245,7 @@ impl SqliteQueue {
              WHERE id = ?1 AND state = 'pending'",
         )
         .bind(id)
-        .bind(worker)
+        .bind(&worker)
         .execute(&mut *tx)
         .await
         .map_err(adapter_error)?
@@ -271,6 +257,8 @@ impl SqliteQueue {
             result.claimed = Some((JobId(id as u64), job));
         }
         Ok(result)
+        })
+        .await
     }
 }
 
@@ -301,85 +289,93 @@ impl Queue for SqliteQueue {
         // `ON CONFLICT ... DO NOTHING` against the partial index, then read the
         // live row back. Both statements run in ONE transaction so a concurrent
         // enqueue cannot slip between them and leave this caller with no id.
-        let mut tx = self.begin_write().await?;
+        let pool = self.pool.clone();
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
 
-        sqlx::query(
-            "INSERT INTO jobs (kind, serial_key, payload, dedupe_key, enqueued_at) \
+            sqlx::query(
+                "INSERT INTO jobs (kind, serial_key, payload, dedupe_key, enqueued_at) \
              VALUES (?1, ?2, ?3, ?4, unixepoch()) ON CONFLICT DO NOTHING",
-        )
-        .bind(&job.kind)
-        .bind(&job.serial_key)
-        .bind(&job.payload)
-        .bind(&job.dedupe_key)
-        .execute(&mut *tx)
-        .await
-        .map_err(adapter_error)?;
+            )
+            .bind(&job.kind)
+            .bind(&job.serial_key)
+            .bind(&job.payload)
+            .bind(&job.dedupe_key)
+            .execute(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
 
-        let id: i64 = sqlx::query_scalar(
-            // Scoped by KIND as well as key, matching the index: the read-back
-            // must find the row this insert collapsed onto, and a global lookup
-            // would hand back a live row for a DIFFERENT recipient that happens
-            // to share a caller-chosen msg_id (review F5).
-            "SELECT id FROM jobs WHERE kind = ?1 AND dedupe_key = ?2 \
+            let id: i64 = sqlx::query_scalar(
+                // Scoped by KIND as well as key, matching the index: the read-back
+                // must find the row this insert collapsed onto, and a global lookup
+                // would hand back a live row for a DIFFERENT recipient that happens
+                // to share a caller-chosen msg_id (review F5).
+                "SELECT id FROM jobs WHERE kind = ?1 AND dedupe_key = ?2 \
                AND state IN ('pending', 'running') \
              ORDER BY id LIMIT 1",
-        )
-        .bind(&job.kind)
-        .bind(&job.dedupe_key)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(adapter_error)?;
+            )
+            .bind(&job.kind)
+            .bind(&job.dedupe_key)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
 
-        tx.commit().await.map_err(adapter_error)?;
-        Ok(JobId(id as u64))
+            tx.commit().await.map_err(adapter_error)?;
+            Ok(JobId(id as u64))
+        })
+        .await
     }
 
     async fn enqueue_delivery(&self, job: Job) -> Result<DeliveryEnqueue> {
         require_current_schema(&self.pool).await?;
         require_delivery_job(&job)?;
-        let mut tx = self.begin_write().await?;
+        let pool = self.pool.clone();
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
 
-        let delivered_origin: Option<String> = sqlx::query_scalar(
-            "SELECT origin FROM delivered_messages WHERE recipient = ?1 AND msg_id = ?2",
-        )
-        .bind(&job.serial_key)
-        .bind(&job.dedupe_key)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(adapter_error)?;
-        if let Some(origin) = delivered_origin {
-            let origin = decode_origin(&origin)?;
-            tx.commit().await.map_err(adapter_error)?;
-            return Ok(DeliveryEnqueue::AlreadyDelivered(origin));
-        }
+            let delivered_origin: Option<String> = sqlx::query_scalar(
+                "SELECT origin FROM delivered_messages WHERE recipient = ?1 AND msg_id = ?2",
+            )
+            .bind(&job.serial_key)
+            .bind(&job.dedupe_key)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+            if let Some(origin) = delivered_origin {
+                let origin = decode_origin(&origin)?;
+                tx.commit().await.map_err(adapter_error)?;
+                return Ok(DeliveryEnqueue::AlreadyDelivered(origin));
+            }
 
-        sqlx::query(
-            "INSERT INTO jobs (kind, serial_key, payload, dedupe_key, enqueued_at) \
+            sqlx::query(
+                "INSERT INTO jobs (kind, serial_key, payload, dedupe_key, enqueued_at) \
              VALUES (?1, ?2, ?3, ?4, unixepoch()) ON CONFLICT DO NOTHING",
-        )
-        .bind(&job.kind)
-        .bind(&job.serial_key)
-        .bind(&job.payload)
-        .bind(&job.dedupe_key)
-        .execute(&mut *tx)
-        .await
-        .map_err(adapter_error)?;
+            )
+            .bind(&job.kind)
+            .bind(&job.serial_key)
+            .bind(&job.payload)
+            .bind(&job.dedupe_key)
+            .execute(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
 
-        let (id, not_before): (i64, i64) = sqlx::query_as(
-            "SELECT id, not_before FROM jobs WHERE kind = ?1 AND dedupe_key = ?2 \
+            let (id, not_before): (i64, i64) = sqlx::query_as(
+                "SELECT id, not_before FROM jobs WHERE kind = ?1 AND dedupe_key = ?2 \
                AND state IN ('pending', 'running') ORDER BY id LIMIT 1",
-        )
-        .bind(&job.kind)
-        .bind(&job.dedupe_key)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(adapter_error)?;
+            )
+            .bind(&job.kind)
+            .bind(&job.dedupe_key)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
 
-        tx.commit().await.map_err(adapter_error)?;
-        Ok(DeliveryEnqueue::Queued {
-            job_id: JobId(id as u64),
-            not_before_ms: (not_before.max(0) as u64).saturating_mul(1_000),
+            tx.commit().await.map_err(adapter_error)?;
+            Ok(DeliveryEnqueue::Queued {
+                job_id: JobId(id as u64),
+                not_before_ms: (not_before.max(0) as u64).saturating_mul(1_000),
+            })
         })
+        .await
     }
 
     async fn claim(&self, kinds: &[String], worker: &str) -> Result<Option<(JobId, Job)>> {
@@ -442,9 +438,12 @@ impl Queue for SqliteQueue {
         let Ok(id) = i64::try_from(job.0) else {
             return Ok(false);
         };
-        let mut tx = self.begin_write().await?;
-        let changed = sqlx::query(
-            "UPDATE jobs SET state = 'pending', worker = NULL, claimed_at = NULL, \
+        let pool = self.pool.clone();
+        let recipient = recipient.clone();
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
+            let changed = sqlx::query(
+                "UPDATE jobs SET state = 'pending', worker = NULL, claimed_at = NULL, \
                  acked_at = NULL, outcome = NULL, attempt = attempt + 1, not_before = unixepoch() \
              WHERE id = ?1 AND serial_key = ?2 AND kind = 'delivery:' || serial_key \
                AND state = 'failed' AND outcome = 'undelivered:native-receiver-unavailable' \
@@ -452,15 +451,17 @@ impl Queue for SqliteQueue {
                    AND live.state IN ('pending', 'running') AND live.dedupe_key = jobs.dedupe_key) \
                AND NOT EXISTS (SELECT 1 FROM delivered_messages \
                    WHERE recipient = jobs.serial_key AND msg_id = jobs.dedupe_key)",
-        )
-        .bind(id)
-        .bind(recipient.as_str())
-        .execute(&mut *tx)
+            )
+            .bind(id)
+            .bind(recipient.as_str())
+            .execute(&mut *tx)
+            .await
+            .map_err(adapter_error)?
+            .rows_affected();
+            tx.commit().await.map_err(adapter_error)?;
+            Ok(changed == 1)
+        })
         .await
-        .map_err(adapter_error)?
-        .rows_affected();
-        tx.commit().await.map_err(adapter_error)?;
-        Ok(changed == 1)
     }
 
     async fn park_delivery(
@@ -475,7 +476,19 @@ impl Queue for SqliteQueue {
         let Ok(id) = i64::try_from(job.0) else {
             return Ok((None, Vec::new()));
         };
-        let mut tx = self.begin_write().await?;
+        let pool = self.pool.clone();
+        let claim_lease_secs = self.claim_lease_secs;
+        let recipient = recipient.clone();
+        let outcome = evidence.outcome;
+        let reason = evidence.reason.to_owned();
+        let at = evidence.at;
+        owned_write(async move {
+        let evidence = pij_core::ports::ParkingEvidence {
+            outcome,
+            reason: &reason,
+            at,
+        };
+        let mut tx = begin_write(&pool).await?;
         let row = sqlx::query(
             "UPDATE jobs SET state = 'failed', outcome = ?4, acked_at = unixepoch() \
              WHERE id = ?1 AND serial_key = ?2 \
@@ -489,12 +502,12 @@ impl Queue for SqliteQueue {
                      AND earlier.state IN ('pending', 'running')) \
              RETURNING kind, serial_key, payload, dedupe_key, attempt",
         ).bind(id).bind(recipient.as_str()).bind(i64::from(attempt)).bind(evidence.outcome.as_str())
-            .bind(self.claim_lease_secs)
+            .bind(claim_lease_secs)
             .fetch_optional(&mut *tx).await.map_err(adapter_error)?;
         let job = row.as_ref().map(decode_job).transpose()?;
         let mut events = Vec::new();
         if let Some(parked) = &job {
-            for mut event in pij_core::delivery::parked_events(JobId(id as u64), parked, evidence)?
+            for mut event in pij_core::delivery::parked_events(JobId(id as u64), parked, &evidence)?
             {
                 event.seq = Some(crate::spine::append_in_transaction(&mut tx, &event).await?);
                 events.push(event);
@@ -502,6 +515,8 @@ impl Queue for SqliteQueue {
         }
         tx.commit().await.map_err(adapter_error)?;
         Ok((job, events))
+        })
+        .await
     }
 
     async fn peek(&self, kinds: &[String]) -> Result<Option<(JobId, Job)>> {
@@ -634,33 +649,157 @@ impl Queue for SqliteQueue {
         require_current_schema(&self.pool).await?;
         let seconds = i64::try_from(delay.as_secs()).unwrap_or(i64::MAX);
 
-        let mut tx = self.begin_write().await?;
-        let affected = sqlx::query(
-            "UPDATE jobs \
+        let pool = self.pool.clone();
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
+            let affected = sqlx::query(
+                "UPDATE jobs \
              SET state = 'pending', worker = NULL, claimed_at = NULL, \
                  attempt = attempt + 1, not_before = unixepoch() + ?2 \
              WHERE id = ?1 AND state = 'running'",
-        )
-        .bind(job.0 as i64)
-        .bind(seconds)
-        .execute(&mut *tx)
-        .await
-        .map_err(adapter_error)?
-        .rows_affected();
+            )
+            .bind(job.0 as i64)
+            .bind(seconds)
+            .execute(&mut *tx)
+            .await
+            .map_err(adapter_error)?
+            .rows_affected();
 
-        tx.commit().await.map_err(adapter_error)?;
-        if affected == 0 {
-            // Same reasoning as `ack`: retrying a job nobody claimed means a
-            // worker believes it holds work the queue does not think is running,
-            // which is exactly what a lost claim leaves behind. Reported, never
-            // silently ignored — a retry that quietly does nothing is a message
-            // that stops moving and says so to no one.
-            return Err(PijError::Adapter {
-                adapter: "store/queue".to_string(),
-                message: format!("job {} is not running, so it cannot be retried", job.0),
+            tx.commit().await.map_err(adapter_error)?;
+            if affected == 0 {
+                // Same reasoning as `ack`: retrying a job nobody claimed means a
+                // worker believes it holds work the queue does not think is running,
+                // which is exactly what a lost claim leaves behind. Reported, never
+                // silently ignored — a retry that quietly does nothing is a message
+                // that stops moving and says so to no one.
+                return Err(PijError::Adapter {
+                    adapter: "store/queue".to_string(),
+                    message: format!("job {} is not running, so it cannot be retried", job.0),
+                });
+            }
+            Ok(())
+        })
+        .await
+    }
+
+    async fn record_delivery_deferral(
+        &self,
+        job: JobId,
+        reason: &str,
+        draft_sha: Option<&str>,
+        at: u64,
+        _spine: &dyn pij_core::ports::Spine,
+    ) -> Result<Vec<pij_core::model::Event>> {
+        require_current_schema(&self.pool).await?;
+        let Ok(id) = i64::try_from(job.0) else {
+            return Ok(Vec::new());
+        };
+        let at = i64::try_from(at).map_err(|_| PijError::Adapter {
+            adapter: "store/queue".into(),
+            message: "deferral timestamp exceeds SQLite's integer range".into(),
+        })?;
+        let pool = self.pool.clone();
+        let reason = reason.to_owned();
+        let draft_sha = draft_sha.map(str::to_owned);
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
+            let row = sqlx::query(
+                "SELECT serial_key, dedupe_key, deferral_reason, deferral_event_at_ms, deferral_reason_changes \
+             FROM jobs WHERE id = ?1 AND state IN ('pending', 'running') \
+               AND kind = 'delivery:' || serial_key",
+            )
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+            let Some(row) = row else {
+                tx.commit().await.map_err(adapter_error)?;
+                return Ok(Vec::new());
+            };
+            let previous: Option<String> = row.try_get("deferral_reason").map_err(adapter_error)?;
+            let last_event: Option<i64> =
+                row.try_get("deferral_event_at_ms").map_err(adapter_error)?;
+            let reason_changes = row
+                .try_get::<i64, _>("deferral_reason_changes")
+                .map_err(adapter_error)?
+                + i64::from(previous.as_deref().is_some_and(|previous| previous != reason));
+            let publish = last_event.is_none_or(|last| {
+                at.saturating_sub(last) >= pij_core::delivery::DEFERRAL_EVENT_INTERVAL_MS as i64
             });
-        }
-        Ok(())
+            let updated = sqlx::query(
+                "UPDATE jobs SET deferral_reason = ?2, deferral_count = deferral_count + 1, \
+                 deferral_since_ms = COALESCE(deferral_since_ms, ?3), \
+                 deferral_event_at_ms = CASE WHEN ?4 THEN ?3 ELSE deferral_event_at_ms END, \
+                 deferral_reason_changes = CASE WHEN ?4 THEN 0 ELSE ?5 END \
+             WHERE id = ?1 RETURNING deferral_count, deferral_since_ms",
+            )
+            .bind(id)
+            .bind(&reason)
+            .bind(at)
+            .bind(publish)
+            .bind(reason_changes)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+            let mut events = Vec::new();
+            if publish {
+                let deferral = pij_core::model::DeliveryDeferral {
+                    job_id: job,
+                    msg_id: row.try_get("dedupe_key").map_err(adapter_error)?,
+                    reason,
+                    count: updated
+                        .try_get::<i64, _>("deferral_count")
+                        .map_err(adapter_error)? as u64,
+                    since_ms: updated
+                        .try_get::<i64, _>("deferral_since_ms")
+                        .map_err(adapter_error)? as u64,
+                };
+                let seat = SeatId(row.try_get("serial_key").map_err(adapter_error)?);
+                let mut event = pij_core::delivery::delivery_deferral_event(
+                    &deferral,
+                    &seat,
+                    draft_sha.as_deref(),
+                    at as u64,
+                    reason_changes as u64,
+                );
+                event.seq = Some(crate::spine::append_in_transaction(&mut tx, &event).await?);
+                events.push(event);
+            }
+            tx.commit().await.map_err(adapter_error)?;
+            Ok(events)
+        })
+        .await
+    }
+
+    async fn delivery_deferrals(
+        &self,
+        recipient: &SeatId,
+    ) -> Result<Vec<pij_core::model::DeliveryDeferral>> {
+        require_current_schema(&self.pool).await?;
+        let rows = sqlx::query(
+            "SELECT id, dedupe_key, deferral_reason, deferral_count, deferral_since_ms \
+             FROM jobs WHERE serial_key = ?1 AND kind = 'delivery:' || serial_key \
+               AND state IN ('pending', 'running') AND deferral_reason IS NOT NULL ORDER BY id",
+        )
+        .bind(recipient.as_str())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(adapter_error)?;
+        rows.iter()
+            .map(|row| {
+                Ok(pij_core::model::DeliveryDeferral {
+                    job_id: JobId(row.try_get::<i64, _>("id").map_err(adapter_error)? as u64),
+                    msg_id: row.try_get("dedupe_key").map_err(adapter_error)?,
+                    reason: row.try_get("deferral_reason").map_err(adapter_error)?,
+                    count: row
+                        .try_get::<i64, _>("deferral_count")
+                        .map_err(adapter_error)? as u64,
+                    since_ms: row
+                        .try_get::<i64, _>("deferral_since_ms")
+                        .map_err(adapter_error)? as u64,
+                })
+            })
+            .collect()
     }
 
     async fn defer(&self, job: JobId, delay: Duration) -> Result<DeferOutcome> {
@@ -670,70 +809,76 @@ impl Queue for SqliteQueue {
                 reason: DeferNoopReason::Absent,
             });
         };
-        let mut tx = self.begin_write().await?;
-        let row = sqlx::query("SELECT kind, serial_key, dedupe_key, state FROM jobs WHERE id = ?1")
-            .bind(id)
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(adapter_error)?;
-        let Some(row) = row else {
-            tx.commit().await.map_err(adapter_error)?;
-            return Ok(DeferOutcome::NotLive {
-                reason: DeferNoopReason::Absent,
-            });
-        };
-        let state: String = row.try_get("state").map_err(adapter_error)?;
-        if !matches!(state.as_str(), "pending" | "running") {
-            tx.commit().await.map_err(adapter_error)?;
-            return Ok(DeferOutcome::NotLive {
-                reason: DeferNoopReason::Terminal,
-            });
-        }
-        let delivery = Job {
-            kind: row.try_get("kind").map_err(adapter_error)?,
-            serial_key: row.try_get("serial_key").map_err(adapter_error)?,
-            payload: String::new(),
-            dedupe_key: row.try_get("dedupe_key").map_err(adapter_error)?,
-            attempt: 0,
-        };
-        require_delivery_job(&delivery)?;
+        let pool = self.pool.clone();
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
+            let row =
+                sqlx::query("SELECT kind, serial_key, dedupe_key, state FROM jobs WHERE id = ?1")
+                    .bind(id)
+                    .fetch_optional(&mut *tx)
+                    .await
+                    .map_err(adapter_error)?;
+            let Some(row) = row else {
+                tx.commit().await.map_err(adapter_error)?;
+                return Ok(DeferOutcome::NotLive {
+                    reason: DeferNoopReason::Absent,
+                });
+            };
+            let state: String = row.try_get("state").map_err(adapter_error)?;
+            if !matches!(state.as_str(), "pending" | "running") {
+                tx.commit().await.map_err(adapter_error)?;
+                return Ok(DeferOutcome::NotLive {
+                    reason: DeferNoopReason::Terminal,
+                });
+            }
+            let delivery = Job {
+                kind: row.try_get("kind").map_err(adapter_error)?,
+                serial_key: row.try_get("serial_key").map_err(adapter_error)?,
+                payload: String::new(),
+                dedupe_key: row.try_get("dedupe_key").map_err(adapter_error)?,
+                attempt: 0,
+            };
+            require_delivery_job(&delivery)?;
 
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|error| PijError::Adapter {
-                adapter: "store/queue".to_string(),
-                message: format!("cannot schedule deferral before the Unix epoch: {error}"),
-            })?;
-        // Eligibility compares whole epoch seconds. Round the absolute positive
-        // deadline UP, not just the delay: truncating now can release even a
-        // whole-second delay early. Zero must remain immediately eligible.
-        let not_before = now
-            .checked_add(delay)
-            .and_then(|deadline| {
-                deadline
-                    .as_secs()
-                    .checked_add(u64::from(!delay.is_zero() && deadline.subsec_nanos() != 0))
-            })
-            .and_then(|seconds| i64::try_from(seconds).ok())
-            .ok_or_else(|| PijError::Adapter {
-                adapter: "store/queue".to_string(),
-                message: "deferral deadline exceeds SQLite's integer timestamp range".to_string(),
-            })?;
-        sqlx::query(
-            "UPDATE jobs \
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|error| PijError::Adapter {
+                    adapter: "store/queue".to_string(),
+                    message: format!("cannot schedule deferral before the Unix epoch: {error}"),
+                })?;
+            // Eligibility compares whole epoch seconds. Round the absolute positive
+            // deadline UP, not just the delay: truncating now can release even a
+            // whole-second delay early. Zero must remain immediately eligible.
+            let not_before = now
+                .checked_add(delay)
+                .and_then(|deadline| {
+                    deadline
+                        .as_secs()
+                        .checked_add(u64::from(!delay.is_zero() && deadline.subsec_nanos() != 0))
+                })
+                .and_then(|seconds| i64::try_from(seconds).ok())
+                .ok_or_else(|| PijError::Adapter {
+                    adapter: "store/queue".to_string(),
+                    message: "deferral deadline exceeds SQLite's integer timestamp range"
+                        .to_string(),
+                })?;
+            sqlx::query(
+                "UPDATE jobs \
              SET state = 'pending', worker = NULL, claimed_at = NULL, not_before = ?2 \
              WHERE id = ?1 AND state IN ('pending', 'running')",
-        )
-        .bind(id)
-        .bind(not_before)
-        .execute(&mut *tx)
-        .await
-        .map_err(adapter_error)?;
-        tx.commit().await.map_err(adapter_error)?;
-        Ok(DeferOutcome::Deferred {
-            recipient: SeatId(delivery.serial_key),
-            msg_id: delivery.dedupe_key,
+            )
+            .bind(id)
+            .bind(not_before)
+            .execute(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+            tx.commit().await.map_err(adapter_error)?;
+            Ok(DeferOutcome::Deferred {
+                recipient: SeatId(delivery.serial_key),
+                msg_id: delivery.dedupe_key,
+            })
         })
+        .await
     }
 
     async fn release_deferred(&self, job: JobId) -> Result<ReleaseOutcome> {
@@ -745,84 +890,95 @@ impl Queue for SqliteQueue {
         };
         // Hold the write lock across classification and release: a reader must
         // not claim the row between our state check and the deadline update.
-        let mut tx = self.begin_write().await?;
-        let row = sqlx::query("SELECT kind, serial_key, dedupe_key, state FROM jobs WHERE id = ?1")
-            .bind(id)
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(adapter_error)?;
-        let Some(row) = row else {
-            tx.commit().await.map_err(adapter_error)?;
-            return Ok(ReleaseOutcome::NotLive {
-                reason: DeferNoopReason::Absent,
-            });
-        };
-        let state: String = row.try_get("state").map_err(adapter_error)?;
-        if !matches!(state.as_str(), "pending" | "running") {
-            tx.commit().await.map_err(adapter_error)?;
-            return Ok(ReleaseOutcome::NotLive {
-                reason: DeferNoopReason::Terminal,
-            });
-        }
-        let delivery = Job {
-            kind: row.try_get("kind").map_err(adapter_error)?,
-            serial_key: row.try_get("serial_key").map_err(adapter_error)?,
-            payload: String::new(),
-            dedupe_key: row.try_get("dedupe_key").map_err(adapter_error)?,
-            attempt: 0,
-        };
-        require_delivery_job(&delivery)?;
-        if state == "running" {
-            tx.commit().await.map_err(adapter_error)?;
-            return Ok(ReleaseOutcome::NotDeferred);
-        }
-        sqlx::query("UPDATE jobs SET not_before = unixepoch() WHERE id = ?1 AND state = 'pending'")
+        let pool = self.pool.clone();
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
+            let row =
+                sqlx::query("SELECT kind, serial_key, dedupe_key, state FROM jobs WHERE id = ?1")
+                    .bind(id)
+                    .fetch_optional(&mut *tx)
+                    .await
+                    .map_err(adapter_error)?;
+            let Some(row) = row else {
+                tx.commit().await.map_err(adapter_error)?;
+                return Ok(ReleaseOutcome::NotLive {
+                    reason: DeferNoopReason::Absent,
+                });
+            };
+            let state: String = row.try_get("state").map_err(adapter_error)?;
+            if !matches!(state.as_str(), "pending" | "running") {
+                tx.commit().await.map_err(adapter_error)?;
+                return Ok(ReleaseOutcome::NotLive {
+                    reason: DeferNoopReason::Terminal,
+                });
+            }
+            let delivery = Job {
+                kind: row.try_get("kind").map_err(adapter_error)?,
+                serial_key: row.try_get("serial_key").map_err(adapter_error)?,
+                payload: String::new(),
+                dedupe_key: row.try_get("dedupe_key").map_err(adapter_error)?,
+                attempt: 0,
+            };
+            require_delivery_job(&delivery)?;
+            if state == "running" {
+                tx.commit().await.map_err(adapter_error)?;
+                return Ok(ReleaseOutcome::NotDeferred);
+            }
+            sqlx::query(
+                "UPDATE jobs SET not_before = unixepoch() WHERE id = ?1 AND state = 'pending'",
+            )
             .bind(id)
             .execute(&mut *tx)
             .await
             .map_err(adapter_error)?;
-        tx.commit().await.map_err(adapter_error)?;
-        Ok(ReleaseOutcome::Released {
-            recipient: SeatId(delivery.serial_key),
-            msg_id: delivery.dedupe_key,
+            tx.commit().await.map_err(adapter_error)?;
+            Ok(ReleaseOutcome::Released {
+                recipient: SeatId(delivery.serial_key),
+                msg_id: delivery.dedupe_key,
+            })
         })
+        .await
     }
 
     async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()> {
         require_current_schema(&self.pool).await?;
-        let (state, detail) = match &outcome {
+        let (state, detail) = match outcome {
             Outcome::Done => ("done", None),
-            Outcome::Failed { reason } => ("failed", Some(reason.clone())),
+            Outcome::Failed { reason } => ("failed", Some(reason)),
         };
 
-        let mut tx = self.begin_write().await?;
-        let affected = sqlx::query(
-            "UPDATE jobs \
+        let pool = self.pool.clone();
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
+            let affected = sqlx::query(
+                "UPDATE jobs \
              SET state = ?2, outcome = ?3, acked_at = unixepoch() \
              WHERE id = ?1 AND state = 'running'",
-        )
-        .bind(job.0 as i64)
-        .bind(state)
-        .bind(detail)
-        .execute(&mut *tx)
-        .await
-        .map_err(adapter_error)?
-        .rows_affected();
+            )
+            .bind(job.0 as i64)
+            .bind(state)
+            .bind(detail)
+            .execute(&mut *tx)
+            .await
+            .map_err(adapter_error)?
+            .rows_affected();
 
-        tx.commit().await.map_err(adapter_error)?;
-        if affected == 0 {
-            // Acking a job nobody claimed is a fact worth reporting: it means a
-            // worker believes it holds work the queue does not think is running,
-            // which is exactly the state a lost claim leaves behind.
-            return Err(PijError::Adapter {
-                adapter: "store/queue".to_string(),
-                message: format!(
-                    "job {} is not running — it was already acked, or never claimed",
-                    job.0
-                ),
-            });
-        }
-        Ok(())
+            tx.commit().await.map_err(adapter_error)?;
+            if affected == 0 {
+                // Acking a job nobody claimed is a fact worth reporting: it means a
+                // worker believes it holds work the queue does not think is running,
+                // which is exactly the state a lost claim leaves behind.
+                return Err(PijError::Adapter {
+                    adapter: "store/queue".to_string(),
+                    message: format!(
+                        "job {} is not running — it was already acked, or never claimed",
+                        job.0
+                    ),
+                });
+            }
+            Ok(())
+        })
+        .await
     }
 
     /// R4-AMEND-4: claim-or-report, in ONE transaction. See the port docs for why
@@ -834,122 +990,140 @@ impl Queue for SqliteQueue {
         origin: DeliveryOrigin,
     ) -> Result<Option<DeliveryOrigin>> {
         require_current_schema(&self.pool).await?;
-        let mut tx = self.begin_write().await?;
+        let pool = self.pool.clone();
+        let delivered_id_capacity = self.delivered_id_capacity;
+        let recipient = recipient.clone();
+        let msg_id = msg_id.to_owned();
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
 
-        let existing: Option<String> = sqlx::query_scalar(
-            "SELECT origin FROM delivered_messages WHERE recipient = ?1 AND msg_id = ?2",
-        )
-        .bind(recipient.as_str())
-        .bind(msg_id)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(adapter_error)?;
-        if let Some(existing) = existing {
-            tx.commit().await.map_err(adapter_error)?;
-            return Ok(Some(decode_origin(&existing)?));
-        }
+            let existing: Option<String> = sqlx::query_scalar(
+                "SELECT origin FROM delivered_messages WHERE recipient = ?1 AND msg_id = ?2",
+            )
+            .bind(recipient.as_str())
+            .bind(&msg_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+            if let Some(existing) = existing {
+                tx.commit().await.map_err(adapter_error)?;
+                return Ok(Some(decode_origin(&existing)?));
+            }
 
-        sqlx::query(
-            "INSERT INTO delivered_messages (recipient, msg_id, origin) VALUES (?1, ?2, ?3)",
-        )
-        .bind(recipient.as_str())
-        .bind(msg_id)
-        .bind(encode_origin(origin))
-        .execute(&mut *tx)
-        .await
-        .map_err(adapter_error)?;
-        sqlx::query(
-            "DELETE FROM delivered_messages WHERE recipient = ?1 AND seq NOT IN (\
+            sqlx::query(
+                "INSERT INTO delivered_messages (recipient, msg_id, origin) VALUES (?1, ?2, ?3)",
+            )
+            .bind(recipient.as_str())
+            .bind(&msg_id)
+            .bind(encode_origin(origin))
+            .execute(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+            sqlx::query(
+                "DELETE FROM delivered_messages WHERE recipient = ?1 AND seq NOT IN (\
                  SELECT seq FROM delivered_messages WHERE recipient = ?1 \
                  ORDER BY seq DESC LIMIT ?2\
              )",
-        )
-        .bind(recipient.as_str())
-        .bind(self.delivered_id_capacity)
-        .execute(&mut *tx)
-        .await
-        .map_err(adapter_error)?;
+            )
+            .bind(recipient.as_str())
+            .bind(delivered_id_capacity)
+            .execute(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
 
-        tx.commit().await.map_err(adapter_error)?;
-        Ok(None)
+            tx.commit().await.map_err(adapter_error)?;
+            Ok(None)
+        })
+        .await
     }
 
     async fn forget_delivered(&self, recipient: &SeatId, msg_id: &str) -> Result<()> {
         require_current_schema(&self.pool).await?;
-        let mut tx = self.begin_write().await?;
-        sqlx::query("DELETE FROM delivered_messages WHERE recipient = ?1 AND msg_id = ?2")
-            .bind(recipient.as_str())
-            .bind(msg_id)
-            .execute(&mut *tx)
-            .await
-            .map_err(adapter_error)?;
-        tx.commit().await.map_err(adapter_error)?;
-        Ok(())
+        let pool = self.pool.clone();
+        let recipient = recipient.clone();
+        let msg_id = msg_id.to_owned();
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
+            sqlx::query("DELETE FROM delivered_messages WHERE recipient = ?1 AND msg_id = ?2")
+                .bind(recipient.as_str())
+                .bind(msg_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(adapter_error)?;
+            tx.commit().await.map_err(adapter_error)?;
+            Ok(())
+        })
+        .await
     }
 
     async fn ack_delivery(&self, job: JobId, origin: DeliveryOrigin) -> Result<DeliveryAck> {
         require_current_schema(&self.pool).await?;
 
-        let mut tx = self.begin_write().await?;
-        let row = sqlx::query(
-            "SELECT kind, serial_key, dedupe_key FROM jobs WHERE id = ?1 AND state = 'running'",
-        )
-        .bind(job.0 as i64)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(adapter_error)?
-        .ok_or_else(|| PijError::Adapter {
-            adapter: "store/queue".to_string(),
-            message: format!(
-                "job {} is not running — it was already acked, or never claimed",
-                job.0
-            ),
-        })?;
-        let claimed = Job {
-            kind: row.try_get("kind").map_err(adapter_error)?,
-            serial_key: row.try_get("serial_key").map_err(adapter_error)?,
-            payload: String::new(),
-            dedupe_key: row.try_get("dedupe_key").map_err(adapter_error)?,
-            attempt: 0,
-        };
-        require_delivery_job(&claimed)?;
+        let pool = self.pool.clone();
+        let delivered_id_capacity = self.delivered_id_capacity;
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
+            let row = sqlx::query(
+                "SELECT kind, serial_key, dedupe_key FROM jobs WHERE id = ?1 AND state = 'running'",
+            )
+            .bind(job.0 as i64)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(adapter_error)?
+            .ok_or_else(|| PijError::Adapter {
+                adapter: "store/queue".to_string(),
+                message: format!(
+                    "job {} is not running — it was already acked, or never claimed",
+                    job.0
+                ),
+            })?;
+            let claimed = Job {
+                kind: row.try_get("kind").map_err(adapter_error)?,
+                serial_key: row.try_get("serial_key").map_err(adapter_error)?,
+                payload: String::new(),
+                dedupe_key: row.try_get("dedupe_key").map_err(adapter_error)?,
+                attempt: 0,
+            };
+            require_delivery_job(&claimed)?;
 
-        sqlx::query(
-            "UPDATE jobs SET state = 'done', outcome = NULL, acked_at = unixepoch() \
+            sqlx::query(
+                "UPDATE jobs SET state = 'done', outcome = NULL, acked_at = unixepoch() \
              WHERE id = ?1 AND state = 'running'",
-        )
-        .bind(job.0 as i64)
-        .execute(&mut *tx)
-        .await
-        .map_err(adapter_error)?;
-        sqlx::query(
-            "INSERT INTO delivered_messages (recipient, msg_id, origin) VALUES (?1, ?2, ?3) \
+            )
+            .bind(job.0 as i64)
+            .execute(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+            sqlx::query(
+                "INSERT INTO delivered_messages (recipient, msg_id, origin) VALUES (?1, ?2, ?3) \
              ON CONFLICT (recipient, msg_id) DO NOTHING",
-        )
-        .bind(&claimed.serial_key)
-        .bind(&claimed.dedupe_key)
-        .bind(encode_origin(origin))
-        .execute(&mut *tx)
-        .await
-        .map_err(adapter_error)?;
-        sqlx::query(
-            "DELETE FROM delivered_messages WHERE recipient = ?1 AND seq NOT IN (\
+            )
+            .bind(&claimed.serial_key)
+            .bind(&claimed.dedupe_key)
+            .bind(encode_origin(origin))
+            .execute(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+            sqlx::query(
+                "DELETE FROM delivered_messages WHERE recipient = ?1 AND seq NOT IN (\
                  SELECT seq FROM delivered_messages WHERE recipient = ?1 \
                  ORDER BY seq DESC LIMIT ?2\
              )",
-        )
-        .bind(&claimed.serial_key)
-        .bind(self.delivered_id_capacity)
-        .execute(&mut *tx)
-        .await
-        .map_err(adapter_error)?;
+            )
+            .bind(&claimed.serial_key)
+            .bind(delivered_id_capacity)
+            .execute(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
 
-        tx.commit().await.map_err(adapter_error)?;
-        Ok(DeliveryAck {
-            recipient: SeatId(claimed.serial_key),
-            msg_id: claimed.dedupe_key,
-            origin,
+            tx.commit().await.map_err(adapter_error)?;
+            Ok(DeliveryAck {
+                recipient: SeatId(claimed.serial_key),
+                msg_id: claimed.dedupe_key,
+                origin,
+            })
         })
+        .await
     }
 }
 

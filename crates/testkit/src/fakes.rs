@@ -435,6 +435,7 @@ struct QueueState {
     retried: Vec<(JobId, Duration)>,
     attempts: HashMap<u64, u32>,
     not_before: HashMap<u64, Duration>,
+    deferrals: HashMap<u64, (pij_core::model::DeliveryDeferral, u64, u64)>,
     now: Duration,
     next_id: u64,
     delivered: Vec<(String, String, DeliveryOrigin)>,
@@ -1013,6 +1014,95 @@ impl Queue for FakeQueue {
         state.not_before.insert(job.0, not_before);
         state.retried.push((job, delay));
         Ok(())
+    }
+
+    async fn record_delivery_deferral(
+        &self,
+        job: JobId,
+        reason: &str,
+        draft_sha: Option<&str>,
+        at: u64,
+        spine: &dyn Spine,
+    ) -> Result<Vec<Event>> {
+        let (deferral, seat, last_event, publish, reason_changes) = {
+            let state = self.state.lock().expect("fake queue mutex");
+            let row = state.claimed.get(&job.0).map(|(row, _)| row).or_else(|| {
+                state
+                    .live
+                    .iter()
+                    .find(|(id, _)| *id == job)
+                    .map(|(_, row)| row)
+            });
+            let Some(row) = row.filter(|row| row.kind == format!("delivery:{}", row.serial_key))
+            else {
+                return Ok(Vec::new());
+            };
+            let previous = state.deferrals.get(&job.0);
+            let publish = previous.is_none_or(|(_, last, _)| {
+                at.saturating_sub(*last) >= pij_core::delivery::DEFERRAL_EVENT_INTERVAL_MS
+            });
+            let reason_changes = previous.map_or(0, |(previous, _, changes)| {
+                changes + u64::from(previous.reason != reason)
+            });
+            (
+                pij_core::model::DeliveryDeferral {
+                    job_id: job,
+                    msg_id: row.dedupe_key.clone(),
+                    reason: reason.into(),
+                    count: previous.map_or(1, |(previous, _, _)| previous.count + 1),
+                    since_ms: previous.map_or(at, |(previous, _, _)| previous.since_ms),
+                },
+                SeatId(row.serial_key.clone()),
+                previous.map_or(at, |(_, last, _)| *last),
+                publish,
+                reason_changes,
+            )
+        };
+        let mut events = Vec::new();
+        if publish {
+            let mut event = pij_core::delivery::delivery_deferral_event(
+                &deferral,
+                &seat,
+                draft_sha,
+                at,
+                reason_changes,
+            );
+            event.seq = Some(spine.append(event.clone()).await?);
+            events.push(event);
+        }
+        self.state
+            .lock()
+            .expect("fake queue mutex")
+            .deferrals
+            .insert(
+                job.0,
+                (
+                    deferral,
+                    if publish { at } else { last_event },
+                    if publish { 0 } else { reason_changes },
+                ),
+            );
+        Ok(events)
+    }
+
+    async fn delivery_deferrals(
+        &self,
+        recipient: &SeatId,
+    ) -> Result<Vec<pij_core::model::DeliveryDeferral>> {
+        let state = self.state.lock().expect("fake queue mutex");
+        let mut deferrals: Vec<_> = state
+            .live
+            .iter()
+            .map(|(id, row)| (*id, row))
+            .chain(state.claimed.iter().map(|(id, (row, _))| (JobId(*id), row)))
+            .filter(|(_, row)| {
+                row.serial_key == recipient.as_str()
+                    && row.kind == format!("delivery:{}", row.serial_key)
+            })
+            .filter_map(|(id, _)| state.deferrals.get(&id.0).map(|(fact, _, _)| fact.clone()))
+            .collect();
+        deferrals.sort_by_key(|fact| fact.job_id);
+        Ok(deferrals)
     }
 
     async fn defer(&self, job: JobId, delay: Duration) -> Result<DeferOutcome> {

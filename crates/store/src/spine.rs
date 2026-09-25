@@ -16,7 +16,7 @@ use pij_core::error::{PijError, Result};
 use pij_core::model::{Event, SeatId, Seq};
 use pij_core::ports::{PutBinding, Spine};
 
-use crate::migrate::{begin_write, require_current_schema};
+use crate::migrate::{begin_write, owned_write, require_current_schema};
 use crate::orchestration::{SqliteOrchestration, sql_u64};
 
 /// An owned, lazy registry transaction returning its committed event and binding.
@@ -131,10 +131,14 @@ fn decode_event(row: &SqliteRow) -> Result<Event> {
 impl Spine for SqliteSpine {
     async fn append(&self, event: Event) -> Result<Seq> {
         require_current_schema(&self.pool).await?;
-        let mut tx = begin_write(&self.pool).await?;
-        let seq = append_in_transaction(&mut tx, &event).await?;
-        tx.commit().await.map_err(adapter_error)?;
-        Ok(seq)
+        let pool = self.pool.clone();
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
+            let seq = append_in_transaction(&mut tx, &event).await?;
+            tx.commit().await.map_err(adapter_error)?;
+            Ok(seq)
+        })
+        .await
     }
 
     async fn tail(&self, seat: Option<&SeatId>, since: Seq) -> Result<Vec<Event>> {

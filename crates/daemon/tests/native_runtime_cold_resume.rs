@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use pij_core::config::{AdapterChoice, Adapters, Config};
 use pij_core::delivery::delivery_kind;
-use pij_core::model::{JobId, Pane, PaneProcess, ProcIdentity, SeatId};
+use pij_core::model::{JobId, Pane, PaneProcess, ProcIdentity, SeatId, SemanticState};
 use pij_core::ports::LivenessPort;
 use pij_daemon::delivery::DeliveryService;
 use pij_daemon::http::router;
@@ -81,6 +81,11 @@ const moduleDigest = createHash('sha256').update(await readFile(input.module)).d
     const bridge = new NativeBridge({ registration, native, client, journal, report: e => events.push(e) });
     try {
         await bridge.register();
+        // Rolling-upgrade contract: even the unchanged current-main receiver
+        // must receive while its seat reports Hold.
+        await client.request('/v1/report', {
+            seat: registration.id, argv: ['report', 'state', 'hold'],
+        }, signal);
         if (input.stage === 'initial') {
             const receipt = await client.request('/v1/send', {
                 from: 'pij-contract-peer', to: { seat: registration.id },
@@ -125,6 +130,7 @@ const moduleDigest = createHash('sha256').update(await readFile(input.module)).d
         assert.equal((await journal.load(claim.message.msg_id)).state, 'accepted');
         assert.equal((await readFile(acceptanceLog, 'utf8')).trim().split('\n').length, 1);
         console.log(JSON.stringify({
+            reportedState: 'hold',
             registration, moduleDigest, jobId: claim.job_id, messageId: claim.message.msg_id,
             journalDirectory: journal.directory, journalPath: journal.path(claim.message.msg_id),
             journalDigest: createHash('sha256').update(acceptedBytes).digest('hex'),
@@ -345,6 +351,7 @@ async fn actual_runtime_chooser_and_journal_resume_through_http_sqlite_without_r
     let owner = registry.get(&seat).await.unwrap().unwrap();
     assert_eq!(owner.proc, Some(old_process));
     assert!(owner.native_extension_delivery);
+    assert_eq!(owner.semantic_state, Some(SemanticState::Hold));
     let running = queue.claimed_delivery(job_id).await.unwrap().unwrap();
     let accepted = std::fs::read(initial["journalPath"].as_str().unwrap()).unwrap();
 
@@ -375,6 +382,7 @@ async fn actual_runtime_chooser_and_journal_resume_through_http_sqlite_without_r
     assert_eq!(rebound.harness_session.as_deref(), Some(SESSION));
     assert_eq!(rebound.pane.as_deref(), Some("%137-cross-new"));
     assert!(rebound.native_extension_delivery && rebound.tombstoned_at.is_none());
+    assert_eq!(rebound.semantic_state, Some(SemanticState::Hold));
     assert!(queue.claimed_delivery(job_id).await.unwrap().is_none());
     assert!(queue.peek(&[delivery_kind(&seat)]).await.unwrap().is_none());
     assert_eq!(
@@ -382,7 +390,7 @@ async fn actual_runtime_chooser_and_journal_resume_through_http_sqlite_without_r
         accepted
     );
     println!(
-        "cross-language contract: real HTTP/SQLite + runtime chooser/client/bridge/journal; old={old_process:?}, new={new_process:?}; one simulated native acceptance, zero reinjection; not real CLI/model acceptance"
+        "cross-language contract: real HTTP/SQLite + actual selected runtime chooser/client/bridge/journal; self-reported Hold retained; old={old_process:?}, new={new_process:?}; one simulated native acceptance, zero reinjection; not real CLI/model acceptance"
     );
     server.abort();
 }

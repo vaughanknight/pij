@@ -1,0 +1,552 @@
+{
+  "plan": "155-store-wedge-and-silent-deferral",
+  "round": "F1–F4",
+  "status": "verified; all requested gates passed without isolated reruns",
+  "base_implementation": "6d46c1102087fcccaef649b8d70a5f42ea04520b",
+  "contracts": {
+    "shutdown": {
+      "deadline_ms": 5000,
+      "scope": "Shared tracked admission/publication and physical-pool drain after producers stop; on expiry log role-labelled checked-out counts once and continue. Roles may share a pool.",
+      "normal_completion": "detached admitted write commits before ordinary shutdown returns",
+      "expired_completion": "not guaranteed; no fabricated ACK or forced transaction rollback"
+    },
+    "observation": {
+      "process_ms": 1000,
+      "host_ms": 5000,
+      "fixture_fraction": 0.3,
+      "production_limits_changed": false
+    },
+    "sampling": {
+      "per_job_interval_ms": 60000,
+      "reason_changes": "transitions since previous event, initial zero; stored pending count survives restart",
+      "schema_version": 22,
+      "projection_unchanged": true
+    },
+    "coverage_boundary": "native inbox-pull holds and backoff_held do not increment the durable deferral counter; no change"
+  },
+  "red": {
+    "shutdown": {
+      "command": "cargo test -p pij-daemon --lib shutdown_returns_with_connections_never_returned -- --nocapture",
+      "exit": 101,
+      "observed": "shutdown hung with checked-out connections: 6.001334208s",
+      "result": "0 passed; 1 failed; 437 filtered out; 6.09s"
+    },
+    "sampling": {
+      "artifact": "artifact://656",
+      "command": "cargo test -p pij-store --test queue alternating_deferrals_emit_at_most_sixty_events_per_hour -- --nocapture",
+      "exit": 101,
+      "observed": "left: 720; right: 60",
+      "result": "0 passed; 1 failed; 44 filtered out; 0.27s"
+    }
+  },
+  "green": {
+    "shutdown": {
+      "artifact": "artifact://659",
+      "command": "cargo test -p pij-daemon --lib store_shutdown_tests -- --nocapture",
+      "exit": 0,
+      "result": "2 passed; 0 failed; 436 filtered out; 5.12s",
+      "diagnostic": "pij-rs shutdown drain expired after 5000ms; spine_checked_out=1 background_checked_out=1; continuing shutdown"
+    },
+    "sampling": {
+      "command": "cargo test -p pij-store --test queue deferral -- --nocapture",
+      "exit": 0,
+      "result": "4 passed; 0 failed; 41 filtered out; 0.31s",
+      "cases": [
+        "SQLite/fake sampling and terminal state",
+        "pending changes and event clock survive restart",
+        "atomic failure keeps sampling slot",
+        "720 alternating attempts yield 60 events, 12 transitions per subsequent event"
+      ]
+    }
+  },
+  "review_regressions": {
+    "command": "/Users/jordanknight/.cargo/bin/cargo test -p pij-daemon --test review_regressions",
+    "environment": {
+      "RUST_TEST_THREADS": "unset",
+      "CARGO_TARGET_DIR": "/Users/jordanknight/pi-hacking/fs3-store-wedge/target"
+    },
+    "runs": [
+      {
+        "attempt": 1,
+        "exit": 0,
+        "elapsed_ms": 15988,
+        "timed_out": false,
+        "result": [
+          "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.59s"
+        ]
+      },
+      {
+        "attempt": 2,
+        "exit": 0,
+        "elapsed_ms": 2101,
+        "timed_out": false,
+        "result": [
+          "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.59s"
+        ]
+      },
+      {
+        "attempt": 3,
+        "exit": 0,
+        "elapsed_ms": 6833,
+        "timed_out": false,
+        "result": [
+          "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.60s"
+        ]
+      },
+      {
+        "attempt": 4,
+        "exit": 0,
+        "elapsed_ms": 1813,
+        "timed_out": false,
+        "result": [
+          "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.53s"
+        ]
+      },
+      {
+        "attempt": 5,
+        "exit": 0,
+        "elapsed_ms": 2194,
+        "timed_out": false,
+        "result": [
+          "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.53s"
+        ]
+      },
+      {
+        "attempt": 6,
+        "exit": 0,
+        "elapsed_ms": 2144,
+        "timed_out": false,
+        "result": [
+          "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.55s"
+        ]
+      },
+      {
+        "attempt": 7,
+        "exit": 0,
+        "elapsed_ms": 1851,
+        "timed_out": false,
+        "result": [
+          "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.57s"
+        ]
+      },
+      {
+        "attempt": 8,
+        "exit": 0,
+        "elapsed_ms": 1900,
+        "timed_out": false,
+        "result": [
+          "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.54s"
+        ]
+      },
+      {
+        "attempt": 9,
+        "exit": 0,
+        "elapsed_ms": 7085,
+        "timed_out": false,
+        "result": [
+          "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.53s"
+        ]
+      },
+      {
+        "attempt": 10,
+        "exit": 0,
+        "elapsed_ms": 2039,
+        "timed_out": false,
+        "result": [
+          "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.61s"
+        ]
+      },
+      {
+        "attempt": 11,
+        "exit": 0,
+        "elapsed_ms": 6924,
+        "timed_out": false,
+        "result": [
+          "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.60s"
+        ]
+      },
+      {
+        "attempt": 12,
+        "exit": 0,
+        "elapsed_ms": 6877,
+        "timed_out": false,
+        "result": [
+          "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.57s"
+        ]
+      },
+      {
+        "attempt": 13,
+        "exit": 0,
+        "elapsed_ms": 2009,
+        "timed_out": false,
+        "result": [
+          "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.60s"
+        ]
+      },
+      {
+        "attempt": 14,
+        "exit": 0,
+        "elapsed_ms": 7399,
+        "timed_out": false,
+        "result": [
+          "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.62s"
+        ]
+      },
+      {
+        "attempt": 15,
+        "exit": 0,
+        "elapsed_ms": 2078,
+        "timed_out": false,
+        "result": [
+          "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s"
+        ]
+      },
+      {
+        "attempt": 16,
+        "exit": 0,
+        "elapsed_ms": 2197,
+        "timed_out": false,
+        "result": [
+          "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.57s"
+        ]
+      },
+      {
+        "attempt": 17,
+        "exit": 0,
+        "elapsed_ms": 6994,
+        "timed_out": false,
+        "result": [
+          "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.57s"
+        ]
+      },
+      {
+        "attempt": 18,
+        "exit": 0,
+        "elapsed_ms": 2045,
+        "timed_out": false,
+        "result": [
+          "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.58s"
+        ]
+      },
+      {
+        "attempt": 19,
+        "exit": 0,
+        "elapsed_ms": 2153,
+        "timed_out": false,
+        "result": [
+          "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.56s"
+        ]
+      },
+      {
+        "attempt": 20,
+        "exit": 0,
+        "elapsed_ms": 1921,
+        "timed_out": false,
+        "result": [
+          "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.56s"
+        ]
+      }
+    ],
+    "passed": 20,
+    "hangs": 0,
+    "note": "Default test capture hides successful-test stderr; approximately 5.6s runs are not evidence of no drain expiry."
+  },
+  "gates": {
+    "boot": {
+      "exit": 0,
+      "worktree_deps_ms": 122,
+      "typecheck_ms": 3119,
+      "smoke_ms": 39958
+    },
+    "fmt": {
+      "command": "cargo fmt --all && cargo fmt --all --check",
+      "exit": 0,
+      "elapsed_ms": 1900
+    },
+    "rust": {
+      "command": "env -u RUST_TEST_THREADS cargo test --workspace",
+      "exit": 0,
+      "elapsed_ms": 184070,
+      "artifact": "artifact://669",
+      "summaries": 92,
+      "passed": 1185,
+      "failed": 0,
+      "ignored": 8,
+      "filtered": 93,
+      "counting": "reported summaries, including helper subprocesses; not unique-test count",
+      "observer": [
+        "test registration::tests::native_ps_admits_a_delayed_observation_without_weakening_identity ... ok",
+        "test store_shutdown_tests::shutdown_drains_detached_sql_before_returning ... ok",
+        "test store_shutdown_tests::shutdown_returns_with_connections_never_returned ... ok"
+      ],
+      "receipt": [
+        "    Finished `test` profile [unoptimized + debuginfo] target(s) in 24.05s",
+        "     Running unittests src/lib.rs (target/debug/deps/pij_cli-a97a32e3292a0085)",
+        "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.28s",
+        "     Running unittests src/main.rs (target/debug/deps/pij_rs-382811f04726e601)",
+        "test result: ok. 44 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s",
+        "     Running tests/background.rs (target/debug/deps/background-183221640b79cadc)",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.96s",
+        "     Running tests/claude_inbound.rs (target/debug/deps/claude_inbound-45e6391a1c66f075)",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s",
+        "     Running tests/commit_trailers.rs (target/debug/deps/commit_trailers-9e961b97670dba1a)",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s",
+        "     Running tests/control_commands.rs (target/debug/deps/control_commands-45a85c9f47ee658b)",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s",
+        "     Running tests/daemon_log.rs (target/debug/deps/daemon_log-b9d5541c4a3c16e6)",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s",
+        "     Running tests/governance_boot.rs (target/debug/deps/governance_boot-aa121e31ce4a2807)",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.50s",
+        "     Running tests/lifecycle.rs (target/debug/deps/lifecycle-041517b22b9e0f15)",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s",
+        "     Running tests/list_here.rs (target/debug/deps/list_here-094736be47e25c1d)",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s",
+        "     Running tests/render_golden.rs (target/debug/deps/render_golden-fecffbb313273a29)",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s",
+        "     Running tests/revive.rs (target/debug/deps/revive-d31f59cc8d5c4b91)",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s",
+        "     Running tests/shipped_daemon_config.rs (target/debug/deps/shipped_daemon_config-dba836af734f3bc2)",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s",
+        "     Running tests/sidecar_producer.rs (target/debug/deps/sidecar_producer-8e036b3b79951627)",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s",
+        "     Running tests/spawn.rs (target/debug/deps/spawn-39b438f4c4bf7f91)",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s",
+        "     Running unittests src/lib.rs (target/debug/deps/pij_core-ee92be9851235554)",
+        "test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "     Running tests/core_unit_exemplar.rs (target/debug/deps/core_unit_exemplar-509aaab5742d91e8)",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "     Running tests/envelope_wire.rs (target/debug/deps/envelope_wire-625810104f00fd80)",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "     Running tests/liveness_table.rs (target/debug/deps/liveness_table-ebcf266ba55141c0)",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "     Running tests/memorable_ids.rs (target/debug/deps/memorable_ids-6057afa5aa26ac4f)",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.53s",
+        "     Running tests/orchestration.rs (target/debug/deps/orchestration-6956e04eca193017)",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "     Running tests/report.rs (target/debug/deps/report-066d13cb79e7d13a)",
+        "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "     Running tests/status.rs (target/debug/deps/status-f28a036346952e54)",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "     Running tests/watchdog.rs (target/debug/deps/watchdog-ec5108326b43c358)",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "     Running tests/wire_over_corpus.rs (target/debug/deps/wire_over_corpus-7c671951bcd14ab1)",
+        "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "     Running unittests src/lib.rs (target/debug/deps/pij_daemon-c75f6a4c392579ae)",
+        "test result: ok. 438 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 24.15s",
+        "     Running tests/admission_agreement.rs (target/debug/deps/admission_agreement-513b3e66337cc168)",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "     Running tests/background_http.rs (target/debug/deps/background_http-84c99bac228ae330)",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.71s",
+        "     Running tests/caller_context_wire.rs (target/debug/deps/caller_context_wire-2eabec2feb8366d7)",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "     Running tests/control_commands.rs (target/debug/deps/control_commands-e5d8f172ffe6b073)",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.58s",
+        "     Running tests/events_bus.rs (target/debug/deps/events_bus-614c73eb08dc02ce)",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "     Running tests/first_light.rs (target/debug/deps/first_light-ecfed18b79445c86)",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.57s",
+        "     Running tests/first_light_wave1.rs (target/debug/deps/first_light_wave1-5256845fd0871e08)",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
+        "     Running tests/first_light_wave2.rs (target/debug/deps/first_light_wave2-d21a724d67eb2268)",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+        "     Running tests/governance_canary.rs (target/debug/deps/governance_canary-c51c152e0d346227)",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s",
+        "     Running tests/governance_composition.rs (target/debug/deps/governance_composition-13287a1783b2bed5)",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s",
+        "     Running tests/governance_notices.rs (target/debug/deps/governance_notices-a2dfd31bd873ed8c)",
+        "test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.61s",
+        "     Running tests/governance_u3.rs (target/debug/deps/governance_u3-289ed070991e26cc)",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s",
+        "     Running tests/governance_u3_baseline.rs (target/debug/deps/governance_u3_baseline-eba8ae50c83a3797)",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s",
+        "     Running tests/governance_u4_baseline.rs (target/debug/deps/governance_u4_baseline-43fb783895647caa)",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s",
+        "     Running tests/lifecycle_http.rs (target/debug/deps/lifecycle_http-f072d94e55850d5b)",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s",
+        "     Running tests/native_runtime_cold_resume.rs (target/debug/deps/native_runtime_cold_resume-b49c761272d0e479)",
+        "test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "     Running tests/orchestration_repo.rs (target/debug/deps/orchestration_repo-eba472f0f54244c5)",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.55s",
+        "     Running tests/report_http.rs (target/debug/deps/report_http-6b8a88ec63d963f8)",
+        "test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.25s",
+        "     Running tests/retired_identity_http.rs (target/debug/deps/retired_identity_http-30853d7174ae2e60)",
+        "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s",
+        "     Running tests/review_regressions.rs (target/debug/deps/review_regressions-54d79ce5a9350eb0)",
+        "test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.61s",
+        "     Running tests/revive_http.rs (target/debug/deps/revive_http-e3051f5cf15e0813)",
+        "test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.65s",
+        "     Running tests/role_http.rs (target/debug/deps/role_http-094052c3ea33e4f4)",
+        "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.60s",
+        "     Running tests/shim_http.rs (target/debug/deps/shim_http-4c48669a596da848)",
+        "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.85s",
+        "     Running tests/status_http.rs (target/debug/deps/status_http-cd76e924e721a18e)",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s",
+        "     Running tests/store_wedge.rs (target/debug/deps/store_wedge-5ce7e431e731bc8d)",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.39s",
+        "     Running unittests src/lib.rs (target/debug/deps/pij_harnesses-2b94d25d00030e78)",
+        "test result: ok. 131 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.09s",
+        "     Running tests/incident155.rs (target/debug/deps/incident155-4b177d799ecbe42c)",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "     Running tests/proc_integration.rs (target/debug/deps/proc_integration-511f5958668f0826)",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "     Running unittests src/lib.rs (target/debug/deps/pij_sidecars-47d7e402499243aa)",
+        "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s",
+        "     Running tests/sidecars.rs (target/debug/deps/sidecars-fba52f44c79bd7ec)",
+        "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.61s",
+        "     Running unittests src/lib.rs (target/debug/deps/pij_store-6a638e3346457d3f)",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s",
+        "     Running tests/anomaly_dispositions.rs (target/debug/deps/anomaly_dispositions-4a3b3ee981465206)",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s",
+        "     Running tests/background.rs (target/debug/deps/background-94148a4cc6718d72)",
+        "test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s",
+        "     Running tests/cancellation.rs (target/debug/deps/cancellation-f1268fa7e2ccce17)",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s",
+        "     Running tests/governance.rs (target/debug/deps/governance-5deacf028357633f)",
+        "test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.54s",
+        "     Running tests/orchestration.rs (target/debug/deps/orchestration-87d8a008e4ed3247)",
+        "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.81s",
+        "     Running tests/queue.rs (target/debug/deps/queue-ab2a7bf8215241e7)",
+        "test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.94s",
+        "     Running tests/status.rs (target/debug/deps/status-60e27ae193d3259d)",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s",
+        "     Running tests/store_integration.rs (target/debug/deps/store_integration-3c89c59b61cd68f8)",
+        "test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.86s",
+        "     Running tests/store_registry.rs (target/debug/deps/store_registry-2489bbdde666272f)",
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s",
+        "     Running unittests src/lib.rs (target/debug/deps/pij_testkit-d568176b07fd941b)",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "     Running unittests src/bin/arch_check.rs (target/debug/deps/pij_arch_check-711f77211aa5e9d3)",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "     Running unittests src/bin/gate.rs (target/debug/deps/pij_gate-6685951c91e2e9fb)",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "     Running tests/arch_drift.rs (target/debug/deps/arch_drift-f42f3fe571599034)",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s",
+        "     Running tests/contract_over_fakes.rs (target/debug/deps/contract_over_fakes-7351c311b6095456)",
+        "test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "     Running tests/corpus.rs (target/debug/deps/corpus-f4f032d1f1e81cee)",
+        "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s",
+        "     Running tests/lockfile_check.rs (target/debug/deps/lockfile_check-ef354d9961526723)",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s",
+        "     Running tests/message_framing.rs (target/debug/deps/message_framing-bcf07ea1db796d51)",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s",
+        "     Running tests/models_golden.rs (target/debug/deps/models_golden-4d34c4c138d6e3ab)",
+        "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
+        "     Running unittests src/lib.rs (target/debug/deps/pij_tmux-e5a911b9a1052d82)",
+        "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "     Running tests/adapter.rs (target/debug/deps/adapter-76c911d493b63d82)",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 31 filtered out; finished in 0.91s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 31 filtered out; finished in 1.02s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 31 filtered out; finished in 2.73s",
+        "test result: ok. 32 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 21.45s",
+        "     Running unittests src/lib.rs (target/debug/deps/pij_transport-3ca1fc66559dc9ba)",
+        "test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s",
+        "     Running tests/live_held_observation.rs (target/debug/deps/live_held_observation-7cd2a9d47ef3fa2c)",
+        "test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "   Doc-tests pij_cli",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "   Doc-tests pij_core",
+        "test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "   Doc-tests pij_daemon",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "   Doc-tests pij_harnesses",
+        "test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "   Doc-tests pij_sidecars",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "   Doc-tests pij_store",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "   Doc-tests pij_testkit",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "   Doc-tests pij_tmux",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        "   Doc-tests pij_transport",
+        "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      ]
+    },
+    "clippy": {
+      "command": "cargo clippy --workspace --all-targets -- -D warnings",
+      "exit": 0
+    },
+    "build": {
+      "command": "cargo build -p pij-cli --bin pij-rs",
+      "exit": 0,
+      "clippy_plus_build_wall_ms": 27870
+    },
+    "native": {
+      "command": "node --test .copilot/extensions/pij/*.test.mjs",
+      "exit": 0,
+      "passed": 256,
+      "failed": 0,
+      "skipped": 3,
+      "elapsed_ms": 9060,
+      "artifact": "artifact://675"
+    },
+    "selfcheck": {
+      "command": "just self-check",
+      "warm": true,
+      "exit": 0,
+      "elapsed_ms": 140730,
+      "artifact": "artifact://685",
+      "vitest": {
+        "files_passed": 244,
+        "files_skipped": 4,
+        "passed": 5308,
+        "skipped": 22
+      },
+      "native": {
+        "passed": 256,
+        "skipped": 3
+      },
+      "windows": {
+        "files_passed": 4,
+        "passed": 84,
+        "skipped": 2,
+        "all_portable_stages": true
+      },
+      "smokes_passed": 11,
+      "closing": "✓ snapshot-check: briefing.md SHA matches snapshots (cdf5f5b25001...)",
+      "package_audit": {
+        "report_only": true,
+        "flagged": 1,
+        "total": 4,
+        "source": "git:github.com/ghoseb/pi-askuserquestion",
+        "fail": 4,
+        "warn": 13
+      },
+      "historical_missing_prime": [
+        "8eef09857eee1d3e9b2a7614f8e3552caa83deaf",
+        "bd5afa237b8a5e7005161e5e93b080cdfddcbd6d",
+        "62aba16f63f666f36e262b90a15f2ea62f5adae7"
+      ],
+      "biome_schema": "2.0.0 versus CLI 2.4.14 informational only",
+      "isolated_reruns": 0
+    }
+  },
+  "scope": "Private worktree and private daemons only; no production restart, global link, push, PR or merge.",
+  "retrospective": {
+    "observation": "DL-001",
+    "fingerprint": "ec8a1797fd53",
+    "difficulty": "Closing admission prevents growth, not completion; a nonzero physical pool count can remain forever.",
+    "encoded": "Held-connection shutdown regression asserts return under six seconds while leases remain checked out; one shared five-second drain deadline preserves normal completion but bounds stuck cleanup.",
+    "magicWand": "Any wait introduced as recovery should have an executable stalled-resource proof before it ships.",
+    "cleanup": "Removed owned RED private daemon key/store directory; no shared or production resources touched.",
+    "drain": {
+      "cleared": 1,
+      "malformed_skipped": 0
+    }
+  },
+  "base_head": "8eef09857eee1d3e9b2a7614f8e3552caa83deaf",
+  "source_sha256": {
+    "crates/core/src/delivery.rs": "54720914eff4c24ab2f782c6e6c6ba2de35e24961530a90578bccaa633e7c229",
+    "crates/core/src/ports.rs": "5793a189f7516731afe55fc9da8a6505124904217f4ec524aa46f4d4f3e52d16",
+    "crates/daemon/src/lib.rs": "b916d789a7de3e7da46e2bb01b82ee1da25102c230891909719f0ad16a102983",
+    "crates/daemon/src/registration.rs": "f42487e62899f9caa051fa78e57934a5a9077f7e82eb01b578bf43e13531f1bf",
+    "crates/daemon/src/store_shutdown_tests.rs": "a7e97166823a2987ad18ca011a9d279d2db8b85fecbe1583b75a3b14d619eab0",
+    "crates/store/src/migrate.rs": "bbade16ea4d38eb39a8fcac23a098e430d7d78ea6e56342ffaf6fc3c0dc52916",
+    "crates/store/src/queue.rs": "9ce48445a68b593baa39f27ef137e19cc00b36dc44ce801bf7d6ba36a6770075",
+    "crates/store/tests/queue.rs": "ec1766d38a2a1f5cdd6bdb4519e0bac893a51abc539c93a8fe1cfa44f2d5d182",
+    "crates/testkit/src/fakes.rs": "7d6f100c40e0c5b0c8b3453d162a247eea5ebf8158980f1788ddda77478318b6",
+    "crates/store/migrations/0022_deferral_reason_changes.sql": "bf418989a8b505983115c91f7c06202c06baa68c1a03a727b7a4f2a31c50071c",
+    "docs/how/pij-rs-api.md": "7f257fef29cb0d0d0d9d9af54d9f0f5ceef159fc500d3f6956ef3f1bf418a1a2"
+  }
+}

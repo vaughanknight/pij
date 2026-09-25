@@ -1,5 +1,5 @@
 //! Durable decision lifecycle on the existing shared orchestration pool.
-use crate::migrate::{begin_write, require_current_schema};
+use crate::migrate::{begin_write, owned_write, require_current_schema};
 use crate::orchestration::{SqliteOrchestration, adapter_error, sql_i64, sql_u64};
 use crate::spine::{append_generated_in_transaction, append_in_transaction};
 use pij_core::decisions::{Decision, DecisionState};
@@ -31,7 +31,6 @@ impl SqliteOrchestration {
         if id.trim().is_empty() || question.trim().is_empty() {
             return Err(refusal("E-RS-ARG", id));
         }
-        let mut tx = begin_write(&self.pool).await?;
         let mut decision = Decision {
             id: id.to_string(),
             asked_by: asker.clone(),
@@ -45,18 +44,22 @@ impl SqliteOrchestration {
             answered_at: None,
             answer_msg_id: None,
         };
-        let draft = decision_event(&decision, asker, "opened", at);
+        let pool = self.pool.clone();
+        owned_write(async move {
+        let mut tx = begin_write(&pool).await?;
+        let draft = decision_event(&decision, &decision.asked_by, "opened", at);
         let event = append_generated_in_transaction(&mut tx, draft, |seq| {
             decision.question_seq = seq;
-            decision_event(&decision, asker, "opened", at).payload
+            decision_event(&decision, &decision.asked_by, "opened", at).payload
         })
         .await?;
         sqlx::query("INSERT INTO decisions (id,asked_by,parent,question,state,asked_at,question_seq) VALUES (?1,?2,?3,?4,'open',?5,?6)")
-            .bind(id).bind(asker.as_str()).bind(parent.map(SeatId::as_str)).bind(question)
+            .bind(&decision.id).bind(decision.asked_by.as_str()).bind(decision.parent.as_ref().map(SeatId::as_str)).bind(&decision.question)
             .bind(sql_i64(at,"asked_at")?).bind(sql_i64(decision.question_seq.0,"question_seq")?)
             .execute(&mut *tx).await.map_err(adapter_error)?;
         tx.commit().await.map_err(adapter_error)?;
         Ok((event, decision))
+        }).await
     }
 
     /// Read a durable question without fabricating a missing receipt.
@@ -95,24 +98,31 @@ impl SqliteOrchestration {
         if answer.trim().is_empty() {
             return Err(refusal("E-RS-ARG", id));
         }
-        let mut tx = begin_write(&self.pool).await?;
-        let mut stored = read_in_transaction(&mut tx, id).await?;
+        let pool = self.pool.clone();
+        let id = id.to_owned();
+        let actor = actor.clone();
+        let answer = answer.to_owned();
+        let msg_id = msg_id.map(str::to_owned);
+        owned_write(async move {
+        let mut tx = begin_write(&pool).await?;
+        let mut stored = read_in_transaction(&mut tx, &id).await?;
         if stored.decision.answer.is_some() {
-            if stored.decision.answer.as_deref() != Some(answer)
-                || stored.decision.answered_by.as_ref() != Some(actor)
-                || stored.decision.answer_msg_id.as_deref() != msg_id
+            if stored.decision.answer.as_deref() != Some(answer.as_str())
+                || stored.decision.answered_by.as_ref() != Some(&actor)
+                || stored.decision.answer_msg_id.as_deref() != msg_id.as_deref()
             {
-                return Err(refusal("E-RS-ANSWER-CONFLICT", id));
+                return Err(refusal("E-RS-ANSWER-CONFLICT", &id));
             }
         } else {
             sqlx::query("UPDATE decisions SET answer=?2,answered_by=?3,answer_msg_id=?4 WHERE id=?1 AND state='open'")
-                .bind(id).bind(answer).bind(actor.as_str()).bind(msg_id).execute(&mut *tx).await.map_err(adapter_error)?;
-            stored.decision.answer = Some(answer.to_string());
-            stored.decision.answered_by = Some(actor.clone());
-            stored.decision.answer_msg_id = msg_id.map(str::to_string);
+                .bind(&id).bind(&answer).bind(actor.as_str()).bind(msg_id.as_deref()).execute(&mut *tx).await.map_err(adapter_error)?;
+            stored.decision.answer = Some(answer);
+            stored.decision.answered_by = Some(actor);
+            stored.decision.answer_msg_id = msg_id;
         }
         tx.commit().await.map_err(adapter_error)?;
         Ok(stored)
+        }).await
     }
 
     /// Replace only a terminal, non-delivered intent; queued/claimed work cannot
@@ -128,30 +138,36 @@ impl SqliteOrchestration {
         if answer.trim().is_empty() {
             return Err(refusal("E-RS-ARG", id));
         }
-        let mut tx = begin_write(&self.pool).await?;
-        let mut stored = read_in_transaction(&mut tx, id).await?;
+        let pool = self.pool.clone();
+        let id = id.to_owned();
+        let actor = actor.clone();
+        let answer = answer.to_owned();
+        owned_write(async move {
+        let mut tx = begin_write(&pool).await?;
+        let mut stored = read_in_transaction(&mut tx, &id).await?;
         let old_msg_id = stored
             .decision
             .answer_msg_id
             .as_deref()
-            .ok_or_else(|| refusal("E-RS-ANSWER-CONFLICT", id))?;
+            .ok_or_else(|| refusal("E-RS-ANSWER-CONFLICT", &id))?;
         ensure_answer_terminal(&mut tx, &stored.decision, old_msg_id).await?;
         let superseded = json!({"answer_msg_id":old_msg_id,"answered_by":stored.decision.answered_by,"answer":stored.decision.answer});
         stored.decision.state = DecisionState::Open;
-        stored.decision.answer = Some(answer.to_string());
+        stored.decision.answer = Some(answer);
         stored.decision.answered_by = Some(actor.clone());
         stored.decision.answered_at = None;
         stored.answer_seq = None;
-        let draft = decision_event(&stored.decision, actor, "answer-superseded", at);
+        let draft = decision_event(&stored.decision, &actor, "answer-superseded", at);
         let event = append_generated_in_transaction(&mut tx,draft,|seq| {
             stored.decision.answer_msg_id = Some(format!("{id}-answer-{}",seq.0));
             json!({"actor":actor,"action":"answer-superseded","record":stored.decision,"superseded":superseded}).to_string()
         }).await?;
         sqlx::query("UPDATE decisions SET state='open',answer=?2,answered_by=?3,answer_msg_id=?4,answered_at=NULL,answer_seq=NULL WHERE id=?1")
-            .bind(id).bind(answer).bind(actor.as_str()).bind(&stored.decision.answer_msg_id)
+            .bind(&id).bind(stored.decision.answer.as_deref()).bind(actor.as_str()).bind(&stored.decision.answer_msg_id)
             .execute(&mut *tx).await.map_err(adapter_error)?;
         tx.commit().await.map_err(adapter_error)?;
         Ok((event, stored))
+        }).await
     }
 
     /// Close only after durable transport acceptance (or an authorized self
@@ -164,32 +180,39 @@ impl SqliteOrchestration {
         at: u64,
     ) -> Result<(Event, Decision)> {
         require_current_schema(&self.pool).await?;
-        let mut tx = begin_write(&self.pool).await?;
-        let stored = read_in_transaction(&mut tx, id).await?;
-        let mut decision = stored.decision;
-        if decision.state != DecisionState::Open
-            || decision.answer.is_none()
-            || decision.answered_by.as_ref() != Some(actor)
-            || decision.answer_msg_id.as_deref() != expected_msg_id
-        {
-            return Err(refusal("E-RS-ANSWER-CONFLICT", id));
-        }
-        decision.state = DecisionState::Answered;
-        decision.answered_at = Some(at);
-        let mut event = decision_event(&decision, actor, "answered", at);
-        let seq = append_in_transaction(&mut tx, &event).await?;
-        sqlx::query(
-            "UPDATE decisions SET state='answered',answered_at=?2,answer_seq=?3 WHERE id=?1",
-        )
-        .bind(id)
-        .bind(sql_i64(at, "answered_at")?)
-        .bind(sql_i64(seq.0, "answer_seq")?)
-        .execute(&mut *tx)
+        let pool = self.pool.clone();
+        let id = id.to_owned();
+        let actor = actor.clone();
+        let expected_msg_id = expected_msg_id.map(str::to_owned);
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
+            let stored = read_in_transaction(&mut tx, &id).await?;
+            let mut decision = stored.decision;
+            if decision.state != DecisionState::Open
+                || decision.answer.is_none()
+                || decision.answered_by.as_ref() != Some(&actor)
+                || decision.answer_msg_id.as_deref() != expected_msg_id.as_deref()
+            {
+                return Err(refusal("E-RS-ANSWER-CONFLICT", &id));
+            }
+            decision.state = DecisionState::Answered;
+            decision.answered_at = Some(at);
+            let mut event = decision_event(&decision, &actor, "answered", at);
+            let seq = append_in_transaction(&mut tx, &event).await?;
+            sqlx::query(
+                "UPDATE decisions SET state='answered',answered_at=?2,answer_seq=?3 WHERE id=?1",
+            )
+            .bind(&id)
+            .bind(sql_i64(at, "answered_at")?)
+            .bind(sql_i64(seq.0, "answer_seq")?)
+            .execute(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+            tx.commit().await.map_err(adapter_error)?;
+            event.seq = Some(seq);
+            Ok((event, decision))
+        })
         .await
-        .map_err(adapter_error)?;
-        tx.commit().await.map_err(adapter_error)?;
-        event.seq = Some(seq);
-        Ok((event, decision))
     }
 
     /// Append a receipt for the latest done naming the requested assignment, or
@@ -203,7 +226,12 @@ impl SqliteOrchestration {
         at: u64,
     ) -> Result<(Event, serde_json::Value)> {
         require_current_schema(&self.pool).await?;
-        let mut tx = begin_write(&self.pool).await?;
+        let pool = self.pool.clone();
+        let actor = actor.clone();
+        let target = target.clone();
+        let assignment = assignment.map(str::to_owned);
+        owned_write(async move {
+        let mut tx = begin_write(&pool).await?;
         let history = sqlx::query("SELECT seq,at,payload FROM spine_events WHERE seat=?1 AND kind='report.state' ORDER BY seq DESC")
             .bind(target.as_str()).fetch_all(&mut *tx).await.map_err(adapter_error)?;
         let mut latest = None;
@@ -215,7 +243,7 @@ impl SqliteOrchestration {
             };
             if payload["state"] == "done" {
                 saw_done = true;
-                if assignment.is_some_and(|id| payload["assignment_id"].as_str() != Some(id)) {
+                if assignment.as_deref().is_some_and(|id| payload["assignment_id"].as_str() != Some(id)) {
                     continue;
                 }
                 latest = Some((
@@ -225,11 +253,11 @@ impl SqliteOrchestration {
                 break;
             }
         }
-        let (done_seq, done_at) = latest.ok_or_else(|| match assignment {
+        let (done_seq, done_at) = latest.ok_or_else(|| match assignment.as_deref() {
             Some(id) if saw_done => refusal("E-RS-DONE-ASSIGNMENT", id),
             _ => refusal("E-RS-NO-DONE", target.as_str()),
         })?;
-        if let Some(assignment) = assignment {
+        if let Some(assignment) = assignment.as_deref() {
             let task =
                 sqlx::query("SELECT node_id,opened_at,closed_at FROM task_assignments WHERE id=?1")
                     .bind(assignment)
@@ -254,7 +282,7 @@ impl SqliteOrchestration {
             }
         }
         let mut receipt = json!({"seat":target,"verified_by":actor,"done_seq":done_seq});
-        if let Some(assignment) = assignment {
+        if let Some(assignment) = assignment.as_deref() {
             receipt["assignment_id"] = json!(assignment);
         }
         let mut event = Event {
@@ -269,6 +297,7 @@ impl SqliteOrchestration {
         tx.commit().await.map_err(adapter_error)?;
         event.seq = Some(seq);
         Ok((event, receipt))
+        }).await
     }
 }
 
