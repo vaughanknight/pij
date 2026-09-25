@@ -1,0 +1,448 @@
+{
+  "base": "10798fce",
+  "packet_parent": "62aba16f63f666f36e262b90a15f2ea62f5adae7",
+  "production": {
+    "coder": "read-only",
+    "prime_reported": "both self-hold seats changed to waiting; all eight messages delivered",
+    "causal_limit": "post-BEGIN-ack cancellation reproduces the store error; the exact production triggering request remains unproved"
+  },
+  "red": [
+    {
+      "claim": "cancelled custom-BEGIN poisons pool",
+      "artifact": "479",
+      "exit": 101,
+      "observed": "attempted to call begin_with at non-zero transaction depth"
+    },
+    {
+      "claim": "poisoned store health lies",
+      "artifact": "497",
+      "exit": 101,
+      "observed": "HTTP200 healthy instead of503 after real /v1/report returned non-zero transaction depth"
+    },
+    {
+      "claim": "admitted write cancellation",
+      "artifact": "504",
+      "exit": 101,
+      "mutation": "owned_write replaced by work.await, then restored",
+      "observed": "zero committed events instead of one"
+    },
+    {
+      "claim": "self-status gates incoming route",
+      "artifact": "490",
+      "exit": 101,
+      "observed": "Queue(OperatorHold) instead of Transport"
+    },
+    {
+      "claim": "self-status gates queued delivery",
+      "artifact": "491",
+      "exit": 101,
+      "observed": "no injected message"
+    },
+    {
+      "claim": "self-status gates native claim",
+      "artifact": "498",
+      "exit": 101,
+      "observed": "Some(semantic-hold) instead of None"
+    },
+    {
+      "claim": "self-status gates native client",
+      "exit": 1,
+      "observed": "zero sends instead of one"
+    },
+    {
+      "claim": "deferral event sampling",
+      "artifact": "471",
+      "exit": 101,
+      "observed": "three held events instead of one"
+    },
+    {
+      "claim": "deferral state renderers",
+      "artifacts": [
+        "475",
+        "476"
+      ],
+      "exits": [
+        1,
+        101
+      ],
+      "observed": "human state omitted reason/count/since"
+    },
+    {
+      "claim": "timestamps on actual daemon output",
+      "exit": 101,
+      "observed": "daemon.log line has no RFC3339 prefix"
+    },
+    {
+      "claim": "dedupe reservation loses cancelled delivery continuation",
+      "artifact": "541",
+      "exit": 101,
+      "observed": "zero injected bodies despite committed reservation"
+    },
+    {
+      "claim": "shutdown must await detached SQLite writer",
+      "artifacts": [
+        "558",
+        "567"
+      ],
+      "exit": 101,
+      "observed": "shutdown returned Ok with closed=true,size=1 while INSERT hook remained blocked"
+    },
+    {
+      "claim": "mixed-backend deferral cannot publish a foreign cursor",
+      "artifact": "601",
+      "exit": 101,
+      "observed": "real Queue/fake Spine returned queued(tap-unowned) instead of E-RS-INBOX-AUTHORITY-SPLIT"
+    }
+  ],
+  "targeted_green": {
+    "pool": {
+      "artifact": "501",
+      "passed": 1,
+      "recovery_count": 1
+    },
+    "cancellation_and_http": {
+      "artifact": "509",
+      "store_passed": 2,
+      "http_passed": 3
+    },
+    "reservation_and_http": {
+      "artifact": "545",
+      "passed": 4
+    },
+    "native": {
+      "artifact": "508",
+      "passed": 255,
+      "skipped": 3,
+      "failed": 0
+    },
+    "shim_runtime_fixtures": {
+      "artifact": "510",
+      "passed": 356,
+      "files": 3
+    },
+    "shutdown": {
+      "artifact": "575",
+      "test": "shutdown_drains_detached_sql_before_returning",
+      "passed": true
+    },
+    "mixed_authority": {
+      "artifact": "605",
+      "tests": 2,
+      "passed": 2
+    }
+  },
+  "cli_smoke": {
+    "artifact": "561",
+    "actual_clients": [
+      "target/debug/pij-rs",
+      "node_modules/.bin/tsx .omp/extensions/pij/cli.ts"
+    ],
+    "private_sqlite": true,
+    "external_inputs": "FakeTmux and FakeTransport; not a model-backed Claude turn",
+    "native_exit": 0,
+    "shim_exit": 0,
+    "display": "delivery deferred: unrecognized ×3 since 1790301591239 ms",
+    "job": {
+      "id": 1,
+      "state": "done",
+      "reason": "unrecognized",
+      "count": 3,
+      "since_ms": 1790301591239
+    },
+    "spine_counts": {
+      "delivery.held": 1,
+      "delivery.outcome": 1,
+      "message.pushed": 1,
+      "seat.put": 2
+    },
+    "after_completion": "deliveryDeferrals=[]; human active diagnostic absent; self status hold unchanged"
+  },
+  "review": {
+    "delivery": "Initial scoped review found no material findings. Main subsequently proved/fixed mixed queue/spine authority gap; focused reviewer rereview accepts both direct and drain guard placements and constant-false compatibility.",
+    "store": "Two findings fixed: owned admission and physical size0 pool drain. Both have behavioural RED and GREEN. Focused source rereview: no additional material findings."
+  },
+  "gates": {
+    "first_rust": {
+      "artifact": "531",
+      "exit": 101,
+      "reason": "clean/drift metadata fixtures missing new CLI nix/time edges; updated without weakening gate"
+    },
+    "first_canonical": {
+      "artifact": "551",
+      "exit": 1,
+      "passed": 5307,
+      "failed": 1,
+      "reason": "250ms process observation refused in private inbox fixture"
+    },
+    "focused_inbox": {
+      "artifact": "554",
+      "exit": 1
+    },
+    "logger_disabled_control": {
+      "exit": 0,
+      "passed": 1,
+      "cause": "not established from one control; source restored immediately"
+    },
+    "logger_enabled_control": {
+      "exit": 0,
+      "passed": 1,
+      "elapsed_ms": 2210
+    },
+    "parallel_rust_observer_failure": {
+      "artifact": "575",
+      "exit": 101,
+      "daemon_passed": 433,
+      "daemon_failed": 1,
+      "observed": "250ms ps refusal, observed_pid=4405 output_bytes=0; no CLI logger installed in this test process"
+    },
+    "cancelled_attempts": [
+      "Final Rust attempts superseded by explicit rolling-compatibility ruling and mixed-authority repair; no success claimed for cancelled jobs."
+    ],
+    "serial_native_failure": {
+      "exit": 101,
+      "daemon_passed": 430,
+      "daemon_failed": 5,
+      "process": "plan155-rust-final",
+      "reason": "unchanged 250ms ps and2s host-observation deadlines"
+    },
+    "readiness_experiment": {
+      "artifact": "610",
+      "passed": 41,
+      "failed": 1,
+      "action": "temporary echo-ready inert host fixture reverted; no proven complete repair"
+    },
+    "observer_ruling": "Authorized; no failure waiver",
+    "rust_final": {
+      "command": "cargo test --workspace -- --format terse",
+      "RUST_TEST_THREADS": 1,
+      "exit": 0,
+      "reported_results": {
+        "passed": 1183,
+        "failed": 0,
+        "ignored": 8,
+        "filtered": 93,
+        "summaries": 92
+      },
+      "daemon_passed": 437,
+      "process": "plan155-rust-final",
+      "log_cursor_start": 9703,
+      "log_selection": "Hub restarted-name logs append; selected the final compilation header, not earlier failed run",
+      "receipt": "evidence/final-rust.txt"
+    },
+    "static_final": {
+      "commands": [
+        "cargo fmt --all --check",
+        "cargo clippy --workspace --all-targets -- -D warnings",
+        "cargo build -p pij-cli --bin pij-rs"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 15.37
+    },
+    "canonical_final": {
+      "artifact": "632",
+      "command": "just self-check",
+      "exit": 1,
+      "vitest": {
+        "passed": 5307,
+        "failed": 1,
+        "skipped": 22,
+        "files_passed": 243,
+        "files_failed": 1,
+        "files_skipped": 4
+      },
+      "failure": {
+        "path": ".omp/extensions/pij/cli.inbox.integration.test.ts:829",
+        "test": "refuses conflicting native session evidence observed in the host argv",
+        "meta": "process observation for pid 48254 timed out after 1000ms",
+        "retryable": true
+      },
+      "not_reached": [
+        "native",
+        "windows",
+        "smoke",
+        "pkg audit",
+        "snapshots"
+      ]
+    },
+    "isolated_final": {
+      "command": "just test .omp/extensions/pij/cli.inbox.integration.test.ts -t 'refuses conflicting native session evidence observed in the host argv'",
+      "attempt": 1,
+      "maximum_authorized_attempts": 3,
+      "exit": 0,
+      "passed": 1,
+      "unselected": 16,
+      "test_ms": 969,
+      "command_seconds": 1.72
+    },
+    "environmental_ruling": {
+      "authority": "prime explicit instruction after observing remaining self-check failure",
+      "load": {
+        "source": "prime-reported; not remeasured",
+        "load_average": 38,
+        "cores": 16,
+        "defender_cpu_percent": 184,
+        "orbstack_cpu_percent": 113,
+        "python_processes": 4,
+        "python_cpu_percent_each": 100,
+        "idle_ps_seconds": 0
+      },
+      "release_condition": "isolated failing test passes within up to3attempts",
+      "satisfied": true,
+      "no_limit_changes": true,
+      "full_self_check_remains_exit": 1
+    }
+  },
+  "attribution": {
+    "seat": "pij-worthy-brandon",
+    "prime": "pij-far-jackal",
+    "plan": "155-store-wedge-and-silent-deferral",
+    "derivation": "role=prime"
+  },
+  "reproduction_commands": {
+    "pool": "cargo test -p pij-store --test cancellation -- --nocapture",
+    "http": "cargo test -p pij-daemon --test store_wedge -- --nocapture --test-threads=1",
+    "shutdown": "cargo test -p pij-daemon shutdown_drains_detached_sql_before_returning -- --nocapture",
+    "core_status": "cargo test -p pij-core self_reported_hold_still_routes_incoming_messages -- --nocapture",
+    "worker_status": "cargo test -p pij-daemon self_reported_hold_does_not_suppress_queued_inbox_delivery -- --nocapture",
+    "native_status": "cargo test -p pij-daemon native_and_extension_claims_ignore_self_reported_hold -- --nocapture",
+    "deferral": "cargo test -p pij-store --test queue deferral",
+    "logger": "cargo test -p pij-cli --test daemon_log daemon_log_timestamps_startup_multiline_errors_and_shutdown -- --exact --nocapture",
+    "native": "just copilot-native-test",
+    "shim": "just test .omp/extensions/pij/core/generation-routing.test.ts .omp/extensions/pij/adapters/rust-runtime.test.ts harness/scripts/copilot-native-smoke.test.ts"
+  },
+  "environment": {
+    "cwd": "/Users/jordanknight/pi-hacking/fs3-store-wedge",
+    "CARGO_TARGET_DIR": "/Users/jordanknight/pi-hacking/fs3-store-wedge/target",
+    "PATH": "inherited unchanged",
+    "rust_executable": "/Users/jordanknight/.cargo/bin/cargo"
+  },
+  "compatibility": {
+    "deprecated_field": "semantic_hold",
+    "value": false,
+    "removal_issue": "https://github.com/AI-Substrate/pij/issues/429",
+    "removal_condition": "Every live native receiver positively verified at/past field-ignoring build; unknown blocks removal",
+    "first_field_ignoring_sha256": "16a6020da089021cf0d6d0965e35974c0919e1f3e734ced1a98da48a61288fc5",
+    "current_main_module": "/Users/jordanknight/pi-hacking/pij/.copilot/extensions/pij/store.mjs",
+    "current_main_sha256": "ecdce862aea71ce61e330aef79533e3c7fa431f5d0a3f5bb995de316edfe3475",
+    "red": {
+      "artifact": "587",
+      "exit": 101,
+      "error": "Native consent observation unavailable or invalid; receiving stopped without injection"
+    },
+    "green": {
+      "artifact": "591",
+      "exit": 0,
+      "tests": 1,
+      "seconds": 0.75,
+      "seat": "pij-spiritual-regis",
+      "reported_state": "hold",
+      "job_id": 1,
+      "msg_id": "cross-language-original-m1",
+      "old_host": 59900,
+      "new_host": 59960,
+      "proc_start": 20260925122114,
+      "acceptance_calls": 1,
+      "acknowledged": true,
+      "journal_sha256": "25de2b0e5ad5d1d3a329ef94e106a220e6bdd2b24258f83d5a0e8de422454a71"
+    },
+    "new_receiver": {
+      "tests": 2,
+      "passed": 2,
+      "cases": [
+        "absent",
+        "present true ignored"
+      ]
+    },
+    "grade": "actual old module + real HTTP/SQLite + chooser/client/bridge/journal; simulated SDK send, not model acceptance"
+  },
+  "source_sha256": {
+    ".copilot/extensions/pij/extension.test.mjs": "9cbd23bb12a367f9c13144f9b3ce98332a31c9157add0a6efc7409182099e6d9",
+    ".copilot/extensions/pij/memory.test.mjs": "f89bb6f61de33f05766eae23b39c6468cd226c221ab5b9afc1f6df0d1f7bb727",
+    ".copilot/extensions/pij/progress.test.mjs": "430aafee34703a84ec52d4a9c7726aae2c352f6684045ffbe0c1490078a81982",
+    ".copilot/extensions/pij/store.mjs": "16a6020da089021cf0d6d0965e35974c0919e1f3e734ced1a98da48a61288fc5",
+    ".copilot/extensions/pij/store.test.mjs": "646f936cde06b923eed8affd70b338b545a8d4b6a83b0bd223a19e039537f703",
+    ".omp/extensions/pij/adapters/rust-runtime.test.ts": "7732aa5411b200f8a8076e20e45118c96f75b88e2365922fcdae893e515bc607",
+    ".omp/extensions/pij/adapters/rust-runtime.ts": "21b2ca3290e7821ddda453373a266136a2fa88adbb7ec3208de093b38262860e",
+    ".omp/extensions/pij/core/generation-routing.test.ts": "7a2402f778355b248d74f2d35d8cbb58e6dd2ee2c2439403ece4adff77b61dde",
+    ".omp/extensions/pij/core/generation-routing.ts": "dd82f46a897fadaa70f6de8805889b10aebe8acdf680eafc8fe0484ce055d38e",
+    "Cargo.lock": "6e5a351569b329d1c726ab14e226f1878277770cfd202ba330d67883df1ab904",
+    "Cargo.toml": "0c59a71a2a025389472cbed77ee7952abec5fea0367576503d1739ff6c9c4fd0",
+    "crates/cli/Cargo.toml": "decfdbbf363c5809424342d5b36bb3655e22a0617ed9c22384a59561177e65fe",
+    "crates/cli/src/main.rs": "348815d89df93b3487af44958d7e2b6629c4eb6c32aa9ca01db0a06143420c32",
+    "crates/core/src/delivery.rs": "0404fece7940c1112a5d7c806b18d5136d8c5a523675ace5c42676d2ea994cde",
+    "crates/core/src/model.rs": "b6789566d9354e704043e7099a3b87300de86e15d13a64cd7dc69d1e8c1beaed",
+    "crates/core/src/ports.rs": "70822f89a162ce35cd96ea6b0c93c9d77fbedd46a24a0d14bb868344256509af",
+    "crates/daemon/src/delivery/mod.rs": "80a74a3b4a654c5d81b419c0e8ada92f455f65348ab91f8ddd8f86825662caaf",
+    "crates/daemon/src/http/mod.rs": "f46925b5042f48e9e407ee639ef589b878128c0956f0d576771067e26c927fc7",
+    "crates/daemon/src/http/native_tests.rs": "a6c2ba5782e1adf3f280657d5e6f10e23dbe7d0e63911914fb3dd7e9c94bf88b",
+    "crates/daemon/src/http/tests.rs": "522456d3f27abe3f537345b866313e9ebb7bda87508f0b73a7c7dd0d0acc4adc",
+    "crates/daemon/src/http/types.rs": "6f4741af97ee59ac5820cb8d43318e617e40acc706b5eb32fe83a14c2f4fb2c1",
+    "crates/daemon/src/lib.rs": "3a12a57d27085ae3ddc3719dba4754ec01fce50163d1ce21a291e61a70a4c532",
+    "crates/daemon/src/pointer/worker.rs": "28c578d76dd31ab512e3d3cb2637ca7928ac5636038ea74de8b7df522c2475ae",
+    "crates/daemon/src/registration.rs": "ee0ed8d25db4019d6519217040f200791665afd781743ba25aba409c5584e304",
+    "crates/sidecars/tests/sidecars.rs": "472adf906f0a843b6c003c74f77cc03b9a09ae79d544eda2f7e6adfc75a389c6",
+    "crates/store/src/decisions.rs": "8773160cf84b337814a57ff0d3333c05b7caec95b6f2918f2d77502fbd0d37d0",
+    "crates/store/src/dispatch.rs": "793b2e89a1010b600fb8f5154ecf522a23e632eb940367e675b4293df477f61b",
+    "crates/store/src/governance.rs": "856d8d82fe55dcb6b5671bfe8d78d36a44fa34abf451f3714ca7023a8c19d246",
+    "crates/store/src/migrate.rs": "44d1c72a0c76a8bf9675b6b2a6386c96367dae997a7a2cc60a028bda93135531",
+    "crates/store/src/orchestration.rs": "fafcd4609a3cfbfbee1cc669add2bec4f503d5578a060d87a881f8c2d9f7fdd4",
+    "crates/store/src/queue.rs": "3a4cae0feb492a024e9ce0df4479f24a09f13aa27c6ed5f517e9b4d04987f2d6",
+    "crates/store/src/registry.rs": "26e4921d146e83e154aa6eceb22daed5ce3f2268661dfee20df4e049a0146c52",
+    "crates/store/src/role_assertion.rs": "7b46a78ce953679bf4cda8e43ffd38fbd6750230cddb4be0e35018f91a480ecb",
+    "crates/store/src/spine.rs": "35997282afd15b89655e09c1737697e80b22dc9cc4688550eb15387190c6ff4f",
+    "crates/store/src/status.rs": "6136747711a4cef893b4d1fbe35bc21c346f3930397c2ead7b0653149d6b0ef2",
+    "crates/store/tests/queue.rs": "e290b753c065600d873a8ffc381ebfa2a14b0ecd2840923490ed60750577d62f",
+    "crates/testkit/arch-allowlist.toml": "39bc237e1fbb2f62ed0c06bed8ec7a9c615790dcd7a03544602e08f1e68ec5d5",
+    "crates/testkit/fixtures/arch/clean-metadata.json": "eda477ee712739fbc8c3d74c0d966843ba0cdbb7c50e131ed30fdee04277bfb3",
+    "crates/testkit/fixtures/arch/drifted-metadata.json": "54e719c34655a48c25444d944aa38439e9ad7d98f9f0fecef64f6626b4c0c8b8",
+    "crates/testkit/src/fakes.rs": "0fe412296420e01bd86269cac75da3dcb7954fdf2c9cda6e0ca7328cec57aa84",
+    "docs/how/pij-rs-api.md": "cc89a48823316d9e56c4ff101e9eedf57f6829cf402d09f197c50b0d9c89c25d",
+    "harness/scripts/copilot-native-smoke.test.ts": "9b82226c3dd1a8b6b3e5a08da6e77e519f95f854498d8be12ff95b453ad10db0",
+    "skills/pij/references/routes/node.md": "02139de5e7dbd040c05cc57a5dba5ee8a88417ead127a0aff945a375492b99e5",
+    "crates/cli/src/daemon_log.rs": "996c1ba0f687e13fe6654634071a1aa64573931b862af788a8fb84b516d6e29a",
+    "crates/cli/tests/daemon_log.rs": "8dec4f26f4cf8163883cac3b6c3e3db6a8f1cd53cff1ecd892b1e4a1965a4edc",
+    "crates/daemon/src/store_shutdown_tests.rs": "f0bb7977afbddab2e741e318d5900b5f38730d44c242515c5a64c8755c56b6f2",
+    "crates/daemon/tests/store_wedge.rs": "7b9b2765e824c869106ec5964a3917e29597bf590b5d9fffc6c45bd81c7d5c27",
+    "crates/harnesses/tests/incident155.rs": "0e2847126573864f1bc92d297ae5e60ee760e6f076d5f07984946a0ebaa24909",
+    "crates/store/migrations/0021_delivery_deferrals.sql": "7011ddebbf823d5657cd8b75537f8983659bb1c7840f64c869c04205b1a1b903",
+    "crates/store/tests/cancellation.rs": "393e6b18341873507c5a44c406fc17e6fd882281ca18175aeb3121eb00d54788",
+    "crates/daemon/tests/native_runtime_cold_resume.rs": "166c75c426b13e1201842ce22b1066899ea6b8efbc8d2a68d1eec36d82de7276"
+  },
+  "cleanup": "Owned private runtime, failed-test database/key trees, throwaway source and compiled composer probe removed; no production resource stopped.",
+  "observer_budget": {
+    "authorization": "Prime explicitly authorized separate budget commit; no waived failures and no widening beyond1s/5s",
+    "limits": {
+      "per_process_ms": 1000,
+      "whole_host_ms": 5000
+    },
+    "brake_not_policy": "Only waiting before a fail-closed refusal changes; identity/start-time sandwiches/ancestry remain required",
+    "red": {
+      "artifact": "619",
+      "tests": 2,
+      "failed": 2,
+      "reason": "600ms fake ps refused at250ms; never-answering refusal omitted PID"
+    },
+    "first_targeted": {
+      "artifact": "621",
+      "passed": 70,
+      "failed": 2,
+      "reason": "only virtual clock equality saw5.001s instead of5s; 600ms and never-answering cases passed"
+    },
+    "precision_correction": "tests allow one millisecond Tokio timer precision; configured deadlines unchanged",
+    "retry": "Previously HTTP400 timeout was terminal; timeout now existing HTTP409 details.retryable=true, ordinary registration backoff, not native-session hold",
+    "green": {
+      "artifact": "624",
+      "registration_tests": 72,
+      "passed": 72,
+      "actual_child_retry_test": 1,
+      "child_retry_passed": 1
+    },
+    "status": "72 registration tests and full serialized Rust workspace GREEN; authorized1s/5s retained"
+  },
+  "status": "delivered under explicit environmental release ruling; full self-check remains exit1, isolated authorized replay passed attempt1",
+  "commits": {
+    "code": "21098074a36b48e5bfb6e328832a55d34e63cd0e",
+    "budget": "dda4d052de4bd7d4a18d002f5e2964fa0b609dbe"
+  },
+  "source_sha256_basis": "Composed working-tree bytes committed in code21098074 and budgetdda4d052; proof/report are a separate evidence commit"
+}
