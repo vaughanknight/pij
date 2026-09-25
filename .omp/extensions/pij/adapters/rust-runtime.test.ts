@@ -1219,7 +1219,6 @@ class GraceClient extends PijDaemonClient {
 	readonly heartbeats: Array<{ jobId: number; at: number }> = [];
 	readonly parks: Array<{ jobId: number; outcome: string }> = [];
 	readonly operations: string[] = [];
-	semanticHold = false;
 	leaseMs: number | undefined;
 
 	constructor(private readonly graceMs: number | undefined = HOLD_CONTRACT.grace.default_ms) {
@@ -1253,7 +1252,6 @@ class GraceClient extends PijDaemonClient {
 	}
 	override async claimInbox(): Promise<unknown> {
 		await this.expireLeases();
-		if (this.semanticHold) return [];
 		if (this.jobs.some((job) => job.claimed && !job.acked)) return [];
 		const job = this.jobs.find(
 			(candidate) => !candidate.claimed && !candidate.acked && candidate.not_before <= Date.now(),
@@ -1578,8 +1576,8 @@ describe("extension-stream delivery", () => {
 
 	it("compaction starting during a startup peek prevents its later claim until session_compact", async () => {
 		const client = new GraceClient();
-		client.semanticHold = true;
 		await client.push(message("startup-compaction-race"), false);
+		vi.spyOn(client, "claimInbox").mockResolvedValueOnce([]);
 		const { runtime } = await start(client);
 		let finishPeek!: (rows: unknown) => void;
 		vi.spyOn(client, "peekInbox").mockReturnValueOnce(
@@ -1587,13 +1585,12 @@ describe("extension-stream delivery", () => {
 				finishPeek = resolve;
 			}),
 		);
-		const claims = vi.spyOn(client, "claimInbox");
+		const claims = vi.spyOn(client, "claimInbox").mockClear();
 		await vi.advanceTimersByTimeAsync(1_000);
 		runtime.onBeforeCompact();
 		finishPeek([{ job_id: 1, attempt: 0, message: message("startup-compaction-race") }]);
 		await vi.advanceTimersByTimeAsync(1_000);
 		expect(claims).not.toHaveBeenCalled();
-		client.semanticHold = false;
 		runtime.onCompact();
 		await vi.advanceTimersByTimeAsync(2_000);
 		expect(client.acks).toEqual([1]);
@@ -2436,35 +2433,22 @@ describe("extension-stream delivery", () => {
 		expect(client.releases).toHaveLength(2); // New arrivals never inherit startup migration.
 	});
 
-	it("resumes startup semantic Hold after ready without a second send", async () => {
+	it("resumes a startup backlog after temporarily unavailable claims in A B C order", async () => {
 		const client = new GraceClient();
-		client.semanticHold = true;
-		await client.push(message("semantic hold"), false);
-		const { pi } = await start(client);
-		expect(pi.injects).toEqual([]);
-		expect(client.acks).toEqual([]);
-		expect(client.releases).toHaveLength(1); // Startup-only un-deferral does not bypass semantic Hold.
-		client.semanticHold = false;
-		await vi.advanceTimersByTimeAsync(1_000);
-		expect(pi.injects.map((row) => row.text)).toEqual([frame("pij-sender", "semantic hold")]);
-		expect(client.acks).toEqual([1]);
-		expect(client.releases).toHaveLength(1); // The same startup head reuses its declaration.
-	});
-
-	it("resumes an initially held startup backlog in A B C order across deferred rows", async () => {
-		const client = new GraceClient();
-		client.semanticHold = true;
 		for (const id of ["A", "B", "C"]) await client.push(message(id), false);
 		for (const job of client.jobs) {
 			if (job.message.msg_id === "C") continue;
 			job.held = true;
 			job.not_before = Date.now() + 60_000;
 		}
+		vi.spyOn(client, "claimInbox")
+			.mockResolvedValueOnce([])
+			.mockResolvedValueOnce([])
+			.mockResolvedValueOnce([]);
 		const { pi } = await start(client);
 		await vi.advanceTimersByTimeAsync(2_000);
-		expect(client.releases).toHaveLength(1); // Held ticks must not redeclare the same head.
+		expect(client.releases).toHaveLength(1); // Unavailable claims must not redeclare the same head.
 		expect(pi.injects).toEqual([]);
-		client.semanticHold = false;
 		await vi.advanceTimersByTimeAsync(1_000);
 		expect(pi.injects.map((row) => row.text)).toEqual([
 			frame("pij-sender", "A"),
@@ -2473,25 +2457,25 @@ describe("extension-stream delivery", () => {
 		]);
 		expect(client.acks).toEqual([1, 2, 3]);
 		expect(client.releases).toHaveLength(3);
-		await client.push(message("ordinary-after-held-startup"));
+		await client.push(message("ordinary-after-delayed-startup"));
 		expect(client.acks).toEqual([1, 2, 3, 4]);
 		expect(client.releases).toHaveLength(3);
 	});
 
-	it("resumes a pushed semantic Hold backlog after ready and then stops polling", async () => {
+	it("resumes a pushed delayed backlog when eligible and then stops polling", async () => {
 		const { pi, client } = await start();
-		client.semanticHold = true;
 		pi.edit("unsubmitted draft");
-		await client.push(message("held-first"));
-		await client.push(message("held-second"));
+		await client.push(message("delayed-first"), false);
+		await client.push(message("delayed-second"), false);
+		for (const job of client.jobs) job.not_before = Date.now() + 3_000;
+		await client.replay();
 		await vi.advanceTimersByTimeAsync(2_000);
 		expect(pi.injects).toEqual([]);
 		expect(client.acks).toEqual([]);
-		client.semanticHold = false; // report ready updates the registry, not the live stream.
 		await vi.advanceTimersByTimeAsync(1_000);
 		expect(pi.injects.map((row) => row.text)).toEqual([
-			frame("pij-sender", "held-first"),
-			frame("pij-sender", "held-second"),
+			frame("pij-sender", "delayed-first"),
+			frame("pij-sender", "delayed-second"),
 		]);
 		expect(pi.draft).toBe("unsubmitted draft");
 		expect(client.acks).toEqual([1, 2]);
@@ -2512,13 +2496,13 @@ describe("extension-stream delivery", () => {
 		expect(peeks).not.toHaveBeenCalled();
 	});
 
-	it("cancels pending semantic recovery on shutdown", async () => {
+	it("cancels pending delayed-claim recovery on shutdown", async () => {
 		const { runtime, pi, client } = await start();
-		client.semanticHold = true;
-		await client.push(message("held-at-shutdown"));
+		await client.push(message("delayed-at-shutdown"), false);
+		for (const job of client.jobs) job.not_before = Date.now() + 3_000;
+		await client.replay();
 		const claims = vi.spyOn(client, "claimInbox");
 		runtime.shutdown("quit");
-		client.semanticHold = false;
 		await vi.advanceTimersByTimeAsync(3_000);
 		expect(claims).not.toHaveBeenCalled();
 		expect(pi.injects).toEqual([]);
@@ -2527,8 +2511,9 @@ describe("extension-stream delivery", () => {
 
 	it("queues at most one pending-inbox retry and ignores its stale result", async () => {
 		const { runtime, pi, client } = await start();
-		client.semanticHold = true;
-		await client.push(message("slow-recovery"));
+		await client.push(message("slow-recovery"), false);
+		for (const job of client.jobs) job.not_before = Date.now() + 3_000;
+		await client.replay();
 		let resolveClaim!: (value: unknown) => void;
 		const response = new Promise<unknown>((resolve) => {
 			resolveClaim = resolve;

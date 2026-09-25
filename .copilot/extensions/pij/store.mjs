@@ -240,20 +240,19 @@ export class DaemonClient {
 		};
 	}
 
-	async consentSnapshot(tuple, signal) {
+	async nativeSnapshot(tuple, signal) {
 		const query = new URLSearchParams(tuple);
-		// The shared observation endpoint also carries operator Hold; typing data is informational.
+		// Revalidate the native incarnation; typing remains informational.
 		const snapshot = await this.request(`/v1/inbox/typing?${query}`, undefined, signal);
 		const proof = snapshot?.native_consumer;
 		if (
 			!proof ||
 			proof.native_session !== tuple.native_session ||
 			proof.pid !== tuple.pid ||
-			proof.proc_start !== tuple.proc_start ||
-			typeof snapshot.semantic_hold !== "boolean"
+			proof.proc_start !== tuple.proc_start
 		)
 			throw new NativeError(
-				"Native consent observation unavailable or invalid; receiving stopped without injection",
+				"Native identity observation unavailable or invalid; receiving stopped without injection",
 			);
 		return snapshot;
 	}
@@ -1254,14 +1253,8 @@ export class NativeBridge {
 	async #prepareNewSend() {
 		const signal = this.receiverController.signal;
 		throwIfStopped(signal);
-		const snapshot = await abortable(this.client.consentSnapshot(this.tuple(), signal), signal);
+		await abortable(this.client.nativeSnapshot(this.tuple(), signal), signal);
 		throwIfStopped(signal);
-		if (!snapshot.semantic_hold) return true;
-		this.emit("consent-held", { reason: "semantic-hold", retryMs: INITIAL_RETRY_MS });
-		await abortable(this.delay(INITIAL_RETRY_MS, signal), signal);
-		throwIfStopped(signal);
-		// Operator Hold can race a claim. Do not clear it or reuse that delayed claim.
-		return false;
 	}
 	async deliver(claim) {
 		const signal = this.receiverController.signal;
@@ -1280,7 +1273,7 @@ export class NativeBridge {
 		let record = await this.journal.load(message.msg_id);
 		throwIfStopped(signal);
 		if (!record) {
-			if (!(await this.#prepareNewSend())) return;
+			await this.#prepareNewSend();
 			throwIfStopped(signal);
 			const completion = await this.newCompletion(message.msg_id, false, claim.job_id);
 			throwIfStopped(signal);
@@ -1301,10 +1294,7 @@ export class NativeBridge {
 		}
 		while (await this.waitForObservation(this.completion, false, message)) {
 			throwIfStopped(signal);
-			if (!(await this.#prepareNewSend())) {
-				this.completion = undefined;
-				return;
-			}
+			await this.#prepareNewSend();
 			if (this.completion.consumption) break;
 			const completion = await this.newCompletion(message.msg_id, false, claim.job_id);
 			if (!(await this.canRetryDiscarded(this.completion, message))) continue;

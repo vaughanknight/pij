@@ -137,6 +137,7 @@ pub struct Services {
     pub background: Arc<background::BackgroundService>,
     /// Row-consistent badge inputs and event freshness, without process fan-out.
     pub status: pij_store::status::SqliteStatus,
+    store_pools: [pij_store::StorePool; 2],
     /// Machine-local spawn policy, shared with clients through daemon health.
     pub retired_harnesses: Arc<[Harness]>,
     /// Whether this daemon is running entirely on fakes.
@@ -151,6 +152,8 @@ pub struct Daemon {
     /// The per-boot bearer key.
     pub key: BootKey,
     event_bus: Arc<events::EventBus>,
+    delivery: Arc<delivery::DeliveryService>,
+    store_pools: [pij_store::StorePool; 2],
     shutdown: tokio::sync::oneshot::Sender<()>,
     joined: tokio::task::JoinHandle<()>,
     /// Owned so it cannot outlive the boot that started it: a worker still
@@ -216,7 +219,14 @@ impl Daemon {
             },
         );
         // Even failed producer joins must drain admitted, cancellation-shielded writes.
+        let admitted = self.delivery.flush().await;
         self.event_bus.flush().await;
+        // Closing waits for acquired transactions and refuses writes that had
+        // not acquired yet. No detached old writer may cross daemon shutdown.
+        for pool in self.store_pools {
+            pij_store::migrate::close(&pool).await;
+        }
+        admitted?;
         served?;
         drained?;
         bound?;
@@ -397,6 +407,7 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         spine_pool.clone(),
         config.adapters.registry.is_real() && config.adapters.spine.is_real(),
     );
+    let store_pools = [spine_pool.clone(), background_pool.clone()];
     let governance = Arc::new(http::governance::GovernanceService::new(
         pij_store::SqliteOrchestration::new(spine_pool),
         Arc::clone(&event_bus),
@@ -433,6 +444,7 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         anomalies,
         background,
         status,
+        store_pools,
         retired_harnesses: config.retired_harnesses.clone().into(),
         offline: config.is_fully_offline(),
     })
@@ -646,18 +658,21 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         Arc::clone(&services.roles),
     ));
 
-    let drain = Arc::new(pointer::DrainWorker::new(
-        Arc::clone(&services.registry),
-        Arc::clone(&services.queue),
-        Arc::clone(&services.transport),
-        Arc::clone(&services.tmux),
-        Arc::clone(&services.interaction),
-        Arc::clone(&services.event_bus),
-        pointer::PointerPolicy {
-            cadence: Duration::from_secs(config.pointer_announce_cadence_secs),
-            announcement_limit: config.pointer_announce_limit,
-        },
-    )?);
+    let drain = Arc::new(
+        pointer::DrainWorker::new(
+            Arc::clone(&services.registry),
+            Arc::clone(&services.queue),
+            Arc::clone(&services.transport),
+            Arc::clone(&services.tmux),
+            Arc::clone(&services.interaction),
+            Arc::clone(&services.event_bus),
+            pointer::PointerPolicy {
+                cadence: Duration::from_secs(config.pointer_announce_cadence_secs),
+                announcement_limit: config.pointer_announce_limit,
+            },
+        )?
+        .with_recovery_backends(config.adapters.queue, config.adapters.spine),
+    );
 
     // 7. Validate the scheduler while refusal is still safe. Starting a worker
     //    here would be wrong: it could deliver or move queue rows for a daemon
@@ -775,6 +790,8 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     let death_sweep_loop = death_sweep::start(Arc::new(services.clone()), death_interval);
 
     let event_bus = Arc::clone(&services.event_bus);
+    let delivery = Arc::clone(&services.delivery);
+    let store_pools = services.store_pools.clone();
     let router = http::router_with_federation(
         services,
         http::HttpConfig {
@@ -797,6 +814,8 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         addr,
         key,
         event_bus,
+        delivery,
+        store_pools,
         shutdown,
         joined,
         federation_worker,
@@ -810,3 +829,6 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         governance_observer,
     })
 }
+
+#[cfg(test)]
+mod store_shutdown_tests;

@@ -1180,6 +1180,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "clap",
+ "nix",
  "pij-core",
  "pij-daemon",
  "pij-harnesses",
@@ -1188,6 +1189,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "time",
  "tokio",
  "uuid",
 ]

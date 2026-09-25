@@ -123,8 +123,14 @@ if (!process.env.PIJ_NATIVE_MEMORY_CHILD) {
 				},
 			},
 			client: {
-				async consentSnapshot() {
-					return { semantic_hold: false };
+				async nativeSnapshot(consumer) {
+					return {
+						native_consumer: {
+							native_session: consumer.native_session,
+							pid: consumer.pid,
+							proc_start: consumer.proc_start,
+						},
+					};
 				},
 				async claimInbox() {
 					return {

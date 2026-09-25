@@ -6,7 +6,7 @@ use pij_core::orchestration::{Dispatch, DispatchAcknowledgement, DispatchCanary,
 use sqlx::{Row, sqlite::SqliteRow};
 
 use crate::governance::{GovernanceOutcome, invalid_record};
-use crate::migrate::{begin_write, require_current_schema};
+use crate::migrate::{begin_write, owned_write, require_current_schema};
 use crate::orchestration::{DispatchAck, SqliteOrchestration, adapter_error, sql_i64, sql_u64};
 
 impl SqliteOrchestration {
@@ -87,9 +87,12 @@ impl SqliteOrchestration {
     ) -> Result<GovernanceOutcome<Dispatch>> {
         require_current_schema(&self.pool).await?;
         let at = sql_i64(at, "dispatch delivered_at")?;
-        let mut tx = begin_write(&self.pool).await?;
+        let pool = self.pool.clone();
+        let id = id.to_owned();
+        owned_write(async move {
+        let mut tx = begin_write(&pool).await?;
         let existing = sqlx::query("SELECT * FROM dispatches WHERE id=?1")
-            .bind(id)
+            .bind(&id)
             .fetch_optional(&mut *tx)
             .await
             .map_err(adapter_error)?
@@ -102,12 +105,13 @@ impl SqliteOrchestration {
                 let row = sqlx::query(
                     "UPDATE dispatches SET delivered_at=?2, \
                      state=CASE state WHEN 'queued' THEN 'delivered' ELSE state END WHERE id=?1 RETURNING *",
-                ).bind(id).bind(at).fetch_one(&mut *tx).await.map_err(adapter_error)?;
+                ).bind(&id).bind(at).fetch_one(&mut *tx).await.map_err(adapter_error)?;
                 GovernanceOutcome::Changed(dispatch_row(row)?)
             }
         };
         tx.commit().await.map_err(adapter_error)?;
         Ok(outcome)
+        }).await
     }
 
     /// Acknowledge only as the recipient and only for the persisted digest.
@@ -121,9 +125,14 @@ impl SqliteOrchestration {
     ) -> Result<DispatchAck> {
         require_current_schema(&self.pool).await?;
         let at = sql_i64(at, "dispatch acknowledged_at")?;
-        let mut tx = begin_write(&self.pool).await?;
+        let pool = self.pool.clone();
+        let id = id.to_owned();
+        let actor = actor.clone();
+        let packet_sha256 = packet_sha256.to_owned();
+        owned_write(async move {
+        let mut tx = begin_write(&pool).await?;
         let existing = sqlx::query("SELECT * FROM dispatches WHERE id=?1")
-            .bind(id)
+            .bind(&id)
             .fetch_optional(&mut *tx)
             .await
             .map_err(adapter_error)?
@@ -131,21 +140,22 @@ impl SqliteOrchestration {
             .transpose()?;
         let outcome = match existing {
             None => DispatchAck::Missing,
-            Some(row) if row.to != *actor => DispatchAck::NotAssignee { assignee: row.to },
-            Some(row) if row.packet_sha256.as_deref() != Some(packet_sha256) => {
+            Some(row) if row.to != actor => DispatchAck::NotAssignee { assignee: row.to },
+            Some(row) if row.packet_sha256.as_deref() != Some(packet_sha256.as_str()) => {
                 DispatchAck::ShaMismatch
             }
             Some(row) if row.state == DispatchState::Acked => DispatchAck::AlreadyAcknowledged,
             Some(_) => {
                 sqlx::query(
                     "UPDATE dispatches SET state='acked', acknowledged_at=?2, ack_seat=?3, ack_sha256=?4, ack_at=?2 WHERE id=?1",
-                ).bind(id).bind(at).bind(actor.as_str()).bind(packet_sha256)
+                ).bind(&id).bind(at).bind(actor.as_str()).bind(&packet_sha256)
                     .execute(&mut *tx).await.map_err(adapter_error)?;
                 DispatchAck::Acknowledged
             }
         };
         tx.commit().await.map_err(adapter_error)?;
         Ok(outcome)
+        }).await
     }
 
     /// Store daemon-verified canary evidence once, only after an exact packet ack.
@@ -165,9 +175,13 @@ impl SqliteOrchestration {
             ));
         }
         let at = sql_i64(canary.passed_at, "canary passed_at")?;
-        let mut tx = begin_write(&self.pool).await?;
+        let pool = self.pool.clone();
+        let id = id.to_owned();
+        let canary = canary.clone();
+        owned_write(async move {
+        let mut tx = begin_write(&pool).await?;
         let existing = sqlx::query("SELECT * FROM dispatches WHERE id=?1")
-            .bind(id)
+            .bind(&id)
             .fetch_optional(&mut *tx)
             .await
             .map_err(adapter_error)?
@@ -180,7 +194,7 @@ impl SqliteOrchestration {
                     code: "canary-unacked",
                 }
             }
-            Some(row) if row.canary.as_ref() == Some(canary) => GovernanceOutcome::Unchanged(row),
+            Some(row) if row.canary.as_ref() == Some(&canary) => GovernanceOutcome::Unchanged(row),
             Some(row) if row.canary.is_some() => GovernanceOutcome::Conflict {
                 code: "canary-conflict",
             },
@@ -197,13 +211,14 @@ impl SqliteOrchestration {
                 let row = sqlx::query(
                     "UPDATE dispatches SET canary_nonce=?2, canary_model=?3, canary_passed_at=?4, canary_evaluator=?5 \
                      WHERE id=?1 RETURNING *",
-                ).bind(id).bind(&canary.nonce).bind(&canary.model).bind(at).bind(canary.evaluator.as_str())
+                ).bind(&id).bind(&canary.nonce).bind(&canary.model).bind(at).bind(canary.evaluator.as_str())
                     .fetch_one(&mut *tx).await.map_err(adapter_error)?;
                 GovernanceOutcome::Changed(dispatch_row(row)?)
             }
         };
         tx.commit().await.map_err(adapter_error)?;
         Ok(outcome)
+        }).await
     }
 }
 

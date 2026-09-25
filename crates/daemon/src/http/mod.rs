@@ -563,22 +563,37 @@ struct Health<'a> {
     offline: bool,
     machine: String,
     retired_harnesses: &'a [Harness],
+    store: StoreHealth,
+}
+
+#[derive(serde::Serialize)]
+struct StoreHealth {
+    status: &'static str,
+    timeout_ms: u64,
 }
 
 async fn health(State(state): State<AppState>) -> Response {
-    envelope(
-        StatusCode::OK,
-        &Envelope::ok(
-            "pij ping",
-            Health {
-                status: "healthy",
-                build: BUILD,
-                offline: state.services.offline,
-                machine: state.machine_alias,
-                retired_harnesses: &state.services.retired_harnesses,
-            },
-        ),
-    )
+    let checked = state.services.status.check_health().await;
+    let healthy = checked.is_ok();
+    let data = Health {
+        status: if healthy { "healthy" } else { "unhealthy" },
+        build: BUILD,
+        offline: state.services.offline,
+        machine: state.machine_alias,
+        retired_harnesses: &state.services.retired_harnesses,
+        store: StoreHealth {
+            status: if healthy { "healthy" } else { "unavailable" },
+            timeout_ms: pij_store::migrate::STORE_WAIT_TIMEOUT.as_millis() as u64,
+        },
+    };
+    match checked {
+        Ok(()) => envelope(StatusCode::OK, &Envelope::ok("pij ping", data)),
+        Err(error) => {
+            let mut response = Envelope::refused("pij ping", ErrorKind::Adapter, error.to_string());
+            response.data = Some(data);
+            envelope(StatusCode::SERVICE_UNAVAILABLE, &response)
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -2328,6 +2343,10 @@ async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequ
         Ok(holds) => holds,
         Err(error) => return internal("pij state", error),
     };
+    projection.card.delivery_deferrals = match state.services.queue.delivery_deferrals(&id).await {
+        Ok(deferrals) => deferrals,
+        Err(error) => return internal("pij state", error),
+    };
     projection.card.native_receiver_reason =
         match state.services.delivery.native_receiver_reason(&id).await {
             Ok(reason) => reason.map(str::to_string),
@@ -2338,16 +2357,26 @@ async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequ
 }
 
 async fn active_holds(state: &AppState, seat: &SeatId) -> Result<Vec<HeldEvent>> {
+    #[derive(Deserialize)]
+    struct ProjectedHold {
+        #[serde(flatten)]
+        held: HeldEvent,
+        job_id: Option<pij_core::model::JobId>,
+    }
     let mut holds = BTreeMap::new();
     for event in state.services.spine.tail(Some(seat), Seq(0)).await? {
         match event.kind.as_str() {
             "delivery.held" => {
-                let held: HeldEvent =
+                // Job diagnostics are projected from live rows, not sampled history.
+                // A terminal job must disappear even if it has no release event.
+                let projection: ProjectedHold =
                     serde_json::from_str(&event.payload).map_err(|error| PijError::Adapter {
                         adapter: "daemon/http".to_string(),
                         message: format!("decode held event: {error}"),
                     })?;
-                holds.insert(held.msg_id.clone(), held);
+                if projection.job_id.is_none() {
+                    holds.insert(projection.held.msg_id.clone(), projection.held);
+                }
             }
             "delivery.released" => {
                 let released: ReleasedEvent =
@@ -2442,6 +2471,7 @@ fn state_card(
             assignment_id,
             refs,
             held: Vec::new(),
+            delivery_deferrals: Vec::new(),
             unsupported: unsupported_state_fields(),
         },
     }

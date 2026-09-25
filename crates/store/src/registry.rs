@@ -16,7 +16,7 @@ use pij_core::model::{
 };
 use pij_core::ports::{PutBinding, Registry, SeatFilter};
 
-use crate::migrate::{begin_write, require_current_schema};
+use crate::migrate::{begin_write, owned_write, require_current_schema};
 use crate::spine::{RegistryPublisher, append_in_transaction};
 
 /// A [`Registry`] backed by the SQLite store.
@@ -55,46 +55,49 @@ impl SqliteRegistry {
         let store = self.store_description();
         self.publisher
             .publish_registry(Box::pin(async move {
-                require_current_schema(&pool).await?;
-                let mut tx = begin_write(&pool).await?;
-                if let Some(expected) = expected.as_ref() {
-                    let row = sqlx::query("SELECT * FROM seats WHERE id = ?1")
-                        .bind(seat.as_str())
-                        .fetch_optional(&mut *tx)
-                        .await
-                        .map_err(adapter_error)?;
-                    let current = row.as_ref().map(row_to_descriptor).transpose()?;
-                    if current.as_ref() != Some(expected) {
-                        tx.rollback().await.map_err(adapter_error)?;
-                        return Err(PijError::GovernanceRefused {
-                            code: "E-RS-INCARNATION-CHANGED".to_string(),
-                            record: seat.to_string(),
-                        });
+                owned_write(async move {
+                    require_current_schema(&pool).await?;
+                    let mut tx = begin_write(&pool).await?;
+                    if let Some(expected) = expected.as_ref() {
+                        let row = sqlx::query("SELECT * FROM seats WHERE id = ?1")
+                            .bind(seat.as_str())
+                            .fetch_optional(&mut *tx)
+                            .await
+                            .map_err(adapter_error)?;
+                        let current = row.as_ref().map(row_to_descriptor).transpose()?;
+                        if current.as_ref() != Some(expected) {
+                            tx.rollback().await.map_err(adapter_error)?;
+                            return Err(PijError::GovernanceRefused {
+                                code: "E-RS-INCARNATION-CHANGED".to_string(),
+                                record: seat.to_string(),
+                            });
+                        }
                     }
-                }
-                let mut event = tombstone_event(&seat, &reason, expected.as_ref())?;
-                let seq = append_in_transaction(&mut tx, &event).await?;
-                let affected = sqlx::query(
-                    "UPDATE seats SET tombstoned_at = ?2, tombstone_reason = ?3, \
+                    let mut event = tombstone_event(&seat, &reason, expected.as_ref())?;
+                    let seq = append_in_transaction(&mut tx, &event).await?;
+                    let affected = sqlx::query(
+                        "UPDATE seats SET tombstoned_at = ?2, tombstone_reason = ?3, \
                  native_extension_delivery = 0, seq = ?4 WHERE id = ?1",
-                )
-                .bind(seat.as_str())
-                .bind(event.at as i64)
-                .bind(&reason)
-                .bind(seq.0 as i64)
-                .execute(&mut *tx)
+                    )
+                    .bind(seat.as_str())
+                    .bind(event.at as i64)
+                    .bind(&reason)
+                    .bind(seq.0 as i64)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(adapter_error)?
+                    .rows_affected();
+                    if affected == 0 {
+                        // Unconditional intent keeps its original absence refusal. The
+                        // guarded path already checked presence under this transaction.
+                        tx.rollback().await.map_err(adapter_error)?;
+                        return Err(PijError::NoRegistryEntry { seat, store });
+                    }
+                    tx.commit().await.map_err(adapter_error)?;
+                    event.seq = Some(seq);
+                    Ok((event, None))
+                })
                 .await
-                .map_err(adapter_error)?
-                .rows_affected();
-                if affected == 0 {
-                    // Unconditional intent keeps its original absence refusal. The
-                    // guarded path already checked presence under this transaction.
-                    tx.rollback().await.map_err(adapter_error)?;
-                    return Err(PijError::NoRegistryEntry { seat, store });
-                }
-                tx.commit().await.map_err(adapter_error)?;
-                event.seq = Some(seq);
-                Ok((event, None))
             }))
             .await
             .map(|(seq, _)| seq)
@@ -302,6 +305,7 @@ impl Registry for SqliteRegistry {
     async fn put_reporting(&self, descriptor: SeatDescriptor) -> Result<(Seq, PutBinding)> {
         let pool = self.pool.clone();
         let (seq, binding) = self.publisher.publish_registry(Box::pin(async move {
+        owned_write(async move {
         require_current_schema(&pool).await?;
 
         // The future is first polled under EventBus's publication lock. Acquire
@@ -374,6 +378,7 @@ impl Registry for SqliteRegistry {
         tx.commit().await.map_err(adapter_error)?;
         event.seq = Some(seq);
         Ok((event, Some(binding)))
+        }).await
         })).await?;
         let binding = binding.ok_or_else(|| PijError::Adapter {
             adapter: "store/registry".to_string(),

@@ -37,6 +37,27 @@ AC4 asserts **JSON byte parity**, not exit-code parity. Existing client policies
 
 Sources: [`exit_code`](../../crates/cli/src/lib.rs), [shim refusal/output handling](../../.pi/extensions/pij/cli.ts). The native-pass-through signal contract is also preserved; this table does not redefine OS signal termination.
 
+## Store health and daemon logs
+
+`GET /health` probes the shared status store's schema and acquires then rolls back
+a write transaction; a responsive HTTP listener alone is not healthy. HTTP 200
+has `ok:true`, `data.status:"healthy"` and
+`data.store:{status:"healthy",timeout_ms:2000}`. A failed or exhausted probe returns
+HTTP 503, `ok:false`, `error:"adapter"`, a diagnostic `meta`,
+`data.status:"unhealthy"` and `data.store.status:"unavailable"`.
+Pool acquisition and SQLite write-lock waits each have a two-second bound;
+the health probe itself has a two-second deadline.
+
+Admitted store transactions run to COMMIT/ROLLBACK independently of request
+cancellation. A disconnected client may therefore have committed its operation:
+absence of a response is not permission to duplicate it. Pool release/acquisition
+flushes pending rollback work and repairs any remaining sqlx transaction depth
+before reuse, logging `recovery_count` for each detected connection.
+
+Every newly emitted daemon stdout/stderr line has a UTC RFC 3339 prefix,
+including multiline diagnostics. Existing appended log history is not rewritten.
+Orderly shutdown and panic unwind drain partial lines; SIGKILL cannot promise it.
+
 ## Machine trust, caller identity and roles
 
 Every `/v1` route requires a bearer key. The key grants **machine access**, not a seat identity or authority over another seat. Callers are within that trusted-machine boundary; `CallerContext` is not a cryptographically authenticated per-seat credential. The daemon resolves the caller using its existing identity service and observed pane/process binding. An asserted `PIJ_SESSION_ID` locates a record; it cannot create a seat or override contradictory pane evidence. Caller-supplied pid/start fields in the shim context are diagnostic, not adoption evidence. Never substitute a short-lived CLI pid for the harness process.
@@ -211,7 +232,7 @@ The exact registered session/PID/start tuple remains mandatory.
 
 With no outstanding deliveries, unchanged progress renews normally. With pending,
 deferred or running deliveries, `observed_at` must advance to renew;
-Working and operator Hold do not substitute for observation. Frozen heartbeats
+Working and self-reported Hold do not substitute for observation. Frozen heartbeats
 may remain live during the grace period, but **never extend the last-progress
 lease deadline**. The daemon counts at most one miss per renewal interval
 (`lease / 3`), not per request. At `NATIVE_RECEIVER_STALE_RENEWALS` (K=3) misses,
@@ -269,8 +290,8 @@ already-claimed mail remains unreachable for **up to the remaining lease**
 (60 seconds by default); retry after the reported interval. No `--take-over`
 override exists: bypassing the wait could race an accepted but unobserved message.
 
-An expired or absent receiver lease admits explicit recovery once operator Hold
-is cleared. Pending/running native bodies are parked first; only
+An expired or absent receiver lease admits explicit recovery regardless of
+self-reported status. Pending/running native bodies are parked first; only
 receiver-unavailable parked bodies are restored, preserving job/message identity
 and parking history. Manual pull/ACK never renews receiver presence. A wrong
 pane/session still refuses; paneless readers retain their exact host tuple checks.
@@ -323,6 +344,41 @@ not a recapture of those old CLI pairs.
 literal, including the underscore in `last_event_at`; the existing card's other
 camelCase fields are unchanged. Freshness follows event **sequence**, not the
 greatest timestamp: a later committed event can have an earlier supplied clock.
+
+Status reports (`hold`, `waiting`, `blocked`, and the other semantic words) are
+first-person declarations, **never delivery or inbox-claim gates**, for every
+harness. No separate operator mailbox-hold field exists. Per-job typing holds,
+actual recipient consent, native incarnation/context checks and receiver leases
+remain independent safety mechanisms. Native typing snapshots retain deprecated
+`semantic_hold`, **always `false` since plan 155**, so a daemon bounce remains
+compatible with already-running old receivers. New receivers ignore the field
+entirely, whether absent or present; preflight validates incarnation, not status.
+Remove it only after every live native receiver is positively verified at or
+past the field-ignoring plan-155 build (initial `store.mjs` SHA-256
+`16a6020da089021cf0d6d0965e35974c0919e1f3e734ced1a98da48a61288fc5`).
+Unknown loaded builds block removal; current checkout bytes or a live host do
+not prove what an old child loaded. [Removal follow-up #429](https://github.com/AI-Substrate/pij/issues/429)
+is outside this plan; once that condition holds, deletion is daemon-only.
+
+`data.deliveryDeferrals` is the current live-job projection:
+`[{job_id,msg_id,reason,count,since_ms}]`. Every daemon delivery/drain deferral
+increments the durable count; `since_ms` is the first deferred attempt's epoch
+milliseconds, including across later reason changes. Both state CLIs show
+`delivery deferred: <reason> ×N since <epoch-ms> ms`.
+Success or terminal disposition removes the active projection, not the job's
+historical diagnostics. Explicit extension `/v1/hold` scheduling remains in
+`held[]`; it is not counted as a daemon drain attempt.
+
+The job fact and any sampled `delivery.held` event commit atomically. First
+deferral and reason changes emit immediately; the same reason emits at most once
+per minute per job, surviving daemon restart. These events add `job_id` and
+`deferral_count` alongside `reason` and `since_ms`; a count is not a delivery ACK.
+Deferrals include composer safety, missing binding/pane/transport, pending
+consent, and transport errors. Diagnostic publication failure cannot bypass the
+original retry/backoff or consent policy.
+Like other atomic queue/spine mutations, counted deferral publication refuses a
+real Queue paired with a fake Spine (`E-RS-INBOX-AUTHORITY-SPLIT`), rather than
+broadcasting a cursor allocated by another store. The body and retry policy remain.
 
 The one closed severity order is the exported
 [`pij_core::status::BADGE_SEVERITY`](../../crates/core/src/status.rs).

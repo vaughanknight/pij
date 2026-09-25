@@ -1974,39 +1974,21 @@ async fn native_sqlite_http_hold_release_marker_ack_and_duplicate_contract() {
             .unwrap();
         assert_eq!(refused["ok"], false, "{field} mismatch must refuse");
     }
-    // Operator Hold remains a claim veto; observing typing cannot clear it.
+    // Self-reported Hold is status only; observing typing must not rewrite it.
     seat.semantic_state = Some(SemanticState::Hold);
     registry.put(seat.clone()).await.unwrap();
-    let snapshot = native_http_response(
+    native_http_response(
         client.get(typing_url(addr, &seat.id, &identity)),
         reqwest::StatusCode::OK,
     )
     .await;
-    assert_eq!(snapshot["data"]["semantic_hold"], true);
     assert_eq!(registry.get(&seat.id).await.unwrap(), Some(seat.clone()));
-    let held = native_http_response(
-        client.get(claim_url(addr, &seat.id, &identity)),
-        reqwest::StatusCode::OK,
-    )
-    .await;
-    assert_eq!(held["data"], json!([]));
-    assert_eq!(held["meta"], "native-consumer-held:semantic-hold");
-    assert!(
-        queue
-            .peek(&[delivery_kind(&seat.id)])
-            .await
-            .unwrap()
-            .is_some()
-    );
-
-    seat.semantic_state = None;
-    registry.put(seat.clone()).await.unwrap();
-    // Plan 137: a native message never touches the composer, so even a fresh draft permits claims.
+    // Native claims neither touch the composer nor treat reported status as consent.
     let claims = native_http_claims(&client, addr, &seat.id, &identity).await;
     assert_eq!(
         claims.len(),
         1,
-        "composer recency no longer gates native claim"
+        "neither composer recency nor self-reported Hold gates native claims"
     );
     assert_eq!(claims[0].message.body, "PIJ_137_NONCE");
     assert_eq!(claims[0].native_consumer.as_ref(), Some(&identity));
@@ -2017,7 +1999,6 @@ async fn native_sqlite_http_hold_release_marker_ack_and_duplicate_contract() {
     )
     .await;
     assert_eq!(snapshot["data"]["state"], "observed");
-    assert_eq!(snapshot["data"]["semantic_hold"], false);
     let grace = snapshot["data"]["typing_grace_ms"].as_u64().unwrap();
     let remaining = snapshot["data"]["retry_after_ms"].as_u64().unwrap();
     assert!(remaining <= grace);
@@ -2305,7 +2286,7 @@ async fn native_receiver_heartbeat_http_is_identity_bound_and_independent_of_hol
     services.registry.put(seat.clone()).await.unwrap();
     services
         .delivery
-        .send("pij-peer".into(), seat.id.clone(), "held mail")
+        .send("pij-peer".into(), seat.id.clone(), "outstanding mail")
         .await
         .unwrap();
     let queue = services.queue.clone();
@@ -2641,10 +2622,14 @@ async fn native_progress_http_idle_busy_hold_and_actual_recovery_are_distinct() 
         );
     }
     let sent = delivery
-        .send("pij-peer".into(), seat.id.clone(), "held until observed")
+        .send("pij-peer".into(), seat.id.clone(), "pending observation")
         .await
         .unwrap();
-    let before = queue.peek(&[delivery_kind(&seat.id)]).await.unwrap();
+    let before = queue
+        .peek(&[delivery_kind(&seat.id)])
+        .await
+        .unwrap()
+        .expect("receiver has outstanding work");
     seat.state = pij_core::model::SystemState::Working;
     seat.semantic_state = Some(SemanticState::Hold);
     registry.put(seat.clone()).await.unwrap();
@@ -2657,7 +2642,7 @@ async fn native_progress_http_idle_busy_hold_and_actual_recovery_are_distinct() 
         assert_eq!(reply["data"]["lease_ms"], lease_ms);
         assert_eq!(
             queue.peek(&[delivery_kind(&seat.id)]).await.unwrap(),
-            before
+            Some(before.clone())
         );
     }
     for opportunity in 1..=3 {
@@ -2705,10 +2690,8 @@ async fn native_progress_http_idle_busy_hold_and_actual_recovery_are_distinct() 
     assert!(state["data"].get("native_receiver_reason").is_none());
     assert_eq!(
         queue.peek(&[delivery_kind(&seat.id)]).await.unwrap(),
-        before
+        Some(before)
     );
-    seat.semantic_state = None;
-    registry.put(seat.clone()).await.unwrap();
     let claimed = native_http_claims(&client, addr, &seat.id, &identity).await;
     assert_eq!(claimed[0].message.msg_id, sent.msg_id);
     assert_eq!(claimed[0].attempt, 0);
@@ -3728,7 +3711,6 @@ async fn native_typing_http_snapshot_is_authenticated_read_only_and_echoes_owner
         super::resolve_typing_grace_ms()
     );
     assert_eq!(body["data"]["retry_after_ms"], 0);
-    assert_eq!(body["data"]["semantic_hold"], false);
     assert_eq!(body["data"]["source"], "pane-observed-edit-recency");
     assert!(body["data"]["observed_at_ms"].as_u64().unwrap() > 0);
     assert!(!body.to_string().contains("private queued body"));
@@ -3753,10 +3735,11 @@ async fn native_typing_http_snapshot_is_authenticated_read_only_and_echoes_owner
             "state": "observed", "native_consumer": identity,
             "typing_grace_ms": super::resolve_typing_grace_ms(),
             "observed_at_ms": claimed_snapshot["data"]["observed_at_ms"],
-            "retry_after_ms": 0, "semantic_hold": false,
+            "retry_after_ms": 0,
+            "semantic_hold": false,
             "source": "pane-observed-edit-recency",
         }),
-        "snapshot exposes only the v4 contract, not queue or pane content"
+        "snapshot exposes observation and identity, not queue or pane content"
     );
     assert!(!claimed_snapshot.to_string().contains("private queued body"));
     assert_eq!(
@@ -3997,7 +3980,8 @@ async fn native_typing_http_rejects_missing_mismatched_and_noncurrent_identity_w
 }
 
 #[tokio::test]
-async fn native_typing_http_unavailable_observation_preserves_operator_hold_and_queue_ownership() {
+async fn native_typing_http_unavailable_observation_preserves_reported_status_and_queue_ownership()
+{
     for unavailable in ["unrecognized", "tap-unavailable", "no-pane"] {
         let store = FreshStore::new();
         let mut services = sqlite_services(&store).await;
@@ -4072,8 +4056,6 @@ async fn native_typing_http_unavailable_observation_preserves_operator_hold_and_
         let client = reqwest::Client::new();
         for claimed in [false, true] {
             if claimed {
-                seat.semantic_state = None;
-                registry.put(seat.clone()).await.unwrap();
                 let claims = native_http_claims(&client, addr, &seat.id, &identity).await;
                 assert_eq!(
                     claims.len(),
@@ -4095,7 +4077,8 @@ async fn native_typing_http_unavailable_observation_preserves_operator_hold_and_
             let mut expected = json!({
                 "state": "unavailable", "native_consumer": identity,
                 "typing_grace_ms": super::resolve_typing_grace_ms(),
-                "observed_at_ms": data["observed_at_ms"], "semantic_hold": true,
+                "observed_at_ms": data["observed_at_ms"],
+                "semantic_hold": false,
                 "reason": "native-typing-sensor-unavailable",
             });
             if unavailable == "no-pane" && super::resolve_typing_grace_ms() == 0 {

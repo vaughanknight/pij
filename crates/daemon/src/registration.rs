@@ -3146,14 +3146,16 @@ mod tests {
     async fn blocked_native_host_observation_does_not_block_unrelated_inbox_ack() {
         let (service, registry) = native_service(Vec::new(), native_liveness()).await;
         let queue = Arc::new(FakeQueue::new(1_024).expect("queue"));
-        let delivery = DeliveryService::new(
-            registry.clone(),
-            queue.clone(),
-            Arc::new(FakeTransport::unreachable()),
-            Arc::new(InteractionGate::new(Arc::new(FakeTmux::new()))),
-            service.event_bus.clone(),
-        )
-        .expect("delivery service");
+        let delivery = Arc::new(
+            DeliveryService::new(
+                registry.clone(),
+                queue.clone(),
+                Arc::new(FakeTransport::unreachable()),
+                Arc::new(InteractionGate::new(Arc::new(FakeTmux::new()))),
+                service.event_bus.clone(),
+            )
+            .expect("delivery service"),
+        );
         let service = service.with_native_lock(delivery.native_lock());
         let entered = Notify::new();
         let release = Notify::new();

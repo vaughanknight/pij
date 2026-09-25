@@ -41,6 +41,182 @@ async fn the_sqlite_queue_honours_the_same_contract_the_fake_does() {
     queue_contract(&crate_queue(&fresh).await).await;
 }
 
+async fn deferral_diagnostics_contract(queue: &dyn Queue, spine: &dyn pij_core::ports::Spine) {
+    let seat = SeatId::from("pij-deferral");
+    let body = job("delivery:pij-deferral", seat.as_str(), "preserved");
+    let id = queue.enqueue(body.clone()).await.unwrap();
+    for (reason, at, sampled) in [
+        ("unrecognized", 1_000, true),
+        ("unrecognized", 1_001, false),
+        ("composer-busy", 1_002, true),
+        ("composer-busy", 61_001, false),
+        ("composer-busy", 61_002, true),
+    ] {
+        let events = queue
+            .record_delivery_deferral(id, reason, None, at, spine)
+            .await
+            .unwrap();
+        assert_eq!(events.len(), usize::from(sampled));
+        assert!(
+            events
+                .iter()
+                .all(|event| event.seq.is_some() && event.kind == "delivery.held")
+        );
+    }
+    let facts = queue.delivery_deferrals(&seat).await.unwrap();
+    assert_eq!(
+        facts,
+        [pij_core::model::DeliveryDeferral {
+            job_id: id,
+            msg_id: "preserved".into(),
+            reason: "composer-busy".into(),
+            count: 5,
+            since_ms: 1_000,
+        }]
+    );
+    assert_eq!(
+        queue.peek(std::slice::from_ref(&body.kind)).await.unwrap(),
+        Some((id, body.clone())),
+        "diagnostics cannot mutate the message, retry count or claim"
+    );
+    let (claimed_id, _) = queue.claim(&[body.kind], "reader").await.unwrap().unwrap();
+    assert_eq!(claimed_id, id);
+    queue
+        .ack_delivery(id, DeliveryOrigin::TypedToPane)
+        .await
+        .unwrap();
+    assert!(queue.delivery_deferrals(&seat).await.unwrap().is_empty());
+    assert!(
+        queue
+            .record_delivery_deferral(id, "too-late", None, 120_000, spine)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let events = spine
+        .tail(Some(&seat), pij_core::model::Seq(0))
+        .await
+        .unwrap();
+    assert_eq!(events.len(), 3);
+    let payload: serde_json::Value = serde_json::from_str(&events[2].payload).unwrap();
+    assert_eq!(payload["deferral_count"], 5);
+    assert_eq!(payload["since_ms"], 1_000);
+    assert_eq!(payload["reason"], "composer-busy");
+}
+
+#[tokio::test]
+async fn sqlite_and_fake_deferrals_share_sampling_and_completion_contract() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.unwrap();
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).unwrap();
+    let spine = pij_store::SqliteSpine::new(pool);
+    deferral_diagnostics_contract(&queue, &spine).await;
+    deferral_diagnostics_contract(
+        &FakeQueue::new(1_024).unwrap(),
+        &pij_testkit::fakes::FakeSpine::new(),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn deferrals_survive_reopen_and_terminal_rows_retain_history() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.unwrap();
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).unwrap();
+    let spine = pij_store::SqliteSpine::new(pool.clone());
+    let seat = SeatId::from("pij-restart");
+    let body = job("delivery:pij-restart", seat.as_str(), "restart-body");
+    let id = queue.enqueue(body.clone()).await.unwrap();
+    queue
+        .record_delivery_deferral(id, "tap-unowned", None, 1_000, &spine)
+        .await
+        .unwrap();
+    pool.close().await;
+
+    let pool = pij_store::open(&fresh.path()).await.unwrap();
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).unwrap();
+    let spine = pij_store::SqliteSpine::new(pool.clone());
+    assert!(
+        queue
+            .record_delivery_deferral(id, "tap-unowned", None, 1_001, &spine)
+            .await
+            .unwrap()
+            .is_empty(),
+        "restart must not reset the rate limiter"
+    );
+    let facts = queue.delivery_deferrals(&seat).await.unwrap();
+    assert_eq!(facts[0].count, 2);
+    assert_eq!(facts[0].since_ms, 1_000);
+    assert_eq!(
+        queue
+            .claim(&[body.kind], "reader")
+            .await
+            .unwrap()
+            .unwrap()
+            .0,
+        id
+    );
+    queue
+        .ack(
+            id,
+            Outcome::Failed {
+                reason: "recipient gone".into(),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(queue.delivery_deferrals(&seat).await.unwrap().is_empty());
+    let history: (String, i64, i64) = sqlx::query_as(
+        "SELECT deferral_reason, deferral_count, deferral_since_ms FROM jobs WHERE id = ?1",
+    )
+    .bind(id.0 as i64)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(history, ("tap-unowned".into(), 2, 1_000));
+}
+
+#[tokio::test]
+async fn deferral_event_failure_rolls_back_diagnostic_and_sampling_checkpoint() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.unwrap();
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).unwrap();
+    let spine = pij_store::SqliteSpine::new(pool.clone());
+    let seat = SeatId::from("pij-atomic-deferral");
+    let id = queue
+        .enqueue(job("delivery:pij-atomic-deferral", seat.as_str(), "atomic"))
+        .await
+        .unwrap();
+    sqlx::query(
+        "CREATE TRIGGER reject_hold BEFORE INSERT ON spine_events \
+         WHEN new.kind = 'delivery.held' BEGIN SELECT RAISE(ABORT, 'scripted hold append'); END",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert!(
+        queue
+            .record_delivery_deferral(id, "unrecognized", None, 1_000, &spine)
+            .await
+            .is_err()
+    );
+    assert!(queue.delivery_deferrals(&seat).await.unwrap().is_empty());
+    sqlx::query("DROP TRIGGER reject_hold")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let events = queue
+        .record_delivery_deferral(id, "unrecognized", None, 1_001, &spine)
+        .await
+        .unwrap();
+    assert_eq!(
+        events.len(),
+        1,
+        "failed publication must not consume the sampling slot"
+    );
+    assert_eq!(queue.delivery_deferrals(&seat).await.unwrap()[0].count, 1);
+}
+
 async fn claimed_delivery_lookup_contract(queue: &dyn Queue) {
     for missing in [JobId(0), JobId(u64::MAX)] {
         assert_eq!(

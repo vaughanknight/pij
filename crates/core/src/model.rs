@@ -925,6 +925,21 @@ pub struct Job {
     pub attempt: u32,
 }
 
+/// Durable diagnostic history on a delivery job, not delivery or retry policy.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeliveryDeferral {
+    /// Queue authority identity, preserved across every retry.
+    pub job_id: JobId,
+    /// Sender's stable message identity.
+    pub msg_id: String,
+    /// Most recent reason delivery could not proceed.
+    pub reason: String,
+    /// All deferred attempts, including attempts suppressed by event sampling.
+    pub count: u64,
+    /// Unix milliseconds of the first deferred attempt, unchanged on reason changes.
+    pub since_ms: u64,
+}
+
 /// A job's identity in the queue.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]

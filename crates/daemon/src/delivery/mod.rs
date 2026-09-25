@@ -7,15 +7,15 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pij_core::control::{COPILOT_CONTROL_REFUSAL, ControlOutcome};
 use pij_core::delivery::{
-    DeliveryDeferralReason, DeliveryRoute, DeliveryRung, HeldEvent, MAX_TYPED_FRAME_BYTES,
-    QueueReason, ReleasedEvent, delivery_kind, route, route_control, select_rung,
+    DeliveryDeferralReason, DeliveryRoute, DeliveryRung, MAX_TYPED_FRAME_BYTES, QueueReason,
+    ReleasedEvent, delivery_kind, route, route_control, select_rung,
 };
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
 use pij_core::framing::frame_message;
 use pij_core::model::{
     DeliveryFailure, DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome,
-    Receipt, SeatDescriptor, SeatId, SemanticState, SystemState,
+    Receipt, SeatDescriptor, SeatId, SystemState,
 };
 use pij_core::ports::{
     DeliveryAck, DeliveryEnqueue, ExtensionLease, LivenessPort, Queue, Registry, Transport,
@@ -142,12 +142,15 @@ pub struct NativeInboxPage {
     pub held_reason: Option<String>,
 }
 
-/// Identity-bound consent observation; never a queue claim or delivery receipt.
+/// Identity-bound typing observation; never a queue claim or delivery permission.
 #[derive(Debug, Serialize)]
 pub(crate) struct NativeTypingSnapshot {
     native_consumer: NativeInboxIdentity,
     typing_grace_ms: u64,
     observed_at_ms: u64,
+    /// Deprecated compatibility field; always false since plan 155.
+    /// Remove only after every live native receiver is at or past the plan-155
+    /// field-ignoring build (AI-Substrate/pij#429); unknown builds block removal.
     semantic_hold: bool,
     #[serde(flatten)]
     observation: NativeTypingObservation,
@@ -200,6 +203,7 @@ pub struct DeliveryService {
     native_receiver_changed: tokio::sync::Notify,
     extension_claim_lease_secs: u64,
     recovery_authority_shared: bool,
+    admissions: tokio::sync::Mutex<tokio::task::JoinSet<()>>,
 }
 
 impl DeliveryService {
@@ -269,6 +273,7 @@ impl DeliveryService {
                 .filter(|value| *value > 0 && *value <= i64::MAX as u64)
                 .unwrap_or(60),
             recovery_authority_shared: true,
+            admissions: tokio::sync::Mutex::new(tokio::task::JoinSet::new()),
         }
     }
 
@@ -287,7 +292,7 @@ impl DeliveryService {
         self.update_native_receiver(seat, identity, None).await
     }
 
-    /// Renew from actual observations, independently of Working or Operator Hold.
+    /// Renew from actual observations, independently of Working or reported status.
     /// Empty reads and heartbeat timers must not advance either progress field.
     pub async fn heartbeat_native_receiver(
         &self,
@@ -595,7 +600,12 @@ impl DeliveryService {
     /// # Errors
     /// Missing, self-addressed, or tombstoned seats; adapter failures; queue
     /// persistence failures; and audit-event publication failures.
-    pub async fn send(&self, from: SeatId, to: SeatId, body: impl Into<String>) -> Result<Receipt> {
+    pub async fn send(
+        self: &Arc<Self>,
+        from: SeatId,
+        to: SeatId,
+        body: impl Into<String>,
+    ) -> Result<Receipt> {
         self.accept(Msg {
             from,
             to,
@@ -618,13 +628,17 @@ impl DeliveryService {
     /// # Errors
     /// Missing, self-addressed, or tombstoned seats; adapter failures; queue
     /// persistence failures; and audit-event publication failures.
-    pub async fn accept(&self, msg: Msg) -> Result<Receipt> {
-        self.arrive(msg, Arrival::Local).await
+    pub async fn accept(self: &Arc<Self>, msg: Msg) -> Result<Receipt> {
+        self.own_admission(msg, Arrival::Local).await
     }
 
     /// Admit an authenticated control request. The HTTP boundary owns caller
     /// authorization; this entry permits a self-target without relaxing body routing.
-    pub(crate) async fn accept_control(&self, msg: Msg) -> Result<Receipt> {
+    pub(crate) async fn accept_control(self: &Arc<Self>, msg: Msg) -> Result<Receipt> {
+        self.own_admission(msg, Arrival::Control).await
+    }
+
+    async fn arrive_control(&self, msg: Msg) -> Result<Receipt> {
         // Serialize request-id replay with terminal control ACKs and keep the
         // admission event ahead of an extension's immediate execution outcome.
         let _delivery_order = self.event_bus.socket_delivery_order.lock().await;
@@ -672,8 +686,51 @@ impl DeliveryService {
     /// # Errors
     /// Missing, self-addressed, or tombstoned seats; queue persistence failures;
     /// and audit-event publication failures.
-    pub async fn accept_forwarded(&self, msg: Msg) -> Result<Receipt> {
-        self.arrive(msg, Arrival::Forwarded).await
+    pub async fn accept_forwarded(self: &Arc<Self>, msg: Msg) -> Result<Receipt> {
+        self.own_admission(msg, Arrival::Forwarded).await
+    }
+
+    // A dedupe reservation and its injection/compensation share one owner.
+    // Cancelling a caller only discards its reply, never the continuation that
+    // makes a committed reservation truthful.
+    async fn own_admission(self: &Arc<Self>, msg: Msg, arrival: Arrival) -> Result<Receipt> {
+        let service = Arc::clone(self);
+        let (reply, result) = tokio::sync::oneshot::channel();
+        let mut admissions = self.admissions.lock().await;
+        while let Some(joined) = admissions.try_join_next() {
+            if let Err(error) = joined {
+                eprintln!("pij-rs delivery admission failed: {error}");
+            }
+        }
+        admissions.spawn(async move {
+            let result = match arrival {
+                Arrival::Control => service.arrive_control(msg).await,
+                other => service.arrive(msg, other).await,
+            };
+            let _ = reply.send(result);
+        });
+        drop(admissions);
+        result.await.map_err(|error| PijError::Adapter {
+            adapter: "daemon/delivery".into(),
+            message: format!("delivery admission task failed: {error}"),
+        })?
+    }
+
+    pub(crate) async fn flush(&self) -> Result<()> {
+        let mut admissions = self.admissions.lock().await;
+        let mut failed = None;
+        while let Some(result) = admissions.join_next().await {
+            if let Err(error) = result {
+                failed.get_or_insert(error);
+            }
+        }
+        match failed {
+            Some(error) => Err(PijError::Adapter {
+                adapter: "daemon/delivery".into(),
+                message: format!("delivery admission task failed: {error}"),
+            }),
+            None => Ok(()),
+        }
     }
 
     async fn arrive(&self, msg: Msg, arrival: Arrival) -> Result<Receipt> {
@@ -911,11 +968,18 @@ impl DeliveryService {
                                             .enqueue_delivery(delivery_job(&msg, Some(&recipient))?)
                                             .await?
                                         {
-                                            DeliveryEnqueue::Queued { not_before_ms, .. } => {
+                                            DeliveryEnqueue::Queued {
+                                                job_id,
+                                                not_before_ms,
+                                            } => {
+                                                pij_core::delivery::require_recovery_authority(
+                                                    self.recovery_authority_shared,
+                                                )?;
                                                 publish_delivery_held(
+                                                    &self.queue,
                                                     &self.event_bus,
-                                                    &msg,
-                                                    reason,
+                                                    job_id,
+                                                    reason.as_str(),
                                                     draft_sha.as_deref(),
                                                     at,
                                                 )
@@ -1171,7 +1235,7 @@ impl DeliveryService {
 
     /// Informational recency snapshot; typing never authorizes native delivery.
     /// Slow pane IO runs outside the native lock. Current identity and pane bind
-    /// the returned evidence; Operator Hold is reported independently.
+    /// the returned evidence; self-reported status is not delivery consent.
     pub(crate) async fn native_typing_snapshot(
         &self,
         seat: &SeatId,
@@ -1233,13 +1297,12 @@ impl DeliveryService {
             native_consumer: identity.clone(),
             typing_grace_ms,
             observed_at_ms,
-            semantic_hold: current.semantic_state == Some(SemanticState::Hold),
+            semantic_hold: false,
             observation,
         })
     }
 
-    /// Revalidate native identity/pane and every recipient's semantic Hold.
-    /// A stream claim must not bypass the registry hold that queued its arrival.
+    /// Revalidate native identity and pane ownership before handing over a claim.
     async fn revalidate_inbox_observation(
         &self,
         seat: &SeatId,
@@ -1257,9 +1320,7 @@ impl DeliveryService {
         {
             return Ok(Some("native-pane-changed".into()));
         }
-        Ok(current
-            .filter(|seat| seat.semantic_state == Some(SemanticState::Hold))
-            .map(|_| "semantic-hold".into()))
+        Ok(None)
     }
 
     async fn claim_inbox_inner(
@@ -2022,51 +2083,28 @@ async fn publish_outcome_with_control(
     Ok(())
 }
 
-/// Frozen held payload with additive pane evidence from the owned-input verdict.
-#[derive(Serialize)]
-struct DeliveryHeldEvent<'a> {
-    #[serde(flatten)]
-    held: HeldEvent,
-    last_edit_at: Option<u64>,
-    remaining_ms: Option<u64>,
-    draft_sha: Option<&'a str>,
-}
-
+/// Persist every deferred attempt and its sampled held event in one transaction
+/// before publishing. This is diagnostic only; callers retain their retry policy.
 pub(crate) async fn publish_delivery_held(
-    event_bus: &EventBus,
-    msg: &Msg,
-    reason: DeliveryDeferralReason,
+    queue: &Arc<dyn Queue>,
+    event_bus: &Arc<EventBus>,
+    job_id: JobId,
+    reason: &str,
     draft_sha: Option<&str>,
     at: u64,
 ) -> Result<()> {
-    let payload = serde_json::to_string(&DeliveryHeldEvent {
-        held: HeldEvent {
-            msg_id: msg.msg_id.clone(),
-            seat: msg.to.clone(),
-            reason: reason.as_str().to_string(),
-            // Staged submission returns the authoritative reason and draft hash,
-            // not edit age. Zero denotes unavailable timing without re-observation.
-            since_ms: 0,
-        },
-        last_edit_at: None,
-        remaining_ms: None,
-        draft_sha,
-    })
-    .map_err(|error| PijError::Adapter {
-        adapter: "daemon/delivery".to_string(),
-        message: format!("could not encode delivery hold {}: {error}", msg.msg_id),
-    })?;
+    let queue = Arc::clone(queue);
+    let spine = event_bus.raw_spine();
+    let reason = reason.to_string();
+    let draft_sha = draft_sha.map(str::to_string);
     event_bus
-        .publish(Event {
-            seq: None,
-            v: 1,
-            at,
-            kind: "delivery.held".to_string(),
-            seat: Some(msg.to.clone()),
-            payload,
+        .publish_committed_batch(async move {
+            let events = queue
+                .record_delivery_deferral(job_id, &reason, draft_sha.as_deref(), at, spine.as_ref())
+                .await?;
+            Ok((events, ()))
         })
-        .await?;
-    Ok(())
+        .await
 }
 
 /// Close an outstanding hold only after delivery and authority acknowledgement succeed.
@@ -2507,7 +2545,6 @@ mod tests {
                     _ => {
                         let snapshot = result.unwrap();
                         assert_eq!(snapshot.native_consumer, identity);
-                        assert_eq!(snapshot.semantic_hold, change == 1);
                         assert!(matches!(
                             snapshot.observation,
                             super::NativeTypingObservation::Observed {
@@ -2531,13 +2568,21 @@ mod tests {
                     "a sensor may not mutate the old or successor attempt"
                 );
                 if change == 1 {
-                    let held = fixture
+                    let page = fixture
                         .service
                         .claim_native_inbox(&recipient.id, false, &identity)
                         .await
                         .unwrap();
-                    assert!(held.claims.is_empty());
-                    assert_eq!(held.held_reason.as_deref(), Some("semantic-hold"));
+                    assert_eq!(page.held_reason, None);
+                    if claimed {
+                        assert!(
+                            page.claims.is_empty(),
+                            "the existing claim still owns the job"
+                        );
+                    } else {
+                        assert_eq!(page.claims.len(), 1);
+                        assert_eq!(page.claims[0].job_id, job_id);
+                    }
                 }
                 assert_eq!(observer.captures.load(Ordering::SeqCst), 1);
             }
@@ -3053,7 +3098,7 @@ mod tests {
             inner: Arc::new(FakeTransport::reachable()),
             accepted: Notify::new(),
         });
-        let service = DeliveryService::with_sources(
+        let service = Arc::new(DeliveryService::with_sources(
             fixture.registry.clone(),
             fixture.queue.clone(),
             fixture.transport.clone(),
@@ -3063,7 +3108,7 @@ mod tests {
                 id_prefix: 1,
                 clock: Arc::new(|| Ok(1_234)),
             },
-        );
+        ));
         let worker = crate::pointer::DrainWorker::new(
             fixture.registry.clone(),
             fixture.queue.clone(),
@@ -3248,7 +3293,6 @@ mod tests {
         assert_eq!(payload["seat"], recipient.id.as_str());
         assert_eq!(payload["reason"], "human-typing");
         assert_eq!(payload["draft_sha"], "2cf24dba5fb0");
-        assert_eq!(payload["since_ms"], 0);
         assert!(payload["last_edit_at"].is_null());
         assert!(payload["remaining_ms"].is_null());
         assert!(events.iter().all(|event| event.kind != "delivery.released"));
@@ -3360,41 +3404,55 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn extension_claims_preserve_semantic_hold_while_ignoring_typing() {
-        for harness in [Harness::Omp, Harness::Pi] {
+    async fn native_and_extension_claims_ignore_self_reported_hold() {
+        for harness in [Harness::Copilot, Harness::Omp, Harness::Pi] {
             let fixture = fixture_with_gate(FakeTransport::reachable(), typing_pane("%held"));
-            let mut recipient = bound("pij-extension-held");
+            let mut recipient = if harness == Harness::Copilot {
+                native_seat(Some("%held"))
+            } else {
+                bound("pij-extension-held")
+            };
             recipient.harness = harness;
             recipient.pane = Some("%held".into());
             recipient.semantic_state = Some(SemanticState::Hold);
             register(&fixture, recipient.clone()).await;
-            fixture
+            let receipt = fixture
                 .service
                 .send(
                     "pij-from".into(),
                     recipient.id.clone(),
-                    "semantic hold survives typing removal",
+                    "self-reported status does not suppress inbox delivery",
                 )
                 .await
                 .expect("queued");
-
-            assert!(
+            let (job_id, _) = fixture
+                .queue
+                .peek(&[delivery_kind(&recipient.id)])
+                .await
+                .unwrap()
+                .expect("real queued message");
+            let claims = if harness == Harness::Copilot {
+                let page = fixture
+                    .service
+                    .claim_native_inbox(&recipient.id, false, &native_identity())
+                    .await
+                    .expect("registered native claim");
+                assert_eq!(page.held_reason, None);
+                page.claims
+            } else {
                 fixture
                     .service
                     .claim_inbox(&recipient.id, false)
                     .await
-                    .expect("held claim")
-                    .is_empty()
+                    .expect("extension claim")
+            };
+            assert_eq!(claims.len(), 1, "{harness:?} must claim despite Hold");
+            assert_eq!(claims[0].job_id, job_id);
+            assert_eq!(claims[0].message.msg_id, receipt.msg_id);
+            assert_eq!(
+                fixture.registry.get(&recipient.id).await.unwrap(),
+                Some(recipient)
             );
-            assert_eq!(fixture.queue.live_len(), 1);
-            recipient.semantic_state = None;
-            register(&fixture, recipient.clone()).await;
-            let claims = fixture
-                .service
-                .claim_inbox(&recipient.id, false)
-                .await
-                .expect("released semantic hold");
-            assert_eq!(claims.len(), 1);
             assert!(
                 fixture.tmux.calls().is_empty(),
                 "extension claims never observe or mutate the composer"
@@ -3721,7 +3779,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn receipt_honesty_decision_table_covers_busy_prebind_dead_held_and_delivered() {
+    async fn receipt_honesty_decision_table_covers_busy_prebind_dead_reported_hold_and_delivered() {
         // Delivered: transport accepted it, no inbox row remains, and the audit
         // event binds the receipt to the message id.
         let delivered = fixture(FakeTransport::reachable());
@@ -3779,32 +3837,31 @@ mod tests {
         assert_eq!(inbox[0].message.body, "before bind");
         assert_audit(&prebind, &SeatId::from("pij-prebind"), "queued").await;
 
-        // An operator hold is a REGISTRY fact and still queues without consulting
-        // the transport at all.
+        // Self-reported Hold does not suppress delivery through a reachable transport.
         let held_seat = {
             let mut seat = bound("pij-hold");
             seat.semantic_state = Some(SemanticState::Hold);
             seat
         };
-        let queued = fixture(FakeTransport::reachable());
-        register(&queued, held_seat).await;
-        let receipt = queued
+        let reported_hold = fixture(FakeTransport::reachable());
+        register(&reported_hold, held_seat.clone()).await;
+        let receipt = reported_hold
             .service
             .send("pij-from".into(), "pij-hold".into(), "pij-hold")
             .await
-            .expect("operator hold queues");
-        assert_eq!(receipt.outcome, queued_outcome("operator-hold", 0));
-        assert!(queued.transport.calls().is_empty());
-        assert!(
-            queued
-                .service
-                .claim_inbox(&SeatId::from("pij-hold"), false)
-                .await
-                .expect("operator-held inbox")
-                .is_empty(),
-            "semantic Hold must also veto inbox consumption, not only push delivery"
+            .expect("self-reported Hold still delivers");
+        assert_eq!(
+            receipt.outcome,
+            DeliveryOutcome::Delivered {
+                origin: DeliveryOrigin::InjectedToTransport
+            }
         );
-        assert_eq!(queued.queue.live_len(), 1, "held message remains durable");
+        assert_eq!(reported_hold.transport.delivered().len(), 1);
+        assert_eq!(reported_hold.queue.live_len(), 0);
+        assert_eq!(
+            reported_hold.registry.get(&held_seat.id).await.unwrap(),
+            Some(held_seat)
+        );
 
         // BUSY is now the transport's judgement, not the policy's. A pty-shaped
         // transport declines a working seat, because typing races a live
@@ -4401,7 +4458,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn native_receiver_renewal_preserves_busy_completion_and_hold() {
+    async fn native_receiver_renewal_preserves_busy_completion_despite_reported_hold() {
         let fixture = fixture(FakeTransport::unreachable());
         let mut seat = native_seat(Some("%137"));
         seat.state = SystemState::Working;
@@ -4421,37 +4478,58 @@ mod tests {
             .remove(0);
         seat.semantic_state = Some(SemanticState::Hold);
         fixture.registry.put(seat.clone()).await.unwrap();
-        for observation in 1..=4 {
-            tokio::time::advance(Duration::from_millis(
-                fixture.service.extension_claim_lease_secs * 500,
-            ))
-            .await;
-            fixture
-                .service
-                .heartbeat_native_receiver(&seat.id, &identity, observation, observation)
-                .await
-                .unwrap();
-            let page = fixture
-                .service
-                .claim_native_inbox(&seat.id, false, &identity)
-                .await
-                .unwrap();
-            assert!(page.claims.is_empty());
-            assert_eq!(page.held_reason.as_deref(), Some("semantic-hold"));
-        }
         let queued = fixture
             .service
             .send("pij-from".into(), seat.id.clone(), "held successor")
             .await
             .unwrap();
         assert!(matches!(queued.outcome, DeliveryOutcome::Queued { .. }));
+        for observation in 1..=4 {
+            tokio::time::advance(Duration::from_millis(
+                fixture.service.extension_claim_lease_secs * 500,
+            ))
+            .await;
+            let heartbeat = fixture
+                .service
+                .heartbeat_native_receiver(&seat.id, &identity, observation, observation)
+                .await
+                .unwrap();
+            assert_eq!(heartbeat.state, "live");
+            assert_eq!(
+                heartbeat.lease_ms,
+                fixture.service.extension_claim_lease_secs * 1_000
+            );
+            assert!(matches!(
+                fixture
+                    .service
+                    .claim_manual_native_inbox(&seat.id, &identity)
+                    .await,
+                Err(PijError::NativeReceiverLive { .. })
+            ));
+            let page = fixture
+                .service
+                .claim_native_inbox(&seat.id, false, &identity)
+                .await
+                .unwrap();
+            assert!(
+                page.claims.is_empty(),
+                "running claim retains serial ownership over the pending successor"
+            );
+            assert_eq!(page.held_reason, None);
+            assert!(
+                fixture
+                    .queue
+                    .claimed_delivery(claim.job_id)
+                    .await
+                    .unwrap()
+                    .is_some()
+            );
+        }
         fixture
             .service
             .acknowledge_inbox(&seat.id, claim.job_id, &identity, None)
             .await
             .unwrap();
-        seat.semantic_state = None;
-        fixture.registry.put(seat.clone()).await.unwrap();
         let next = fixture
             .service
             .claim_native_inbox(&seat.id, false, &identity)
@@ -4597,7 +4675,7 @@ mod tests {
             "manual refusal must not starve the extension"
         );
         // A dead receiver's running claim is inaccessible until its lease expires.
-        // Operator Hold must not turn a live-lease refusal into an empty success.
+        // Self-reported Hold must not alter live-lease admission.
         seat.semantic_state = Some(SemanticState::Hold);
         fixture.registry.put(seat.clone()).await.unwrap();
         for step in 1..=3 {
@@ -4631,8 +4709,6 @@ mod tests {
                 .iter()
                 .any(|event| event.kind == "delivery.parked")
         );
-        seat.semantic_state = None;
-        fixture.registry.put(seat.clone()).await.unwrap();
         tokio::time::advance(Duration::from_millis(lease_ms - (lease_ms / 4) * 3)).await;
         let recovered = fixture
             .service
@@ -5022,7 +5098,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn paneless_wait_holds_until_release_and_never_rehomes_old_native_work() {
+    async fn paneless_wait_ignores_reported_hold_and_never_rehomes_old_native_work() {
         let fixture = fixture(FakeTransport::unreachable());
         let mut seat = native_seat(None);
         seat.native_extension_delivery = false;
@@ -5032,35 +5108,24 @@ mod tests {
         register(&fixture, seat.clone()).await;
         fixture
             .service
-            .send("sender".into(), seat.id.clone(), "held body")
+            .send(
+                "sender".into(),
+                seat.id.clone(),
+                "status does not suppress pull",
+            )
             .await
             .unwrap();
-        let waiting = fixture
+        let page = fixture
             .service
-            .claim_pull_inbox(&seat.id, true, None, &identity, &liveness);
-        tokio::pin!(waiting);
-        tokio::select! {
-            biased;
-            result = &mut waiting => panic!("hold is not successful empty completion: {result:?}"),
-            () = tokio::task::yield_now() => {}
-        }
-        seat.semantic_state = None;
-        register(&fixture, seat.clone()).await;
-        fixture
-            .service
-            .event_bus
-            .publish(Event {
-                seq: None,
-                v: 1,
-                at: 1_235,
-                kind: "report.state".into(),
-                seat: Some(seat.id.clone()),
-                payload: "{}".into(),
-            })
+            .claim_pull_inbox(&seat.id, true, None, &identity, &liveness)
             .await
             .unwrap();
-        let page = waiting.await.unwrap();
-        assert_eq!(page.claims[0].message.body, "held body");
+        assert_eq!(page.claims.len(), 1);
+        assert_eq!(page.claims[0].message.body, "status does not suppress pull");
+        assert_eq!(
+            fixture.registry.get(&seat.id).await.unwrap(),
+            Some(seat.clone())
+        );
         fixture
             .service
             .acknowledge_inbox(&seat.id, page.claims[0].job_id, &identity, None)
@@ -5126,7 +5191,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn native_typing_snapshot_captured_blank_releases_recent_edit_but_preserves_hold() {
+    async fn native_typing_snapshot_captured_blank_releases_recency_independent_of_status() {
         let blank: Value = serde_json::from_str(include_str!(
             "../../../harnesses/tests/fixtures/2026-09-05-copilot-v1.0.84-smoke03.json"
         ))
@@ -5168,6 +5233,10 @@ mod tests {
                     .native_typing_snapshot(&seat.id, &native_identity(), 60_000)
                     .await
                     .unwrap();
+                assert!(
+                    !snapshot.semantic_hold,
+                    "compatibility cannot turn self-status into a veto"
+                );
                 let super::NativeTypingObservation::Observed { retry_after_ms, .. } =
                     snapshot.observation
                 else {
@@ -5184,7 +5253,7 @@ mod tests {
                         "a recent nonblank draft retains informational recency evidence"
                     );
                 }
-                assert_eq!(snapshot.semantic_hold, held);
+                assert_eq!(fixture.registry.get(&seat.id).await.unwrap(), Some(seat));
             }
         }
     }
@@ -5315,7 +5384,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn native_typing_paneless_snapshot_is_informational_and_retains_hold() {
+    async fn native_typing_paneless_snapshot_is_informational_and_preserves_reported_status() {
         let fixture = fixture(FakeTransport::unreachable());
         let mut seat = native_seat(None);
         seat.semantic_state = Some(SemanticState::Hold);
@@ -5342,7 +5411,6 @@ mod tests {
                 ..
             }
         ));
-        assert!(unavailable.semantic_hold && disabled.semantic_hold);
         assert_eq!(fixture.registry.get(&seat.id).await.unwrap(), Some(seat));
         assert!(fixture.tmux.calls().is_empty());
         assert_eq!(fixture.queue.live_len(), 0);

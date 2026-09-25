@@ -67,7 +67,6 @@ function observedTyping(overrides = {}, consumer = tuple) {
 		typing_grace_ms: 60000,
 		observed_at_ms: 100000,
 		retry_after_ms: 0,
-		semantic_hold: false,
 		source: "pane-observed-edit-recency",
 		...overrides,
 	};
@@ -172,9 +171,9 @@ function fixture(overrides = {}) {
 		},
 	};
 	const client = {
-		async consentSnapshot(consumer, signal) {
+		async nativeSnapshot(consumer, signal) {
 			assert.equal(signal.aborted, false);
-			trace.push("consent");
+			trace.push("identity");
 			return observedTyping({}, consumer);
 		},
 		async claimInbox(consumer, signal) {
@@ -1020,7 +1019,7 @@ test("acceptance is persisted before tuple-bound acknowledgement, not model comp
 		"subscribe",
 		"register",
 		"claim",
-		"consent",
+		"identity",
 		"intent",
 		"send",
 		"persist",
@@ -1083,7 +1082,7 @@ test("busy native turn consumes immediate steering and journals its returned mes
 
 test("accepted duplicate after restart only acknowledges, never reinjects", async () => {
 	const f = fixture();
-	f.client.consentSnapshot = async () =>
+	f.client.nativeSnapshot = async () =>
 		assert.fail("Accepted duplicates do not authorize a new injection");
 	f.records.set(claim.message.msg_id, {
 		state: "accepted",
@@ -2291,7 +2290,7 @@ test("accepted-but-unacked reconnect reclaims and acknowledges without second na
 	await run;
 	assert.equal(f.trace.filter((x) => x === "send").length, 1);
 	assert.equal(f.trace.filter((x) => x === "register").length, 2);
-	assert.equal(f.trace.filter((x) => x === "consent").length, 1); // Recovered acceptance never authorizes another send.
+	assert.equal(f.trace.filter((x) => x === "identity").length, 1); // Recovered acceptance never authorizes another send.
 	assert.ok(f.reports.some((e) => e.kind === "reconnecting"));
 });
 
@@ -3196,7 +3195,7 @@ test("claim page preserves typed target and transient hold metadata without chan
 		[undefined, null],
 		[null, null],
 		["observation-only note", null],
-		...["native-pane-changed", "semantic-hold", "human-consent"].map((reason) => [
+		...["native-pane-changed", "human-consent"].map((reason) => [
 			`native-consumer-held:${reason}`,
 			{ kind: "consent", reason },
 		]),
@@ -3354,18 +3353,59 @@ test("native-unavailable retries re-register with bounded backoff and stop clean
 	assert.equal(f.trace.at(-1), "unsubscribe");
 });
 
-test("semantic consent preflight binds exact tuple and current bearer key over real HTTP", async (t) => {
+for (const compatibility of [undefined, true]) {
+	test(`self-reported Hold with a valid native tuple delivers once without a status veto (compatibility=${compatibility})`, async (t) => {
+		const snapshot = {
+			state: "unavailable",
+			native_consumer: claim.native_consumer,
+			typing_grace_ms: 60000,
+			observed_at_ms: 100000,
+			reason: "native-typing-sensor-unavailable",
+			...(compatibility === undefined ? {} : { semantic_hold: compatibility }),
+		};
+		const { client, requests } = await deadlineHttpFixture(t, ({ url, body }, response) => {
+			let data;
+			if (url.pathname === "/v1/register") data = { ...descriptor, semantic_state: "hold" };
+			else if (url.pathname === "/v1/inbox") data = [claim];
+			else if (url.pathname === "/v1/inbox/typing") data = snapshot;
+			else if (url.pathname === "/v1/inbox/ack") {
+				assert.deepEqual(body, { ...tuple, job_id: claim.job_id });
+				data = claim.job_id;
+			} else assert.fail(`Unexpected native request ${url.pathname}`);
+			response.end(JSON.stringify({ ok: true, v: 2, data }));
+		});
+		const f = fixture({ client });
+		t.after(() => f.bridge.stop());
+		const run = f.bridge.run();
+		await Promise.race([f.accepted.promise, run]);
+		f.bridge.stop();
+		await run;
+		assert.equal(f.trace.filter((step) => step === "send").length, 1);
+		assert.equal(requests.filter(({ url }) => url.pathname === "/v1/inbox/ack").length, 1);
+		assert.equal(f.records.get(claim.message.msg_id)?.state, "accepted");
+		assert.equal(
+			f.reports.some(({ kind }) => ["consent-held", "receive-held"].includes(kind)),
+			false,
+		);
+		assert.equal(
+			requests.some(({ url }) => ["/v1/hold", "/v1/release"].includes(url.pathname)),
+			false,
+		);
+	});
+}
+
+test("native identity preflight binds exact tuple and current bearer key over real HTTP", async (t) => {
 	let snapshot = observedTyping({ retry_after_ms: 60000 });
 	const { client, requests } = await deadlineHttpFixture(t, (_entry, response) => {
 		response.end(JSON.stringify({ ok: true, command: "pij inbox", v: 2, data: snapshot }));
 	});
-	assert.deepEqual(await client.consentSnapshot(tuple), snapshot);
-	client.readKey = async () => "rotated-consent-key";
+	assert.deepEqual(await client.nativeSnapshot(tuple), snapshot);
+	client.readKey = async () => "rotated-native-key";
 	snapshot = unavailableTyping();
-	assert.deepEqual(await client.consentSnapshot(tuple), snapshot);
+	assert.deepEqual(await client.nativeSnapshot(tuple), snapshot);
 	assert.deepEqual(
 		requests.map(({ authorization }) => authorization),
-		["Bearer deadline-key", "Bearer rotated-consent-key"],
+		["Bearer deadline-key", "Bearer rotated-native-key"],
 	);
 	for (const request of requests) {
 		assert.equal(request.method, "GET");
@@ -3380,7 +3420,7 @@ test("semantic consent preflight binds exact tuple and current bearer key over r
 	}
 });
 
-test("semantic consent rejects malformed hold and mismatched native identity over HTTP", async (t) => {
+test("native identity preflight rejects missing or mismatched proof over HTTP", async (t) => {
 	let snapshot;
 	const { client } = await deadlineHttpFixture(t, (_entry, response) => {
 		response.end(JSON.stringify({ ok: true, command: "pij inbox", v: 2, data: snapshot }));
@@ -3393,15 +3433,13 @@ test("semantic consent rejects malformed hold and mismatched native identity ove
 		observedTyping({ native_consumer: { ...claim.native_consumer, pid: 138 } }),
 		observedTyping({ native_consumer: { ...claim.native_consumer, proc_start: 1 } }),
 		observedTyping({ native_consumer: { ...claim.native_consumer, pid: "137" } }),
-		observedTyping({ semantic_hold: undefined }),
-		observedTyping({ semantic_hold: "false" }),
 	]) {
 		snapshot = invalid;
-		await assert.rejects(client.consentSnapshot(tuple), /consent/i);
+		await assert.rejects(client.nativeSnapshot(tuple), { retryable: false });
 	}
 });
 
-test("semantic consent ignores typing metadata and needs only identity and operator Hold", async (t) => {
+test("native identity preflight ignores informational typing metadata", async (t) => {
 	let snapshot;
 	const { client } = await deadlineHttpFixture(t, (_entry, response) => {
 		response.end(JSON.stringify({ ok: true, command: "pij inbox", v: 2, data: snapshot }));
@@ -3416,19 +3454,19 @@ test("semantic consent ignores typing metadata and needs only identity and opera
 			retry_after_ms: "busy",
 			source: "pane-output",
 		}),
-		{ native_consumer: claim.native_consumer, semantic_hold: false },
+		{ native_consumer: claim.native_consumer },
 	]) {
 		snapshot = observation;
-		assert.deepEqual(await client.consentSnapshot(tuple), snapshot);
+		assert.deepEqual(await client.nativeSnapshot(tuple), snapshot);
 	}
 });
 
-test("new native send waits for semantic consent before creating durable intent", async (t) => {
+test("new native send waits for incarnation verification before creating durable intent", async (t) => {
 	const snapshot = deferred();
 	const f = fixture();
 	t.after(() => f.bridge.stop());
 	let reads = 0;
-	f.client.consentSnapshot = (consumer, signal) => {
+	f.client.nativeSnapshot = (consumer, signal) => {
 		reads++;
 		assert.deepEqual(consumer, tuple);
 		assert.equal(signal.aborted, false);
@@ -3458,7 +3496,7 @@ for (const [label, snapshot] of [
 		const composer = Object.freeze({ text: draft });
 		const f = fixture({ delay: async () => f.bridge.stop() });
 		t.after(() => f.bridge.stop());
-		f.client.consentSnapshot = async () => snapshot;
+		f.client.nativeSnapshot = async () => snapshot;
 		const send = f.native.send;
 		f.native.send = async (input) => {
 			assert.deepEqual(input, {
@@ -3490,13 +3528,12 @@ for (const [label, snapshot] of [
 // Plan 137: removing typing checks does not authorize another native target or bypass consent.
 for (const hold of [
 	{ kind: "consent", reason: "human-consent" },
-	{ kind: "consent", reason: "semantic-hold" },
 	{ kind: "native-target", reason: "native-target-session:original-native" },
 ]) {
 	test(`native delivery retains ${hold.reason} while the human is typing`, async (t) => {
 		const f = fixture({ delay: async () => f.bridge.stop() });
 		t.after(() => f.bridge.stop());
-		f.client.consentSnapshot = async () => observedTyping({ retry_after_ms: 60000 });
+		f.client.nativeSnapshot = async () => observedTyping({ retry_after_ms: 60000 });
 		f.client.claimInbox = async () => ({ claims: [], hold });
 		await f.bridge.run();
 		assert.equal(f.trace.includes("send"), false);
@@ -3513,116 +3550,48 @@ for (const hold of [
 	});
 }
 
-// Operator Hold can race acquisition; never clear it or reuse a delayed claim.
-for (const observation of [observedTyping({ retry_after_ms: 60000 }), unavailableTyping()]) {
-	test(`semantic Hold survives ${observation.state} typing and requires a fresh claim after clearance`, async (t) => {
-		const clearance = deferred();
-		const fresh = {
-			...claim,
-			job_id: 138,
-			message: { ...claim.message, msg_id: "operator-cleared-138", body: "FRESH_AFTER_HOLD" },
-		};
-		const f = fixture({ delay: () => clearance.promise });
-		t.after(() => f.bridge.stop());
-		let claims = 0;
-		let reads = 0;
-		f.client.claimInbox = async () => ({ claims: [++claims === 1 ? claim : fresh], hold: null });
-		f.client.consentSnapshot = async () => {
-			assert.equal(++reads, claims, "Each preflight belongs to a fresh claim");
-			return { ...observation, semantic_hold: reads === 1 };
-		};
-		const request = f.client.request;
-		f.client.request = (path, body, signal) => {
-			if (path === "/v1/inbox/ack") {
-				assert.deepEqual(body, { ...tuple, job_id: fresh.job_id });
-				f.trace.push("ack");
-				return fresh.job_id;
-			}
-			return request(path, body, signal);
-		};
-		const send = f.native.send;
-		f.native.send = (input) => {
-			assert.equal(claims, 2);
-			assert.match(input.prompt, /FRESH_AFTER_HOLD/);
-			assert.equal(input.prompt.includes(claim.message.body), false);
-			return send(input);
-		};
-		const run = f.bridge.run();
-		await flush();
-		assert.equal(reads, 1);
-		assert.equal(claims, 1);
-		assert.equal(f.records.size, 0);
-		assert.equal(f.trace.includes("send"), false);
-		assert.equal(f.trace.includes("ack"), false);
-		assert.ok(
-			f.reports.some(({ kind, reason }) => kind === "consent-held" && reason === "semantic-hold"),
-		);
-		assert.equal(
-			(await f.bridge.send({ to: "pij-peer", message: "outgoing while held" })).ok,
-			true,
-		);
-		clearance.resolve();
-		await f.accepted.promise;
-		f.bridge.stop();
-		await run;
-		assert.equal(reads, 2);
-		assert.equal(f.records.has(claim.message.msg_id), false);
-		assert.equal(f.records.get(fresh.message.msg_id).state, "accepted");
-		assert.equal(f.trace.filter((step) => step === "send").length, 1);
-		assert.equal(f.trace.includes("hold"), false);
-		assert.equal(f.trace.includes("release"), false);
-	});
-}
+test("shutdown during native preflight cancels old-context work without intent send or ACK", async (t) => {
+	const blocked = deferred();
+	let observedSignal;
+	const f = fixture();
+	t.after(() => f.bridge.stop());
+	f.client.nativeSnapshot = (_consumer, signal) => {
+		observedSignal = signal;
+		return blocked.promise;
+	};
+	const run = f.bridge.run();
+	await flush();
+	assert.ok(observedSignal);
+	assert.equal(f.trace.includes("send"), false);
+	f.event({ type: "session.shutdown", data: {} });
+	assert.equal(observedSignal.aborted, true);
+	await run;
+	blocked.resolve(observedTyping());
+	await flush();
+	assert.equal(f.records.size, 0);
+	assert.equal(f.trace.includes("ack"), false);
+	assert.equal(f.trace.filter((step) => step === "claim").length, 1);
+	assert.equal(f.trace.filter((step) => step === "unsubscribe").length, 1);
+});
 
-for (const phase of ["snapshot", "semantic hold delay"]) {
-	test(`shutdown during consent ${phase} cancels old-context work without intent send or ACK`, async (t) => {
-		const blocked = deferred();
-		let observedSignal;
-		const f = fixture({
-			delay: (_ms, signal) => {
-				observedSignal = signal;
-				return blocked.promise;
-			},
-		});
-		t.after(() => f.bridge.stop());
-		f.client.consentSnapshot = (_consumer, signal) => {
-			observedSignal = signal;
-			return phase === "snapshot" ? blocked.promise : observedTyping({ semantic_hold: true });
-		};
-		const run = f.bridge.run();
-		await flush();
-		assert.ok(observedSignal);
-		assert.equal(f.trace.includes("send"), false);
-		f.event({ type: "session.shutdown", data: {} });
-		assert.equal(observedSignal.aborted, true);
-		await run;
-		blocked.resolve(observedTyping());
-		await flush();
-		assert.equal(f.records.size, 0);
-		assert.equal(f.trace.includes("ack"), false);
-		assert.equal(f.trace.filter((step) => step === "claim").length, 1);
-		assert.equal(f.trace.filter((step) => step === "unsubscribe").length, 1);
-	});
-}
-
-test("semantic consent HTTP wait is externally abortable and its deadline is not inbox renewal", async (t) => {
+test("native identity HTTP wait is externally abortable and its deadline is not inbox renewal", async (t) => {
 	const controller = new AbortController();
 	const reason = new DOMException("Native consumer stopped", "AbortError");
 	const { client, requests } = await deadlineHttpFixture(t, () => controller.abort(reason));
 	await assert.rejects(
-		client.consentSnapshot(tuple, controller.signal),
+		client.nativeSnapshot(tuple, controller.signal),
 		(error) => error === reason,
 	);
 	assert.equal(requests.length, 1);
 	const stalled = await deadlineHttpFixture(t, () => undefined);
-	await assert.rejects(stalled.client.consentSnapshot(tuple), { retryable: true });
+	await assert.rejects(stalled.client.nativeSnapshot(tuple), { retryable: true });
 });
 
 for (const snapshot of [
-	observedTyping({ semantic_hold: undefined }),
+	observedTyping({ native_consumer: undefined }),
 	unavailableTyping({ native_consumer: { ...claim.native_consumer, pid: 138 } }),
 ]) {
-	test("invalid semantic consent or native proof holds receiving without hiding outgoing", async (t) => {
+	test("invalid native proof holds receiving without hiding outgoing", async (t) => {
 		const { client, requests } = await deadlineHttpFixture(t, ({ url, body }, response) => {
 			let data;
 			if (url.pathname === "/v1/register") data = descriptor;
@@ -3641,11 +3610,7 @@ for (const snapshot of [
 			requests.some(({ url }) => url.pathname === "/v1/inbox/ack"),
 			false,
 		);
-		assert.ok(
-			f.reports.some(
-				({ kind, diagnostic }) => kind === "receive-held" && /consent/i.test(diagnostic),
-			),
-		);
+		assert.ok(f.reports.some(({ kind }) => kind === "receive-held"));
 		assert.equal(
 			(await f.bridge.send({ to: "pij-peer", message: "outgoing while held" })).ok,
 			true,
@@ -3852,7 +3817,7 @@ test("receiver lease: receive-held tears down renewal before a late timer fires"
 	assert.equal(f.trace.includes("retry-intent"), false);
 });
 
-for (const blockedBy of ["busy completion", "operator Hold"]) {
+for (const blockedBy of ["busy completion", "human consent"]) {
 	test(`receiver lease: renews for twenty minutes independently of ${blockedBy}`, async (t) => {
 		const ticks = [];
 		let renewals = 0;
@@ -3880,7 +3845,7 @@ for (const blockedBy of ["busy completion", "operator Hold"]) {
 			if (path === "/v1/inbox/heartbeat") renewals++;
 			return request(path, body, signal);
 		};
-		if (blockedBy === "operator Hold")
+		if (blockedBy === "human consent")
 			f.client.claimInbox = async () => {
 				f.trace.push("claim");
 				return { claims: [], hold: { kind: "consent", reason: "human-consent" } };

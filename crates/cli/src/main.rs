@@ -1,6 +1,7 @@
 //! `pij-rs` — one binary, two composition roots.
 
 mod commit_trailers;
+mod daemon_log;
 mod identity;
 
 use std::collections::BTreeMap;
@@ -645,9 +646,26 @@ enum DoctorAction {
     Statusline,
 }
 
+fn main() -> ExitCode {
+    let cli = Cli::parse();
+    // Keep the sink alive through runtime teardown, including panic diagnostics.
+    let _log = if matches!(&cli.command, Command::Daemon { action: None, .. }) {
+        match daemon_log::DaemonLog::install() {
+            Ok(log) => Some(log),
+            Err(error) => {
+                eprintln!("pij-rs: could not initialize daemon logging: {error}");
+                return ExitCode::FAILURE;
+            }
+        }
+    } else {
+        None
+    };
+    run_with_runtime(cli)
+}
+
 #[tokio::main]
-async fn main() -> ExitCode {
-    run(Cli::parse()).await
+async fn run_with_runtime(cli: Cli) -> ExitCode {
+    run(cli).await
 }
 
 async fn run(cli: Cli) -> ExitCode {
@@ -1781,6 +1799,13 @@ fn render_state(envelope: &Envelope<pij_daemon::http::StateCard>, json: bool) ->
         if let Some(first) = card.held.iter().min_by_key(|hold| hold.since_ms) {
             let _ = write!(output, " ({} since {} ms)", first.reason, first.since_ms);
         }
+        for deferred in &card.delivery_deferrals {
+            let _ = write!(
+                output,
+                "\ndelivery deferred: {} ×{} since {} ms",
+                deferred.reason, deferred.count, deferred.since_ms,
+            );
+        }
         if let Some(reason) = &card.native_receiver_reason {
             let _ = write!(output, "\nnative receiver: {reason}");
         }
@@ -2173,6 +2198,28 @@ mod tests {
         let json: serde_json::Value =
             serde_json::from_str(&super::render_state(&response, true)).expect("unadorned JSON");
         assert_eq!(json["data"]["held"].as_array().expect("holds").len(), 2);
+    }
+
+    #[test]
+    fn state_exposes_delivery_deferrals_without_calling_them_delivered() {
+        let card: pij_daemon::http::StateCard = serde_json::from_value(serde_json::json!({
+            "id": "pij-waiting", "state": "idle", "liveness": "active", "cwd": "/abs/tree",
+            "harness": "claude", "unsupported": [],
+            "deliveryDeferrals": [{
+                "job_id": 12, "msg_id": "waiting", "reason": "unrecognized",
+                "count": 1029, "since_ms": 1000
+            }]
+        }))
+        .unwrap();
+        let response = pij_core::model::Envelope::ok("pij state", card);
+        let human = super::render_state(&response, false);
+        assert!(
+            human.contains("delivery deferred: unrecognized ×1029 since 1000 ms"),
+            "{human}"
+        );
+        let json: serde_json::Value =
+            serde_json::from_str(&super::render_state(&response, true)).unwrap();
+        assert_eq!(json["data"]["deliveryDeferrals"][0]["count"], 1029);
     }
 
     #[test]

@@ -288,7 +288,6 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 						},
 						typing_grace_ms: 60000,
 						observed_at_ms: 100000,
-						semantic_hold: false,
 						...(snapshot.state === "unavailable"
 							? { reason: "native-typing-sensor-unavailable" }
 							: { retry_after_ms: 0, source: "pane-observed-edit-recency" }),
@@ -1030,8 +1029,8 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		assert.equal(f.stdout(), "");
 	});
 
-	// Plan 137: consent and operator Hold still defer native delivery; typing does not.
-	for (const reason of ["human-consent", "native-pane-changed", "semantic-hold"]) {
+	// Human consent and native context safety still defer delivery; self-reported status does not.
+	for (const reason of ["human-consent", "native-pane-changed"]) {
 		test(`actual HTTP empty page differs from ${reason} hold and release delivers without another send`, async (t) => {
 			const f = await launch(t, {
 				inboxPages: [{ data: [] }, { data: [], meta: `native-consumer-held:${reason}` }],
@@ -1227,7 +1226,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		assert.deepEqual(registrations[1].body, registrations[2].body);
 		assert.equal(f.requests.filter((r) => r.path.startsWith("/v1/inbox?")).length, 2);
 		assert.equal(f.requests.filter((r) => r.path === "/v1/inbox/ack").length, 1);
-		// Re-registration no longer polls typing readiness; only the fresh claim checks semantic consent.
+		// Re-registration no longer polls typing readiness; the fresh claim still verifies incarnation.
 		assert.equal(f.requests.filter((r) => r.path.startsWith("/v1/inbox/typing?")).length, 1);
 		assert.equal(f.events.filter((event) => event.kind === "native-send").length, 1);
 		assert.equal(f.events.filter((event) => event.kind === "native-log").length, 1);

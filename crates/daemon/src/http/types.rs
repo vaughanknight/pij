@@ -528,6 +528,9 @@ pub struct StateCard {
     /// Active human-typing holds; the queue, not this projection, owns the bodies.
     #[serde(default)]
     pub held: Vec<pij_core::delivery::HeldEvent>,
+    /// Durable diagnostics for live delivery jobs; sampled events are not the authority.
+    #[serde(default)]
+    pub delivery_deferrals: Vec<pij_core::model::DeliveryDeferral>,
     /// Every TS field this store cannot answer, named with its reason.
     pub unsupported: Vec<UnsupportedField>,
 }

@@ -10,7 +10,7 @@ use pij_core::orchestration::{
 };
 use sqlx::{Row, sqlite::SqliteRow};
 
-use crate::migrate::{begin_write, require_current_schema};
+use crate::migrate::{begin_write, owned_write, require_current_schema};
 use crate::orchestration::{BatonLease, SqliteOrchestration, adapter_error, sql_i64, sql_u64};
 use crate::spine::append_in_transaction;
 
@@ -132,39 +132,44 @@ impl SqliteOrchestration {
         state: StreamState,
     ) -> Result<GovernanceOutcome<Stream>> {
         require_current_schema(&self.pool).await?;
-        let mut tx = begin_write(&self.pool).await?;
-        let existing = sqlx::query("SELECT * FROM streams WHERE id=?1")
-            .bind(id)
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(adapter_error)?
-            .map(stream_row)
-            .transpose()?;
-        let outcome = match existing {
-            None => GovernanceOutcome::Missing,
-            Some(row) if row.state == state => GovernanceOutcome::Unchanged(row),
-            Some(row) if row.state == StreamState::Closed || state == StreamState::Reserved => {
-                GovernanceOutcome::Conflict {
-                    code: "stream-state-conflict",
+        let pool = self.pool.clone();
+        let id = id.to_owned();
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
+            let existing = sqlx::query("SELECT * FROM streams WHERE id=?1")
+                .bind(&id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(adapter_error)?
+                .map(stream_row)
+                .transpose()?;
+            let outcome = match existing {
+                None => GovernanceOutcome::Missing,
+                Some(row) if row.state == state => GovernanceOutcome::Unchanged(row),
+                Some(row) if row.state == StreamState::Closed || state == StreamState::Reserved => {
+                    GovernanceOutcome::Conflict {
+                        code: "stream-state-conflict",
+                    }
                 }
-            }
-            Some(_) => {
-                let state = match state {
-                    StreamState::Reserved => "reserved",
-                    StreamState::Created => "created",
-                    StreamState::Closed => "closed",
-                };
-                let row = sqlx::query("UPDATE streams SET state=?2 WHERE id=?1 RETURNING *")
-                    .bind(id)
-                    .bind(state)
-                    .fetch_one(&mut *tx)
-                    .await
-                    .map_err(adapter_error)?;
-                GovernanceOutcome::Changed(stream_row(row)?)
-            }
-        };
-        tx.commit().await.map_err(adapter_error)?;
-        Ok(outcome)
+                Some(_) => {
+                    let state = match state {
+                        StreamState::Reserved => "reserved",
+                        StreamState::Created => "created",
+                        StreamState::Closed => "closed",
+                    };
+                    let row = sqlx::query("UPDATE streams SET state=?2 WHERE id=?1 RETURNING *")
+                        .bind(&id)
+                        .bind(state)
+                        .fetch_one(&mut *tx)
+                        .await
+                        .map_err(adapter_error)?;
+                    GovernanceOutcome::Changed(stream_row(row)?)
+                }
+            };
+            tx.commit().await.map_err(adapter_error)?;
+            Ok(outcome)
+        })
+        .await
     }
 
     /// Set the complete descriptive fence for one existing stream.
@@ -249,9 +254,12 @@ impl SqliteOrchestration {
     ) -> Result<GovernanceOutcome<TaskAssignment>> {
         require_current_schema(&self.pool).await?;
         let at = sql_i64(at, "task closed_at")?;
-        let mut tx = begin_write(&self.pool).await?;
+        let pool = self.pool.clone();
+        let id = id.to_owned();
+        owned_write(async move {
+        let mut tx = begin_write(&pool).await?;
         let existing = sqlx::query("SELECT * FROM task_assignments WHERE id=?1")
-            .bind(id)
+            .bind(&id)
             .fetch_optional(&mut *tx)
             .await
             .map_err(adapter_error)?
@@ -271,12 +279,13 @@ impl SqliteOrchestration {
                     TaskCloseReason::Superseded => "superseded",
                 };
                 let row = sqlx::query("UPDATE task_assignments SET closed_at=?2, close_reason=?3 WHERE id=?1 RETURNING *")
-                    .bind(id).bind(at).bind(reason).fetch_one(&mut *tx).await.map_err(adapter_error)?;
+                    .bind(&id).bind(at).bind(reason).fetch_one(&mut *tx).await.map_err(adapter_error)?;
                 GovernanceOutcome::Changed(task_row(row)?)
             }
         };
         tx.commit().await.map_err(adapter_error)?;
         Ok(outcome)
+        }).await
     }
 
     /// Read plan linkage for a seat, independently of native delivery capability.
@@ -379,7 +388,10 @@ impl SqliteOrchestration {
             ));
         }
         let at = sql_i64(request.requested_at, "baton requested_at")?;
-        let mut tx = begin_write(&self.pool).await?;
+        let pool = self.pool.clone();
+        let request = request.clone();
+        owned_write(async move {
+        let mut tx = begin_write(&pool).await?;
         let existing = sqlx::query("SELECT * FROM baton_requests WHERE id=?1")
             .bind(&request.id)
             .fetch_optional(&mut *tx)
@@ -422,6 +434,7 @@ impl SqliteOrchestration {
         };
         tx.commit().await.map_err(adapter_error)?;
         Ok(outcome)
+        }).await
     }
 
     /// Read immutable evidence and current lifecycle for one request.
@@ -463,16 +476,21 @@ impl SqliteOrchestration {
             return Err(invalid_record("baton grant requires a new lease id"));
         }
         let at_sql = sql_i64(at, "baton acquired_at")?;
-        let mut tx = begin_write(&self.pool).await?;
+        let pool = self.pool.clone();
+        let baton = baton.to_owned();
+        let request_id = request_id.to_owned();
+        let lease_id = lease_id.to_owned();
+        owned_write(async move {
+        let mut tx = begin_write(&pool).await?;
         let request = sqlx::query("SELECT * FROM baton_requests WHERE id=?1")
-            .bind(request_id)
+            .bind(&request_id)
             .fetch_optional(&mut *tx)
             .await
             .map_err(adapter_error)?
             .map(request_row)
             .transpose()?;
         let current = sqlx::query("SELECT * FROM baton_leases WHERE baton=?1")
-            .bind(baton)
+            .bind(&baton)
             .fetch_optional(&mut *tx)
             .await
             .map_err(adapter_error)?
@@ -484,7 +502,7 @@ impl SqliteOrchestration {
                 code: "baton-request-mismatch",
             },
             (Some(request), Some(lease))
-                if lease.request_id.as_deref() == Some(request_id)
+                if lease.request_id.as_deref() == Some(request_id.as_str())
                     && lease.holder == request.requester =>
             {
                 GovernanceOutcome::Unchanged(lease)
@@ -498,7 +516,7 @@ impl SqliteOrchestration {
             (Some(request), None) => {
                 let used: bool = sqlx::query_scalar(
                     "SELECT EXISTS(SELECT 1 FROM baton_lease_history WHERE lease_id=?1 UNION ALL SELECT 1 FROM baton_leases WHERE lease_id=?1)",
-                ).bind(lease_id).fetch_one(&mut *tx).await.map_err(adapter_error)?;
+                ).bind(&lease_id).fetch_one(&mut *tx).await.map_err(adapter_error)?;
                 if used {
                     GovernanceOutcome::Conflict {
                         code: "baton-lease-id-reused",
@@ -507,17 +525,17 @@ impl SqliteOrchestration {
                     let row = sqlx::query(
                         "INSERT INTO baton_leases (baton, holder, lease_id, request_id, acquired_at) \
                          VALUES (?1, ?2, ?3, ?4, ?5) RETURNING *",
-                    ).bind(baton).bind(request.requester.as_str()).bind(lease_id).bind(request_id).bind(at_sql)
+                    ).bind(&baton).bind(request.requester.as_str()).bind(&lease_id).bind(&request_id).bind(at_sql)
                         .fetch_one(&mut *tx).await.map_err(adapter_error)?;
                     sqlx::query("UPDATE baton_requests SET state='granted' WHERE id=?1")
-                        .bind(request_id)
+                        .bind(&request_id)
                         .execute(&mut *tx)
                         .await
                         .map_err(adapter_error)?;
                     sqlx::query(
                         "INSERT INTO baton_lease_history (baton, holder, lease_id, action, at, request_id) \
                          VALUES (?1, ?2, ?3, 'claimed', ?4, ?5)",
-                    ).bind(baton).bind(request.requester.as_str()).bind(lease_id).bind(at_sql).bind(request_id)
+                    ).bind(&baton).bind(request.requester.as_str()).bind(&lease_id).bind(at_sql).bind(&request_id)
                         .execute(&mut *tx).await.map_err(adapter_error)?;
                     GovernanceOutcome::Changed(lease_row(row)?)
                 }
@@ -525,6 +543,7 @@ impl SqliteOrchestration {
         };
         tx.commit().await.map_err(adapter_error)?;
         Ok(outcome)
+        }).await
     }
 
     /// Return this holder's exact lease; empty evidence means absent optional evidence.
@@ -562,16 +581,22 @@ impl SqliteOrchestration {
         actor: &SeatId,
         evidence: &str,
         at: u64,
-        kind: &str,
+        kind: &'static str,
     ) -> Result<(Event, BatonLease)> {
         require_current_schema(&self.pool).await?;
         if kind == "reclaimed" && evidence.trim().is_empty() {
             return Err(invalid_record("baton reclaim requires evidence"));
         }
         let at_sql = sql_i64(at, "baton released_at")?;
-        let mut tx = begin_write(&self.pool).await?;
+        let pool = self.pool.clone();
+        let baton = baton.to_owned();
+        let lease_id = lease_id.to_owned();
+        let actor = actor.clone();
+        let evidence = evidence.to_owned();
+        owned_write(async move {
+        let mut tx = begin_write(&pool).await?;
         let lease = sqlx::query("SELECT * FROM baton_leases WHERE baton=?1")
-            .bind(baton)
+            .bind(&baton)
             .fetch_optional(&mut *tx)
             .await
             .map_err(adapter_error)?
@@ -587,15 +612,15 @@ impl SqliteOrchestration {
                 record: lease.lease_id,
             });
         }
-        if kind == "returned" && *actor != lease.holder {
+        if kind == "returned" && actor != lease.holder {
             return Err(PijError::GovernanceRefused {
                 code: "E-RS-OWNERSHIP".into(),
-                record: baton.into(),
+                record: baton,
             });
         }
         let removed = sqlx::query("DELETE FROM baton_leases WHERE baton=?1 AND lease_id=?2")
-            .bind(baton)
-            .bind(lease_id)
+            .bind(&baton)
+            .bind(&lease_id)
             .execute(&mut *tx)
             .await
             .map_err(adapter_error)?
@@ -618,8 +643,8 @@ impl SqliteOrchestration {
         sqlx::query(
             "INSERT INTO baton_lease_history (baton, holder, lease_id, action, at, request_id, actor, evidence, release_kind) \
              VALUES (?1, ?2, ?3, 'released', ?4, ?5, ?6, ?7, ?8)",
-        ).bind(baton).bind(lease.holder.as_str()).bind(lease_id).bind(at_sql).bind(&lease.request_id)
-            .bind(actor.as_str()).bind((!evidence.is_empty()).then_some(evidence)).bind(kind).execute(&mut *tx).await.map_err(adapter_error)?;
+        ).bind(&baton).bind(lease.holder.as_str()).bind(&lease_id).bind(at_sql).bind(&lease.request_id)
+            .bind(actor.as_str()).bind((!evidence.is_empty()).then_some(evidence.as_str())).bind(kind).execute(&mut *tx).await.map_err(adapter_error)?;
         let mut event = Event {
             seq: None,
             v: 1,
@@ -644,6 +669,7 @@ impl SqliteOrchestration {
         tx.commit().await.map_err(adapter_error)?;
         event.seq = Some(seq);
         Ok((event, lease))
+        }).await
     }
 
     /// Read the independent prime designation, including retained retirement state.
@@ -667,7 +693,10 @@ impl SqliteOrchestration {
             return Err(invalid_record("a new prime designation must be current"));
         }
         let at = sql_i64(designation.designated_at, "prime designated_at")?;
-        let mut tx = begin_write(&self.pool).await?;
+        let pool = self.pool.clone();
+        let designation = designation.clone();
+        owned_write(async move {
+        let mut tx = begin_write(&pool).await?;
         let current = sqlx::query("SELECT * FROM prime_designation WHERE singleton=1")
             .fetch_optional(&mut *tx)
             .await
@@ -693,36 +722,42 @@ impl SqliteOrchestration {
         };
         tx.commit().await.map_err(adapter_error)?;
         Ok(outcome)
+        }).await
     }
 
     /// Retire the observed seat without rewriting its designation metadata.
     pub async fn retire_prime(&self, seat: &SeatId) -> Result<GovernanceOutcome<PrimeDesignation>> {
         require_current_schema(&self.pool).await?;
-        let mut tx = begin_write(&self.pool).await?;
-        let current = sqlx::query("SELECT * FROM prime_designation WHERE singleton=1")
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(adapter_error)?
-            .map(prime_row)
-            .transpose()?;
-        let outcome = match current {
-            None => GovernanceOutcome::Missing,
-            Some(row) if row.seat != *seat => GovernanceOutcome::Conflict {
-                code: "prime-seat-mismatch",
-            },
-            Some(row) if row.state == PrimeState::Retired => GovernanceOutcome::Unchanged(row),
-            Some(_) => {
-                let row = sqlx::query(
+        let pool = self.pool.clone();
+        let seat = seat.clone();
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
+            let current = sqlx::query("SELECT * FROM prime_designation WHERE singleton=1")
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(adapter_error)?
+                .map(prime_row)
+                .transpose()?;
+            let outcome = match current {
+                None => GovernanceOutcome::Missing,
+                Some(row) if row.seat != seat => GovernanceOutcome::Conflict {
+                    code: "prime-seat-mismatch",
+                },
+                Some(row) if row.state == PrimeState::Retired => GovernanceOutcome::Unchanged(row),
+                Some(_) => {
+                    let row = sqlx::query(
                     "UPDATE prime_designation SET state='retired' WHERE singleton=1 RETURNING *",
                 )
                 .fetch_one(&mut *tx)
                 .await
                 .map_err(adapter_error)?;
-                GovernanceOutcome::Changed(prime_row(row)?)
-            }
-        };
-        tx.commit().await.map_err(adapter_error)?;
-        Ok(outcome)
+                    GovernanceOutcome::Changed(prime_row(row)?)
+                }
+            };
+            tx.commit().await.map_err(adapter_error)?;
+            Ok(outcome)
+        })
+        .await
     }
 
     /// Remove only the observed prime seat; stale commands cannot unset another seat.
@@ -735,55 +770,62 @@ impl SqliteOrchestration {
     ) -> Result<(Event, PrimeDesignation)> {
         require_current_schema(&self.pool).await?;
         sql_i64(at, "prime unset_at")?;
-        let mut tx = begin_write(&self.pool).await?;
-        let current = sqlx::query("SELECT * FROM prime_designation WHERE singleton=1")
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(adapter_error)?
-            .map(prime_row)
-            .transpose()?
-            .ok_or_else(|| PijError::GovernanceRefused {
-                code: "E-RS-NOT-FOUND".into(),
-                record: seat.as_str().into(),
-            })?;
-        if current.seat != *seat {
-            return Err(PijError::GovernanceRefused {
-                code: "E-RS-PRIME-STALE".into(),
-                record: seat.as_str().into(),
-            });
-        }
-        let removed = sqlx::query("DELETE FROM prime_designation WHERE singleton=1 AND seat=?1")
-            .bind(seat.as_str())
-            .execute(&mut *tx)
-            .await
-            .map_err(adapter_error)?
-            .rows_affected();
-        if removed != 1 {
-            tx.rollback().await.map_err(adapter_error)?;
-            return Err(PijError::GovernanceRefused {
-                code: "E-RS-PRIME-STALE".into(),
-                record: seat.as_str().into(),
-            });
-        }
-        let mut event = Event {
-            seq: None,
-            v: 1,
-            at,
-            kind: "prime-set".into(),
-            seat: Some(current.seat.clone()),
-            payload: serde_json::json!({ "actor": actor, "action": "unset", "record": null })
-                .to_string(),
-        };
-        let seq = match append_in_transaction(&mut tx, &event).await {
-            Ok(seq) => seq,
-            Err(error) => {
-                tx.rollback().await.map_err(adapter_error)?;
-                return Err(error);
+        let pool = self.pool.clone();
+        let seat = seat.clone();
+        let actor = actor.clone();
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
+            let current = sqlx::query("SELECT * FROM prime_designation WHERE singleton=1")
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(adapter_error)?
+                .map(prime_row)
+                .transpose()?
+                .ok_or_else(|| PijError::GovernanceRefused {
+                    code: "E-RS-NOT-FOUND".into(),
+                    record: seat.as_str().into(),
+                })?;
+            if current.seat != seat {
+                return Err(PijError::GovernanceRefused {
+                    code: "E-RS-PRIME-STALE".into(),
+                    record: seat.as_str().into(),
+                });
             }
-        };
-        tx.commit().await.map_err(adapter_error)?;
-        event.seq = Some(seq);
-        Ok((event, current))
+            let removed =
+                sqlx::query("DELETE FROM prime_designation WHERE singleton=1 AND seat=?1")
+                    .bind(seat.as_str())
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(adapter_error)?
+                    .rows_affected();
+            if removed != 1 {
+                tx.rollback().await.map_err(adapter_error)?;
+                return Err(PijError::GovernanceRefused {
+                    code: "E-RS-PRIME-STALE".into(),
+                    record: seat.as_str().into(),
+                });
+            }
+            let mut event = Event {
+                seq: None,
+                v: 1,
+                at,
+                kind: "prime-set".into(),
+                seat: Some(current.seat.clone()),
+                payload: serde_json::json!({ "actor": actor, "action": "unset", "record": null })
+                    .to_string(),
+            };
+            let seq = match append_in_transaction(&mut tx, &event).await {
+                Ok(seq) => seq,
+                Err(error) => {
+                    tx.rollback().await.map_err(adapter_error)?;
+                    return Err(error);
+                }
+            };
+            tx.commit().await.map_err(adapter_error)?;
+            event.seq = Some(seq);
+            Ok((event, current))
+        })
+        .await
     }
 }
 

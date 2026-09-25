@@ -113,6 +113,24 @@ impl Queue for FailFirstClaim {
     async fn retry(&self, job: JobId, delay: Duration) -> Result<()> {
         self.inner.retry(job, delay).await
     }
+    async fn record_delivery_deferral(
+        &self,
+        job: JobId,
+        reason: &str,
+        draft_sha: Option<&str>,
+        at: u64,
+        spine: &dyn pij_core::ports::Spine,
+    ) -> Result<Vec<pij_core::model::Event>> {
+        self.inner
+            .record_delivery_deferral(job, reason, draft_sha, at, spine)
+            .await
+    }
+    async fn delivery_deferrals(
+        &self,
+        recipient: &SeatId,
+    ) -> Result<Vec<pij_core::model::DeliveryDeferral>> {
+        self.inner.delivery_deferrals(recipient).await
+    }
     async fn defer(&self, job: JobId, delay: Duration) -> Result<pij_core::ports::DeferOutcome> {
         self.inner.defer(job, delay).await
     }
@@ -637,6 +655,24 @@ impl Queue for RefuseFirstDelivery {
     }
     async fn retry(&self, job: JobId, delay: Duration) -> Result<()> {
         self.inner.retry(job, delay).await
+    }
+    async fn record_delivery_deferral(
+        &self,
+        job: JobId,
+        reason: &str,
+        draft_sha: Option<&str>,
+        at: u64,
+        spine: &dyn pij_core::ports::Spine,
+    ) -> Result<Vec<pij_core::model::Event>> {
+        self.inner
+            .record_delivery_deferral(job, reason, draft_sha, at, spine)
+            .await
+    }
+    async fn delivery_deferrals(
+        &self,
+        recipient: &SeatId,
+    ) -> Result<Vec<pij_core::model::DeliveryDeferral>> {
+        self.inner.delivery_deferrals(recipient).await
     }
     async fn defer(&self, job: JobId, delay: Duration) -> Result<pij_core::ports::DeferOutcome> {
         self.inner.defer(job, delay).await

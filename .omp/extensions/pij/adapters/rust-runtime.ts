@@ -98,8 +98,8 @@ const ANNOUNCE_BODY_CHARS = 80;
  * session_shutdown cancels the ticker and event stream; setPi binds the fresh
  * context before boot can consume pushes.
  *
- * The daemon owns durable claim order and semantic Hold. Startup un-defers the
- * backlog oldest-first, retaining that phase across Hold until the inbox empties.
+ * The daemon owns durable claim order and per-job deferrals. Startup un-defers the
+ * backlog oldest-first, retaining that phase across unavailable claims until the inbox empties.
  * Steady-state retries only claim/peek; normal arrivals never declare releases.
  */
 export class RustRuntimeSession {
@@ -559,7 +559,7 @@ export class RustRuntimeSession {
 			if (this.self !== seat || this.lifecycle !== lifecycle) return;
 			const claim = this.readInbox(response, seat);
 			if (!claim) {
-				if (this.startupRecovery) return; // Preserve oldest-first recovery across semantic Hold.
+				if (this.startupRecovery) return; // Preserve oldest-first recovery across unavailable claims.
 				const pending = await client.peekInbox(seat);
 				if (this.self === seat && this.lifecycle === lifecycle) {
 					this.inboxPending = this.readInbox(pending, seat) !== undefined;

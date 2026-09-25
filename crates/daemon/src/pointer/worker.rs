@@ -8,7 +8,6 @@ use pij_core::error::{PijError, Result};
 use pij_core::framing::frame_message;
 use pij_core::model::{
     DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome, Receipt,
-    SemanticState,
 };
 use pij_core::ports::{Queue, Registry, SeatFilter, TmuxPort, Transport};
 use pij_harnesses::{InteractionGate, StagedSubmission};
@@ -52,6 +51,7 @@ pub struct DrainWorker {
     interaction: Arc<InteractionGate>,
     event_bus: Arc<EventBus>,
     clock: fn() -> Result<u64>,
+    recovery_authority_shared: bool,
 }
 
 impl DrainWorker {
@@ -88,7 +88,17 @@ impl DrainWorker {
             interaction,
             event_bus,
             clock: system_time_ms,
+            recovery_authority_shared: true,
         })
+    }
+
+    pub(crate) fn with_recovery_backends(
+        mut self,
+        queue: pij_core::config::AdapterChoice,
+        spine: pij_core::config::AdapterChoice,
+    ) -> Self {
+        self.recovery_authority_shared = !queue.is_real() || spine.is_real();
+        self
     }
 
     /// Drain at most one currently-due delivery row per pane-bound or tombstoned recipient.
@@ -197,13 +207,10 @@ impl DrainWorker {
         // Re-read after claiming: registration may have changed the harness since
         // the inventory. Native seats never enter any pane or socket rung.
         if recipient.harness == Harness::Copilot {
-            return self.release_body(job_id).await;
-        }
-        if recipient.semantic_state == Some(SemanticState::Hold) {
-            return self.release_or_backoff(job_id, job, &msg).await;
+            return self.defer_body(job_id, "native-consumer-owned").await;
         }
         let Some(pane) = recipient.pane.as_deref() else {
-            return self.release_or_backoff(job_id, job, &msg).await;
+            return self.release_or_backoff(job_id, job, &msg, "paneless").await;
         };
         let pane_absent =
             live_panes.is_some_and(|panes| !panes.iter().any(|listed| listed.id == pane));
@@ -211,7 +218,7 @@ impl DrainWorker {
             Some(match self.transport.can_deliver(&recipient, &msg).await {
                 Ok(available) => available,
                 Err(error) => {
-                    self.release_body(job_id).await?;
+                    self.defer_body(job_id, "transport-probe-error").await?;
                     return Err(error);
                 }
             })
@@ -234,7 +241,7 @@ impl DrainWorker {
                 .await;
         }
         if recipient.proc.is_none() {
-            return self.release_or_backoff(job_id, job, &msg).await;
+            return self.release_or_backoff(job_id, job, &msg, "pre-bind").await;
         }
         if msg.command.is_some() {
             return self
@@ -242,7 +249,7 @@ impl DrainWorker {
                 .await;
         }
         let Some(socket_available) = socket_available else {
-            return self.release_body(job_id).await;
+            return self.defer_body(job_id, "socket-availability-unknown").await;
         };
         // Socket bodies never touch the composer. Send-keys fallbacks acquire
         // input ownership and evaluate their fresh verdict inside submission.
@@ -251,7 +258,10 @@ impl DrainWorker {
                 Ok(DeliveryOutcome::Delivered { origin }) => {
                     self.ack_delivered_claim(job_id, &msg, origin).await
                 }
-                Ok(DeliveryOutcome::Queued { .. }) => self.release_body(job_id).await,
+                Ok(DeliveryOutcome::Queued { reason, .. }) => {
+                    self.defer_body(job_id, reason.as_deref().unwrap_or("transport-queued"))
+                        .await
+                }
                 // HELD IS NOT QUEUED. `release_body` is `retry(job, Duration::ZERO)`
                 // — an immediate re-delivery — and every re-delivery of a held
                 // message raises a FRESH APPROVAL DIALOG at the human who has not
@@ -260,7 +270,12 @@ impl DrainWorker {
                 // consent default that makes it live and this backoff are one
                 // decision, and land together (o-prime, oq-1101).
                 Ok(DeliveryOutcome::Held { reason }) => {
-                    self.backoff_held(job_id, job.attempt, &msg, &reason).await
+                    let recorded = self
+                        .record_deferral(job_id, &format!("transport-held: {reason}"), None)
+                        .await;
+                    self.backoff_held(job_id, job.attempt, &msg, &reason)
+                        .await?;
+                    recorded
                 }
                 // TERMINAL. The recipient answered no, and a refusal is given
                 // once: releasing the body would retry, and every retry raises
@@ -283,7 +298,7 @@ impl DrainWorker {
                     .await
                 }
                 Err(error) => {
-                    self.release_body(job_id).await?;
+                    self.defer_body(job_id, "transport-error").await?;
                     Err(error)
                 }
             },
@@ -295,7 +310,9 @@ impl DrainWorker {
                 self.submit_body_claim(job_id, job.attempt, pane, &msg)
                     .await
             }
-            DeliveryRung::Observe | DeliveryRung::Queue => self.release_body(job_id).await,
+            DeliveryRung::Observe | DeliveryRung::Queue => {
+                self.defer_body(job_id, "delivery-unavailable").await
+            }
             DeliveryRung::Pty => unreachable!("commands are handled before socket capability"),
         }
     }
@@ -352,26 +369,21 @@ impl DrainWorker {
                     reason,
                     DeliveryDeferralReason::TapUnowned | DeliveryDeferralReason::Unrecognized
                 ) {
-                    self.keep_body_pullable(
+                    self.retry_deferred(
                         job_id,
-                        publish_delivery_held(
-                            &self.event_bus,
-                            msg,
-                            reason,
-                            draft_sha.as_deref(),
-                            (self.clock)()?,
-                        )
-                        .await,
+                        retry_delay(attempt),
+                        reason.as_str(),
+                        draft_sha.as_deref(),
                     )
-                    .await?;
-                    self.backoff_command(job_id, attempt).await
+                    .await
                 } else {
-                    self.release_held_body(job_id, msg, reason, draft_sha.as_deref())
+                    self.release_held_body(job_id, reason, draft_sha.as_deref())
                         .await
                 }
             }
             Err(error) => {
-                self.backoff_command(job_id, attempt).await?;
+                self.retry_deferred(job_id, retry_delay(attempt), "submit-error", None)
+                    .await?;
                 Err(error)
             }
         }
@@ -413,11 +425,12 @@ impl DrainWorker {
                     .await
             }
             Ok(StagedSubmission::Deferred { reason, draft_sha }) => {
-                self.release_held_body(job_id, msg, reason, draft_sha.as_deref())
+                self.release_held_body(job_id, reason, draft_sha.as_deref())
                     .await
             }
             Err(error) => {
-                self.backoff_command(job_id, attempt).await?;
+                self.retry_deferred(job_id, retry_delay(attempt), "submit-error", None)
+                    .await?;
                 Err(error)
             }
         }
@@ -458,7 +471,7 @@ impl DrainWorker {
             )
             .await?;
         if already_announced {
-            return self.release_body(job_id).await;
+            return self.defer_body(job_id, reason).await;
         }
         match self
             .interaction
@@ -488,13 +501,16 @@ impl DrainWorker {
                         .map(|_| ()),
                 )
                 .await?;
-                self.release_body(job_id).await
+                self.defer_body(job_id, reason).await
             }
             Ok(StagedSubmission::Deferred { reason, draft_sha }) => {
-                self.release_held_body(job_id, msg, reason, draft_sha.as_deref())
+                self.release_held_body(job_id, reason, draft_sha.as_deref())
                     .await
             }
-            Err(error) => self.keep_body_pullable(job_id, Err(error)).await,
+            Err(error) => {
+                self.defer_body(job_id, "submit-error").await?;
+                Err(error)
+            }
         }
     }
 
@@ -519,12 +535,19 @@ impl DrainWorker {
         Ok(payload["msg_id"].as_str() == Some(&msg.msg_id) && payload["reason"] == reason)
     }
 
-    async fn release_or_backoff(&self, job_id: JobId, job: &Job, msg: &Msg) -> Result<()> {
-        if msg.command.is_some() {
-            self.backoff_command(job_id, job.attempt).await
+    async fn release_or_backoff(
+        &self,
+        job_id: JobId,
+        job: &Job,
+        msg: &Msg,
+        reason: &str,
+    ) -> Result<()> {
+        let delay = if msg.command.is_some() {
+            retry_delay(job.attempt)
         } else {
-            self.release_body(job_id).await
-        }
+            Duration::ZERO
+        };
+        self.retry_deferred(job_id, delay, reason, None).await
     }
 
     async fn release_body(&self, job_id: JobId) -> Result<()> {
@@ -534,17 +557,40 @@ impl DrainWorker {
     async fn release_held_body(
         &self,
         job_id: JobId,
-        msg: &Msg,
         reason: DeliveryDeferralReason,
         draft_sha: Option<&str>,
     ) -> Result<()> {
-        let at = self.keep_body_pullable(job_id, (self.clock)()).await?;
-        self.keep_body_pullable(
-            job_id,
-            publish_delivery_held(&self.event_bus, msg, reason, draft_sha, at).await,
-        )
-        .await?;
-        self.release_body(job_id).await
+        self.retry_deferred(job_id, Duration::ZERO, reason.as_str(), draft_sha)
+            .await
+    }
+
+    async fn defer_body(&self, job_id: JobId, reason: &str) -> Result<()> {
+        self.retry_deferred(job_id, Duration::ZERO, reason, None)
+            .await
+    }
+
+    async fn retry_deferred(
+        &self,
+        job_id: JobId,
+        delay: Duration,
+        reason: &str,
+        draft_sha: Option<&str>,
+    ) -> Result<()> {
+        let recorded = self.record_deferral(job_id, reason, draft_sha).await;
+        // Diagnostic failure must not bypass consent backoff or strand a claim.
+        self.queue.retry(job_id, delay).await?;
+        recorded
+    }
+
+    async fn record_deferral(
+        &self,
+        job_id: JobId,
+        reason: &str,
+        draft_sha: Option<&str>,
+    ) -> Result<()> {
+        pij_core::delivery::require_recovery_authority(self.recovery_authority_shared)?;
+        let at = (self.clock)()?;
+        publish_delivery_held(&self.queue, &self.event_bus, job_id, reason, draft_sha, at).await
     }
 
     async fn keep_body_pullable<T>(&self, job_id: JobId, result: Result<T>) -> Result<T> {
@@ -560,10 +606,6 @@ impl DrainWorker {
                 }),
             },
         }
-    }
-
-    async fn backoff_command(&self, job_id: JobId, attempt: u32) -> Result<()> {
-        self.queue.retry(job_id, retry_delay(attempt)).await
     }
 
     /// Back off a held delivery, and stop asking after [`HELD_ATTEMPT_LIMIT`].
@@ -838,6 +880,157 @@ mod tests {
             fixture.queue.acked().as_slice(),
             [(_, Outcome::Done)]
         ));
+    }
+
+    #[tokio::test]
+    async fn self_reported_hold_does_not_suppress_queued_inbox_delivery() {
+        let fixture = fixture(FakeTransport::reachable(), FakeTmux::new());
+        let mut recipient = seat("pij-status-hold", Some("%status-hold"));
+        recipient.semantic_state = Some(pij_core::model::SemanticState::Hold);
+        register(&fixture, recipient).await;
+        let msg = message("pij-status-hold", "status cannot silence inbox", None);
+        let id = enqueue(&fixture, &msg).await;
+        assert_eq!(fixture.worker.drain_once().await.unwrap(), 1);
+        assert_eq!(fixture.transport.delivered(), [msg]);
+        assert_eq!(fixture.queue.acked(), [(id, Outcome::Done)]);
+        assert!(fixture.queue.retried().is_empty());
+    }
+
+    #[tokio::test]
+    async fn repeated_composer_deferrals_are_counted_without_flooding_the_spine() {
+        let mut fixture = fixture_unarranged(
+            FakeTransport::unreachable(),
+            FakeTmux::new().with_attached_tap("%deferral"),
+        );
+        fixture.worker.clock = || Ok(1_000);
+        register(&fixture, seat("pij-deferral", Some("%deferral"))).await;
+        let msg = message("pij-deferral", "preserve this body", None);
+        let id = enqueue(&fixture, &msg).await;
+
+        for _ in 0..3 {
+            assert_eq!(fixture.worker.drain_once().await.expect("deferred"), 1);
+        }
+        let events = fixture
+            .spine
+            .tail(Some(&msg.to), pij_core::model::Seq(0))
+            .await
+            .expect("events");
+        assert_eq!(events.len(), 1, "repeated deferrals must be rate limited");
+        assert_eq!(events[0].kind, "delivery.held");
+        let payload: serde_json::Value = serde_json::from_str(&events[0].payload).unwrap();
+        assert_eq!(payload["reason"], "unrecognized");
+        assert_eq!(payload["since_ms"], 1_000);
+        assert_eq!(payload["deferral_count"], 1);
+        assert_eq!(fixture.queue.attempts(id), 3);
+        let facts = fixture.queue.delivery_deferrals(&msg.to).await.unwrap();
+        assert_eq!(
+            facts[0].count, 3,
+            "sampling must never suppress the durable counter"
+        );
+        assert_eq!(facts[0].since_ms, 1_000);
+        assert!(fixture.queue.acked().is_empty());
+        let (retained_id, retained) = fixture
+            .queue
+            .peek(&[delivery_kind(&msg.to)])
+            .await
+            .unwrap()
+            .expect("original job remains live");
+        assert_eq!(retained_id, id);
+        assert_eq!(serde_json::from_str::<Msg>(&retained.payload).unwrap(), msg);
+        assert!(
+            fixture
+                .tmux
+                .calls()
+                .iter()
+                .all(|call| !call.starts_with("submit:"))
+        );
+    }
+
+    #[tokio::test]
+    async fn split_authority_deferral_preserves_the_original_retry_without_foreign_events() {
+        let mut fixture = fixture_unarranged(
+            FakeTransport::unreachable(),
+            FakeTmux::new().with_attached_tap("%split"),
+        );
+        fixture.worker = fixture.worker.with_recovery_backends(
+            pij_core::config::AdapterChoice::Real,
+            pij_core::config::AdapterChoice::Fake,
+        );
+        register(&fixture, seat("pij-split", Some("%split"))).await;
+        let msg = message("pij-split", "original body", None);
+        let id = enqueue(&fixture, &msg).await;
+        let error = fixture.worker.drain_once().await.unwrap_err();
+        assert!(error.to_string().contains("E-RS-INBOX-AUTHORITY-SPLIT"));
+        assert_eq!(fixture.queue.attempts(id), 1);
+        assert!(fixture.queue.acked().is_empty());
+        assert!(
+            fixture
+                .queue
+                .delivery_deferrals(&msg.to)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            fixture
+                .spine
+                .tail(None, pij_core::model::Seq(0))
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn non_composer_retries_expose_diagnostics_without_acknowledging_delivery() {
+        for (transport, pre_bind, expected, errors) in [
+            (FakeTransport::reachable(), true, "pre-bind", false),
+            (
+                FakeTransport::reachable().script_outcome(DeliveryOutcome::Queued {
+                    reason: Some("recipient-busy".into()),
+                    next_retry_at: None,
+                    draft_sha: None,
+                }),
+                false,
+                "recipient-busy",
+                false,
+            ),
+            (
+                FakeTransport::unreachable().script_reachability_error(),
+                false,
+                "transport-probe-error",
+                true,
+            ),
+        ] {
+            let mut fixture = fixture(transport, FakeTmux::new());
+            fixture.worker.clock = || Ok(2_000);
+            let mut recipient = seat("pij-diagnostic", Some("%diagnostic"));
+            if pre_bind {
+                recipient.proc = None;
+            }
+            register(&fixture, recipient).await;
+            let msg = message("pij-diagnostic", "never claim this was delivered", None);
+            let id = enqueue(&fixture, &msg).await;
+            assert_eq!(fixture.worker.drain_once().await.is_err(), errors);
+            assert!(fixture.queue.acked().is_empty());
+            assert_eq!(
+                fixture.queue.delivery_deferrals(&msg.to).await.unwrap(),
+                [pij_core::model::DeliveryDeferral {
+                    job_id: id,
+                    msg_id: msg.msg_id.clone(),
+                    reason: expected.into(),
+                    count: 1,
+                    since_ms: 2_000,
+                }]
+            );
+            let (_, retained) = fixture
+                .queue
+                .peek(&[delivery_kind(&msg.to)])
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(serde_json::from_str::<Msg>(&retained.payload).unwrap(), msg);
+        }
     }
 
     #[tokio::test]
@@ -1380,12 +1573,10 @@ mod tests {
                 assert!(result.is_err());
                 assert!(fixture.queue.acked().is_empty());
                 assert_eq!(fixture.queue.live_len(), 1);
-                assert_eq!(
-                    events.len(),
-                    1,
+                assert!(
+                    events.iter().all(|event| event.kind != "delivery.released"),
                     "failed typing cannot close the send-keys hold"
                 );
-                assert_eq!(events[0].kind, "delivery.held");
                 continue;
             }
 
@@ -1471,7 +1662,6 @@ mod tests {
         assert_eq!(held["seat"], msg.to.as_str());
         assert_eq!(held["reason"], "human-typing");
         assert_eq!(held["draft_sha"], "2cf24dba5fb0");
-        assert_eq!(held["since_ms"], 0);
         assert!(held["last_edit_at"].is_null());
         assert!(held["remaining_ms"].is_null());
 
@@ -1989,6 +2179,26 @@ mod tests {
             self.inner.retry(job, delay).await
         }
 
+        async fn record_delivery_deferral(
+            &self,
+            job: JobId,
+            reason: &str,
+            draft_sha: Option<&str>,
+            at: u64,
+            spine: &dyn Spine,
+        ) -> pij_core::error::Result<Vec<Event>> {
+            self.inner
+                .record_delivery_deferral(job, reason, draft_sha, at, spine)
+                .await
+        }
+
+        async fn delivery_deferrals(
+            &self,
+            recipient: &SeatId,
+        ) -> pij_core::error::Result<Vec<pij_core::model::DeliveryDeferral>> {
+            self.inner.delivery_deferrals(recipient).await
+        }
+
         async fn defer(
             &self,
             job: JobId,
@@ -2181,6 +2391,35 @@ mod tests {
     /// re-delivery raises a fresh approval dialog. Until plan 110 made `Held`
     /// reachable this had never executed, so mutate the backoff back to
     /// `release_body` and this test must fail.
+    #[tokio::test]
+    async fn diagnostic_failure_cannot_bypass_recipient_consent_backoff() {
+        let fixture = fixture(
+            FakeTransport::reachable().script_outcome(DeliveryOutcome::Held {
+                reason: "recipient approval pending".into(),
+            }),
+            FakeTmux::new(),
+        );
+        register(
+            &fixture,
+            seat("pij-held-diagnostic", Some("%held-diagnostic")),
+        )
+        .await;
+        let msg = message("pij-held-diagnostic", "requires consent", None);
+        let id = enqueue(&fixture, &msg).await;
+        fixture
+            .spine
+            .script_append_error("deferral evidence unavailable");
+        let error = fixture.worker.drain_once().await.unwrap_err();
+        assert!(error.to_string().contains("deferral evidence unavailable"));
+        assert_eq!(fixture.queue.retried(), [(id, retry_delay(0))]);
+        assert!(fixture.queue.acked().is_empty());
+        assert_eq!(
+            fixture.worker.drain_once().await.unwrap(),
+            0,
+            "diagnostic failure must not immediately repeat an approval request"
+        );
+    }
+
     #[tokio::test]
     async fn a_held_delivery_backs_off_instead_of_re_prompting_the_human_at_once() {
         let fixture = fixture(
