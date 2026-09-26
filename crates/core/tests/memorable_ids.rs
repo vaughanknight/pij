@@ -17,9 +17,9 @@ fn curated_corpus_is_pinned_and_clean() {
     // production corpus and its TS pinning test contain 1,176; pin data, not the
     // stale historical denominator.
     assert_eq!(NAME_ADJECTIVES.len(), 1_176);
-    assert_eq!(NAME_NOUNS.len(), 552);
+    assert_eq!(NAME_NOUNS.len(), 738);
     assert_eq!(SHIP_NAMES.len(), 40);
-    assert_eq!(MEMORABLE_PIJ_ID_SPACE, 649_192);
+    assert_eq!(MEMORABLE_PIJ_ID_SPACE, 867_928);
     assert_eq!(
         MEMORABLE_PIJ_ID_SPACE,
         NAME_ADJECTIVES.len() * NAME_NOUNS.len() + SHIP_NAMES.len()
@@ -87,8 +87,8 @@ fn rust_matches_the_typescript_oracle() {
     // ["s1754000000000-9000",1],["s1754000000000-9000",17],
     // ["adopt\x00claude\x00%100\x0020000",0],["adopt\x00claude\x00%100\x0020000",1],
     // ["adopt\x00claude\x00%100\x0020000",17],["full-space-seed",0],
-    // ["full-space-seed",1],["full-space-seed",649152],["full-space-seed",649191],
-    // ["stable-seed",649191],["café-🐙",0],["café-🐙",1]];
+    // ["full-space-seed",1],["full-space-seed",867888],["full-space-seed",867927],
+    // ["stable-seed",867927],["café-🐙",0],["café-🐙",1]];
     // console.log(JSON.stringify({space:MEMORABLE_PIJ_ID_SPACE,vectors:cases.map(([seed,
     // attempt])=>({seed,attempt,result:memorablePijIdCandidate(seed,attempt)}))},null,2));'
     // bun --eval "$ORACLE_SCRIPT"
@@ -96,28 +96,28 @@ fn rust_matches_the_typescript_oracle() {
         (
             "4dffbee3-5d42-4b02-a739-74be162940bc",
             0,
-            "pij-intermediate-nenneke",
+            "pij-efficient-zev",
         ),
-        ("copilot-session-alpha", 0, "pij-young-eagle"),
-        ("claude-session-beta", 0, "pij-mild-demeter"),
-        ("pi-session-gamma", 0, "pij-enchanting-ermine"),
-        ("s1754000000000-9000", 0, "pij-acute-olin"),
-        ("s1754000000000-9000", 1, "pij-thin-dijkstra"),
-        ("s1754000000000-9000", 17, "pij-naughty-snipe"),
-        ("adopt\x00claude\x00%100\x0020000", 0, "pij-good-gopher"),
+        ("copilot-session-alpha", 0, "pij-inland-walrus"),
+        ("claude-session-beta", 0, "pij-graceful-fowl"),
+        ("pi-session-gamma", 0, "pij-leading-seluvis"),
+        ("s1754000000000-9000", 0, "pij-disappointed-donkey"),
+        ("s1754000000000-9000", 1, "pij-available-yarpen"),
+        ("s1754000000000-9000", 17, "pij-muddy-flute"),
         (
             "adopt\x00claude\x00%100\x0020000",
-            1,
-            "pij-disciplinary-louse",
+            0,
+            "pij-vicarious-magpie",
         ),
-        ("adopt\x00claude\x00%100\x0020000", 17, "pij-united-pavetta"),
+        ("adopt\x00claude\x00%100\x0020000", 1, "pij-silky-silithus"),
+        ("adopt\x00claude\x00%100\x0020000", 17, "pij-entire-eskel"),
         ("full-space-seed", 0, "pij-no-more-mr-nice-guy"),
-        ("full-space-seed", 1, "pij-homely-ifechi"),
-        ("full-space-seed", 649_152, "pij-misleading-ciri"),
-        ("full-space-seed", 649_191, "pij-vulture"),
-        ("stable-seed", 649_191, "pij-vulture"),
-        ("café-🐙", 0, "pij-nearby-parrotfish"),
-        ("café-🐙", 1, "pij-inadequate-skunk"),
+        ("full-space-seed", 1, "pij-central-everlook"),
+        ("full-space-seed", 867_888, "pij-empirical-muskox"),
+        ("full-space-seed", 867_927, "pij-vulture"),
+        ("stable-seed", 867_927, "pij-vulture"),
+        ("café-🐙", 0, "pij-personal-anduin"),
+        ("café-🐙", 1, "pij-late-ox"),
     ];
 
     for &(seed, attempt, expected) in GOLDENS {
@@ -144,10 +144,7 @@ fn candidate_sequence_is_complete_without_repeats() {
         assert!(ship_ids.is_subset(&ids), "seed={seed}");
     }
 
-    assert_eq!(
-        candidate("stable-seed", 0).as_str(),
-        "pij-frequent-mousesack"
-    );
+    assert_eq!(candidate("stable-seed", 0).as_str(), "pij-lovely-azuregos");
     assert!(ship_ids.contains(&candidate("full-space-seed", 0)));
     assert_eq!(
         memorable_pij_id_candidate("seed", MEMORABLE_PIJ_ID_SPACE),
@@ -160,7 +157,7 @@ fn candidate_sequence_is_complete_without_repeats() {
 #[test]
 fn collision_probes_leave_the_starting_adjective_row() {
     // Treat the first 80 candidates as 79 occupied slots. A stride of one can
-    // cross at most one 552-noun row boundary; the selected coprime stride must
+    // cross at most one 738-noun row boundary; the selected coprime stride must
     // spread the collision sequence across the grid instead.
     let adjectives = memorable_pij_id_candidates("stable-seed")
         .take(80)
