@@ -804,6 +804,11 @@ impl RegistrationService {
         if !resuming {
             descriptor.harness = harness;
         }
+        // A reclaim carries forward no conversation it did not derive: the
+        // target's recorded one is exactly the evidence that went stale.
+        if reclaim {
+            descriptor.harness_session = None;
+        }
         if let Some(harness_session) = harness_session {
             descriptor.harness_session = Some(harness_session);
         }

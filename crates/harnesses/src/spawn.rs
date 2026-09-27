@@ -50,6 +50,8 @@ pub struct SpawnPlanInput {
     pub effort: Option<String>,
     /// Whether to configure Claude to accept cross-session inbound messages.
     pub accept_inbound: bool,
+    /// Harness-native conversation to resume (plan 156 revive); `None` is blank.
+    pub resume: Option<String>,
 }
 
 /// Validate `--bin` without allowing it to change the selected harness.
@@ -123,6 +125,16 @@ pub fn build_spawn_plan(input: SpawnPlanInput) -> Result<SpawnPlan> {
         });
     }
 
+    if input
+        .resume
+        .as_deref()
+        .is_some_and(|session| session.trim().is_empty() || session.starts_with('-'))
+    {
+        return Err(PijError::Adapter {
+            adapter: "spawn".to_string(),
+            message: "a resumed conversation id must be non-empty and not an option".to_string(),
+        });
+    }
     let harness_executable = input
         .executable
         .unwrap_or_else(|| input.harness.as_str().to_string());
@@ -131,6 +143,15 @@ pub fn build_spawn_plan(input: SpawnPlanInput) -> Result<SpawnPlan> {
         format!("{PIJ_SPAWN_ID}={}", input.spawn_id),
         harness_executable,
     ];
+    // Each CLI's own resume spelling, first, so a subcommand (codex) parses.
+    if let Some(session) = &input.resume {
+        match input.harness {
+            Harness::Claude => args.extend(["--resume".to_string(), session.clone()]),
+            Harness::Copilot | Harness::Omp => args.push(format!("--resume={session}")),
+            Harness::Pi => args.extend(["--session".to_string(), session.clone()]),
+            Harness::Codex => args.extend(["resume".to_string(), session.clone()]),
+        }
+    }
     match input.harness {
         Harness::Pi => {
             if let Some(model) = &input.model {
@@ -251,6 +272,29 @@ mod tests {
             resolved_provider: Some("provider".to_string()),
             effort: Some("high".to_string()),
             accept_inbound: false,
+            resume: None,
+        }
+    }
+
+    /// Plan 156 AC3: revive relaunches the recorded conversation with each
+    /// harness's own resume spelling, placed where that CLI parses it.
+    #[test]
+    fn resume_uses_each_harness_spelling() {
+        for (harness, expected) in [
+            (Harness::Claude, vec!["claude", "--resume", "S-1"]),
+            (Harness::Copilot, vec!["copilot", "--resume=S-1"]),
+            (Harness::Omp, vec!["omp", "--resume=S-1"]),
+            (Harness::Pi, vec!["pi", "--session", "S-1"]),
+            (Harness::Codex, vec!["codex", "resume", "S-1"]),
+        ] {
+            let mut input = input(harness);
+            input.resume = Some("S-1".to_string());
+            let plan = build_spawn_plan(input).expect("resume plan");
+            assert_eq!(
+                &plan.args[2..2 + expected.len()],
+                expected.as_slice(),
+                "{harness}"
+            );
         }
     }
 
@@ -447,6 +491,7 @@ mod tests {
             resolved_provider: None,
             effort: None,
             accept_inbound: false,
+            resume: None,
         })
         .expect("build plan");
 

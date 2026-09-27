@@ -1935,6 +1935,10 @@ async fn reclaim_is_guarded_by_caller_harness_and_death_then_audited() {
     assert!(row.tombstoned_at.is_none());
     assert_eq!(row.pane.as_deref(), Some(PANE));
     assert_eq!(row.proc.map(|proc| proc.pid), Some(PID));
+    assert_eq!(
+        row.harness_session, None,
+        "the stale conversation is cleared; the status-line heal fills the true one"
+    );
     let audit: Vec<_> = world
         .spine
         .tail(None, pij_core::model::Seq(0))

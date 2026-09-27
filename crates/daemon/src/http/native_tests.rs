@@ -1082,6 +1082,7 @@ async fn native_spawn_wait_resolves_prebound_child_resuming_saved_session() {
             accept_inbound: false,
             wait_seconds: Some(2),
             no_wait: false,
+            resume: None,
         })
         .send();
     let register_child = async {

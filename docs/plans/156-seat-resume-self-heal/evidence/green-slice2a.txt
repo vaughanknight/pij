@@ -1,0 +1,8 @@
+Slice 2a (AC3 + reclaim clears stale session) — green
+$ cargo test -p pij-harnesses --lib -- resume_uses_each_harness_spelling  -> ok
+$ cargo test -p pij-daemon --test revive_http                           -> 13 passed (incl. revive_resumes_the_recorded_conversation_unless_it_is_live_elsewhere)
+$ cargo test -p pij-daemon --lib -- reclaim_is_guarded                  -> ok (now asserts harness_session cleared)
+$ cargo test --workspace -> no FAILED; clippy -D warnings -> 0; fmt --check -> clean
+RED for the reclaim-session assertion is the production observation after slice 1 merged:
+cicada reclaimed onto %3 still recorded the blank's 403664a7 (prime, 2026-09-27).
+Existing revive fixtures record no conversation, so they now pass --fresh (rule 3: blank only on explicit --fresh).
