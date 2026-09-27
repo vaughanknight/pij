@@ -20,6 +20,7 @@ pub mod pane_observer;
 pub mod pointer;
 pub mod reaper;
 mod registration;
+mod serve;
 
 // u-orchestration's git-facts gatherer: IO belongs at the runtime root, and a
 // ninth crate would have been a graph change for one module.
@@ -829,12 +830,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     );
     let (shutdown, shutdown_rx) = tokio::sync::oneshot::channel();
     let joined = tokio::spawn(async move {
-        // Connect info lets adopt observe which process dialled it (plan 156).
-        let _ = axum::serve(
-            listener,
-            router.into_make_service_with_connect_info::<std::net::SocketAddr>(),
-        )
-        .with_graceful_shutdown(async {
+        serve::serve(listener, router, serve::IDLE_CONNECTION_TIMEOUT, async {
             let _ = shutdown_rx.await;
         })
         .await;

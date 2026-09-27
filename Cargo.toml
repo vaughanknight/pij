@@ -70,6 +70,9 @@ sqlx = { version = "0.8", default-features = false, features = [
 # tower's middleware model, which is how auth covers the WHOLE router rather than
 # each handler remembering.
 axum = "0.8"
+# The server loop axum::serve hides, so the daemon can set an idle-connection
+# (header read) timeout; axum already depends on it, so nothing new is fetched.
+hyper-util = { version = "0.1", features = ["server-auto", "server-graceful", "tokio", "service", "http1"] }
 clap = { version = "4", features = ["derive"] }
 # rustls, not native-tls: the build stays `cargo build` on every platform, and the
 # CLI only ever talks to loopback anyway.
