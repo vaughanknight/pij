@@ -501,7 +501,7 @@ async fn stage_deadline_aborts_and_restores_input() {
     fs::create_dir_all(&session.tap_root).expect("create deadline fixture directory");
     let wrapper = session.tap_root.join("tmux-deadline-wrapper");
     let script = format!(
-        "#!/bin/sh\ncase \"${{6-}}\" in *paste-buffer*) sleep 0.2 ;; esac\nexec tmux -L {} \"$@\"\n",
+        "#!/bin/sh\n[ \"$1\" = -u ] && shift\ncase \"${{6-}}\" in *paste-buffer*) sleep 0.2 ;; esac\nexec tmux -L {} \"$@\"\n",
         shell_literal(&session.server)
     );
     write_executable(&wrapper, &script);
@@ -614,7 +614,7 @@ fn watchdog_expiry_before_disable_cannot_strand_input() {
     let wrapper = session.tap_root.join("tmux-race-wrapper");
     let log = session.tap_root.join("wrapper.log");
     let script = format!(
-        "#!/bin/sh\nprintf '%s\\n' \"$*\" >> {}\ncase \"${{6-}}\" in *'run-shell -b'*'select-pane -d'*) printf ready > {}; while [ ! -e {} ]; do sleep 0.01; done ;; esac\nexec tmux -L {} \"$@\"\n",
+        "#!/bin/sh\n[ \"$1\" = -u ] && shift\nprintf '%s\\n' \"$*\" >> {}\ncase \"${{6-}}\" in *'run-shell -b'*'select-pane -d'*) printf ready > {}; while [ ! -e {} ]; do sleep 0.01; done ;; esac\nexec tmux -L {} \"$@\"\n",
         shell_literal(&log.to_string_lossy()),
         shell_literal(&ready.to_string_lossy()),
         shell_literal(&release.to_string_lossy()),
@@ -826,7 +826,7 @@ fn stale_watchdog_cannot_release_a_later_adapter_transaction() {
     let log = session.tap_root.join("watchdog-wrapper.log");
     let wrapper = session.tap_root.join("tmux-watchdog-wrapper");
     let script = format!(
-        "#!/bin/sh\nprintf '%s|%s\\n' \"${{5-}}\" \"${{6-}}\" >> {}\nexec tmux -L {} \"$@\"\n",
+        "#!/bin/sh\n[ \"$1\" = -u ] && shift\nprintf '%s|%s\\n' \"${{5-}}\" \"${{6-}}\" >> {}\nexec tmux -L {} \"$@\"\n",
         shell_literal(&log.to_string_lossy()),
         shell_literal(&session.server)
     );
@@ -1031,7 +1031,7 @@ async fn committed_marker_transition_failure_never_sends_enter() {
     let wrapper = session.tap_root.join("tmux-marker-wrapper");
     let failed = session.tap_root.join("marker-transition-failed");
     let script = format!(
-        "#!/bin/sh\ncase \"${{6-}}\" in *-committed*) case \"${{6-}}\" in *'run-shell -b'*) ;; *) : > {}; exit 71 ;; esac ;; esac\nexec tmux -L {} \"$@\"\n",
+        "#!/bin/sh\n[ \"$1\" = -u ] && shift\ncase \"${{6-}}\" in *-committed*) case \"${{6-}}\" in *'run-shell -b'*) ;; *) : > {}; exit 71 ;; esac ;; esac\nexec tmux -L {} \"$@\"\n",
         shell_literal(&failed.to_string_lossy()),
         shell_literal(&session.server)
     );
@@ -1102,7 +1102,7 @@ async fn post_enter_cleanup_failure_remains_success_and_submits_once() {
     let wrapper = session.tap_root.join("tmux-cleanup-wrapper");
     let failed_once = session.tap_root.join("cleanup-failed-once");
     let script = format!(
-        "#!/bin/sh\ncase \"${{6-}}\" in *'set-option -p -u'*) case \"${{6-}}\" in *'run-shell -b'*) ;; *) if [ ! -e {} ]; then : > {}; exit 71; fi ;; esac ;; esac\nexec tmux -L {} \"$@\"\n",
+        "#!/bin/sh\n[ \"$1\" = -u ] && shift\ncase \"${{6-}}\" in *'set-option -p -u'*) case \"${{6-}}\" in *'run-shell -b'*) ;; *) if [ ! -e {} ]; then : > {}; exit 71; fi ;; esac ;; esac\nexec tmux -L {} \"$@\"\n",
         shell_literal(&failed_once.to_string_lossy()),
         shell_literal(&failed_once.to_string_lossy()),
         shell_literal(&session.server)
@@ -1161,7 +1161,7 @@ fn reservation_wrapper_script(
         )
     });
     format!(
-        "#!/bin/sh\nreservation=0\ncase \"$1\" in\n  if-shell) case \"${{6-}}\" in *'run-shell -b'*'select-pane -d'*) reservation=1 ;; esac ;;\n  set-option) case \"$*\" in *'@pij-submit-owner'*) reservation=1 ;; esac ;;\nesac\nif [ \"$reservation\" = 1 ]; then\n  : > {}\n  while [ ! -e {} ]; do sleep 0.01; done\n  {}fi\nexec tmux -L {} \"$@\"\n",
+        "#!/bin/sh\n[ \"$1\" = -u ] && shift\nreservation=0\ncase \"$1\" in\n  if-shell) case \"${{6-}}\" in *'run-shell -b'*'select-pane -d'*) reservation=1 ;; esac ;;\n  set-option) case \"$*\" in *'@pij-submit-owner'*) reservation=1 ;; esac ;;\nesac\nif [ \"$reservation\" = 1 ]; then\n  : > {}\n  while [ ! -e {} ]; do sleep 0.01; done\n  {}fi\nexec tmux -L {} \"$@\"\n",
         shell_literal(&own_ready.to_string_lossy()),
         shell_literal(&other_ready.to_string_lossy()),
         release,
