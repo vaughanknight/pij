@@ -802,6 +802,9 @@ bounce-rs:
     echo "bounce-rs: pid $old -> $new"
 
 # Start the production rs daemon at login (launchd LaunchAgent, RunAtLoad only).
+# launchd execs Apple-signed /bin/sh, which execs pij-rs: after the 2026-09-27 macOS
+# upgrade launchd killed the ad-hoc (cargo linker-signed) binary at login with
+# OS_REASON_CODESIGNING "Launch Constraint Violation" while a shell ran it fine.
 # No KeepAlive on purpose: bounce-rs kills and relaunches by port, and a KeepAlive
 # respawn would race it for 7461. Env mirrors bounce-rs; PATH is captured from this shell.
 rs-autostart:
@@ -815,7 +818,7 @@ rs-autostart:
     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
     <plist version="1.0"><dict>
       <key>Label</key><string>$label</string>
-      <key>ProgramArguments</key><array><string>$HOME/.npm-global/bin/pij-rs</string><string>daemon</string></array>
+      <key>ProgramArguments</key><array><string>/bin/sh</string><string>-c</string><string>exec "$HOME/.npm-global/bin/pij-rs" daemon</string></array>
       <key>EnvironmentVariables</key><dict>
         <key>PATH</key><string>$PATH</string>
         <key>PIJ_RETIRED_HARNESSES</key><string>${PIJ_RETIRED_HARNESSES-pi}</string>
