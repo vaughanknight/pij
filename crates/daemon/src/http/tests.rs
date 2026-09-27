@@ -222,6 +222,8 @@ pub(super) async fn test_services(
     .await
     .expect("fake services");
     let store = services.governance.fixture_store();
+    // Hermetic: no test reads the operator's real Claude process records.
+    services.claude_homes = Arc::from([]);
     let bus = Arc::new(crate::events::EventBus::new(spine, 16).expect("event bus"));
     services.registry = Arc::new(crate::events::PublishedFakeRegistry::new(
         registry,

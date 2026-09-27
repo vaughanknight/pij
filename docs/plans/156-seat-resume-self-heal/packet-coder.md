@@ -1,4 +1,4 @@
-# Task: plan 156 — a resumed session gets its own seat back (coder)
+# Task: plan 156 — a resumed session gets its own seat back (coder: Claude Code Opus 5.5 high)
 
 From: pij-far-jackal (prime). Reply ONLY via `pij send pij-far-jackal --body-file <path>`: one line plus a path. You are registered; do not adopt. Load the pij skill and the builder skill, act from the plan, and run `/builder 6 implement`.
 

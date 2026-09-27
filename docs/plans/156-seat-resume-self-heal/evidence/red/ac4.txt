@@ -1,0 +1,3 @@
+$ cargo test -p pij-harnesses --test claude_heal_scripts   (new test, scripts at HEAD)
+panicked at crates/harnesses/tests/claude_heal_scripts.rs:81:9:
+  0%  pij-claude-heal-…  • Opus • auto • 0/200k        <- miss renders nothing and fires no adopt

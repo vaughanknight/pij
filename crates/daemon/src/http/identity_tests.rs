@@ -48,11 +48,27 @@ struct World {
 /// daemon must DERIVE the identity facts it stores. A caller-asserted pid is a
 /// claim, and this platform has already paid for treating one as evidence.
 async fn world(registry: Arc<FakeRegistry>, pane_alive: bool) -> World {
-    world_on(registry, pane_alive, PID).await
+    world_on(
+        registry,
+        pane_alive,
+        ProcIdentity {
+            pid: PID,
+            proc_start: PROC_START,
+        },
+        Vec::new(),
+    )
+    .await
 }
 
-/// [`world`], with the pane running `pid`.
-async fn world_on(registry: Arc<FakeRegistry>, pane_alive: bool, pid: u32) -> World {
+/// [`world`], with the pane running `proc` and Claude process records read from
+/// `claude_homes`.
+async fn world_on(
+    registry: Arc<FakeRegistry>,
+    pane_alive: bool,
+    proc: ProcIdentity,
+    claude_homes: Vec<std::path::PathBuf>,
+) -> World {
+    let pid = proc.pid;
     let spine = Arc::new(FakeSpine::new());
     let mut services = test_services(
         registry.clone(),
@@ -80,10 +96,8 @@ async fn world_on(registry: Arc<FakeRegistry>, pane_alive: bool, pid: u32) -> Wo
             );
     }
     services.tmux = Arc::new(tmux);
-    services.liveness = Arc::new(FakeLiveness::new().with_proc(ProcIdentity {
-        pid,
-        proc_start: PROC_START,
-    }));
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(proc));
+    services.claude_homes = claude_homes.into();
     let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
     World {
         addr,
@@ -1765,17 +1779,15 @@ async fn recycled_pane_with_dead_recorded_process_is_neither_whoami_answer_nor_a
     world.server.abort();
 }
 
-/// Plan 156 AC1 + ruling 1 — a resumed Claude conversation gets its own seat back.
+/// Plan 156 AC1 + rulings 1-2 — a resumed Claude conversation gets its own seat back.
 ///
-/// The session id arrives from the status line or SessionStart hook, both children
-/// of the pane's Claude process. It is accepted only when the daemon OBSERVES the
-/// calling connection's process descending from that pane's process — here the
-/// test process itself stands as the pane's Claude, so the real lsof + ps path
-/// runs. A caller outside the tree is refused and nothing is written. Named
-/// resumes (`--resume prime`) need no case of their own: the payload carries the
-/// resolved id.
+/// The session is DERIVED from the pane process's own Claude record
+/// (`sessions/<pid>.json`, start time verified), so a named resume
+/// (`--resume prime`) needs no case of its own. `--harness-session` only
+/// cross-checks it. For other harnesses the flag is believed only from inside the
+/// pane's process tree, observed through this connection by lsof + ps.
 #[tokio::test]
-async fn resumed_claude_session_reclaims_its_tombstoned_seat_only_from_its_own_process_tree() {
+async fn resumed_claude_session_reclaims_its_tombstoned_seat_from_derived_evidence_only() {
     const SESSION: &str = "56206875-f7f5-44a6-8617-82b9804f76c7";
     let seed = || {
         let mut seat = SeatDescriptor::new(
@@ -1794,38 +1806,86 @@ async fn resumed_claude_session_reclaims_its_tombstoned_seat_only_from_its_own_p
         seat.tombstone_reason = Some("observed-dead".into());
         Arc::new(FakeRegistry::new().with_seat(seat))
     };
-    let argv = [
-        "adopt",
-        PANE,
-        "--harness",
-        "claude",
-        "--harness-session",
-        SESSION,
-    ];
+    // The resumed process, and the record Claude wrote for it (UTC start).
+    let host = ProcIdentity {
+        pid: PID,
+        proc_start: 20_260_927_102_147,
+    };
+    let offset = pij_harnesses::proc::local_utc_offset_minutes().expect("local offset");
+    let utc = time::PrimitiveDateTime::new(
+        time::Date::from_calendar_date(2026, time::Month::September, 27).unwrap(),
+        time::Time::from_hms(10, 21, 47).unwrap(),
+    ) - time::Duration::minutes(i64::from(offset));
+    let home = pij_testkit::fresh_dir("pij-adopt-claude-home");
+    std::fs::create_dir_all(home.join("sessions")).unwrap();
+    std::fs::write(
+        home.join(format!("sessions/{PID}.json")),
+        serde_json::json!({
+            "pid": PID,
+            "sessionId": SESSION,
+            "procStart": format!(
+                "{} {} {:2} {:02}:{:02}:{:02} {}",
+                &utc.weekday().to_string()[..3],
+                &utc.month().to_string()[..3],
+                utc.day(),
+                utc.hour(),
+                utc.minute(),
+                utc.second(),
+                utc.year()
+            ),
+            "tmux": format!("work:@1.{PANE}"),
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let homes = vec![home.clone()];
 
-    // Outside the tree: the pane runs an unrelated pid, so the claim is refused.
+    // Refusals write nothing: a cross-check that disagrees with the record, and a
+    // non-Claude session claimed from outside the pane's process tree.
     let registry = seed();
-    let stranger = world(registry.clone(), true).await;
-    let refusal = refusal_envelope(adopt(stranger.addr, &argv).await).await;
-    assert!(
-        refusal
-            .meta
-            .as_deref()
-            .unwrap_or_default()
-            .contains("process tree"),
-        "{:?}",
-        refusal.meta
-    );
+    let own = world_on(registry.clone(), true, host, homes.clone()).await;
+    for (argv, expected) in [
+        (
+            [
+                "adopt",
+                PANE,
+                "--harness",
+                "claude",
+                "--harness-session",
+                "a-different-one",
+            ],
+            "does not match",
+        ),
+        (
+            [
+                "adopt",
+                PANE,
+                "--harness",
+                "codex",
+                "--harness-session",
+                SESSION,
+            ],
+            "process tree",
+        ),
+    ] {
+        let refusal = refusal_envelope(adopt(own.addr, &argv).await).await;
+        assert!(
+            refusal
+                .meta
+                .as_deref()
+                .unwrap_or_default()
+                .contains(expected),
+            "{expected}: {:?}",
+            refusal.meta
+        );
+    }
     assert!(
         live_seats(&registry).await.is_empty(),
         "nothing was written"
     );
-    stranger.server.abort();
 
-    // Inside the tree: same conversation, different pane, same seat.
-    let registry = seed();
-    let own = world_on(registry.clone(), true, std::process::id()).await;
-    let response = adopt(own.addr, &argv).await;
+    // Derived with no flag at all: same conversation, different pane, same seat.
+    let response = adopt(own.addr, &["adopt", PANE, "--harness", "claude"]).await;
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let seats = live_seats(&registry).await;
     assert_eq!(seats.len(), 1);
@@ -1851,6 +1911,7 @@ async fn resumed_claude_session_reclaims_its_tombstoned_seat_only_from_its_own_p
         .collect();
     assert_eq!(resumed.len(), 1, "exactly one seat.resumed");
     own.server.abort();
+    let _ = std::fs::remove_dir_all(home);
 }
 
 /// Plan 156 AC6 — operator reclaim for continuity that cannot heal by itself.

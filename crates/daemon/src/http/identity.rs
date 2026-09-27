@@ -722,32 +722,70 @@ pub(crate) async fn adopt(
         },
     };
 
-    // Plan 156 ruling 1: a session id is evidence only when the daemon observes
-    // the caller descending from the pane's harness process. Never on its word.
-    let derived_session = match args.harness_session.clone() {
-        None => None,
-        Some(session) => {
-            let host = proc.expect("a paned adopt has a process identity").pid;
-            let descends = match connection {
-                Some(Extension(ConnectInfo(peer))) => {
-                    tokio::task::spawn_blocking(move || caller_descends_from(peer, host))
-                        .await
-                        .unwrap_or(false)
-                }
-                None => false,
-            };
-            if !descends {
+    // Plan 156 rulings 1 and 2: a session is DERIVED, never taken on the
+    // caller's word. For Claude the pane process's own sessions/<pid>.json record
+    // names it on every adopt, and `--harness-session` only cross-checks it.
+    // Other harnesses may pass it only from inside the pane's process tree.
+    let kind = pij_core::model::Harness::parse(&harness);
+    let derived_session = if kind == Some(pij_core::model::Harness::Claude) {
+        let host = proc.expect("a paned adopt has a process identity");
+        let homes = std::sync::Arc::clone(&state.services.claude_homes);
+        let recorded = tokio::task::spawn_blocking(move || {
+            let offset = pij_harnesses::proc::local_utc_offset_minutes().ok()?;
+            pij_harnesses::proc::claude_session_of(&homes, host, offset)
+        })
+        .await
+        .ok()
+        .flatten();
+        match (recorded, args.harness_session.clone()) {
+            (Some(recorded), Some(claimed)) if recorded != claimed => {
                 return refused(
                     ADOPT,
                     format!(
-                        "`--harness-session {session}` is accepted only from inside the pane's \
-                         harness process tree (pid {host}), and the calling process is not in \
-                         it — nothing was written. Run adopt from the harness's status line or \
-                         SessionStart hook in that pane."
+                        "`--harness-session {claimed}` does not match the conversation Claude \
+                         records for pid {} (`{recorded}`) — nothing was written",
+                        host.pid
                     ),
                 );
             }
-            Some(session)
+            (None, Some(claimed)) => {
+                return refused(
+                    ADOPT,
+                    format!(
+                        "`--harness-session {claimed}` cannot be corroborated: no Claude record \
+                         for pid {} with a matching start exists — nothing was written",
+                        host.pid
+                    ),
+                );
+            }
+            (recorded, _) => recorded,
+        }
+    } else {
+        match args.harness_session.clone() {
+            None => None,
+            Some(session) => {
+                let host = proc.expect("a paned adopt has a process identity").pid;
+                let descends = match connection {
+                    Some(Extension(ConnectInfo(peer))) => {
+                        tokio::task::spawn_blocking(move || caller_descends_from(peer, host))
+                            .await
+                            .unwrap_or(false)
+                    }
+                    None => false,
+                };
+                if !descends {
+                    return refused(
+                        ADOPT,
+                        format!(
+                            "`--harness-session {session}` is accepted only from inside the pane's \
+                         harness process tree (pid {host}), and the calling process is not in \
+                         it — nothing was written. Run adopt from the harness's status line or \
+                         SessionStart hook in that pane."
+                        ),
+                    );
+                }
+                Some(session)
+            }
         }
     };
 
@@ -757,7 +795,6 @@ pub(crate) async fn adopt(
     };
     // A seat follows its conversation (plan 156 rule 1): the seat already holding
     // this session, live or retired, outranks whatever the pane number says.
-    let kind = pij_core::model::Harness::parse(&harness);
     let conversation = derived_session.as_deref().and_then(|session| {
         seats
             .iter()
