@@ -23,10 +23,11 @@ use pij_core::error::PijError;
 use pij_core::model::{Envelope, ErrorKind, Event, Harness, SeatDescriptor, SeatId, SemanticState};
 use pij_core::wire;
 use pij_harnesses::{
-    claude_homes, ensure_claude_inbound_accept, ensure_claude_session_start_hook,
-    ensure_claude_statusline, inspect_claude_inbound, inspect_claude_session_start_hook,
-    inspect_claude_statusline, install_claude_session_start_script,
-    install_claude_statusline_script, validate_executable_override,
+    claude_homes, copilot_home, ensure_claude_inbound_accept, ensure_claude_session_start_hook,
+    ensure_claude_statusline, ensure_copilot_statusline, inspect_claude_inbound,
+    inspect_claude_session_start_hook, inspect_claude_statusline,
+    install_claude_session_start_script, install_claude_statusline_script,
+    install_copilot_statusline_script, validate_executable_override,
 };
 use serde_json::{Value, json};
 
@@ -1656,6 +1657,19 @@ async fn run_daemon(
         .as_ref()
         .map(|script| ensure_claude_statusline(&homes, script))
         .unwrap_or_default();
+    // Plan 156 rule 5: Copilot's status line is pij-managed too, when Copilot is.
+    let copilot_statusline_reports = copilot_home()
+        .and_then(|home| {
+            install_copilot_statusline_script(&hook_dir)
+                .map_err(|error| {
+                    eprintln!(
+                        "pij-rs warning: could not install Copilot statusline script: {error}"
+                    );
+                })
+                .ok()
+                .map(|script| ensure_copilot_statusline(&home, &script))
+        })
+        .unwrap_or_default();
     let mut config = daemon_config(bind, &state_dir.join("pij.sqlite"), offline);
     config.retired_harnesses = retired_harnesses;
     match pij_daemon::boot(&config, state_dir).await {
@@ -1675,6 +1689,11 @@ async fn run_daemon(
                     "config.claude-statusline-ensured",
                     "Claude statusline",
                     statusline_reports.as_slice(),
+                ),
+                (
+                    "config.copilot-statusline-ensured",
+                    "Copilot statusline",
+                    copilot_statusline_reports.as_slice(),
                 ),
             ] {
                 for report in reports.iter().filter(|report| report.changed) {
@@ -1713,6 +1732,7 @@ async fn run_daemon(
                 ("inbound", &inbound_reports),
                 ("hook", &hook_reports),
                 ("statusline", &statusline_reports),
+                ("copilot statusline", &copilot_statusline_reports),
             ] {
                 let homes = reports
                     .iter()

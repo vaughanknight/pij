@@ -1,0 +1,49 @@
+== 2026-09-27T01:06:58Z BEFORE
+$ whoami --pane %3
+{"ok":true,"id":"pij-future-cicada","pane":"%3","proc":{"pid":43821,"proc_start":20260927102147},"session":"403664a7-70cb-47ba-b4e7-3eb08245f128","meta":null}
+$ tail hook.log
+skip:no-daemon pane=%2
+refused:adopt pane=%617 reason=pij adopt: FAILED — native Copilot registration refused: an existing Copilot seat cannot change harness
+skip:no-daemon pane=%1
+skip:no-daemon pane=%2
+skip:no-daemon pane=%3
+$ sessions record for 43821
+{"pid":43821,"sessionId":"56206875-f7f5-44a6-8617-82b9804f76c7","procStart":"Sun Sep 27 00:21:47 2026","tmux":"main:@3.%3"}
+
+== 2026-09-27T01:07:19Z LIVE HEAL (a no-op message made cicada render its status line; no pij command typed in %3)
+{"id":"pij-future-cicada","pane":"%3","proc":{"pid":43821,"proc_start":20260927102147},"session":"56206875-f7f5-44a6-8617-82b9804f76c7"}
+2026-09-27T01:07:16Z statusline:healed pane=%3
+
+== 2026-09-27T01:07:24Z PROOF A: kill pane %3 (pid 43821), then claude --resume by hand in a fresh pane
+$ tmux kill-pane -t %3
+$ whoami --seat pij-future-cicada (after sweep)
+{"ok":false,"meta":"seat `pij-future-cicada` is tombstoned and is not an identity: observed-dead. A dead row can still name a live pid — supersession keeps the process identity — so confirming it would report a binding for a seat nothing can address. Original tombstone event: spine 80544."}
+$ tmux new-window -t main -n cicada-resume  -> %8 (fresh pane, new id)
+$ (typed in %8) claude --dangerously-skip-permissions --resume 56206875-f7f5-44a6-8617-82b9804f76c7
+bound after 2s
+{"ok":true,"id":"pij-future-cicada","pane":"%8","proc":{"pid":47248,"proc_start":20260927110737},"session":"56206875-f7f5-44a6-8617-82b9804f76c7","meta":null}
+$ tail hook.log
+skip:no-daemon pane=%3
+2026-09-27T01:07:16Z statusline:healed pane=%3
+2026-09-27T01:07:39Z statusline:healed pane=%8
+$ capture-pane %8 (status line)
+❯ 
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  22% main ⎇ main ⛓ registering… • Opus 5.5 • high • 220k/1.0M
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 1 agent
+(the capture is the first render, taken before the heal landed; later renders show the id)
+
+== 2026-09-27T01:07:52Z PROOF B: kill pane %8, then pij-rs revive pij-future-cicada
+$ tmux kill-pane -t %8
+{"ok":false,"meta":"seat `pij-future-cicada` is tombstoned and is not an identity: observed-dead. A "}
+$ pij-rs revive pij-future-cicada --session main
+{"ok":true,"id":"pij-future-cicada","pane":"%9","session":"56206875-f7f5-44a6-8617-82b9804f76c7","meta":null}
+{"ok":true,"id":"pij-future-cicada","pane":"%9","proc":{"pid":50246,"proc_start":20260927110759},"session":"56206875-f7f5-44a6-8617-82b9804f76c7"}
+$ ps -p 50246
+50246 claude --resume 56206875-f7f5-44a6-8617-82b9804f76c7 --dangerously-skip-permissions --settings {"crossSessionInbound":"accept"}
+$ sessions record for 50246
+{"pid":50246,"sessionId":"56206875-f7f5-44a6-8617-82b9804f76c7","tmux":"main:@9.%9"}
+$ capture-pane %9
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  22% main ⎇ main rs ⛓ pij-future-cicada • Opus 5.5 • high • 220k/1.0M
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 1 agent
