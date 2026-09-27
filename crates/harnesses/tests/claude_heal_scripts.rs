@@ -135,3 +135,70 @@ fn status_line_fires_one_detached_adopt_per_window_and_hook_outlasts_a_late_daem
     }
     let _ = std::fs::remove_dir_all(root);
 }
+
+/// Plan 156 AC5 — the pij-managed Copilot status line keeps Jordan's layout and
+/// is honest about a dead or missing seat.
+#[test]
+fn copilot_status_line_matches_the_hand_written_layout_and_names_dead_seats() {
+    let root = pij_testkit::fresh_dir("pij-copilot-statusline");
+    std::fs::create_dir_all(root.join("bin")).unwrap();
+    let hit = r#"{"ok":true,"data":{"id":"pij-copilot-seat"}}"#;
+    let write = |name: &str, answer: &str| {
+        let fake = root.join("bin").join(name);
+        std::fs::write(&fake, format!("#!/bin/sh\nprintf '%s\\n' '{answer}'\n")).unwrap();
+        let mut permissions = std::fs::metadata(&fake).unwrap().permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
+        std::fs::set_permissions(&fake, permissions).unwrap();
+    };
+    write("pij", hit);
+    let payload = format!(
+        r#"{{"workspace":{{"current_dir":"{}"}},"model":{{"display_name":"GPT-5.6"}},"context_window":{{"current_context_tokens":46133,"displayed_context_limit":400000}},"ai_used":{{"formatted":"1.2"}},"cost":{{"total_premium_requests":3,"total_duration_ms":3720000}}}}"#,
+        root.display()
+    );
+    let render = |script: &Path| {
+        let path = format!(
+            "{}:{}",
+            root.join("bin").display(),
+            std::env::var("PATH").unwrap()
+        );
+        let mut child = Command::new("bash")
+            .arg(script)
+            .current_dir(&root)
+            .env("PATH", path)
+            .env("HOME", &root)
+            .env("TMUX_PANE", "%21")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("render");
+        use std::io::Write as _;
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(payload.as_bytes())
+            .unwrap();
+        String::from_utf8(child.wait_with_output().unwrap().stdout).unwrap()
+    };
+    let hand_written = Path::new(env!("CARGO_MANIFEST_DIR")).join(
+        "../../docs/plans/156-seat-resume-self-heal/evidence/copilot-statusline-context.sh.txt",
+    );
+    let installed = pij_harnesses::install_copilot_statusline_script(&root.join("state")).unwrap();
+
+    write("pij-rs", hit);
+    assert_eq!(render(&installed), render(&hand_written), "layout survives");
+    assert!(render(&installed).contains("⛓ pij-copilot-seat"));
+
+    write(
+        "pij-rs",
+        r#"{"ok":false,"error":"refused","meta":"seat `pij-copilot-seat` records pane `%21`, but its process (pid 1, start 2) is gone"}"#,
+    );
+    let dead = render(&installed);
+    assert!(dead.contains("⛓ pij-copilot-seat dead"), "{dead}");
+    write(
+        "pij-rs",
+        r#"{"ok":false,"error":"refused","meta":"no live seat"}"#,
+    );
+    assert!(render(&installed).contains("⛓ unregistered"));
+    let _ = std::fs::remove_dir_all(root);
+}

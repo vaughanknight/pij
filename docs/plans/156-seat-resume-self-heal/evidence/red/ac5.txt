@@ -1,0 +1,4 @@
+The hand-written script (evidence/copilot-statusline-context.sh.txt) answers identity with `pij whoami --json`,
+which resolves an inherited PIJ_SESSION_ID by existence and renders that id in blue whether or not its
+process lives; with no answer it renders "registering…" although nothing in the script registers.
+The new test's dead/miss arms cannot be expressed against it (it never asks the pane).

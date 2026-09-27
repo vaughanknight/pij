@@ -18,6 +18,8 @@ const CLAUDE_SESSION_START_SCRIPT: &str =
     include_str!("../../../harness/scripts/claude-session-start-pij.sh");
 const CLAUDE_STATUSLINE_SCRIPT: &str =
     include_str!("../../../harness/scripts/claude-statusline-pij.sh");
+const COPILOT_STATUSLINE_SCRIPT: &str =
+    include_str!("../../../harness/scripts/copilot-statusline-pij.sh");
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// A pure decision about whether and how a Claude settings document must change.
@@ -606,6 +608,34 @@ pub fn install_claude_statusline_script(state_dir: &Path) -> std::io::Result<Pat
     }
     make_executable(&path)?;
     Ok(path)
+}
+
+/// Materialize pij's Copilot statusline at a stable daemon-owned path (plan 156).
+pub fn install_copilot_statusline_script(state_dir: &Path) -> std::io::Result<PathBuf> {
+    fs::create_dir_all(state_dir)?;
+    let path = state_dir.join("copilot-statusline-pij.sh");
+    if fs::read_to_string(&path).ok().as_deref() != Some(COPILOT_STATUSLINE_SCRIPT) {
+        atomic_replace(&path, COPILOT_STATUSLINE_SCRIPT.as_bytes())?;
+    }
+    make_executable(&path)?;
+    Ok(path)
+}
+
+/// The Copilot CLI home (`$COPILOT_HOME`, else `~/.copilot`), when it exists.
+#[must_use]
+pub fn copilot_home() -> Option<PathBuf> {
+    env::var_os("COPILOT_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".copilot")))
+        .filter(|home| home.is_dir())
+}
+
+/// Point Copilot's `settings.json` `statusLine` at pij's script. Copilot uses the
+/// same key and shape as Claude, so this is the same minimal, backed-up edit.
+#[must_use]
+pub fn ensure_copilot_statusline(home: &Path, script_path: &Path) -> Vec<EnsureReport> {
+    ensure_claude_statusline(&[home.to_path_buf()], script_path)
 }
 
 /// Inspect every named Claude home without changing any file.
