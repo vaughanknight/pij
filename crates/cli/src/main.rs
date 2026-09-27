@@ -662,7 +662,10 @@ fn main() -> ExitCode {
     // Keep the sink alive through runtime teardown, including panic diagnostics.
     let _log = if matches!(&cli.command, Command::Daemon { action: None, .. }) {
         match daemon_log::DaemonLog::install() {
-            Ok(log) => Some(log),
+            Ok(log) => {
+                raise_open_file_limit();
+                Some(log)
+            }
             Err(error) => {
                 eprintln!("pij-rs: could not initialize daemon logging: {error}");
                 return ExitCode::FAILURE;
@@ -672,6 +675,42 @@ fn main() -> ExitCode {
         None
     };
     run_with_runtime(cli)
+}
+
+/// A launchd-started daemon inherits a soft open-file limit of 256, and a busy
+/// fleet exhausted it within minutes (2026-09-27: EMFILE froze every route).
+/// Raise the soft limit ourselves so the daemon never depends on its launcher.
+fn raise_open_file_limit() {
+    use nix::sys::resource::{Resource, getrlimit, setrlimit};
+    let Ok((soft, hard)) = getrlimit(Resource::RLIMIT_NOFILE) else {
+        eprintln!("pij-rs: could not read the open-file limit; leaving it as is");
+        return;
+    };
+    for target in open_file_targets(soft, hard) {
+        if setrlimit(Resource::RLIMIT_NOFILE, target, hard).is_ok() {
+            eprintln!("pij-rs: open-file limit raised {soft} -> {target}");
+            return;
+        }
+    }
+    if soft < OPEN_FILE_FLOOR {
+        eprintln!("pij-rs: open-file limit stays at {soft}; the daemon may exhaust it");
+    }
+}
+
+/// Below this, a daemon serving a fleet runs out of descriptors.
+const OPEN_FILE_FLOOR: u64 = 10_240;
+
+/// Soft limits to try, largest first, each within `hard`; empty when `soft` is
+/// already enough. macOS rejects soft limits above kern.maxfilesperproc, hence
+/// the fallback.
+fn open_file_targets(soft: u64, hard: u64) -> Vec<u64> {
+    let mut targets: Vec<u64> = [65_536, OPEN_FILE_FLOOR]
+        .into_iter()
+        .map(|target| target.min(hard))
+        .filter(|&target| target > soft)
+        .collect();
+    targets.dedup();
+    targets
 }
 
 #[tokio::main]
@@ -2213,6 +2252,19 @@ impl Command {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn open_file_targets_lift_a_launchd_default_within_the_hard_limit() {
+        // launchd: soft 256, hard unlimited.
+        assert_eq!(
+            super::open_file_targets(256, u64::MAX),
+            vec![65_536, 10_240]
+        );
+        // A hard cap below the goal is respected.
+        assert_eq!(super::open_file_targets(256, 4_096), vec![4_096]);
+        // Already generous: nothing to do.
+        assert!(super::open_file_targets(1_048_576, u64::MAX).is_empty());
+    }
+
     use std::ffi::OsString;
 
     use clap::{CommandFactory, Parser};
