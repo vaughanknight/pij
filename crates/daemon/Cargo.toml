@@ -14,6 +14,7 @@ workspace = true
 [dependencies]
 async-trait = { workspace = true }
 axum = { workspace = true }
+hyper-util = { workspace = true }
 getrandom = { workspace = true }
 globset = { workspace = true }
 hostname = { workspace = true }
