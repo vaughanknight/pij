@@ -1,0 +1,6 @@
+id|pane|pid|proc_start|tombstoned_at|tombstone_reason|harness_session
+pij-far-jackal|%2|60798|20260924170005|||cbe08128-4097-4473-9f99-71e9415824f6
+pij-future-cicada|%5|74097|20260927102601|||403664a7-70cb-47ba-b4e7-3eb08245f128
+21245 Sun 27 Sep 10:18:52 2026     claude --dangerously-skip-permissions --resume prime
+31346 Sun 27 Sep 10:20:08 2026     claude --dangerously-skip-permissions --resume prime
+43821 Sun 27 Sep 10:21:47 2026     claude --dangerously-skip-permissions --resume 56206875-f7f5-44a6-8617-82b9804f76c7
