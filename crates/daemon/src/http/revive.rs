@@ -104,6 +104,120 @@ fn argument_failure(reason: String) -> Response {
     envelope(StatusCode::BAD_REQUEST, &answer)
 }
 
+/// Which conversation the relaunch resumes, or why it must not launch at all.
+async fn resume_decision(
+    state: &AppState,
+    prior: &SeatDescriptor,
+    fresh: bool,
+) -> Result<Option<String>, Box<Response>> {
+    if fresh {
+        return Ok(None);
+    }
+    let Some(session) = prior.harness_session.clone() else {
+        return Err(Box::new(argument_failure(format!(
+            "seat `{}` records no conversation to resume; `pij-rs revive {} --fresh` launches a new, blank one",
+            prior.id, prior.id
+        ))));
+    };
+    if let Some(pane) = conversation_live_elsewhere(state, prior, &session).await {
+        let mut answer: Envelope<Value> = Envelope::refused(
+            COMMAND,
+            ErrorKind::Refused,
+            format!(
+                "E-RS-REVIVE-CONVERSATION-LIVE conversation `{session}` of `{}` is already running in pane {pane} — adopt there instead (`pij-rs adopt {pane} --harness {}`); relaunching it would fork the conversation",
+                prior.id, prior.harness
+            ),
+        );
+        answer.details = Some(json!({
+            "code": "E-RS-REVIVE-CONVERSATION-LIVE", "seat": prior.id,
+            "harness_session": session, "pane": pane,
+        }));
+        return Err(Box::new(envelope(StatusCode::CONFLICT, &answer)));
+    }
+    Ok(Some(session))
+}
+
+/// The pane where `session` is already running in some other process, if any.
+///
+/// Two observations, either sufficient: another seat holding the conversation
+/// whose process is alive, or (Claude) a live process's own session record
+/// under `<claude home>/sessions/<pid>.json`, the hand-resumed-but-unregistered
+/// case the 2026-09-27 reboot produced. The record counts only when its pid's
+/// observed start matches the start it recorded.
+async fn conversation_live_elsewhere(
+    state: &AppState,
+    prior: &SeatDescriptor,
+    session: &str,
+) -> Option<String> {
+    let seats = state
+        .services
+        .registry
+        .list(pij_core::ports::SeatFilter::default())
+        .await
+        .ok()?;
+    for seat in seats.iter().filter(|seat| {
+        seat.id != prior.id
+            && seat.harness == prior.harness
+            && seat.harness_session.as_deref() == Some(session)
+    }) {
+        if let Some(proc) = seat.proc
+            && matches!(
+                pij_core::liveness::alive(proc, state.services.liveness.as_ref()).await,
+                Ok(Liveness::Active)
+            )
+        {
+            return Some(seat.pane.clone().unwrap_or_else(|| "none".to_string()));
+        }
+    }
+    if prior.harness != pij_core::model::Harness::Claude {
+        return None;
+    }
+    let offset = pij_harnesses::proc::local_utc_offset_minutes().ok()?;
+    for record in claude_session_records(session) {
+        let Ok(Some(observed)) = state.services.liveness.proc_start(record.pid).await else {
+            continue;
+        };
+        if pij_harnesses::proc::process_start_matches_utc_record(
+            &record.proc_start,
+            observed,
+            offset,
+        )
+        .unwrap_or(false)
+        {
+            return Some(
+                record
+                    .tmux
+                    .as_deref()
+                    .and_then(|tmux| tmux.rsplit_once('.').map(|(_, pane)| pane.to_string()))
+                    .unwrap_or_else(|| format!("(pid {}, no tmux pane)", record.pid)),
+            );
+        }
+    }
+    None
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClaudeSessionRecord {
+    pid: u32,
+    session_id: String,
+    proc_start: String,
+    tmux: Option<String>,
+}
+
+fn claude_session_records(session: &str) -> Vec<ClaudeSessionRecord> {
+    pij_harnesses::claude_homes()
+        .iter()
+        .filter_map(|home| std::fs::read_dir(home.join("sessions")).ok())
+        .flatten()
+        .filter_map(std::result::Result::ok)
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
+        .filter_map(|entry| std::fs::read(entry.path()).ok())
+        .filter_map(|bytes| serde_json::from_slice::<ClaudeSessionRecord>(&bytes).ok())
+        .filter(|record| record.session_id == session)
+        .collect()
+}
+
 pub(super) async fn revive_seat(
     State(state): State<AppState>,
     body: std::result::Result<Json<ReviveRequest>, JsonRejection>,
@@ -146,7 +260,15 @@ pub(super) async fn revive_seat(
         }
         Err(error) => return internal(COMMAND, error),
     };
+    // Plan 156 rule 3: revive resumes the recorded conversation. Decided after
+    // the liveness refusals and before any write, so every refusal leaves the
+    // seat exactly as it was.
+    let resume;
     let receipt = if prior.tombstoned_at.is_some() {
+        resume = match resume_decision(&state, &prior, request.fresh).await {
+            Ok(resume) => resume,
+            Err(refusal) => return *refusal,
+        };
         match tombstone_receipt(state.services.spine.as_ref(), &prior.id, None, Some(&prior)).await
         {
             Ok(Some(receipt)) => Receipt {
@@ -244,6 +366,10 @@ pub(super) async fn revive_seat(
             }
             Some(actor.id)
         };
+        resume = match resume_decision(&state, &prior, request.fresh).await {
+            Ok(resume) => resume,
+            Err(refusal) => return *refusal,
+        };
         let reason = if actor.is_some() {
             "revive-assumed-dead"
         } else {
@@ -313,6 +439,7 @@ pub(super) async fn revive_seat(
         accept_inbound: prior.cross_session_inbound_accept == Some(true),
         wait_seconds: None,
         no_wait: true,
+        resume,
     };
     launch_seat_locked(
         &state,

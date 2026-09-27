@@ -132,6 +132,9 @@ pub struct SpawnRequest {
     /// Return after dispatch without waiting for registration.
     #[serde(default)]
     pub no_wait: bool,
+    /// Harness-native conversation to resume; set by revive (plan 156).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume: Option<String>,
 }
 
 /// Additive spawn result: launch dispatch and process binding are separate facts.
@@ -177,6 +180,9 @@ pub struct ReviveRequest {
     /// Operator evidence required with `assume_dead`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence: Option<String>,
+    /// Launch a new, blank conversation instead of resuming the recorded one.
+    #[serde(default)]
+    pub fresh: bool,
 }
 
 /// Request accepted by `POST /v1/send`.

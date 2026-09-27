@@ -1,0 +1,6 @@
+$ cargo test -p pij-daemon --test revive_http -- revive_resumes   (slice 1 applied, AC3 tests only)
+panicked at crates/daemon/tests/revive_http.rs:575:5: left: Bool(true) right: false
+{"command":"pij revive","data":{... "harness":"claude","id":"pij-child","pane":"%102","session":null ...},"ok":true}
+  -> revive launched a BLANK Claude and dropped harness_session while conversation 56206875 ran in pane %3
+$ cargo test -p pij-harnesses --lib -- resume_uses
+error[E0560]: struct `SpawnPlanInput` has no field named `resume`

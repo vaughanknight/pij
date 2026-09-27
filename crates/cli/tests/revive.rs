@@ -410,6 +410,7 @@ async fn shipped_revive_assumption_flags_authorize_parent_and_record_evidence() 
             "--assume-dead",
             "--evidence",
             "old pane killed; pid belongs to replacement",
+            "--fresh",
         ])
         .env("PIJ_SESSION_ID", "pij-parent")
         .env_remove("TMUX_PANE")

@@ -102,7 +102,9 @@ fn target() -> SeatDescriptor {
     seat
 }
 fn request() -> Value {
-    json!({"id":"pij-child","session":"fleet"})
+    // These seats record no conversation, so relaunching them is blank by
+    // definition — which plan 156 makes an explicit --fresh.
+    json!({"id":"pij-child","session":"fleet","fresh":true})
 }
 fn assumed_request(caller: &str) -> Value {
     let mut body = request();
@@ -547,4 +549,59 @@ async fn revive_assumption_publication_failure_cannot_retire_or_launch() {
     let body = post(&f, &assumed_request("pij-parent")).await;
     assert_eq!(body["ok"], false, "{body}");
     unchanged(&f, &prior, before).await;
+}
+
+/// Plan 156 AC3 — revive resumes the recorded conversation, and never forks it.
+#[tokio::test]
+async fn revive_resumes_the_recorded_conversation_unless_it_is_live_elsewhere() {
+    // Synthetic: the Claude session-record probe reads the real home read-only.
+    const SESSION: &str = "plan156-revive-fixture-session";
+    let running = ProcIdentity {
+        pid: 43_821,
+        proc_start: 20,
+    };
+    let f = fixture(Arc::new(FakeLiveness::new().with_proc(running))).await;
+    let mut prior = target();
+    prior.harness = Harness::Claude;
+    prior.harness_session = Some(SESSION.to_string());
+    f.services.registry.put(prior.clone()).await.unwrap();
+    let mut other = SeatDescriptor::new("pij-other", Harness::Claude, "/tmp");
+    other.pane = Some("%3".to_string());
+    other.proc = Some(running);
+    other.harness_session = Some(SESSION.to_string());
+    let since = f.services.registry.put(other.clone()).await.unwrap();
+    let resume = json!({"id":"pij-child","session":"fleet"});
+
+    let body = post(&f, &resume).await;
+    assert_eq!(body["ok"], false, "{body}");
+    assert!(
+        body["meta"].as_str().unwrap().contains("%3"),
+        "names the pane: {body}"
+    );
+    unchanged(&f, &prior, since).await;
+
+    other.harness_session = Some("another-conversation".to_string());
+    f.services.registry.put(other).await.unwrap();
+    let body = post(&f, &resume).await;
+    assert_eq!(body["ok"], true, "{body}");
+    let revived = f.services.registry.get(&prior.id).await.unwrap().unwrap();
+    assert_eq!(revived.harness_session.as_deref(), Some(SESSION));
+    let launch = f
+        .tmux
+        .calls()
+        .into_iter()
+        .find(|call| call.starts_with("new_window:"))
+        .expect("launched");
+    assert!(
+        launch.contains(&format!("\"--resume\", \"{SESSION}\"")),
+        "{launch}"
+    );
+
+    let mut blank = target();
+    blank.id = "pij-blank".into();
+    blank.pane = Some("%gone".to_string());
+    f.services.registry.put(blank).await.unwrap();
+    let body = post(&f, &json!({"id":"pij-blank","session":"fleet"})).await;
+    assert_eq!(body["ok"], false, "{body}");
+    assert!(body["meta"].as_str().unwrap().contains("--fresh"), "{body}");
 }

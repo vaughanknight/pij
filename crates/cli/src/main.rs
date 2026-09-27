@@ -259,6 +259,9 @@ enum Command {
         /// Explain the death evidence retained in the durable revive audit.
         #[arg(long, requires = "assume_dead")]
         evidence: Option<String>,
+        /// Launch a new, blank conversation instead of resuming the recorded one.
+        #[arg(long)]
+        fresh: bool,
     },
     /// Durably enqueue one message as the acting seat.
     #[command(
@@ -1971,6 +1974,7 @@ fn prepare_spawn_request(command: &Command) -> Result<Option<SpawnRequest>, PijE
         accept_inbound,
         wait_seconds: (!*no_wait).then_some(*wait_seconds),
         no_wait: *no_wait,
+        resume: None,
     }))
 }
 
@@ -2082,6 +2086,7 @@ fn prepare_revive_request(command: &Command) -> Result<Option<ReviveRequest>, Pi
         name,
         assume_dead,
         evidence,
+        fresh,
     } = command
     else {
         return Ok(None);
@@ -2108,6 +2113,7 @@ fn prepare_revive_request(command: &Command) -> Result<Option<ReviveRequest>, Pi
         caller: caller_context(),
         assume_dead: *assume_dead,
         evidence: evidence.clone(),
+        fresh: *fresh,
     }))
 }
 

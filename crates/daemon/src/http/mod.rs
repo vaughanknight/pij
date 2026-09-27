@@ -1051,6 +1051,7 @@ async fn launch_seat_locked(
         resolved_provider: None,
         effort: request.effort,
         accept_inbound: request.accept_inbound,
+        resume: request.resume.clone(),
     }) {
         Ok(plan) => plan,
         Err(error) => return refused(command_name, error),
@@ -1138,6 +1139,9 @@ async fn launch_seat_locked(
     descriptor.model = plan.model;
     descriptor.provider = plan.provider;
     descriptor.effort = plan.effort;
+    // A resumed launch keeps its conversation key, so no later registration can
+    // mistake the relaunch for a different conversation (plan 156 rule 3).
+    descriptor.harness_session = request.resume;
     if let Err(write_error) = state.services.registry.put(descriptor.clone()).await {
         let rollback = state.services.tmux.kill(&pane.id).await;
         let message = match rollback {

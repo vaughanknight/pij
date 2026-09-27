@@ -276,6 +276,7 @@ async fn emitted_spawn_argv_is_the_stamp_that_opens_the_real_transport() {
             resolved_provider: None,
             effort: None,
             accept_inbound,
+            resume: None,
         })
         .expect("Claude spawn plan")
     };
