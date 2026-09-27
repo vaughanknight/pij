@@ -800,3 +800,43 @@ bounce-rs:
     [ -n "$new" ] && [ "$new" != "$old" ] || { echo "bounce-rs: daemon did not come back (old=$old new=$new)" >&2; exit 1; }
     "$HOME/.npm-global/bin/pij-rs" ping
     echo "bounce-rs: pid $old -> $new"
+
+# Start the production rs daemon at login (launchd LaunchAgent, RunAtLoad only).
+# No KeepAlive on purpose: bounce-rs kills and relaunches by port, and a KeepAlive
+# respawn would race it for 7461. Env mirrors bounce-rs; PATH is captured from this shell.
+rs-autostart:
+    #!/usr/bin/env sh
+    set -eu
+    label=dev.pij.rs-daemon
+    plist="$HOME/Library/LaunchAgents/$label.plist"
+    mkdir -p "$HOME/Library/LaunchAgents"
+    cat > "$plist" <<PLIST
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0"><dict>
+      <key>Label</key><string>$label</string>
+      <key>ProgramArguments</key><array><string>$HOME/.npm-global/bin/pij-rs</string><string>daemon</string></array>
+      <key>EnvironmentVariables</key><dict>
+        <key>PATH</key><string>$PATH</string>
+        <key>PIJ_RETIRED_HARNESSES</key><string>${PIJ_RETIRED_HARNESSES-pi}</string>
+        <key>PIJ_TELEGRAM_ENV</key><string>${PIJ_TELEGRAM_ENV:-$HOME/.pij/telegram.env}</string>
+      </dict>
+      <key>RunAtLoad</key><true/>
+      <key>StandardOutPath</key><string>$HOME/.pij-rs/daemon.log</string>
+      <key>StandardErrorPath</key><string>$HOME/.pij-rs/daemon.log</string>
+    </dict></plist>
+    PLIST
+    plutil -lint "$plist"
+    # Register without starting now if a daemon already holds 7461 (it would just fail to bind).
+    launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+    if lsof -nP -iTCP:7461 -sTCP:LISTEN -t >/dev/null; then
+      echo "rs-autostart: installed $plist (daemon already running; takes effect at next login)"
+    else
+      launchctl bootstrap "gui/$(id -u)" "$plist" && echo "rs-autostart: installed and started $label"
+    fi
+
+# Remove the login LaunchAgent. Does not stop a running daemon.
+rs-autostart-off:
+    launchctl bootout "gui/$(id -u)/dev.pij.rs-daemon" 2>/dev/null || true
+    rm -f "$HOME/Library/LaunchAgents/dev.pij.rs-daemon.plist"
+    @echo "rs-autostart: removed"
