@@ -178,6 +178,9 @@ impl TmuxAdapter {
 
     fn command(&self) -> Command {
         let mut command = Command::new(&self.binary);
+        // `-u`: without a UTF-8 locale (a launchd-started daemon has no LANG)
+        // tmux 3.6 rewrites the tab in every `-p`/`-F` answer as `_`.
+        command.arg("-u");
         if let Some(server) = &self.server {
             command.args(["-L", server]);
         }
@@ -1506,6 +1509,55 @@ mod tests {
     }
 
     use pij_core::ports::LaunchCommand;
+
+    /// A launchd-started daemon has no LANG, and tmux 3.6 then rewrites the tab
+    /// in every `-p`/`-F` answer as `_`, so each pane read failed to parse
+    /// (2026-09-27). The adapter's own command must not depend on the locale.
+    #[test]
+    fn tmux_output_keeps_tabs_without_a_utf8_locale() {
+        if !std::process::Command::new("tmux")
+            .arg("-V")
+            .output()
+            .is_ok_and(|o| o.status.success())
+        {
+            return;
+        }
+        let server = format!("pij-utf8-{}", std::process::id());
+        let start = std::process::Command::new("tmux")
+            .args([
+                "-L",
+                &server,
+                "-f",
+                "/dev/null",
+                "new-session",
+                "-d",
+                "-s",
+                "t",
+                "cat",
+            ])
+            .status()
+            .expect("start isolated tmux");
+        assert!(start.success());
+        let mut adapter = super::TmuxAdapter::new(std::env::temp_dir());
+        adapter.server = Some(server.clone());
+        let output = adapter
+            .command()
+            .env_clear()
+            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .args([
+                "display-message",
+                "-p",
+                "-t",
+                "t",
+                "#{session_name}\t#{session_name}",
+            ])
+            .output()
+            .expect("tmux display-message");
+        let _ = std::process::Command::new("tmux")
+            .args(["-L", &server, "kill-server"])
+            .status();
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "t\tt\n");
+    }
 
     #[test]
     fn command_reaches_tmux_as_discrete_argv() {
