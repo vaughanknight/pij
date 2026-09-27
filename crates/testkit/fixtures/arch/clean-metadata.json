@@ -239,6 +239,10 @@
           "kind": null
         },
         {
+          "name": "hyper-util",
+          "kind": null
+        },
+        {
           "name": "pij-core",
           "kind": null
         },
@@ -329,10 +333,6 @@
           "kind": null
         },
         {
-          "name": "time",
-          "kind": null
-        },
-        {
           "name": "pij-core",
           "kind": null
         },
@@ -357,6 +357,10 @@
           "kind": null
         },
         {
+          "name": "time",
+          "kind": null
+        },
+        {
           "name": "tokio",
           "kind": null
         },
@@ -374,6 +378,10 @@
         },
         {
           "name": "pij-testkit",
+          "kind": "dev"
+        },
+        {
+          "name": "time",
           "kind": "dev"
         }
       ]
