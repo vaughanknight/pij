@@ -1772,6 +1772,20 @@ mod tests {
     }
 
     #[cfg(unix)]
+    /// Hook lines lead with an RFC 3339 UTC stamp (plan 156); assert it, drop it.
+    fn unstamped(log: &str) -> String {
+        log.lines()
+            .map(|line| {
+                let (stamp, rest) = line.split_once(' ').expect("stamped line");
+                assert!(
+                    stamp.len() == 20 && stamp.ends_with('Z') && stamp.as_bytes()[10] == b'T',
+                    "{line}"
+                );
+                format!("{rest}\n")
+            })
+            .collect()
+    }
+
     #[test]
     fn installed_script_is_executable_and_silent_without_tmux() {
         use std::os::unix::fs::PermissionsExt;
@@ -1798,7 +1812,7 @@ mod tests {
         assert!(output.stdout.is_empty());
         assert!(output.stderr.is_empty());
         assert_eq!(
-            fs::read_to_string(state_dir.join("hook.log")).expect("hook log"),
+            unstamped(&fs::read_to_string(state_dir.join("hook.log")).expect("hook log")),
             "skip:no-tmux\n"
         );
         assert_eq!(
@@ -1875,7 +1889,7 @@ mod tests {
         assert!(output.stdout.is_empty());
         assert!(output.stderr.is_empty());
         assert_eq!(
-            fs::read_to_string(state_dir.join("hook.log")).expect("hook log"),
+            unstamped(&fs::read_to_string(state_dir.join("hook.log")).expect("hook log")),
             "refused:adopt pane=%42 reason=permission denied second line\n"
         );
     }

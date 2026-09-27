@@ -173,6 +173,77 @@ pub fn local_utc_offset_minutes() -> Result<i32> {
     })
 }
 
+/// One Claude process's own record, `<claude home>/sessions/<pid>.json`.
+///
+/// Claude writes it for every interactive process and rewrites `sessionId` when
+/// the conversation changes, including a named `--resume <title>`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClaudeSessionRecord {
+    /// The Claude process.
+    pub pid: u32,
+    /// The conversation that process is running.
+    pub session_id: String,
+    /// The process start, UTC, as Claude recorded it.
+    pub proc_start: String,
+    /// `session:@window.%pane`, when Claude ran inside tmux.
+    pub tmux: Option<String>,
+}
+
+impl ClaudeSessionRecord {
+    /// The tmux pane id, e.g. `%3`.
+    #[must_use]
+    pub fn pane(&self) -> Option<&str> {
+        self.tmux.as_deref()?.rsplit_once('.').map(|(_, pane)| pane)
+    }
+}
+
+/// Every readable Claude process record across `homes`.
+#[must_use]
+pub fn claude_session_records(homes: &[std::path::PathBuf]) -> Vec<ClaudeSessionRecord> {
+    homes
+        .iter()
+        .filter_map(|home| std::fs::read_dir(home.join("sessions")).ok())
+        .flatten()
+        .filter_map(std::result::Result::ok)
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
+        .filter_map(|entry| std::fs::read(entry.path()).ok())
+        .filter_map(|bytes| {
+            let record: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+            let text = |key: &str| record.get(key)?.as_str().map(str::to_string);
+            Some(ClaudeSessionRecord {
+                pid: u32::try_from(record.get("pid")?.as_u64()?).ok()?,
+                session_id: text("sessionId")?,
+                proc_start: text("procStart")?,
+                tmux: text("tmux"),
+            })
+        })
+        .collect()
+}
+
+/// The conversation `host` is running, derived from its own record (plan 156
+/// ruling 2). Only a record whose pid IS `host` and whose recorded start matches
+/// `host`'s observed start counts, so a stale file for a recycled pid derives
+/// nothing.
+#[must_use]
+pub fn claude_session_of(
+    homes: &[std::path::PathBuf],
+    host: pij_core::model::ProcIdentity,
+    utc_offset_minutes: i32,
+) -> Option<String> {
+    claude_session_records(homes)
+        .into_iter()
+        .find(|record| {
+            record.pid == host.pid
+                && process_start_matches_utc_record(
+                    &record.proc_start,
+                    host.proc_start,
+                    utc_offset_minutes,
+                )
+                .unwrap_or(false)
+        })
+        .map(|record| record.session_id)
+}
+
 /// Compare Claude's UTC `procStart` row with the local-wall-time identity from [`ProcLiveness`].
 ///
 /// # Errors
@@ -258,6 +329,35 @@ fn parse_error(row: &str) -> PijError {
 
 #[cfg(test)]
 mod tests {
+    /// Plan 156 ruling 2: a session is derived only from the observed process's
+    /// own record; a record whose start disagrees (a recycled pid) derives nothing.
+    #[test]
+    fn claude_session_of_requires_the_record_to_describe_the_observed_process() {
+        let home = pij_testkit::fresh_dir("pij-claude-session-of");
+        std::fs::create_dir_all(home.join("sessions")).unwrap();
+        std::fs::write(
+            home.join("sessions/43821.json"),
+            r#"{"pid":43821,"sessionId":"S-1","procStart":"Sun Sep 27 00:21:47 2026","tmux":"main:@3.%3"}"#,
+        )
+        .unwrap();
+        let homes = [home.clone()];
+        let host = |proc_start| pij_core::model::ProcIdentity {
+            pid: 43_821,
+            proc_start,
+        };
+        // Local 10:21:47 at +10:00 is the recorded 00:21:47 UTC.
+        assert_eq!(
+            super::claude_session_of(&homes, host(20_260_927_102_147), 600).as_deref(),
+            Some("S-1")
+        );
+        assert_eq!(
+            super::claude_session_of(&homes, host(20_260_927_102_148), 600),
+            None
+        );
+        assert_eq!(super::claude_session_records(&homes)[0].pane(), Some("%3"));
+        let _ = std::fs::remove_dir_all(home);
+    }
+
     use std::collections::VecDeque;
     use std::io;
     use std::os::unix::process::ExitStatusExt;

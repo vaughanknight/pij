@@ -24,6 +24,7 @@ PARSED=$(printf '%s' "$input" | jq -r '
   "MODEL=\((.model.display_name // .model.id // "?") | @sh)\n" +
   "CWD=\((.workspace.current_dir // ".") | @sh)\n" +
   "TRANSCRIPT=\((.transcript_path // "") | @sh)\n" +
+  "SESSION_ID=\((.session_id // "") | @sh)\n" +
   "EFFORT_INPUT=\((.effort_level // .effortLevel // (.effort | if type=="object" then .level elif type=="string" then . else "" end) // "") | @sh)\n" +
   "PCT_INT=\(($pct | round) | @sh)\n" +
   "USED=\((($size * $pct / 100) | floor) | @sh)\n" +
@@ -41,6 +42,7 @@ case "$CWD" in
   *) CWD=$(cd "$CWD" 2>/dev/null && pwd -P) || CWD=${PWD:-/} ;;
 esac
 TRANSCRIPT=${TRANSCRIPT:-}
+SESSION_ID=${SESSION_ID:-}
 EFFORT_INPUT=${EFFORT_INPUT:-}
 PCT_INT=${PCT_INT:-0}
 USED=${USED:-0}
@@ -94,11 +96,47 @@ if [ -n "${TMUX_PANE:-}" ] && [ -n "$PIJ_RS_BIN" ]; then
 fi
 PIJ_FMT=""
 if [ -n "$PIJID" ]; then
-  PIJ_FMT=" \\033[33mrs\\033[0m \\033[34m⛓ $PIJID\\033[0m"
+  PIJ_FMT=" \033[33mrs\033[0m \033[34m⛓ $PIJID\033[0m"
 elif command -v pij >/dev/null 2>&1; then
-  PIJID=$(PIJ_DAEMON_GENERATION=legacy pij whoami 2>/dev/null | sed -n 's/^pij session:[[:space:]]*\([^[:space:]]*\).*/\1/p')
-  [ -z "$PIJID" ] && PIJID=$(PIJ_DAEMON_GENERATION=legacy pij whoami --json 2>/dev/null | jq -r '.id // empty' 2>/dev/null)
-  [ -n "$PIJID" ] && PIJ_FMT=" \\033[2mlegacy\\033[0m \\033[34m⛓ $PIJID\\033[0m"
+  LEGACYID=$(PIJ_DAEMON_GENERATION=legacy pij whoami 2>/dev/null | sed -n 's/^pij session:[[:space:]]*\([^[:space:]]*\).*/\1/p')
+  [ -z "$LEGACYID" ] && LEGACYID=$(PIJ_DAEMON_GENERATION=legacy pij whoami --json 2>/dev/null | jq -r '.id // empty' 2>/dev/null)
+  [ -n "$LEGACYID" ] && PIJ_FMT=" \033[2mlegacy\033[0m \033[34m⛓ $LEGACYID\033[0m"
+fi
+
+# The heal loop (plan 156 rule 4). An rs miss (that legacy does not own either),
+# or an rs seat recording a different conversation, fires ONE detached adopt per
+# pane per 15 s. The daemon derives the conversation itself; the payload's
+# session_id only cross-checks it. Rendering never waits on the adopt.
+if [ -n "${TMUX_PANE:-}" ] && [ -n "$PIJ_RS_BIN" ] && [ -n "$SESSION_ID" ] \
+  && { [ -n "$PIJID" ] || [ -z "${LEGACYID:-}" ]; }; then
+  case "$RS_OUTPUT" in
+    *"\"session\":\"$SESSION_ID\""*) ;;
+    *)
+      HEAL_DIR=${PIJ_RS_STATE_DIR:-${HOME:-/tmp}/.pij-rs}/heal
+      HEAL_KEY=$HEAL_DIR/pane-${TMUX_PANE#%}
+      mkdir -p "$HEAL_DIR" 2>/dev/null
+      if mkdir "$HEAL_KEY.lock" 2>/dev/null; then
+        NOW=$(date +%s)
+        LAST=0
+        [ -f "$HEAL_KEY.last" ] && IFS= read -r LAST <"$HEAL_KEY.last"
+        case "$LAST" in ''|*[!0-9]*) LAST=0 ;; esac
+        if [ $((NOW - LAST)) -ge 15 ]; then
+          printf '%s\n' "$NOW" >"$HEAL_KEY.last"
+          (
+            if OUT=$("$PIJ_RS_BIN" adopt "$TMUX_PANE" --harness claude --harness-session "$SESSION_ID" 2>&1); then
+              RESULT="healed"
+            else
+              RESULT="refused reason=$(printf '%s' "$OUT" | tr '\n' ' ')"
+            fi
+            printf '%s statusline:%s pane=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$RESULT" "$TMUX_PANE" \
+              >>"${HEAL_DIR%/heal}/hook.log" 2>/dev/null
+          ) </dev/null >/dev/null 2>&1 &
+        fi
+        rmdir "$HEAL_KEY.lock" 2>/dev/null
+      fi
+      PIJ_FMT="$PIJ_FMT \033[33m⛓ registering…\033[0m"
+      ;;
+  esac
 fi
 
 EFFORT=""

@@ -143,6 +143,9 @@ pub struct Services {
     store_pools: [pij_store::StorePool; 2],
     /// Machine-local spawn policy, shared with clients through daemon health.
     pub retired_harnesses: Arc<[Harness]>,
+    /// Claude configuration homes whose `sessions/<pid>.json` records the
+    /// daemon reads as each Claude process's own report of its conversation.
+    pub claude_homes: Arc<[std::path::PathBuf]>,
     /// Whether this daemon is running entirely on fakes.
     pub offline: bool,
 }
@@ -468,6 +471,7 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         status,
         store_pools,
         retired_harnesses: config.retired_harnesses.clone().into(),
+        claude_homes: pij_harnesses::claude_homes().into(),
         offline: config.is_fully_offline(),
     })
 }

@@ -1,0 +1,13 @@
+Slice 2b (ruling 2 + AC4) — green
+$ cargo test -p pij-harnesses --test claude_heal_scripts -> ok (2.9s)
+  3 renders in one window: each < 2s with a 3s adopt in flight, each shows "⛓ registering…", exactly 1 adopt
+  hook with no daemon returns < 2s; adopts after daemon-up appears; every hook.log line RFC 3339 stamped
+$ cargo test -p pij-harnesses --lib -- claude_session_of -> ok (procStart off by 1s derives nothing)
+$ cargo test -p pij-daemon --lib -- identity_tests -> 34 passed (AC1 now derives from the record; flag mismatch and
+  non-Claude out-of-tree claims refuse)
+Measured render cost, live daemon, seat hit (the every-render path), median of 15:
+  old statusline 30-31 ms, new 32 ms  (+1-2 ms). A miss adds one mkdir/date and one detached fork.
+Design catch from the existing statusline test: an rs miss that the LEGACY daemon owns shows legacy and does
+not heal (no split-brain adopt into rs); an rs hit with a stale session keeps showing the id plus "registering…".
+Hook log lines are now stamped; the two existing hook tests assert the stamp and compare the rest.
+$ cargo test --workspace -> no FAILED; clippy -D warnings -> 0; fmt --check -> clean

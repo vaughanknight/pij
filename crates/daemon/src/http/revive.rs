@@ -173,7 +173,10 @@ async fn conversation_live_elsewhere(
         return None;
     }
     let offset = pij_harnesses::proc::local_utc_offset_minutes().ok()?;
-    for record in claude_session_records(session) {
+    for record in pij_harnesses::proc::claude_session_records(&state.services.claude_homes)
+        .into_iter()
+        .filter(|record| record.session_id == session)
+    {
         let Ok(Some(observed)) = state.services.liveness.proc_start(record.pid).await else {
             continue;
         };
@@ -184,38 +187,13 @@ async fn conversation_live_elsewhere(
         )
         .unwrap_or(false)
         {
-            return Some(
-                record
-                    .tmux
-                    .as_deref()
-                    .and_then(|tmux| tmux.rsplit_once('.').map(|(_, pane)| pane.to_string()))
-                    .unwrap_or_else(|| format!("(pid {}, no tmux pane)", record.pid)),
-            );
+            return Some(record.pane().map_or_else(
+                || format!("(pid {}, no tmux pane)", record.pid),
+                str::to_string,
+            ));
         }
     }
     None
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ClaudeSessionRecord {
-    pid: u32,
-    session_id: String,
-    proc_start: String,
-    tmux: Option<String>,
-}
-
-fn claude_session_records(session: &str) -> Vec<ClaudeSessionRecord> {
-    pij_harnesses::claude_homes()
-        .iter()
-        .filter_map(|home| std::fs::read_dir(home.join("sessions")).ok())
-        .flatten()
-        .filter_map(std::result::Result::ok)
-        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
-        .filter_map(|entry| std::fs::read(entry.path()).ok())
-        .filter_map(|bytes| serde_json::from_slice::<ClaudeSessionRecord>(&bytes).ok())
-        .filter(|record| record.session_id == session)
-        .collect()
 }
 
 pub(super) async fn revive_seat(
