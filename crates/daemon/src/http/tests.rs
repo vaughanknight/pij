@@ -1210,7 +1210,12 @@ pub(super) async fn spawn(router: Router) -> (SocketAddr, tokio::task::JoinHandl
         .expect("bind");
     let addr = listener.local_addr().expect("address");
     let joined = tokio::spawn(async move {
-        axum::serve(listener, router).await.expect("serve");
+        axum::serve(
+            listener,
+            router.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .await
+        .expect("serve");
     });
     (addr, joined)
 }

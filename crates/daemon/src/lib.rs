@@ -825,11 +825,15 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
     );
     let (shutdown, shutdown_rx) = tokio::sync::oneshot::channel();
     let joined = tokio::spawn(async move {
-        let _ = axum::serve(listener, router)
-            .with_graceful_shutdown(async {
-                let _ = shutdown_rx.await;
-            })
-            .await;
+        // Connect info lets adopt observe which process dialled it (plan 156).
+        let _ = axum::serve(
+            listener,
+            router.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .with_graceful_shutdown(async {
+            let _ = shutdown_rx.await;
+        })
+        .await;
     });
 
     Ok(Daemon {

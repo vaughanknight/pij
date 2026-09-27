@@ -229,7 +229,11 @@ async fn reap_recycled_pid_requires_recorded_pane_absence_and_never_signals_repl
             .unwrap();
         assert_eq!(receipt.reaped.len(), usize::from(!pane_present));
         assert_eq!(live.proc_start(proc.pid).await.unwrap(), Some(observed));
-        assert!(tmux.calls().iter().all(|call| call == "list_panes"));
+        assert!(
+            tmux.calls()
+                .iter()
+                .all(|call| call == "list_panes" || call.starts_with("pane_process:"))
+        );
         if !pane_present {
             assert_eq!(receipt.candidates[0].process, "recycled");
         }
@@ -633,4 +637,69 @@ async fn death_sweep_isolates_failed_send_and_audit_from_next_obituary() {
             .is_none(),
         "the first send must actually fail"
     );
+}
+
+/// Plan 156 AC2 — a reused pane id is not the pane the seat lived in.
+///
+/// After a reboot tmux restarts pane numbering, so the recorded `%N` exists again
+/// under an unrelated process. Pane presence stays a veto only while the pane's
+/// root process predates the seat's own (the harness exited inside the pane it
+/// was bound in). A pane whose root started AFTER the seat's process cannot have
+/// hosted it: it is absent for this seat, whatever its number.
+#[tokio::test]
+async fn reap_dead_process_on_a_reincarnated_pane_is_a_candidate_but_an_older_pane_still_vetoes() {
+    use pij_core::model::PaneProcess;
+    for (pane_root_start_delta, reaped) in [(1_i64, true), (0, false), (-1, false)] {
+        let (services, _store) = services().await;
+        let expected = seat();
+        let recorded = expected.proc.unwrap();
+        services.registry.put(expected.clone()).await.unwrap();
+        let pane = expected.pane.clone().unwrap();
+        let pane_root = ProcIdentity {
+            pid: 777,
+            proc_start: recorded
+                .proc_start
+                .checked_add_signed(pane_root_start_delta)
+                .unwrap(),
+        };
+        // The seat's own pid is dead; only the new pane's root process lives.
+        let live = FakeLiveness::new().with_proc(pane_root);
+        let tmux = FakeTmux::new()
+            .with_pane(Pane {
+                id: pane.clone(),
+                session: "private".to_string(),
+                window: "private".to_string(),
+                title: String::new(),
+                cursor_x: None,
+                cursor_y: None,
+            })
+            .with_pane_process(
+                &pane,
+                PaneProcess {
+                    pid: pane_root.pid,
+                    cwd: "/elsewhere".to_string(),
+                },
+            );
+        let receipt = reap(services.registry.as_ref(), &live, &tmux, false)
+            .await
+            .unwrap();
+        assert_eq!(
+            receipt.reaped.len(),
+            usize::from(reaped),
+            "pane root start delta {pane_root_start_delta}"
+        );
+        if reaped {
+            assert_eq!(receipt.candidates[0].pane, "reincarnated");
+            assert_eq!(
+                receipt.candidates[0].reason,
+                "process-dead-and-pane-reincarnated"
+            );
+        }
+        assert!(
+            tmux.calls()
+                .iter()
+                .all(|call| call == "list_panes" || call.starts_with("pane_process:")),
+            "observation only: never kill, send, or capture"
+        );
+    }
 }

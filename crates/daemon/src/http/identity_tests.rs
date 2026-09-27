@@ -17,7 +17,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use pij_core::model::{Envelope, Pane, PaneProcess, ProcIdentity, SeatDescriptor};
-use pij_core::ports::{Registry, SeatFilter};
+use pij_core::ports::{Registry, SeatFilter, Spine as _};
 use pij_testkit::fakes::{FakeLiveness, FakeQueue, FakeRegistry, FakeSpine, FakeTmux};
 
 use super::tests::{config, spawn, test_services};
@@ -38,6 +38,7 @@ const FOLDER: &str = "/abs/tree";
 struct World {
     addr: SocketAddr,
     registry: Arc<FakeRegistry>,
+    spine: Arc<FakeSpine>,
     server: tokio::task::JoinHandle<()>,
 }
 
@@ -47,10 +48,16 @@ struct World {
 /// daemon must DERIVE the identity facts it stores. A caller-asserted pid is a
 /// claim, and this platform has already paid for treating one as evidence.
 async fn world(registry: Arc<FakeRegistry>, pane_alive: bool) -> World {
+    world_on(registry, pane_alive, PID).await
+}
+
+/// [`world`], with the pane running `pid`.
+async fn world_on(registry: Arc<FakeRegistry>, pane_alive: bool, pid: u32) -> World {
+    let spine = Arc::new(FakeSpine::new());
     let mut services = test_services(
         registry.clone(),
         Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
-        Arc::new(FakeSpine::new()),
+        spine.clone(),
     )
     .await;
     let mut tmux = FakeTmux::new();
@@ -67,20 +74,21 @@ async fn world(registry: Arc<FakeRegistry>, pane_alive: bool) -> World {
             .with_pane_process(
                 PANE,
                 PaneProcess {
-                    pid: PID,
+                    pid,
                     cwd: FOLDER.to_string(),
                 },
             );
     }
     services.tmux = Arc::new(tmux);
     services.liveness = Arc::new(FakeLiveness::new().with_proc(ProcIdentity {
-        pid: PID,
+        pid,
         proc_start: PROC_START,
     }));
     let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
     World {
         addr,
         registry,
+        spine,
         server,
     }
 }
@@ -1689,4 +1697,281 @@ async fn adopt_binds_the_pane_process_and_ignores_a_claimed_pid() {
     );
 
     server.abort();
+}
+
+/// Plan 156 AC2 — a pane id alone is neither identity nor liveness.
+///
+/// The 2026-09-27 reboot: tmux restarted pane numbering, a DIFFERENT Claude
+/// landed on `%1`, and `whoami --pane %1` answered `pij-monthly-nenneke`, whose
+/// recorded `(pid, proc_start)` died with the old boot. Pane ids and pids both
+/// reset at boot; only the recorded process identity breaks the tie.
+#[tokio::test]
+async fn recycled_pane_with_dead_recorded_process_is_neither_whoami_answer_nor_adopt_incumbent() {
+    let mut ghost = SeatDescriptor::new("pij-ghost", pij_core::model::Harness::Claude, FOLDER);
+    ghost.pane = Some(PANE.to_string());
+    // Dead: FakeLiveness knows only the live pane process (PID).
+    ghost.proc = Some(ProcIdentity {
+        pid: 60_798,
+        proc_start: 20_260_924_170_005,
+    });
+    let registry = Arc::new(FakeRegistry::new().with_seat(ghost));
+    let world = world(registry.clone(), true).await;
+
+    let response = reqwest::Client::new()
+        .get(format!(
+            "http://{}/v1/whoami?pane={PANE_ENCODED}",
+            world.addr
+        ))
+        .bearer_auth("key")
+        .send()
+        .await
+        .expect("whoami");
+    assert_ne!(
+        response.status(),
+        reqwest::StatusCode::OK,
+        "a reused pane id must not name a seat whose process is gone"
+    );
+    let refusal = refusal_envelope(response).await;
+    assert!(
+        refusal
+            .meta
+            .as_deref()
+            .unwrap_or_default()
+            .contains("pij-ghost"),
+        "the miss names the dead seat so an operator can see why: {:?}",
+        refusal.meta
+    );
+
+    let response = adopt(world.addr, &["adopt", PANE, "--harness", "claude"]).await;
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let adopted: Envelope<SeatDescriptor> = response.json().await.expect("adopt envelope");
+    let adopted = adopted.data.expect("adopt returns the descriptor");
+    assert_ne!(
+        adopted.id.as_str(),
+        "pij-ghost",
+        "adopt must not inherit a seat whose recorded process is dead"
+    );
+    let ghost = registry
+        .get(&"pij-ghost".into())
+        .await
+        .expect("read ghost")
+        .expect("ghost row kept");
+    assert_eq!(
+        ghost.proc.map(|proc| proc.pid),
+        Some(60_798),
+        "the dead seat's row is not rewritten by an unrelated adopt"
+    );
+
+    world.server.abort();
+}
+
+/// Plan 156 AC1 + ruling 1 — a resumed Claude conversation gets its own seat back.
+///
+/// The session id arrives from the status line or SessionStart hook, both children
+/// of the pane's Claude process. It is accepted only when the daemon OBSERVES the
+/// calling connection's process descending from that pane's process — here the
+/// test process itself stands as the pane's Claude, so the real lsof + ps path
+/// runs. A caller outside the tree is refused and nothing is written. Named
+/// resumes (`--resume prime`) need no case of their own: the payload carries the
+/// resolved id.
+#[tokio::test]
+async fn resumed_claude_session_reclaims_its_tombstoned_seat_only_from_its_own_process_tree() {
+    const SESSION: &str = "56206875-f7f5-44a6-8617-82b9804f76c7";
+    let seed = || {
+        let mut seat = SeatDescriptor::new(
+            "pij-future-cicada",
+            pij_core::model::Harness::Claude,
+            FOLDER,
+        );
+        seat.pane = Some("%3".into());
+        seat.proc = Some(ProcIdentity {
+            pid: 60_798,
+            proc_start: 20_260_924_170_005,
+        });
+        seat.harness_session = Some(SESSION.into());
+        seat.parent = Some("pij-far-jackal".into());
+        seat.tombstoned_at = Some(1);
+        seat.tombstone_reason = Some("observed-dead".into());
+        Arc::new(FakeRegistry::new().with_seat(seat))
+    };
+    let argv = [
+        "adopt",
+        PANE,
+        "--harness",
+        "claude",
+        "--harness-session",
+        SESSION,
+    ];
+
+    // Outside the tree: the pane runs an unrelated pid, so the claim is refused.
+    let registry = seed();
+    let stranger = world(registry.clone(), true).await;
+    let refusal = refusal_envelope(adopt(stranger.addr, &argv).await).await;
+    assert!(
+        refusal
+            .meta
+            .as_deref()
+            .unwrap_or_default()
+            .contains("process tree"),
+        "{:?}",
+        refusal.meta
+    );
+    assert!(
+        live_seats(&registry).await.is_empty(),
+        "nothing was written"
+    );
+    stranger.server.abort();
+
+    // Inside the tree: same conversation, different pane, same seat.
+    let registry = seed();
+    let own = world_on(registry.clone(), true, std::process::id()).await;
+    let response = adopt(own.addr, &argv).await;
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let seats = live_seats(&registry).await;
+    assert_eq!(seats.len(), 1);
+    let row = &seats[0];
+    assert_eq!(
+        row.id.as_str(),
+        "pij-future-cicada",
+        "no new name is minted"
+    );
+    assert_eq!(row.pane.as_deref(), Some(PANE));
+    assert_eq!(row.harness_session.as_deref(), Some(SESSION));
+    assert_eq!(
+        row.parent.as_ref().map(SeatId::as_str),
+        Some("pij-far-jackal")
+    );
+    let resumed: Vec<_> = own
+        .spine
+        .tail(None, pij_core::model::Seq(0))
+        .await
+        .expect("events")
+        .into_iter()
+        .filter(|event| event.kind == "seat.resumed")
+        .collect();
+    assert_eq!(resumed.len(), 1, "exactly one seat.resumed");
+    own.server.abort();
+}
+
+/// Plan 156 AC6 — operator reclaim for continuity that cannot heal by itself.
+///
+/// Cicada's recorded conversation was overwritten by a blank revive, so no
+/// session evidence can lead back to it. `adopt <pane> --reclaim <seat>` is the
+/// operator's audited override, and every guard refuses by name before anything
+/// is written.
+#[tokio::test]
+async fn reclaim_is_guarded_by_caller_harness_and_death_then_audited() {
+    use pij_core::ports::Spine as _;
+    let registry = Arc::new(FakeRegistry::new());
+    let seat = |id: &str, pane: &str| {
+        let mut seat = SeatDescriptor::new(id, pij_core::model::Harness::Claude, FOLDER);
+        seat.pane = Some(pane.into());
+        seat
+    };
+    registry.put(seat("pij-far-jackal", "%9")).await.unwrap();
+    registry.put(seat("pij-stranger", "%8")).await.unwrap();
+    let mut cicada = seat("pij-future-cicada", "%5");
+    cicada.parent = Some("pij-far-jackal".into());
+    cicada.harness_session = Some("403664a7-blank".into());
+    cicada.proc = Some(ProcIdentity {
+        pid: 74_097,
+        proc_start: 20_260_927_102_601,
+    });
+    cicada.tombstoned_at = Some(1);
+    cicada.tombstone_reason = Some("observed-dead".into());
+    registry.put(cicada).await.unwrap();
+    let world = world(registry.clone(), true).await;
+    let reclaim = |caller_pane: &'static str, harness: &'static str, target: &'static str| {
+        reqwest::Client::new()
+            .post(format!("http://{}/v1/adopt", world.addr))
+            .bearer_auth("key")
+            .json(&serde_json::json!({
+                "argv": ["adopt", PANE, "--harness", harness, "--reclaim", target],
+                "caller": { "TMUX_PANE": caller_pane },
+            }))
+            .send()
+    };
+
+    for (caller, harness, expected) in [
+        ("%8", "claude", "recorded parent"),
+        ("%9", "codex", "harness"),
+    ] {
+        let refusal = refusal_envelope(
+            reclaim(caller, harness, "pij-future-cicada")
+                .await
+                .expect("reclaim"),
+        )
+        .await;
+        assert!(
+            refusal
+                .meta
+                .as_deref()
+                .unwrap_or_default()
+                .contains(expected),
+            "{expected}: {:?}",
+            refusal.meta
+        );
+    }
+    assert!(
+        registry
+            .get(&"pij-future-cicada".into())
+            .await
+            .unwrap()
+            .unwrap()
+            .tombstoned_at
+            .is_some(),
+        "refusals write nothing"
+    );
+
+    let response = reclaim("%9", "claude", "pij-future-cicada")
+        .await
+        .expect("reclaim");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let row = registry
+        .get(&"pij-future-cicada".into())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(row.tombstoned_at.is_none());
+    assert_eq!(row.pane.as_deref(), Some(PANE));
+    assert_eq!(row.proc.map(|proc| proc.pid), Some(PID));
+    let audit: Vec<_> = world
+        .spine
+        .tail(None, pij_core::model::Seq(0))
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|event| event.kind == "seat.reclaimed")
+        .collect();
+    assert_eq!(audit.len(), 1, "one audited reclaim");
+    let payload: serde_json::Value = serde_json::from_str(&audit[0].payload).unwrap();
+    assert_eq!(payload["caller"], "pij-far-jackal");
+    assert_eq!(payload["old_proc"]["pid"], 74_097);
+    assert_eq!(payload["new_proc"]["pid"], PID);
+
+    // A target whose process still runs is live elsewhere, even when tombstoned.
+    let mut alive = seat("pij-still-running", "%4");
+    alive.parent = Some("pij-far-jackal".into());
+    alive.proc = Some(ProcIdentity {
+        pid: PID,
+        proc_start: PROC_START,
+    });
+    alive.tombstoned_at = Some(1);
+    registry.put(alive).await.unwrap();
+    let refusal = refusal_envelope(
+        reclaim("%9", "claude", "pij-still-running")
+            .await
+            .expect("reclaim"),
+    )
+    .await;
+    assert!(
+        refusal
+            .meta
+            .as_deref()
+            .unwrap_or_default()
+            .contains("still running"),
+        "{:?}",
+        refusal.meta
+    );
+    world.server.abort();
 }

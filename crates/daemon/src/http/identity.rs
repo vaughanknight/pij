@@ -26,10 +26,13 @@
 
 use std::fmt::Write as _;
 
-use axum::extract::{Json, Query, State};
+use std::net::SocketAddr;
+
+use axum::Extension;
+use axum::extract::{ConnectInfo, Json, Query, State};
 use axum::http::StatusCode;
 use axum::response::Response;
-use pij_core::model::{Envelope, ErrorKind, SeatDescriptor, SeatId};
+use pij_core::model::{Envelope, ErrorKind, Liveness, SeatDescriptor, SeatId};
 use pij_core::ports::SeatFilter;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -264,6 +267,12 @@ pub(crate) struct AdoptArgs {
     /// True for the paneless `inbox register` form the ready route uses when a
     /// seat has no `$TMUX_PANE`.
     pub paneless: bool,
+    /// The harness-native conversation id, reported by a child of the pane's
+    /// harness process (plan 156 ruling 1). Believed only after the daemon
+    /// observes the calling connection descending from that process.
+    pub harness_session: Option<String>,
+    /// Operator reclaim target (plan 156 AC6).
+    pub reclaim: Option<String>,
 }
 
 /// Parse the argv the shim forwards.
@@ -317,6 +326,20 @@ pub(crate) fn parse_adopt_argv(argv: &[String]) -> Result<AdoptArgs, String> {
                     return Err("--role may be supplied only once".to_string());
                 }
             }
+            "--harness-session" => {
+                let session = tokens
+                    .next()
+                    .filter(|session| !session.trim().is_empty() && !session.starts_with("--"))
+                    .ok_or_else(|| "--harness-session needs a nonempty value".to_string())?;
+                args.harness_session = Some(session.to_string());
+            }
+            "--reclaim" => {
+                let target = tokens
+                    .next()
+                    .filter(|target| !target.trim().is_empty() && !target.starts_with("--"))
+                    .ok_or_else(|| "--reclaim needs a seat id".to_string())?;
+                args.reclaim = Some(target.to_string());
+            }
             // Output-shape flags. They change how a CLI prints, and this route
             // does not print — accepting them is honest, storing them is not.
             "--json" | "--export" => {}
@@ -351,6 +374,23 @@ pub(crate) fn parse_adopt_argv(argv: &[String]) -> Result<AdoptArgs, String> {
 /// spelled in one place and forgotten in another is how that happens.
 pub(crate) fn is_live(seat: &SeatDescriptor) -> bool {
     seat.tombstoned_at.is_none()
+}
+
+/// Has this seat's recorded process gone (dead, or its pid recycled)?
+///
+/// Plan 156 rule 2: a pane id alone is neither identity nor liveness. Pane ids
+/// and pids both reset at boot, so a row whose recorded `(pid, proc_start)` no
+/// longer exists is not the thing running in its pane, even when that pane's
+/// number exists again. Unknown evidence (no recorded process, a remote seat, a
+/// failed probe) never disqualifies: this only removes answers, never adds them.
+pub(crate) async fn process_gone(state: &AppState, seat: &SeatDescriptor) -> bool {
+    let Some(proc) = seat.proc.filter(|_| seat.machine.is_none()) else {
+        return false;
+    };
+    matches!(
+        pij_core::liveness::alive(proc, state.services.liveness.as_ref()).await,
+        Ok(Liveness::Dead { .. } | Liveness::Recycled { .. })
+    )
 }
 
 /// Refuse a dead seat, NAMING what killed it.
@@ -408,6 +448,141 @@ pub(crate) async fn refuse_tombstoned(
     Some(envelope(StatusCode::BAD_REQUEST, &answer))
 }
 
+/// The `--reclaim` guards: caller authority, harness, and death. Returns the
+/// authorised caller with the target row, or the refusal to send.
+///
+/// The refusal travels unboxed for the same reason [`Resolved`] keeps it inline:
+/// it is returned straight to axum, once per request.
+#[allow(clippy::result_large_err)]
+async fn reclaim_target(
+    state: &AppState,
+    caller: &CallerContext,
+    target: &str,
+    harness: &str,
+) -> Result<(SeatId, SeatDescriptor), Response> {
+    let actor =
+        match resolve_seat(state, ADOPT, caller.session_id.clone(), caller.pane.clone()).await {
+            Resolved::Seat(actor, _) => actor.id,
+            Resolved::Refusal(response) => return Err(response),
+        };
+    let seat = match state.services.registry.get(&SeatId::from(target)).await {
+        Ok(Some(seat)) => seat,
+        Ok(None) => {
+            return Err(refused(
+                ADOPT,
+                format!("`{target}` names no seat to reclaim"),
+            ));
+        }
+        Err(error) => return Err(internal(ADOPT, error)),
+    };
+    let authorized = seat.parent.as_ref() == Some(&actor)
+        || match state.services.roles.read_role(&actor).await {
+            Ok(role) => role.as_deref() == Some("prime"),
+            Err(error) => return Err(internal(ADOPT, error)),
+        };
+    if !authorized {
+        return Err(refused(
+            ADOPT,
+            format!(
+                "`{actor}` may not reclaim `{target}`: only its recorded parent or a prime may"
+            ),
+        ));
+    }
+    if seat.harness.as_str() != harness {
+        return Err(refused(
+            ADOPT,
+            format!(
+                "`{target}` is a {} seat; a {harness} process cannot reclaim it (harness mismatch)",
+                seat.harness
+            ),
+        ));
+    }
+    match seat.proc {
+        Some(proc) => match pij_core::liveness::alive(proc, state.services.liveness.as_ref()).await
+        {
+            Ok(Liveness::Active) => {
+                return Err(refused(
+                    ADOPT,
+                    format!(
+                        "`{target}` is live elsewhere: its process (pid {}) is still running, pane {} — adopt there instead",
+                        proc.pid,
+                        seat.pane.as_deref().unwrap_or("none")
+                    ),
+                ));
+            }
+            Ok(_) => {}
+            Err(error) => return Err(internal(ADOPT, error)),
+        },
+        None if is_live(&seat) => {
+            return Err(refused(
+                ADOPT,
+                format!("`{target}` records no process, so its death cannot be established"),
+            ));
+        }
+        None => {}
+    }
+    Ok((actor, seat))
+}
+
+/// Does the process on the far end of `peer` descend from (or equal) `host`?
+///
+/// Both facts are OBSERVED, never claimed: `lsof` names the process owning the
+/// client end of this very connection, and one `ps` snapshot supplies the parent
+/// chain. Any failure answers `false`, which refuses; it never admits.
+fn caller_descends_from(peer: SocketAddr, host: u32) -> bool {
+    let Some(mut pid) = peer_pid(peer) else {
+        return false;
+    };
+    let Ok(output) = std::process::Command::new("ps")
+        .args(["-Ao", "pid=,ppid="])
+        .env("LC_ALL", "C")
+        .output()
+    else {
+        return false;
+    };
+    let parents: std::collections::HashMap<u32, u32> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            Some((fields.next()?.parse().ok()?, fields.next()?.parse().ok()?))
+        })
+        .collect();
+    for _ in 0..64 {
+        if pid == host {
+            return true;
+        }
+        match parents.get(&pid) {
+            Some(&parent) if parent > 1 && parent != pid => pid = parent,
+            _ => return false,
+        }
+    }
+    false
+}
+
+/// The pid owning the CLIENT end of `peer`: the fd whose name reads `peer->…`.
+/// Matching the direction rather than excluding the daemon's own pid keeps this
+/// correct when client and server share a process.
+fn peer_pid(peer: SocketAddr) -> Option<u32> {
+    let output = std::process::Command::new("lsof")
+        .args(["-nP", &format!("-iTCP@{peer}"), "-Fpn"])
+        .env("LC_ALL", "C")
+        .output()
+        .ok()?;
+    let prefix = format!("{peer}->");
+    let mut pid = None;
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        if let Some(value) = line.strip_prefix('p') {
+            pid = value.parse().ok();
+        } else if line
+            .strip_prefix('n')
+            .is_some_and(|name| name.starts_with(&prefix))
+        {
+            return pid;
+        }
+    }
+    None
+}
+
 const ADOPT: &str = "pij adopt";
 const WHOAMI: &str = "pij whoami";
 const PHONEHOME: &str = "pij phonehome";
@@ -415,6 +590,7 @@ const PHONEHOME: &str = "pij phonehome";
 /// `POST /v1/adopt` — register this seat, with rs minting the name.
 pub(crate) async fn adopt(
     State(state): State<AppState>,
+    connection: Option<Extension<ConnectInfo<SocketAddr>>>,
     Json(request): Json<IdentityRequest>,
 ) -> Response {
     if let Some(asserted) = request.id.as_deref() {
@@ -530,20 +706,111 @@ pub(crate) async fn adopt(
         );
     };
 
+    // Plan 156 AC6: an operator reclaims a dead seat whose continuity evidence
+    // is gone. Every guard refuses before anything is written.
+    let reclaim = match args.reclaim.as_deref() {
+        None => None,
+        Some(_) if args.harness_session.is_some() => {
+            return refused(
+                ADOPT,
+                "`--reclaim` is an operator override and cannot also carry `--harness-session`",
+            );
+        }
+        Some(target) => match reclaim_target(&state, &caller, target, &harness).await {
+            Ok(guarded) => Some(guarded),
+            Err(response) => return response,
+        },
+    };
+
+    // Plan 156 ruling 1: a session id is evidence only when the daemon observes
+    // the caller descending from the pane's harness process. Never on its word.
+    let derived_session = match args.harness_session.clone() {
+        None => None,
+        Some(session) => {
+            let host = proc.expect("a paned adopt has a process identity").pid;
+            let descends = match connection {
+                Some(Extension(ConnectInfo(peer))) => {
+                    tokio::task::spawn_blocking(move || caller_descends_from(peer, host))
+                        .await
+                        .unwrap_or(false)
+                }
+                None => false,
+            };
+            if !descends {
+                return refused(
+                    ADOPT,
+                    format!(
+                        "`--harness-session {session}` is accepted only from inside the pane's \
+                         harness process tree (pid {host}), and the calling process is not in \
+                         it — nothing was written. Run adopt from the harness's status line or \
+                         SessionStart hook in that pane."
+                    ),
+                );
+            }
+            Some(session)
+        }
+    };
+
     let seats = match state.services.registry.list(SeatFilter::default()).await {
         Ok(seats) => seats,
         Err(error) => return internal(ADOPT, error),
     };
+    // A seat follows its conversation (plan 156 rule 1): the seat already holding
+    // this session, live or retired, outranks whatever the pane number says.
+    let kind = pij_core::model::Harness::parse(&harness);
+    let conversation = derived_session.as_deref().and_then(|session| {
+        seats
+            .iter()
+            .filter(|seat| {
+                Some(seat.harness) == kind && seat.harness_session.as_deref() == Some(session)
+            })
+            .min_by_key(|seat| {
+                (
+                    !is_live(seat),
+                    std::cmp::Reverse(seat.proc.map(|proc| proc.proc_start)),
+                    seat.id.clone(),
+                )
+            })
+    });
+    if let Some(seat) = conversation
+        && is_live(seat)
+        && seat.proc.is_some()
+        && seat.proc != proc
+        && !process_gone(&state, seat).await
+    {
+        return refused(
+            ADOPT,
+            format!(
+                "conversation `{}` is live as seat `{}` in another process (pane {}) — adopt \
+                 there instead; one conversation cannot be two seats",
+                derived_session.as_deref().unwrap_or_default(),
+                seat.id,
+                seat.pane.as_deref().unwrap_or("none"),
+            ),
+        );
+    }
     // Adopt INTO the seat that already owns this pane rather than minting a
     // second id for it. The TS route grew this the hard way (its plan-071 defect
     // B): without it, a re-adopt leaves two descriptors for one pane and peers
     // address the dead one.
-    let incumbent = pane.as_deref().and_then(|pane| {
-        seats
-            .iter()
-            .find(|seat| is_live(seat) && seat.pane.as_deref() == Some(pane))
-    });
-    let seat_id = match incumbent {
+    // A row whose recorded process is gone is not this pane's incumbent, however
+    // its pane number reads (plan 156 rule 2).
+    let mut incumbent = None;
+    for seat in seats
+        .iter()
+        .filter(|seat| is_live(seat) && seat.pane.is_some() && seat.pane == pane)
+    {
+        if !process_gone(&state, seat).await {
+            incumbent = Some(seat);
+            break;
+        }
+    }
+    let existing = reclaim
+        .as_ref()
+        .map(|(_, target)| target)
+        .or(conversation)
+        .or(incumbent);
+    let seat_id = match existing {
         Some(seat) => seat.id.clone(),
         None => {
             let seed = format!(
@@ -564,22 +831,30 @@ pub(crate) async fn adopt(
     // req-0008: an omitted argument means UNSAID, not CLEARED. `register`
     // overwrites `parent` and `relay` from the claim, so adopt carries the
     // incumbent's values forward when the command line was silent about them.
+    // A reclaim keeps the target's parent: the operator's own is not the seat's.
     let parent = args
         .parent
         .or_else(|| caller.parent.clone())
         .map(SeatId::from)
-        .or_else(|| incumbent.and_then(|seat| seat.parent.clone()));
-    let harness_session = caller
-        .harness_session
+        .filter(|_| reclaim.is_none())
+        .or_else(|| existing.and_then(|seat| seat.parent.clone()));
+    let harness_session = derived_session
         .clone()
+        .or_else(|| caller.harness_session.clone())
         .or_else(|| match harness.as_str() {
             "claude" => caller.claude_session.clone(),
             "copilot" => caller.copilot_session.clone(),
             "codex" => caller.codex_session.clone(),
             _ => None,
         });
+    // The pane's previous registration for this very process yields to the
+    // conversation's seat, rather than colliding with it.
+    let supersedes = existing.and(incumbent).and_then(|incumbent| {
+        (incumbent.id != seat_id && incumbent.proc.is_some() && incumbent.proc == proc)
+            .then(|| incumbent.id.clone())
+    });
     let claim = Registration {
-        supersedes: None,
+        supersedes,
         id: seat_id.0.clone(),
         harness,
         folder,
@@ -596,14 +871,44 @@ pub(crate) async fn adopt(
         effort: None,
         parent,
         role,
-        relay: incumbent.is_some_and(|seat| seat.relay),
+        relay: existing.is_some_and(|seat| seat.relay),
     };
     let registration = &state.registration;
-    if let Err(error) = registration
-        .register_with_harness_session(claim, harness_session)
-        .await
-    {
-        return adopt_registration_error(error);
+    let registered = match &reclaim {
+        Some(_) => registration.reclaim(claim).await,
+        None => registration
+            .register_with_harness_session(claim, harness_session)
+            .await
+            .map(|(descriptor, _)| descriptor),
+    };
+    let registered = match registered {
+        Ok(registered) => registered,
+        Err(error) => return adopt_registration_error(error),
+    };
+    if let Some((actor, target)) = &reclaim {
+        let event = pij_core::model::Event {
+            seq: None,
+            v: pij_core::wire::EVENT_VERSION,
+            at: match super::system_time_ms() {
+                Ok(at) => at,
+                Err(error) => return internal(ADOPT, error),
+            },
+            kind: "seat.reclaimed".into(),
+            seat: Some(target.id.clone()),
+            payload: json!({
+                "caller": actor,
+                "harness": target.harness,
+                "old_proc": target.proc, "new_proc": registered.proc,
+                "old_pane": target.pane, "new_pane": registered.pane,
+                "old_harness_session": target.harness_session,
+                "prior_reason": target.tombstone_reason,
+                "evidence": "target process observed gone; caller is its recorded parent or a prime",
+            })
+            .to_string(),
+        };
+        if let Err(error) = state.services.event_bus.publish(event).await {
+            return internal(ADOPT, error);
+        }
     }
 
     // THE ANSWER IS A RE-READ. Not the descriptor we just built — the row the
@@ -823,11 +1128,35 @@ pub(crate) async fn resolve_seat(
             Ok(seats) => seats,
             Err(error) => return Resolved::Refusal(internal(command, error)),
         };
-        let seat = match seats
-            .iter()
-            .position(|seat| is_live(seat) && seat.pane.as_deref() == Some(pane))
-        {
+        let mut found = None;
+        let mut gone = None;
+        for (index, seat) in seats.iter().enumerate() {
+            if !is_live(seat) || seat.pane.as_deref() != Some(pane) {
+                continue;
+            }
+            if process_gone(state, seat).await {
+                gone.get_or_insert(index);
+            } else {
+                found = Some(index);
+                break;
+            }
+        }
+        let seat = match found {
             Some(index) => seats.swap_remove(index),
+            None if let Some(index) = gone => {
+                let seat = &seats[index];
+                let proc = seat.proc.expect("a gone seat recorded a process");
+                return Resolved::Refusal(refused(
+                    command,
+                    format!(
+                        "seat `{}` records pane `{pane}`, but its process (pid {}, start {}) is gone — \
+                         the pane id was reused, so this pane is not that seat. Adopt this pane \
+                         (`pij adopt \"$TMUX_PANE\" --harness <h>`); a resumed conversation gets \
+                         its own seat back.",
+                        seat.id, proc.pid, proc.proc_start
+                    ),
+                ));
+            }
             None => {
                 // A pane's unambiguous retired history can explain a refusal,
                 // but cannot authenticate its caller or choose a replacement.

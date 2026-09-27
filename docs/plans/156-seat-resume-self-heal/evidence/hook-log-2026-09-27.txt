@@ -1,0 +1,7 @@
+skip:no-tmux
+skip:no-tmux
+skip:no-daemon pane=%2
+refused:adopt pane=%617 reason=pij adopt: FAILED — native Copilot registration refused: an existing Copilot seat cannot change harness
+skip:no-daemon pane=%1
+skip:no-daemon pane=%2
+skip:no-daemon pane=%3

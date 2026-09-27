@@ -14,7 +14,8 @@ pub struct ReapCandidate {
     pub seat: SeatId,
     /// `dead` or `recycled`.
     pub process: &'static str,
-    /// `absent` or `paneless`.
+    /// `absent`, `reincarnated` (the id exists again, hosting a later process
+    /// tree than the seat's), or `paneless`.
     pub pane: &'static str,
     /// Stable explanation for the eligibility decision.
     pub reason: &'static str,
@@ -78,7 +79,11 @@ async fn eligibility(
     let pane = if let Some(recorded) = &seat.pane {
         match tmux.list_panes().await {
             Ok(panes) if panes.iter().any(|pane| &pane.id == recorded) => {
-                return Eligibility::Retain;
+                match reincarnated(recorded, proc.proc_start, liveness, tmux).await {
+                    Ok(true) => "reincarnated",
+                    Ok(false) => return Eligibility::Retain,
+                    Err(()) => return Eligibility::Unknown("pane-incarnation-probe-failed"),
+                }
             }
             Ok(_) => "absent",
             Err(_) => return Eligibility::Unknown("pane-probe-failed"),
@@ -89,6 +94,8 @@ async fn eligibility(
     let reason = match (process, pane) {
         ("dead", "absent") => "process-dead-and-pane-absent",
         ("recycled", "absent") => "process-recycled-and-pane-absent",
+        ("dead", "reincarnated") => "process-dead-and-pane-reincarnated",
+        ("recycled", "reincarnated") => "process-recycled-and-pane-reincarnated",
         ("dead", _) => "process-dead-paneless",
         _ => "process-recycled-paneless",
     };
@@ -98,6 +105,29 @@ async fn eligibility(
         pane,
         reason,
     })
+}
+
+/// Is the pane now carrying `recorded` a LATER pane than the one the seat lived in?
+///
+/// Pane ids reset when the tmux server restarts (every reboot), so presence of the
+/// number is not presence of the pane. A seat's process descends from its pane's
+/// root process, so that root cannot have started after it. A root that did start
+/// later is a different pane wearing the same id (plan 156, rule 2).
+///
+/// This narrows a BRAKE, it adds no policy: the deciding input is still the dead
+/// recorded process. Pane presence keeps vetoing whenever the root is as old as
+/// the seat or older, or whenever it cannot be observed.
+async fn reincarnated(
+    recorded: &str,
+    seat_start: u64,
+    liveness: &dyn LivenessPort,
+    tmux: &dyn TmuxPort,
+) -> std::result::Result<bool, ()> {
+    let Some(root) = tmux.pane_process(recorded).await.map_err(|_| ())? else {
+        return Ok(false);
+    };
+    let root_start = liveness.proc_start(root.pid).await.map_err(|_| ())?;
+    Ok(root_start.is_some_and(|start| start > seat_start))
 }
 
 /// Reconcile only stale bindings, rechecking observations before atomic commit.
