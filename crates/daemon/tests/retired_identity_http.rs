@@ -70,6 +70,10 @@ impl Fixture {
         let seat: SeatDescriptor =
             serde_json::from_value(event_case("seat-put")["decoded_payload"].clone())
                 .expect("worker descriptor");
+        // A pane answers only for a seat whose recorded process runs (plan 156).
+        services.liveness = Arc::new(
+            pij_testkit::fakes::FakeLiveness::new().with_proc(seat.proc.expect("worker proc")),
+        );
         services.registry.put(seat).await.expect("seed live worker");
         let registry = services.registry.clone();
         let persisted_spine = services.spine.clone();

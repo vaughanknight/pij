@@ -166,6 +166,13 @@ enum Command {
         /// Real directory the runtime loaded its pij extension from.
         #[arg(long)]
         extension_path: Option<String>,
+        /// Harness-native conversation id. Accepted only from a child of the
+        /// pane's harness process (status line, SessionStart hook).
+        #[arg(long)]
+        harness_session: Option<String>,
+        /// Operator reclaim of a dead seat onto this pane (parent or prime only).
+        #[arg(long)]
+        reclaim: Option<String>,
     },
     /// Name the seat this caller is, from the store it registered into.
     Whoami {
@@ -861,15 +868,26 @@ async fn run(cli: Cli) -> ExitCode {
             role,
             extension_build,
             extension_path,
+            harness_session,
+            reclaim,
         } => {
             warn_caller_claude_home(&harness);
-            let argv = adopt_argv(
+            let mut argv = adopt_argv(
                 pane.or_else(|| std::env::var("TMUX_PANE").ok()).as_deref(),
                 &harness,
                 parent
                     .or_else(|| std::env::var("PIJ_PARENT_ID").ok())
+                    .filter(|_| reclaim.is_none())
                     .as_deref(),
             );
+            for (flag, value) in [
+                ("--harness-session", harness_session),
+                ("--reclaim", reclaim),
+            ] {
+                if let Some(value) = value {
+                    argv.extend([flag.to_string(), value]);
+                }
+            }
             let request = IdentityRequest {
                 argv,
                 caller: Some(caller_context()),

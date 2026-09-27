@@ -53,6 +53,10 @@ struct NativeHandoff {
 
 enum RegistrationMode<'a> {
     Ordinary,
+    /// Operator reclaim (plan 156 AC6): the adopt route has already proved the
+    /// caller's authority and the target's death, so a retired row may be taken
+    /// without a continuity witness.
+    Reclaim,
     NativeExtension(&'a NativeHandoff),
     Paneless(&'a [ProcIdentity]),
 }
@@ -108,6 +112,17 @@ impl RegistrationService {
         }
         self.register_inner(claim, harness_session, RegistrationMode::Ordinary)
             .await
+    }
+
+    /// Operator reclaim: see [`RegistrationMode::Reclaim`]. Only the adopt
+    /// route's `--reclaim` arm calls this, after its guards.
+    pub(crate) async fn reclaim(
+        &self,
+        claim: Registration,
+    ) -> std::result::Result<SeatDescriptor, RegistrationError> {
+        self.register_inner(claim, None, RegistrationMode::Reclaim)
+            .await
+            .map(|(descriptor, _)| descriptor)
     }
 
     async fn register_paneless_with_observer<F, Fut>(
@@ -468,8 +483,9 @@ impl RegistrationService {
                 "role must be a nonempty string".to_string(),
             ));
         }
+        let reclaim = matches!(mode, RegistrationMode::Reclaim);
         let (native, paneless, handoff) = match mode {
-            RegistrationMode::Ordinary => (false, None, None),
+            RegistrationMode::Ordinary | RegistrationMode::Reclaim => (false, None, None),
             RegistrationMode::NativeExtension(proof) => (true, None, Some(proof)),
             RegistrationMode::Paneless(ancestry) => (false, Some(ancestry), None),
         };
@@ -756,7 +772,8 @@ impl RegistrationService {
                     .as_deref()
                     .zip(claim.spawn_id.as_deref())
                     .is_some_and(|(old, claimed)| !old.is_empty() && old == claimed)
-                || seat.proc.is_some_and(|old| Some(old) == proc);
+                || seat.proc.is_some_and(|old| Some(old) == proc)
+                || reclaim;
             if !continuous {
                 return Err(retired_refusal(seat, &claim.harness));
             }

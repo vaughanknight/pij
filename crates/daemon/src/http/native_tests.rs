@@ -2171,9 +2171,11 @@ async fn native_sqlite_http_hold_release_marker_ack_and_duplicate_contract() {
 #[tokio::test]
 async fn native_cli_pane_session_claims_and_acks_without_self_reported_host_tuple() {
     let store = FreshStore::new();
-    let services = sqlite_services(&store).await;
+    let mut services = sqlite_services(&store).await;
     let (mut seat, _) = contract_identity();
     seat.pane = Some("%native-cli".into());
+    // Pane attribution requires the recorded host to be alive (plan 156 rule 2).
+    services.liveness = Arc::new(FakeLiveness::new().with_proc(seat.proc.unwrap()));
     services.registry.put(seat.clone()).await.unwrap();
     let sent = services
         .delivery

@@ -1,0 +1,12 @@
+Slice 1 (AC2, AC1, AC6) — green on the committed tree
+$ cargo test -p pij-daemon --lib -- recycled_pane_with_dead reap_dead_process_on_a_reincarnated resumed_claude_session reclaim_is_guarded
+test reaper::tests::reap_dead_process_on_a_reincarnated_pane_is_a_candidate_but_an_older_pane_still_vetoes ... ok
+test http::identity_tests::recycled_pane_with_dead_recorded_process_is_neither_whoami_answer_nor_adopt_incumbent ... ok
+test http::identity_tests::resumed_claude_session_reclaims_its_tombstoned_seat_only_from_its_own_process_tree ... ok
+test http::identity_tests::reclaim_is_guarded_by_caller_harness_and_death_then_audited ... ok
+$ cargo test --workspace            -> no FAILED, no panics
+$ cargo clippy --workspace --all-targets -- -D warnings  -> 0 diagnostics
+$ cargo fmt --all --check           -> clean
+Fixture updates (2), both of which relied on a DEAD recorded process answering by pane:
+  native_tests::native_cli_pane_session_claims_and_acks_without_self_reported_host_tuple
+  tests/retired_identity_http.rs Fixture

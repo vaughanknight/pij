@@ -1,0 +1,4 @@
+$ cargo test -p pij-daemon --lib -- reclaim_is_guarded   (AC1+AC2 applied, AC6 test only)
+test http::identity_tests::reclaim_is_guarded_by_caller_harness_and_death_then_audited ... FAILED
+panicked at crates/daemon/src/http/identity_tests.rs:1876:9:
+recorded parent: Some("`--reclaim` is not an argument this route understands")

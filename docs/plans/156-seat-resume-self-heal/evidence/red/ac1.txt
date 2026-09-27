@@ -1,0 +1,5 @@
+$ cargo test -p pij-daemon --lib -- resumed_claude_session   (AC2 fix applied, AC1 test only)
+test http::identity_tests::resumed_claude_session_reclaims_its_tombstoned_seat_only_from_its_own_process_tree ... FAILED
+panicked at crates/daemon/src/http/identity_tests.rs:1795:5:
+Some("`--harness-session` is not an argument this route understands")
+(today adopt has no session path at all: without the flag a new name is minted for the resumed conversation)

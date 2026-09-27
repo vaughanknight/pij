@@ -1,0 +1,5 @@
+$ cargo test -p pij-daemon --lib -- recycled_pane_with_dead reap_dead_process_on_a_reincarnated   (tree 97a911e0 + tests only)
+test reaper::tests::reap_dead_process_on_a_reincarnated_pane_is_a_candidate_but_an_older_pane_still_vetoes ... FAILED
+test http::identity_tests::recycled_pane_with_dead_recorded_process_is_neither_whoami_answer_nor_adopt_incumbent ... FAILED
+panicked at crates/daemon/src/reaper_tests.rs:682:9: pane root start delta 1  left: 0 right: 1
+panicked at crates/daemon/src/http/identity_tests.rs:1721:5: a reused pane id must not name a seat whose process is gone  left: 200 right: 200
