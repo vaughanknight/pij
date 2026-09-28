@@ -110,15 +110,19 @@ correction of a false belief carries its full reasoning (a bare "no" gets acked,
 not internalised), and a reviewer should treat a reason-less correction as a
 defect.
 
-## Fleet messaging: no broadcasts
+## Fleet messaging: every send costs the recipient's context
 
-Jordan's standing rule (2026-09-26): waking a dormant seat reloads its whole context with no cache, often hundreds of thousands of tokens, so a fan-out multiplies that cost per seat. On 2026-09-26 one rule sent to about 70 seats needed 41 retractions.
+Measured (RCA by pij-continued-bolvar, 2026-09-28, workspace `~/games/unasphere/scratch/usage-blowout/`): a week's Claude allowance went in 38.6 h. Turns opened by pij messages were 84% of spend (6,103 messages against 1,025 human turns). Warm cache reads on huge contexts were 64% (a mean of 336k tokens per call). Acks and FYIs alone were 15%, and cold wakes 10%. Primes were the hubs.
 
-1. **No fleet-wide sends.** Message only seats that are active now (a recent event, or in a turn) AND must act. A freeze ("hold commits") goes to the active committers only.
-2. **Standing rules live in government files** (the governance README, AGENTS.md). Seats pick them up at their next boot or compaction.
-3. **A dormant seat is consulted, never informed.** Wake one or two only when you need their knowledge (the original owner, a reviewer). Never send them an FYI or an acknowledgement.
-4. **Supervision observes.** Rounds read screens and state (tmux capture, `pij list`) and never message idle seats to check on them. Stop after two quiet rounds.
-5. **Name the recipients.** Before any multi-recipient send, filter `pij list --json` to this project's folder and to active seats, and list the chosen ids in the send.
+1. **Price a send at the recipient's context, not the message.** A turn costs the recipient's whole context: warm, about 1×; cold, about 40×. Waking a dormant seat with a 200k+ context needs a reason you would defend to Jordan.
+2. **No broadcasts.** Name explicit recipients from one project, filtered from `pij list --json` to active seats that must act. More than 5 recipients needs a human yes. A freeze ("hold commits") goes to the active committers only.
+3. **No acks, no FYIs, no-reply by default.** Batch what one seat needs into one message rather than several. Silence after a clean verify is the all-clear (C10).
+4. **Standing rules and status live in files.** Put rules in government files (the governance README, AGENTS.md), and read status from report files and `pij state` rather than asking for push reports.
+5. **A dormant seat is consulted, never informed.** Wake one or two only for their knowledge (the original owner, a reviewer).
+6. **Supervise by observation.** Read tmux captures and `pij list`; never message an idle seat to check on it. Stop after two quiet rounds.
+7. **Compact while warm (200–250k), never cold.** Compacting a dormant seat pays the cold read first.
+
+Platform guards that will enforce this are tracked in issue #446.
 
 ## Seat identity
 
