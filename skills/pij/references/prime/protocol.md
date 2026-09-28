@@ -110,6 +110,16 @@ correction of a false belief carries its full reasoning (a bare "no" gets acked,
 not internalised), and a reviewer should treat a reason-less correction as a
 defect.
 
+## Fleet messaging: no broadcasts
+
+Jordan's standing rule (2026-09-26): waking a dormant seat reloads its whole context with no cache, often hundreds of thousands of tokens, so a fan-out multiplies that cost per seat. On 2026-09-26 one rule sent to about 70 seats needed 41 retractions.
+
+1. **No fleet-wide sends.** Message only seats that are active now (a recent event, or in a turn) AND must act. A freeze ("hold commits") goes to the active committers only.
+2. **Standing rules live in government files** (the governance README, AGENTS.md). Seats pick them up at their next boot or compaction.
+3. **A dormant seat is consulted, never informed.** Wake one or two only when you need their knowledge (the original owner, a reviewer). Never send them an FYI or an acknowledgement.
+4. **Supervision observes.** Rounds read screens and state (tmux capture, `pij list`) and never message idle seats to check on them. Stop after two quiet rounds.
+5. **Name the recipients.** Before any multi-recipient send, filter `pij list --json` to this project's folder and to active seats, and list the chosen ids in the send.
+
 ## Seat identity
 
 A pij id names a **seat**, not whichever persona currently speaks in its pane.
