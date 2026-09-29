@@ -229,3 +229,13 @@ Every commit created by a pij seat carries attribution **at commit time**. Run `
 | `Pij-Plan` | Worktree path, branch, then local flow context. The helper does not currently query current assignment; missing evidence is omission, not a guessed plan. |
 
 The helper prints only applicable trailers to stdout and unresolved-value diagnostics to stderr. If an expected value cannot be derived, omit that trailer and explain the omission in the commit body; never guess or emit a placeholder. Current context is not evidence of a historical commit's identity.
+
+### C12 — Shared machine: heavy work runs niced and capped
+
+The fleet shares Jordan's working laptop. Builds, test loops, stress and flake reproductions, browsers and benchmarks run under `nice -n 19` with explicit caps:
+- at most 8 parallel workers (`xargs -P 8`, `--test-threads 8`);
+- `cargo -j 4`;
+- a wall-clock bound (`timeout 600`);
+- stop when the load average passes 40.
+
+A packet asking for repeated or "under load" runs states these caps. An uncapped `-P 48` flake reproduction once took the machine to load ~230 and had to be killed (2026-09-29). Reproduce a timing flake by reasoning about what decides the race, or with a deterministic hook, before brute force.
