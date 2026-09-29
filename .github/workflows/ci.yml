@@ -139,28 +139,36 @@ jobs:
       - name: build tests
         run: cargo nextest run --locked --workspace --profile ci --no-run
 
-      # DIAGNOSTIC: mirror progress into a PR comment every 20s, because a dying
-      # runner loses its own log.
+      # DIAGNOSTIC: a root-owned loop mirrors progress into a PR comment every
+      # 5s, because a dying runner loses its own log. Root, so a test that
+      # signals every runner-user process cannot silence it.
       - name: test
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set +e
           cid=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" -f body="rust-test telemetry: starting" --jq .id)
-          (
-            while sleep 20; do
-              body=$(printf 'rust-test telemetry %s\nroot=%s tmp=%s mem=%s load=%s procs=%s\n```\n%s\n```\n```\n%s\n```\n' \
-                "$(date -u +%H:%M:%S)" \
-                "$(df -BM --output=avail / | tail -1 | tr -d ' ')" \
-                "$(df -BM --output=avail /tmp | tail -1 | tr -d ' ')" \
-                "$(awk '/MemAvailable/{printf "%dM", $2/1024}' /proc/meminfo)" \
-                "$(cut -d' ' -f1-3 /proc/loadavg)" \
-                "$(ps -e --no-headers | wc -l | tr -d ' ')" \
-                "$(ps -eo pid,ppid,etimes,pcpu,rss,args --sort=-pcpu | head -12 | cut -c1-180)" \
-                "$(tail -n 40 nextest.out | cut -c1-200)")
-              gh api -X PATCH "repos/${{ github.repository }}/issues/comments/$cid" -f body="$body" >/dev/null 2>&1
-            done
-          ) &
+          cat > telemetry.sh <<'EOF'
+          #!/bin/bash
+          cid=$1; repo=$2; out=$3
+          while sleep 5; do
+            {
+              echo "### $(date -u +%H:%M:%S) root=$(df -BM --output=avail / | tail -1 | tr -d ' ') mem=$(awk '/MemAvailable/{printf "%dM", $2/1024}' /proc/meminfo) load=$(cut -d' ' -f1-3 /proc/loadavg) procs=$(ps -e --no-headers | wc -l) runner_worker=$(pgrep -c -f Runner.Worker)"
+              echo '```'
+              echo "-- running tests"
+              ps -eo etimes=,args= | grep -- '--exact' | grep -v grep | sed -E 's#^ *([0-9]+) \S*/deps/([^ ]+)-[0-9a-f]+ (.*)#\1s \2 \3#' | cut -c1-200
+              echo "-- newest runner processes"
+              ps -u runner -o pid=,ppid=,etimes=,args= --sort=start_time | tail -n 15 | cut -c1-200
+              echo "-- nextest tail"
+              tail -n 8 "$out" | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-200
+              echo '```'
+            } > /tmp/tele.now
+            cat /tmp/tele.now >> /tmp/tele.hist
+            tail -c 60000 /tmp/tele.hist > /tmp/tele.body
+            gh api -X PATCH "repos/$repo/issues/comments/$cid" -F body=@/tmp/tele.body >/dev/null 2>&1
+          done
+          EOF
+          sudo -E nohup bash telemetry.sh "$cid" "${{ github.repository }}" "$PWD/nextest.out" >/dev/null 2>&1 &
           sudo -E env "PATH=$PATH" systemd-run --scope --quiet \
             -p MemoryMax=11G -p TasksMax=4096 -p CPUQuota=300% \
             --uid="$(id -u)" --gid="$(id -g)" \
