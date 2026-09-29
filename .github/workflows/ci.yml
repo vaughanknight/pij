@@ -159,7 +159,7 @@ jobs:
               echo '```'
               ps -eo etimes=,args= | grep -- '--exact' | grep -v grep | sed -E 's#^ *([0-9]+) \S*/deps/([^ ]+)-[0-9a-f]+ (.*)#\1s \2 \3#' | cut -c1-200
               echo "-- suspicious kills"
-              cat /tmp/suspicious 2>/dev/null | tail -n 10
+              tail -n 10 /tmp/kills.sus 2>/dev/null
               tail -n 4 "$out" | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-200
               echo '```'
             } > /tmp/tele.now
@@ -168,14 +168,25 @@ jobs:
             gh api -X PATCH "repos/$repo/issues/comments/$cid" -F body=@/tmp/tele.body >/dev/null 2>&1
           done
           EOF
-          cat > suspicious.sh <<'EOF'
+          cat > killwatch.sh <<'EOF'
           #!/bin/bash
-          # kill(2) aimed at pid 0, a negative pid/group, or a runner-owned pid.
-          pids=$(ps -u runner -o pid= | tr -d ' ')
-          pat='pid: 0x(0+|f{8,}[0-9a-f]*)[,)]'
-          for p in $pids; do pat="$pat|pid: 0x0*$(printf '%x' "$p")[,)]"; done
-          grep -E 'sys_enter_(kill|tgkill|tkill)' /sys/kernel/tracing/trace | grep -E "$pat" | sed -E 's/^ +//' | cut -c1-200
+          # Resolve every non-probe kill(2) target while it still exists; keep
+          # the ones aimed at pid <= 1, a process group, or another user's process.
+          while IFS= read -r line; do
+            case "$line" in *sys_enter_kill*|*sys_enter_tkill*|*sys_enter_tgkill*) ;; *) continue ;; esac
+            echo "$line" >> /tmp/kills.all
+            sig=$(sed -nE 's/.*sig: 0x([0-9a-f]+).*/\1/p' <<<"$line")
+            [ "$((16#${sig:-0}))" -eq 0 ] && continue
+            pidhex=$(sed -nE 's/.*pid: 0x([0-9a-f]+).*/\1/p' <<<"$line")
+            pidhex=$(sed -E 's/^0+//' <<<"$pidhex")
+            if [ ${#pidhex} -gt 8 ] || [ "$((16#${pidhex:-0}))" -le 1 ]; then
+              echo "GROUP-OR-ALL: $line" >> /tmp/kills.sus; continue
+            fi
+            owner=$(ps -o user=,args= -p "$((16#$pidhex))" 2>/dev/null | cut -c1-140)
+            case "$owner" in pijci*) ;; *) echo "$line => ${owner:-gone}" >> /tmp/kills.sus ;; esac
+          done < /sys/kernel/tracing/trace_pipe
           EOF
+          touch /tmp/kills.sus
           sudo useradd -m pijci
           sudo chmod a+x /home/runner /home/runner/work
           sudo chmod -R a+rwX /home/runner/.cargo /home/runner/.rustup "$GITHUB_WORKSPACE"
@@ -184,17 +195,19 @@ jobs:
             echo 1 | sudo tee /sys/kernel/tracing/events/$event/enable >/dev/null
           done
           echo 32768 | sudo tee /sys/kernel/tracing/buffer_size_kb >/dev/null
+          sudo nohup bash killwatch.sh >/dev/null 2>&1 &
           sudo -E nohup bash telemetry.sh "$cid" "${{ github.repository }}" "$PWD/nextest.out" >/dev/null 2>&1 &
-          sudo -E nohup bash -c 'while sleep 3; do bash '"$PWD"'/suspicious.sh > /tmp/suspicious.new && mv /tmp/suspicious.new /tmp/suspicious; done' >/dev/null 2>&1 &
           sudo systemd-run --scope --quiet \
             -p MemoryMax=11G -p TasksMax=4096 -p CPUQuota=300% \
             --uid=pijci --gid=pijci \
-            env "PATH=$PATH" HOME=/home/pijci CARGO_HOME=/home/runner/.cargo RUSTUP_HOME=/home/runner/.rustup \
+            env "PATH=$PATH" "RUSTFLAGS=$RUSTFLAGS" HOME=/home/pijci CARGO_HOME=/home/runner/.cargo RUSTUP_HOME=/home/runner/.rustup \
             cargo nextest run --locked --workspace --profile ci --status-level pass > nextest.out 2>&1
           status=$?
           cat nextest.out
+          sleep 3
+          echo "== kill(2) calls traced: $(sudo wc -l < /tmp/kills.all)"
           echo "== suspicious kill(2) calls"
-          sudo bash suspicious.sh
+          sudo cat /tmp/kills.sus
           exit "$status"
 
       # nextest does not run doctests.
