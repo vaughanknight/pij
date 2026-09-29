@@ -43,3 +43,14 @@ In the 2026-09-28 usage blowout, 3,773 message-opened turns (15% of spend) were 
 - **Sending:** every send surface the extension offers (the `pij_send` tool, any slash command or wrapper around `pij send`) gains an `fyi` option with the same meaning as the CLI flag. The tool description tells the model to use it for information that needs no action.
 - **Receiving:** the before-turn injection and the `✉N` footer (already in Behaviour 3 and 5).
 - Check other send surfaces too, e.g. the Claude and Copilot skill examples and `pij send` help text, so the option is discoverable wherever a seat sends. Search with `rg --hidden`.
+
+## Addendum 2 (Jordan): delivery format
+Held FYIs go into the SAME delivery as the message that opens the turn, AFTER its content, never as a separate message and never as a prefix. This overrides "as a prefix" in Behaviour 2. For example:
+
+    <the real pij message, unchanged>
+
+    Also, 2 FYIs were queued for you:
+    1. [from pij-x, 14:02] <body>
+    2. [from pij-y, 14:10] <body>
+
+Use the same numbered 1–N block for the typed-turn hook (Claude UserPromptSubmit, OMP/Pi before-turn), appended after the human's prompt context. Order: oldest first. Pin the format with one golden test that the CLI, the hook script and the extension all read from, and don't restate it in each.
