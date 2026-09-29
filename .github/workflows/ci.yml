@@ -116,15 +116,13 @@ jobs:
   rust-test:
     runs-on: ubuntu-latest
     timeout-minutes: 12
-    permissions:
-      contents: read
-      issues: write
-      pull-requests: write
     strategy:
       fail-fast: false
       matrix:
         filter:
-          - "binary_id(pij-daemon) | binary_id(pij-cli::governance_boot) | binary_id(pij-cli::daemon_log) | binary_id(pij-cli::lifecycle)"
+          - "not binary_id(pij-cli::governance_boot)"
+          - "not binary_id(pij-cli::daemon_log)"
+          - "not binary_id(pij-cli::lifecycle)"
     steps:
       - uses: actions/checkout@v4
 
@@ -142,36 +140,6 @@ jobs:
       - name: build tests
         run: cargo nextest run --locked --workspace --profile ci --no-run
 
-      # DIAGNOSTIC: every 2s, a root loop posts any signal aimed at a process
-      # that existed before the tests started (the runner's own processes).
+      # DIAGNOSTIC bisect.
       - name: test
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set +e
-          cid=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" -f body="rust-test signal watch: starting" --jq .id)
-          ps -eo pid=,args= > /tmp/baseline
-          cat > watch.sh <<'EOF'
-          #!/bin/bash
-          cid=$1; repo=$2; out=$3
-          pids=$(awk '{print $1}' /tmp/baseline | paste -sd'|')
-          while sleep 2; do
-            {
-              echo "### $(date -u +%H:%M:%S) runner_worker=$(pgrep -c -f Runner.Worker)"
-              echo '```'
-              grep -E "signal_generate: sig=[0-9]+ .* pid=($pids) " /sys/kernel/tracing/trace | grep -v 'sig=17 ' | sed -E 's/^ +//' | tail -n 30 | cut -c1-220
-              echo "-- running"
-              ps -eo etimes=,args= | grep -- '--exact' | grep -v grep | sed -E 's#^ *([0-9]+) \S*/deps/([^ ]+)-[0-9a-f]+ (.*)#\1s \2 \3#' | cut -c1-200
-              tail -n 3 "$out" | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-200
-              echo '```'
-            } > /tmp/w.body
-            gh api -X PATCH "repos/$repo/issues/comments/$cid" -F body=@/tmp/w.body >/dev/null 2>&1
-          done
-          EOF
-          echo 1 | sudo tee /sys/kernel/tracing/events/signal/signal_generate/enable >/dev/null
-          echo 32768 | sudo tee /sys/kernel/tracing/buffer_size_kb >/dev/null
-          sudo -E nohup bash watch.sh "$cid" "${{ github.repository }}" "$PWD/nextest.out" >/dev/null 2>&1 &
-          cargo nextest run --locked --workspace --profile ci --status-level pass -E '${{ matrix.filter }}' > nextest.out 2>&1
-          status=$?
-          cat nextest.out
-          exit "$status"
+        run: cargo nextest run --locked --workspace --profile ci --status-level pass -E '${{ matrix.filter }}'
