@@ -718,7 +718,8 @@ export default function (pi: ExtensionAPI): void {
 		disposeWatch = undefined;
 		// Pi guarantees this closed union (extensions.md, session_shutdown): only
 		// replacement reasons dissolve a predecessor; quit remains observable.
-		session?.shutdown(event.reason);
+		// The Rust runtime settles a seat left working to idle, bounded, first.
+		await session?.shutdown(event.reason);
 		ctx.ui.setStatus(PIJ_STATUS_KEY, undefined);
 	});
 

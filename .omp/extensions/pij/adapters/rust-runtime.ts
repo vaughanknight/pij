@@ -91,8 +91,8 @@ const PARKED_OUTCOMES = new Set([
 /** How much of an arriving body the announcement shows. */
 const ANNOUNCE_BODY_CHARS = 80;
 
-/** A typed turn waits on the claim; a hung daemon must not hold the human's prompt. */
-const FYI_CLAIM_TIMEOUT_MS = 3_000;
+/** A hung daemon must hold neither the human's typed turn (FYI claim) nor shutdown. */
+const HOOK_CALL_TIMEOUT_MS = 3_000;
 
 /**
  * Snap-in recipe (composition owner: PM, index.ts unchanged):
@@ -150,6 +150,8 @@ export class RustRuntimeSession {
 	private activityChain: Promise<void> = Promise.resolve();
 	/** Set when the daemon has no /v1/activity route; cleared by a new client. */
 	private activityUnsupported = false;
+	/** The last state the daemon accepted; shutdown repairs a seat left `working`. */
+	private activityPublished: "working" | "idle" | undefined;
 
 	constructor(
 		client: PijDaemonClient,
@@ -419,7 +421,7 @@ export class RustRuntimeSession {
 		try {
 			const claim = await client.claimFyi(
 				{ seat, ...evidence, via },
-				AbortSignal.timeout(FYI_CLAIM_TIMEOUT_MS),
+				AbortSignal.timeout(HOOK_CALL_TIMEOUT_MS),
 			);
 			this.refreshFyiCount(seat, client, lifecycle);
 			return claim.count > 0 ? claim.block : undefined;
@@ -462,8 +464,12 @@ export class RustRuntimeSession {
 		return undefined;
 	}
 
-	/** Queue a turn-state publication; failures are logged and never reach the turn. */
-	private publishActivity(state: "working" | "idle"): void {
+	/**
+	 * Queue a turn-state publication; failures are logged and never reach the turn.
+	 * A `shutdown` signal marks the shutdown repair: it bounds the request and
+	 * publishes only when the daemon last accepted `working`.
+	 */
+	private publishActivity(state: "working" | "idle", shutdown?: AbortSignal): void {
 		const seat = this.self;
 		const client = this.client;
 		if (seat === "" || this.activityUnsupported) return;
@@ -471,9 +477,11 @@ export class RustRuntimeSession {
 		if (evidence === undefined) return;
 		this.activityChain = this.activityChain.then(async () => {
 			if (this.activityUnsupported) return;
+			if (shutdown !== undefined && this.activityPublished !== "working") return;
 			try {
-				if (!(await client.publishActivity({ seat, ...evidence, state })))
-					this.activityUnsupported = true;
+				if (await client.publishActivity({ seat, ...evidence, state }, shutdown))
+					this.activityPublished = state;
+				else this.activityUnsupported = true;
 			} catch (error) {
 				this.session.capture("daemon_event_error", {
 					message: error instanceof Error ? error.message : String(error),
@@ -600,7 +608,19 @@ export class RustRuntimeSession {
 		this.queueBoundaryResend();
 	}
 
-	shutdown(reason: SessionShutdownReason): void {
+	/**
+	 * Tears down synchronously. The returned promise settles once queued activity
+	 * has landed, including `idle` for a seat the daemon last saw `working`,
+	 * bounded by HOOK_CALL_TIMEOUT_MS. It never rejects.
+	 */
+	shutdown(reason: SessionShutdownReason): Promise<void> {
+		const bound = AbortSignal.timeout(HOOK_CALL_TIMEOUT_MS);
+		this.publishActivity("idle", bound);
+		// Executor form: the compile target's lib predates Promise.withResolvers.
+		const expired = new Promise<void>((resolve) =>
+			bound.addEventListener("abort", () => resolve(), { once: true }),
+		);
+		const settled = Promise.race([this.activityChain, expired]);
 		++this.lifecycle;
 		clearInterval(this.mailTicker);
 		this.mailTicker = undefined;
@@ -618,6 +638,7 @@ export class RustRuntimeSession {
 		this.stopEvents?.();
 		this.stopEvents = undefined;
 		this.session.shutdown(reason);
+		return settled;
 	}
 
 	applyPendingControl(): ReturnType<PijSession["applyPendingControl"]> {

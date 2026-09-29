@@ -1298,6 +1298,78 @@ test("activity: foreground turns publish working then idle in order; failures ne
 	await run;
 });
 
+/** A running bridge whose /v1/activity requests are recorded; stopped after the test. */
+async function activityBridge(t, answer = () => ({ changed: true })) {
+	const f = fixture();
+	const run = f.bridge.run();
+	t.after(() => {
+		f.bridge.stop();
+		return run;
+	});
+	await f.accepted.promise;
+	const published = [];
+	const request = f.client.request;
+	f.client.request = async (path, body, signal) => {
+		if (path !== "/v1/activity") return request(path, body, signal);
+		published.push({ state: body.state, signal });
+		const outcome = answer(body);
+		if (outcome instanceof Error) throw outcome;
+		return { seat: body.seat, state: body.state, ...outcome };
+	};
+	return { f, published, states: () => published.map((entry) => entry.state) };
+}
+
+test("activity: sub-agent turns never flip the seat's state", async (t) => {
+	const { f, states } = await activityBridge(t);
+	f.event({ type: "assistant.turn_start", id: "sub-start", agentId: "sub-agent-9", data: {} });
+	f.event({ type: "assistant.turn_end", id: "sub-end", agentId: "sub-agent-9", data: {} });
+	f.event({ type: "assistant.turn_start", id: "turn-1", data: {} });
+	await flush();
+	assert.deepEqual(states(), ["working"]);
+});
+
+test("activity: session.idle settles a working seat to idle", async (t) => {
+	const { f, states } = await activityBridge(t);
+	f.event({ type: "assistant.turn_start", id: "turn-1", data: {} });
+	f.event({ type: "session.idle", id: "idle-1", data: {} });
+	await flush();
+	assert.deepEqual(states(), ["working", "idle"]);
+});
+
+test("activity: stop settles a seat left working to idle once, outside the stopped signal", async (t) => {
+	const { f, published, states } = await activityBridge(t);
+	f.event({ type: "assistant.turn_start", id: "turn-1", data: {} });
+	await flush();
+	await f.bridge.stop("session.shutdown");
+	assert.deepEqual(states(), ["working", "idle"]);
+	assert.equal(published[1].signal.aborted, false, "the idle request outlives the stop abort");
+	await f.bridge.stop("again");
+	assert.equal(published.length, 2);
+});
+
+test("activity: stop publishes nothing for a seat already idle", async (t) => {
+	const { f, states } = await activityBridge(t);
+	f.event({ type: "assistant.turn_start", id: "turn-1", data: {} });
+	f.event({ type: "assistant.turn_end", id: "turn-1-end", data: {} });
+	await flush();
+	await f.bridge.stop();
+	assert.deepEqual(states(), ["working", "idle"]);
+});
+
+test("activity: a failed stop-time idle is reported and never throws", async (t) => {
+	const { f, states } = await activityBridge(t, (body) =>
+		body.state === "idle" ? new Error("Pij transport unavailable") : { changed: true },
+	);
+	f.event({ type: "assistant.turn_start", id: "turn-1", data: {} });
+	await flush();
+	assert.equal(await f.bridge.stop(), undefined);
+	assert.deepEqual(states(), ["working", "idle"]);
+	assert.deepEqual(
+		f.reports.filter((event) => event.kind === "activity-unpublished").map((e) => e.state),
+		["idle"],
+	);
+});
+
 test("fyi claim: count gates the verbatim block; empty and failed claims add nothing", async () => {
 	const golden = await readFile(
 		new URL("../../../crates/testkit/fixtures/golden/fyi/block.txt", import.meta.url),

@@ -780,35 +780,67 @@ impl DeliveryService {
         self.queue.pending_fyi_count(seat).await
     }
 
-    /// Claim pending FYIs for `msg`'s recipient and append the block to its body.
-    async fn attach_fyis(&self, msg: &mut Msg) -> Result<Vec<String>> {
-        let via = format!("{VIA_MESSAGE_PREFIX}{}", msg.msg_id);
-        let fyis = self.claim_fyis(&msg.to, &via).await?;
-        if fyis.is_empty() {
-            return Ok(Vec::new());
+    /// Does anything wait for `seat`? A cheap read, so a send with nothing to
+    /// carry takes no write and no publication lock. A failed read carries
+    /// nothing: the FYIs stay pending and the send goes out plain.
+    async fn has_pending_fyis(&self, seat: &SeatId) -> bool {
+        if !self.recovery_authority_shared {
+            return false;
         }
-        msg.body = append_block(&msg.body, &render_block(&fyis, local_utc_offset()));
-        Ok(fyis.into_iter().map(|fyi| fyi.id).collect())
+        match self.queue.pending_fyi_count(seat).await {
+            Ok(count) => count > 0,
+            Err(error) => {
+                eprintln!(
+                    "pij-rs could not read pending FYIs for {seat}; sending without them: {error}"
+                );
+                false
+            }
+        }
     }
 
-    async fn restore_fyis(&self, recipient: &SeatId, ids: &[String], reason: &str) -> Result<()> {
-        if ids.is_empty() {
-            return Ok(());
+    /// Enqueue `msg` as a durable delivery; when `carry`, the recipient's pending
+    /// FYIs are claimed by the transaction that creates the row and appended to
+    /// its body. A failed carrying enqueue falls back to a plain one, so the FYI
+    /// claim can never fail the send; the FYIs then stay pending.
+    async fn enqueue_carrier(
+        &self,
+        msg: &Msg,
+        recipient: &SeatDescriptor,
+        carry: bool,
+    ) -> Result<DeliveryEnqueue> {
+        let job = delivery_job(msg, Some(recipient))?;
+        if !carry {
+            return self.queue.enqueue_delivery(job).await;
         }
         let at = (self.clock)()?;
+        let offset = local_utc_offset();
+        let attach: pij_core::ports::AttachFyis =
+            Arc::new(move |payload: &str, fyis: &[HeldFyi]| {
+                attach_fyi_block(payload, fyis, offset)
+            });
+        let via = format!("{VIA_MESSAGE_PREFIX}{}", msg.msg_id);
         let queue = Arc::clone(&self.queue);
         let spine = self.event_bus.raw_spine();
-        let recipient = recipient.clone();
-        let ids = ids.to_vec();
-        let reason = reason.to_string();
-        self.event_bus
+        let carrier = job.clone();
+        let carried = self
+            .event_bus
             .publish_committed_batch(async move {
-                let events = queue
-                    .restore_fyis(&recipient, &ids, &reason, at, spine.as_ref())
+                let (enqueued, events) = queue
+                    .enqueue_delivery_carrying_fyis(carrier, &via, at, attach, spine.as_ref())
                     .await?;
-                Ok((events, ()))
+                Ok((events, enqueued))
             })
-            .await
+            .await;
+        match carried {
+            Ok(enqueued) => Ok(enqueued),
+            Err(error) => {
+                eprintln!(
+                    "pij-rs could not attach FYIs to {}; sending without them: {error}",
+                    msg.msg_id
+                );
+                self.queue.enqueue_delivery(job).await
+            }
+        }
     }
 
     // A dedupe reservation and its injection/compensation share one owner.
@@ -941,104 +973,185 @@ impl DeliveryService {
         } else {
             native_guard
         };
-        // Plan 158: held FYIs ride along appended to this message, once, for
-        // every route below. The body is final from here on, so UDS, typed pane,
-        // queued, inbox and pointer-followed delivery all carry the same text.
-        let mut msg = msg;
-        let carried =
-            if msg.command.is_none() && !matches!(selected, DeliveryRoute::Tombstoned { .. }) {
-                self.attach_fyis(&mut msg).await?
-            } else {
-                Vec::new()
-            };
+        // Plan 158: held FYIs ride along on this message when a durable carrier
+        // row is created for it, claimed in that same transaction. A queued
+        // route carries them; a pane-bound direct delivery is queued for the
+        // drain worker instead, so no FYI is ever claimed without its carrier.
+        let carry = msg.command.is_none()
+            && !matches!(selected, DeliveryRoute::Tombstoned { .. })
+            && self.has_pending_fyis(&to).await;
         let mut publish_to_recipient = true;
         let mut _delivery_order = None;
-        let outcome: Result<DeliveryOutcome> = async {
-            Ok(match selected {
-                DeliveryRoute::Tombstoned { reason } => {
-                    return Err(PijError::SeatIsGone {
-                        seat: to.clone(),
-                        tombstone_reason: reason,
-                    });
-                }
-                // EVERY arrival consults the ledger, not just forwarded ones. Review
-                // found the fix had landed in one half (E-029, producer side): a LOCAL
-                // send retried with the same caller-chosen msg_id after an ambiguous
-                // failure re-delivered once the first copy was acked — the identical
-                // window R4-AMEND-3 closes for forwards, in the same
-                // (recipient, msg_id) namespace, with the same dedupe semantics.
-                //
-                // A duplicate is a duplicate. Where it entered from does not change
-                // whether the recipient has already been given it.
-                DeliveryRoute::Queue(reason) => {
-                    match self
-                        .queue
-                        .enqueue_delivery(delivery_job(&msg, Some(&recipient))?)
-                        .await?
-                    {
-                        DeliveryEnqueue::Queued { not_before_ms, .. } => {
-                            Self::queued_outcome(Some(reason.as_str()), not_before_ms)
-                        }
-                        DeliveryEnqueue::AlreadyDelivered(origin) => {
-                            publish_to_recipient = false;
-                            DeliveryOutcome::Delivered { origin }
-                        }
+        let outcome = match selected {
+            DeliveryRoute::Tombstoned { reason } => {
+                return Err(PijError::SeatIsGone {
+                    seat: to,
+                    tombstone_reason: reason,
+                });
+            }
+            // EVERY arrival consults the ledger, not just forwarded ones. Review
+            // found the fix had landed in one half (E-029, producer side): a LOCAL
+            // send retried with the same caller-chosen msg_id after an ambiguous
+            // failure re-delivered once the first copy was acked — the identical
+            // window R4-AMEND-3 closes for forwards, in the same
+            // (recipient, msg_id) namespace, with the same dedupe semantics.
+            //
+            // A duplicate is a duplicate. Where it entered from does not change
+            // whether the recipient has already been given it.
+            DeliveryRoute::Queue(reason) => {
+                match self.enqueue_carrier(&msg, &recipient, carry).await? {
+                    DeliveryEnqueue::Queued { not_before_ms, .. } => {
+                        Self::queued_outcome(Some(reason.as_str()), not_before_ms)
+                    }
+                    DeliveryEnqueue::AlreadyDelivered(origin) => {
+                        publish_to_recipient = false;
+                        DeliveryOutcome::Delivered { origin }
                     }
                 }
-                DeliveryRoute::Transport => {
-                    // Extension consumers exclusively own these durable rows. Copilot
-                    // additionally checks native incarnation and human consent at claim.
-                    let extension_stream = matches!(
-                        recipient.harness,
-                        Harness::Omp | Harness::Pi | Harness::Copilot
-                    );
-                    let rung = if extension_stream {
-                        DeliveryRung::Observe
+            }
+            DeliveryRoute::Transport => {
+                // Extension consumers exclusively own these durable rows. Copilot
+                // additionally checks native incarnation and human consent at claim.
+                let extension_stream = matches!(
+                    recipient.harness,
+                    Harness::Omp | Harness::Pi | Harness::Copilot
+                );
+                let rung = if extension_stream {
+                    DeliveryRung::Observe
+                } else {
+                    let socket_available = msg.command.is_none()
+                        && self.transport.can_deliver(&recipient, &msg).await?;
+                    // Send-keys fallbacks check permission after acquiring input
+                    // ownership. Socket bodies do not touch the human composer.
+                    // Paneless socket consumers remain transport-owned. The rung
+                    // selector governs pane fallbacks and deliberately returns
+                    // `Observe` before consulting socket capability.
+                    if recipient.pane.is_none() && socket_available {
+                        DeliveryRung::Socket
                     } else {
-                        let socket_available = msg.command.is_none()
-                            && self.transport.can_deliver(&recipient, &msg).await?;
-                        // Send-keys fallbacks check permission after acquiring input
-                        // ownership. Socket bodies do not touch the human composer.
-                        // Paneless socket consumers remain transport-owned. The rung
-                        // selector governs pane fallbacks and deliberately returns
-                        // `Observe` before consulting socket capability.
-                        if recipient.pane.is_none() && socket_available {
-                            DeliveryRung::Socket
-                        } else {
-                            select_rung(&recipient, &msg, socket_available, false, true)
+                        match select_rung(&recipient, &msg, socket_available, false, true) {
+                            // A carrier must be a durable row, so a pane-bound
+                            // direct delivery that carries FYIs goes to the drain
+                            // worker, which delivers it the same two ways.
+                            DeliveryRung::Socket | DeliveryRung::TypedBody if carry => {
+                                DeliveryRung::Queue
+                            }
+                            rung => rung,
                         }
-                    };
+                    }
+                };
 
-                    match rung {
-                        DeliveryRung::Socket => {
-                            // Claim before injecting. A retry after an ambiguous caller
-                            // failure replays the recorded origin instead of delivering
-                            // the same message twice.
+                match rung {
+                    DeliveryRung::Socket => {
+                        // Claim before injecting. A retry after an ambiguous caller
+                        // failure replays the recorded origin instead of delivering
+                        // the same message twice.
+                        match self
+                            .queue
+                            .note_delivered(&to, &msg.msg_id, DeliveryOrigin::InjectedToTransport)
+                            .await?
+                        {
+                            Some(origin) => {
+                                publish_to_recipient = false;
+                                DeliveryOutcome::Delivered { origin }
+                            }
+                            None => match self.transport.deliver(&recipient, &msg).await {
+                                Ok(DeliveryOutcome::Queued { reason, .. }) => {
+                                    self.queue.forget_delivered(&to, &msg.msg_id).await?;
+                                    match self
+                                        .queue
+                                        .enqueue_delivery(delivery_job(&msg, Some(&recipient))?)
+                                        .await?
+                                    {
+                                        DeliveryEnqueue::Queued { not_before_ms, .. } => {
+                                            Self::queued_outcome(
+                                                reason.as_deref().or(Some("unreachable")),
+                                                not_before_ms,
+                                            )
+                                        }
+                                        DeliveryEnqueue::AlreadyDelivered(origin) => {
+                                            publish_to_recipient = false;
+                                            DeliveryOutcome::Delivered { origin }
+                                        }
+                                    }
+                                }
+                                Ok(outcome) => outcome,
+                                Err(error) => {
+                                    self.queue.forget_delivered(&to, &msg.msg_id).await?;
+                                    return Err(error);
+                                }
+                            },
+                        }
+                    }
+                    DeliveryRung::TypedBody => {
+                        let pane = recipient
+                            .pane
+                            .as_deref()
+                            .expect("typed-body rung requires a pane");
+                        let framed =
+                            frame_message(&msg.from, msg.from_machine.as_deref(), &msg.body);
+                        if framed.len() > MAX_TYPED_FRAME_BYTES {
                             match self
                                 .queue
-                                .note_delivered(
-                                    &to,
-                                    &msg.msg_id,
-                                    DeliveryOrigin::InjectedToTransport,
-                                )
+                                .enqueue_delivery(delivery_job(&msg, Some(&recipient))?)
+                                .await?
+                            {
+                                DeliveryEnqueue::Queued { not_before_ms, .. } => {
+                                    Self::queued_outcome(Some("frame-too-large"), not_before_ms)
+                                }
+                                DeliveryEnqueue::AlreadyDelivered(origin) => {
+                                    publish_to_recipient = false;
+                                    DeliveryOutcome::Delivered { origin }
+                                }
+                            }
+                        } else {
+                            match self
+                                .queue
+                                .note_delivered(&to, &msg.msg_id, DeliveryOrigin::TypedToPane)
                                 .await?
                             {
                                 Some(origin) => {
                                     publish_to_recipient = false;
                                     DeliveryOutcome::Delivered { origin }
                                 }
-                                None => match self.transport.deliver(&recipient, &msg).await {
-                                    Ok(DeliveryOutcome::Queued { reason, .. }) => {
+                                None => match self
+                                    .interaction
+                                    .submit_with_owned_input(pane, &framed)
+                                    .await
+                                {
+                                    Ok(StagedSubmission::Submitted) => DeliveryOutcome::Delivered {
+                                        origin: DeliveryOrigin::TypedToPane,
+                                    },
+                                    Ok(StagedSubmission::Deferred { reason, draft_sha }) => {
                                         self.queue.forget_delivered(&to, &msg.msg_id).await?;
+                                        // Keep admission evidence ahead of a worker's completion.
+                                        _delivery_order =
+                                            Some(self.event_bus.socket_delivery_order.lock().await);
                                         match self
                                             .queue
                                             .enqueue_delivery(delivery_job(&msg, Some(&recipient))?)
                                             .await?
                                         {
-                                            DeliveryEnqueue::Queued { not_before_ms, .. } => {
-                                                Self::queued_outcome(
-                                                    reason.as_deref().or(Some("unreachable")),
+                                            DeliveryEnqueue::Queued {
+                                                job_id,
+                                                not_before_ms,
+                                            } => {
+                                                pij_core::delivery::require_recovery_authority(
+                                                    self.recovery_authority_shared,
+                                                )?;
+                                                publish_delivery_held(
+                                                    &self.queue,
+                                                    &self.event_bus,
+                                                    job_id,
+                                                    reason.as_str(),
+                                                    draft_sha.as_deref(),
+                                                    at,
+                                                )
+                                                .await?;
+                                                Self::queued_outcome_with_draft(
+                                                    Some(reason.as_str()),
                                                     not_before_ms,
+                                                    draft_sha,
                                                 )
                                             }
                                             DeliveryEnqueue::AlreadyDelivered(origin) => {
@@ -1047,7 +1160,6 @@ impl DeliveryService {
                                             }
                                         }
                                     }
-                                    Ok(outcome) => outcome,
                                     Err(error) => {
                                         self.queue.forget_delivered(&to, &msg.msg_id).await?;
                                         return Err(error);
@@ -1055,157 +1167,43 @@ impl DeliveryService {
                                 },
                             }
                         }
-                        DeliveryRung::TypedBody => {
-                            let pane = recipient
-                                .pane
-                                .as_deref()
-                                .expect("typed-body rung requires a pane");
-                            let framed =
-                                frame_message(&msg.from, msg.from_machine.as_deref(), &msg.body);
-                            if framed.len() > MAX_TYPED_FRAME_BYTES {
-                                match self
-                                    .queue
-                                    .enqueue_delivery(delivery_job(&msg, Some(&recipient))?)
-                                    .await?
-                                {
-                                    DeliveryEnqueue::Queued { not_before_ms, .. } => {
-                                        Self::queued_outcome(Some("frame-too-large"), not_before_ms)
+                    }
+                    DeliveryRung::Observe
+                    | DeliveryRung::Queue
+                    | DeliveryRung::Pty
+                    | DeliveryRung::ControlBodyPull => {
+                        match self.enqueue_carrier(&msg, &recipient, carry).await? {
+                            DeliveryEnqueue::Queued { not_before_ms, .. } => {
+                                let reason = if paneless_pull(&recipient) {
+                                    None
+                                } else if extension_stream {
+                                    Some(
+                                        if recipient.harness == Harness::Copilot
+                                            && !recipient.native_extension_delivery
+                                        {
+                                            "native-extension-unavailable"
+                                        } else {
+                                            "extension-stream"
+                                        },
+                                    )
+                                } else {
+                                    match rung {
+                                        DeliveryRung::Observe => Some("unreachable"),
+                                        DeliveryRung::ControlBodyPull => Some("terminal-control"),
+                                        DeliveryRung::Pty => Some("pty"),
+                                        DeliveryRung::Queue if carry => Some("fyi-ride-along"),
+                                        _ => None,
                                     }
-                                    DeliveryEnqueue::AlreadyDelivered(origin) => {
-                                        publish_to_recipient = false;
-                                        DeliveryOutcome::Delivered { origin }
-                                    }
-                                }
-                            } else {
-                                match self
-                                    .queue
-                                    .note_delivered(&to, &msg.msg_id, DeliveryOrigin::TypedToPane)
-                                    .await?
-                                {
-                                    Some(origin) => {
-                                        publish_to_recipient = false;
-                                        DeliveryOutcome::Delivered { origin }
-                                    }
-                                    None => match self
-                                        .interaction
-                                        .submit_with_owned_input(pane, &framed)
-                                        .await
-                                    {
-                                        Ok(StagedSubmission::Submitted) => {
-                                            DeliveryOutcome::Delivered {
-                                                origin: DeliveryOrigin::TypedToPane,
-                                            }
-                                        }
-                                        Ok(StagedSubmission::Deferred { reason, draft_sha }) => {
-                                            self.queue.forget_delivered(&to, &msg.msg_id).await?;
-                                            // Keep admission evidence ahead of a worker's completion.
-                                            _delivery_order = Some(
-                                                self.event_bus.socket_delivery_order.lock().await,
-                                            );
-                                            match self
-                                                .queue
-                                                .enqueue_delivery(delivery_job(
-                                                    &msg,
-                                                    Some(&recipient),
-                                                )?)
-                                                .await?
-                                            {
-                                                DeliveryEnqueue::Queued {
-                                                    job_id,
-                                                    not_before_ms,
-                                                } => {
-                                                    pij_core::delivery::require_recovery_authority(
-                                                        self.recovery_authority_shared,
-                                                    )?;
-                                                    publish_delivery_held(
-                                                        &self.queue,
-                                                        &self.event_bus,
-                                                        job_id,
-                                                        reason.as_str(),
-                                                        draft_sha.as_deref(),
-                                                        at,
-                                                    )
-                                                    .await?;
-                                                    Self::queued_outcome_with_draft(
-                                                        Some(reason.as_str()),
-                                                        not_before_ms,
-                                                        draft_sha,
-                                                    )
-                                                }
-                                                DeliveryEnqueue::AlreadyDelivered(origin) => {
-                                                    publish_to_recipient = false;
-                                                    DeliveryOutcome::Delivered { origin }
-                                                }
-                                            }
-                                        }
-                                        Err(error) => {
-                                            self.queue.forget_delivered(&to, &msg.msg_id).await?;
-                                            return Err(error);
-                                        }
-                                    },
-                                }
+                                };
+                                Self::queued_outcome(reason, not_before_ms)
                             }
-                        }
-                        DeliveryRung::Observe
-                        | DeliveryRung::Queue
-                        | DeliveryRung::Pty
-                        | DeliveryRung::ControlBodyPull => {
-                            match self
-                                .queue
-                                .enqueue_delivery(delivery_job(&msg, Some(&recipient))?)
-                                .await?
-                            {
-                                DeliveryEnqueue::Queued { not_before_ms, .. } => {
-                                    let reason = if paneless_pull(&recipient) {
-                                        None
-                                    } else if extension_stream {
-                                        Some(
-                                            if recipient.harness == Harness::Copilot
-                                                && !recipient.native_extension_delivery
-                                            {
-                                                "native-extension-unavailable"
-                                            } else {
-                                                "extension-stream"
-                                            },
-                                        )
-                                    } else {
-                                        match rung {
-                                            DeliveryRung::Observe => Some("unreachable"),
-                                            DeliveryRung::ControlBodyPull => {
-                                                Some("terminal-control")
-                                            }
-                                            DeliveryRung::Pty => Some("pty"),
-                                            _ => None,
-                                        }
-                                    };
-                                    Self::queued_outcome(reason, not_before_ms)
-                                }
-                                DeliveryEnqueue::AlreadyDelivered(origin) => {
-                                    publish_to_recipient = false;
-                                    DeliveryOutcome::Delivered { origin }
-                                }
+                            DeliveryEnqueue::AlreadyDelivered(origin) => {
+                                publish_to_recipient = false;
+                                DeliveryOutcome::Delivered { origin }
                             }
                         }
                     }
                 }
-            })
-        }
-        .await;
-        // A carrier that failed, or turned out to be a duplicate of a message the
-        // recipient already has, did not deliver the FYIs it claimed.
-        let outcome = match outcome {
-            Ok(outcome) => {
-                if !publish_to_recipient {
-                    self.restore_fyis(&msg.to, &carried, "duplicate-carrier")
-                        .await?;
-                }
-                outcome
-            }
-            Err(error) => {
-                if let Err(restore) = self.restore_fyis(&msg.to, &carried, "carrier-failed").await {
-                    eprintln!("pij-rs could not restore FYIs after a failed delivery: {restore}");
-                }
-                return Err(error);
             }
         };
 
@@ -2244,6 +2242,22 @@ async fn publish_outcome_with_control(
         })
         .await?;
     Ok(())
+}
+
+/// Append the rendered FYI block to a delivery payload's body.
+fn attach_fyi_block(payload: &str, fyis: &[HeldFyi], utc_offset_minutes: i32) -> Result<String> {
+    let invalid = |error: String| PijError::Adapter {
+        adapter: "daemon/fyi".into(),
+        message: format!("cannot attach FYIs to the delivery payload: {error}"),
+    };
+    let mut payload: serde_json::Value =
+        serde_json::from_str(payload).map_err(|error| invalid(error.to_string()))?;
+    let body = payload["body"]
+        .as_str()
+        .ok_or_else(|| invalid("no body".to_string()))?;
+    payload["body"] =
+        serde_json::Value::String(append_block(body, &render_block(fyis, utc_offset_minutes)));
+    serde_json::to_string(&payload).map_err(|error| invalid(error.to_string()))
 }
 
 /// The daemon's local UTC offset for FYI clock times. UTC when it can't be read.
@@ -4502,6 +4516,127 @@ mod tests {
             "a claim whose delivery failed must NOT suppress the retry of a message nobody got"
         );
         assert_eq!(fixture.transport.delivered().len(), 1);
+    }
+
+    fn fyi_to(recipient: &str, id: &str) -> Msg {
+        Msg {
+            from: "pij-fyi-sender".into(),
+            to: recipient.into(),
+            body: format!("note {id}"),
+            msg_id: id.to_string(),
+            from_machine: None,
+            in_reply_to: None,
+            command: None,
+        }
+    }
+
+    /// Every body queued for `seat`, without claiming.
+    async fn queued_bodies(fixture: &Fixture, seat: &str) -> Vec<String> {
+        let kinds = [delivery_kind(&SeatId::from(seat))];
+        let mut bodies = Vec::new();
+        while let Some((job, row)) = fixture.queue.claim(&kinds, "fyi-reader").await.unwrap() {
+            let payload: serde_json::Value = serde_json::from_str(&row.payload).unwrap();
+            bodies.push(payload["body"].as_str().unwrap().to_string());
+            fixture
+                .queue
+                .ack(job, pij_core::model::Outcome::Done)
+                .await
+                .unwrap();
+        }
+        bodies
+    }
+
+    /// Plan 158 review MEDIUM-1: an FYI claim that fails must never fail the send
+    /// that would have carried it. The send goes out plain; the FYI stays pending.
+    #[tokio::test]
+    async fn a_failing_fyi_claim_never_fails_the_send() {
+        let fixture = fixture(FakeTransport::reachable());
+        let mut seat = bound("pij-fyi-claim-down");
+        seat.pane = Some("%claim-down".into());
+        register(&fixture, seat).await;
+        fixture
+            .service
+            .hold_fyi(fyi_to("pij-fyi-claim-down", "fyi-1"))
+            .await
+            .expect("hold");
+        fixture
+            .spine
+            .script_append_error("FYI claim receipt unavailable");
+
+        let receipt = fixture
+            .service
+            .accept(Msg {
+                body: "real work".to_string(),
+                msg_id: "m-real".to_string(),
+                ..fyi_to("pij-fyi-claim-down", "m-real")
+            })
+            .await
+            .expect("a failed FYI claim must not fail the send");
+        assert!(
+            matches!(receipt.outcome, DeliveryOutcome::Queued { .. }),
+            "{receipt:?}"
+        );
+        assert_eq!(
+            queued_bodies(&fixture, "pij-fyi-claim-down").await,
+            ["real work"],
+            "sent plain, without the FYI"
+        );
+        assert_eq!(
+            fixture
+                .queue
+                .pending_fyi_count(&SeatId::from("pij-fyi-claim-down"))
+                .await
+                .unwrap(),
+            1,
+            "the FYI waits for the next carrier"
+        );
+    }
+
+    /// Plan 158 review HIGH-2: a carrier whose delivery fails must not lose the
+    /// FYIs it would have carried. Each one is still pending, or carried exactly
+    /// once by a durable queued delivery.
+    #[tokio::test]
+    async fn a_failing_carrier_never_loses_its_fyis() {
+        let fixture = fixture(FakeTransport::reachable().script_deliver_error());
+        let mut seat = bound("pij-fyi-flaky");
+        seat.pane = Some("%fyi".into());
+        register(&fixture, seat).await;
+        fixture
+            .service
+            .hold_fyi(fyi_to("pij-fyi-flaky", "fyi-1"))
+            .await
+            .expect("hold");
+
+        let _ = fixture
+            .service
+            .accept(Msg {
+                body: "real work".to_string(),
+                msg_id: "m-real".to_string(),
+                ..fyi_to("pij-fyi-flaky", "m-real")
+            })
+            .await;
+
+        let pending = fixture
+            .queue
+            .pending_fyi_count(&SeatId::from("pij-fyi-flaky"))
+            .await
+            .unwrap();
+        let carried = queued_bodies(&fixture, "pij-fyi-flaky")
+            .await
+            .iter()
+            .filter(|body| body.contains("note fyi-1"))
+            .count() as u64;
+        let delivered = fixture
+            .transport
+            .delivered()
+            .iter()
+            .filter(|msg| msg.body.contains("note fyi-1"))
+            .count() as u64;
+        assert_eq!(
+            pending + carried + delivered,
+            1,
+            "pending {pending}, queued {carried}, delivered {delivered}"
+        );
     }
 
     fn native_seat(pane: Option<&str>) -> SeatDescriptor {

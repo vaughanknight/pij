@@ -383,3 +383,130 @@ async fn a_seats_own_turn_boundaries_publish_busy_then_idle() {
     assert_eq!(state().await, "idle");
     server.abort();
 }
+
+/// Review HIGH-1(a): a sender retrying a message id that is still queued must
+/// not swallow an FYI held since the first attempt. The queued row keeps its
+/// original body, so the newer FYI has to stay pending for the next carrier.
+#[tokio::test]
+async fn a_retried_carrier_still_queued_does_not_swallow_a_newer_fyi() {
+    let store = FreshStore::new();
+    let config = config(&store);
+    let (addr, server) = serve(&config, true).await;
+    send(addr, "pij-sender", "first note", "fyi-A", true).await;
+    let (status, _) = send(addr, "pij-boss", "do X", "real-1", false).await;
+    assert_eq!(status, 200);
+    send(addr, "pij-sender", "second note", "fyi-B", true).await;
+    let (status, retry) = send(addr, "pij-boss", "do X", "real-1", false).await;
+    assert_eq!(status, 200, "{retry}");
+
+    assert_eq!(pending(addr).await, 1, "fyi-B must still be pending");
+    let bodies = queued_bodies(&config).await;
+    assert_eq!(bodies.len(), 1, "{bodies:?}");
+    assert!(bodies[0].contains("first note") && !bodies[0].contains("second note"));
+    server.abort();
+}
+
+/// Review HIGH-2: a duplicate of a carrier the recipient already has delivers
+/// nothing, so the FYI it would have carried stays pending.
+#[tokio::test]
+async fn a_duplicate_of_a_delivered_carrier_leaves_the_fyi_pending() {
+    let store = FreshStore::new();
+    let config = config(&store);
+    let (addr, server) = serve(&config, true).await;
+    let (status, _) = send(addr, "pij-boss", "do X", "real-1", false).await;
+    assert_eq!(status, 200);
+    // The recipient reads and acknowledges real-1: the durable ledger now has it.
+    let services = pij_daemon::build_services(
+        &config,
+        std::path::Path::new("/tmp/pij-test-pane-signals-fyi"),
+    )
+    .await
+    .expect("reopen services");
+    let kinds = [format!("delivery:{RECIPIENT}")];
+    let (job, _) = services
+        .queue
+        .claim(&kinds, "fyi-test-reader")
+        .await
+        .expect("claim")
+        .expect("real-1 is queued");
+    services
+        .queue
+        .ack_delivery(job, pij_core::model::DeliveryOrigin::ReaderRead)
+        .await
+        .expect("ack");
+
+    send(addr, "pij-sender", "late note", "fyi-late", true).await;
+    let (status, dup) = send(addr, "pij-boss", "do X", "real-1", false).await;
+    assert_eq!(status, 200, "{dup}");
+    assert_eq!(dup["data"]["outcome"]["outcome"], "delivered", "{dup}");
+    assert_eq!(pending(addr).await, 1, "the duplicate carried nothing");
+    assert!(queued_bodies(&config).await.is_empty());
+    server.abort();
+}
+
+/// Review HIGH-2: a typed-turn hook claim racing a ride-along delivers every
+/// FYI exactly once, in the body or in the hook's block, never both.
+#[tokio::test]
+async fn a_hook_claim_racing_a_ride_along_delivers_each_fyi_once() {
+    let store = FreshStore::new();
+    let config = config(&store);
+    let (addr, server) = serve(&config, true).await;
+    let ids = ["fyi-r1", "fyi-r2", "fyi-r3", "fyi-r4"];
+    for id in ids {
+        send(addr, "pij-sender", &format!("body-{id}"), id, true).await;
+    }
+    let (claimed, sent) = tokio::join!(
+        post(
+            addr,
+            "/v1/fyi/claim",
+            json!({"pane": PANE, "via": "hook:claude"})
+        ),
+        send(addr, "pij-boss", "do X", "real-race", false),
+    );
+    assert_eq!(claimed.0, 200, "{}", claimed.1);
+    assert_eq!(sent.0, 200, "{}", sent.1);
+    let bodies = queued_bodies(&config).await;
+    assert_eq!(bodies.len(), 1);
+    for id in ids {
+        let in_hook = claimed.1["data"]["ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|claimed| claimed == id);
+        let in_body = bodies[0].contains(&format!("body-{id}"));
+        assert!(in_hook ^ in_body, "{id}: hook {in_hook}, body {in_body}");
+    }
+    assert_eq!(pending(addr).await, 0);
+    server.abort();
+}
+
+/// Review MEDIUM-3: a tombstone ends any turn, so a seat retired while
+/// `working` does not read `working` for ever.
+#[tokio::test]
+async fn a_tombstone_resets_a_working_seat_to_idle() {
+    let store = FreshStore::new();
+    let config = config(&store);
+    let services = pij_daemon::build_services(
+        &config,
+        std::path::Path::new("/tmp/pij-test-pane-signals-fyi"),
+    )
+    .await
+    .expect("services");
+    services.registry.put(recipient()).await.expect("seed");
+    let (addr, server) = serve(&config, false).await;
+    let (status, _) = post(
+        addr,
+        "/v1/activity",
+        json!({"seat": RECIPIENT, "native_session": SESSION, "state": "working"}),
+    )
+    .await;
+    assert_eq!(status, 200);
+    services
+        .registry
+        .tombstone(&SeatId::from(RECIPIENT), "closed")
+        .await
+        .expect("tombstone");
+    let (_, card) = post(addr, "/v1/state", json!({"id": RECIPIENT})).await;
+    assert_eq!(card["data"]["state"], "idle", "{card}");
+    server.abort();
+}

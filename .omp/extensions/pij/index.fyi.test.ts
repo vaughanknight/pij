@@ -27,7 +27,12 @@ interface Recorded {
 }
 
 interface FakeDaemon {
-	readonly state: { pendingFyis: number; seat: string };
+	readonly state: {
+		pendingFyis: number;
+		seat: string;
+		/** How /v1/activity answers: applied, connection refused, or a route-absent 404. */
+		activity: "up" | "down" | "absent";
+	};
 	readonly requests: Recorded[];
 	/** Activity states in the order the daemon finished applying them. */
 	readonly applied: string[];
@@ -40,8 +45,11 @@ interface Seat {
 	fyiFooter(): Array<string | undefined>;
 	send(params: Record<string, unknown>): Promise<unknown>;
 	beforeAgentStart(): Promise<unknown>;
+	/** before_agent_start from an OMP in-process subagent sharing this extension. */
+	embeddedChildBeforeAgentStart(): Promise<unknown>;
 	turnStart(): Promise<unknown>;
 	turnEnd(): Promise<unknown>;
+	agentEnd(willContinue: boolean): Promise<unknown>;
 	shutdown(): Promise<unknown>;
 }
 
@@ -56,7 +64,11 @@ function fakeDaemon(options: {
 	/** Holds the first /v1/activity response until the promise settles. */
 	firstActivityGate?: Promise<void>;
 }): FakeDaemon {
-	const state = { pendingFyis: options.pendingFyis, seat: "" };
+	const state: FakeDaemon["state"] = {
+		pendingFyis: options.pendingFyis,
+		seat: "",
+		activity: "up",
+	};
 	const requests: Recorded[] = [];
 	const applied: string[] = [];
 	let events: ReadableStreamDefaultController<Uint8Array> | undefined;
@@ -116,6 +128,9 @@ function fakeDaemon(options: {
 			return envelope("pij fyi-claim", { seat: state.seat, ...options.claim, ids: [] });
 		}
 		if (path === "/v1/activity") {
+			if (state.activity === "down")
+				throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
+			if (state.activity === "absent") return new Response("Not Found", { status: 404 });
 			const first = requests.filter((request) => request.path === "/v1/activity").length === 1;
 			if (first && options.firstActivityGate) await options.firstActivityGate;
 			applied.push(String(body.state));
@@ -184,8 +199,22 @@ async function bootSeat(daemon: FakeDaemon): Promise<Seat> {
 		send: async (params) =>
 			tools.get("pij_send")?.execute("call", params, undefined, undefined, ctx),
 		beforeAgentStart: () => fire("before_agent_start", { prompt: "hi" }),
+		embeddedChildBeforeAgentStart: async () =>
+			handlers.get("before_agent_start")?.(
+				{ type: "before_agent_start", prompt: "child task" },
+				{
+					...ctx,
+					mode: "print",
+					hasUI: false,
+					sessionManager: {
+						getSessionId: () => "embedded-child-session",
+						getEntries: () => [{ type: "session_init" }],
+					},
+				},
+			),
 		turnStart: () => fire("turn_start", { turnIndex: 0, timestamp: Date.now() }),
 		turnEnd: () => fire("turn_end", { turnIndex: 0 }),
+		agentEnd: (willContinue) => fire("agent_end", { messages: [], willContinue }),
 		shutdown: () => fire("session_shutdown", { reason: "quit" }),
 	};
 }
@@ -277,6 +306,14 @@ describe("pij extension — fyi and turn activity (plan 158)", () => {
 			seat = await bootSeat(fakeDaemon({ pendingFyis: 0, claim }));
 			expect(await seat.beforeAgentStart()).toBeUndefined();
 		});
+
+		it("an OMP in-process subagent's turn claims nothing for the parent seat", async () => {
+			vi.stubEnv("OMPCODE", "1");
+			const daemon = fakeDaemon({ pendingFyis: 1, claim: { count: 1, block: GOLDEN_BLOCK } });
+			seat = await bootSeat(daemon);
+			expect(await seat.embeddedChildBeforeAgentStart()).toBeUndefined();
+			expect(pathed(daemon, "/v1/fyi/claim")).toEqual([]);
+		});
 	});
 
 	describe("✉N footer", () => {
@@ -346,6 +383,79 @@ describe("pij extension — fyi and turn activity (plan 158)", () => {
 			expect(pathed(daemon, "/v1/activity").map((request) => request.body)).toEqual([
 				{ seat: daemon.state.seat, native_session: "native-fyi-session", state: "working" },
 				{ seat: daemon.state.seat, native_session: "native-fyi-session", state: "idle" },
+			]);
+		});
+
+		it("agent_end repairs idle when turn_end's idle publication failed", async () => {
+			const daemon = fakeDaemon({ pendingFyis: 0 });
+			const current = await bootSeat(daemon);
+			seat = current;
+			await current.turnStart();
+			await vi.waitFor(() => expect(daemon.applied).toEqual(["working"]));
+			daemon.state.activity = "down";
+			await current.turnEnd();
+			await vi.waitFor(() => expect(pathed(daemon, "/v1/activity")).toHaveLength(2));
+			daemon.state.activity = "up";
+			await current.agentEnd(false);
+			await vi.waitFor(() => expect(daemon.applied).toEqual(["working", "idle"]));
+		});
+
+		it("agent_end publishes nothing while the agent will continue", async () => {
+			const daemon = fakeDaemon({ pendingFyis: 0 });
+			const current = await bootSeat(daemon);
+			seat = current;
+			await current.turnStart();
+			await current.agentEnd(true);
+			await current.turnStart();
+			// Publications land in call order, so the second working proves agent_end was seen.
+			await vi.waitFor(() => expect(daemon.applied).toHaveLength(2));
+			expect(daemon.applied).toEqual(["working", "working"]);
+		});
+
+		it("stops publishing for the runtime once the daemon has no activity route", async () => {
+			const daemon = fakeDaemon({ pendingFyis: 0 });
+			daemon.state.activity = "absent";
+			const current = await bootSeat(daemon);
+			await current.turnStart();
+			await current.turnEnd();
+			await current.turnStart();
+			await current.agentEnd(false);
+			// Shutdown settles every queued publication before it returns.
+			await current.shutdown();
+			expect(pathed(daemon, "/v1/activity")).toHaveLength(1);
+		});
+	});
+
+	describe("session_shutdown", () => {
+		it("publishes idle before returning when the seat was left working", async () => {
+			const daemon = fakeDaemon({ pendingFyis: 0 });
+			const current = await bootSeat(daemon);
+			await current.turnStart();
+			await vi.waitFor(() => expect(daemon.applied).toEqual(["working"]));
+			await current.shutdown();
+			expect(daemon.applied).toEqual(["working", "idle"]);
+		});
+
+		it("publishes nothing more when the seat is already idle", async () => {
+			const daemon = fakeDaemon({ pendingFyis: 0 });
+			const current = await bootSeat(daemon);
+			await current.turnStart();
+			await current.turnEnd();
+			await vi.waitFor(() => expect(daemon.applied).toEqual(["working", "idle"]));
+			await current.shutdown();
+			expect(pathed(daemon, "/v1/activity")).toHaveLength(2);
+		});
+
+		it("completes without throwing when the daemon is down", async () => {
+			const daemon = fakeDaemon({ pendingFyis: 0 });
+			const current = await bootSeat(daemon);
+			await current.turnStart();
+			await vi.waitFor(() => expect(daemon.applied).toEqual(["working"]));
+			daemon.state.activity = "down";
+			await expect(current.shutdown()).resolves.toBeUndefined();
+			expect(pathed(daemon, "/v1/activity").map((request) => request.body.state)).toEqual([
+				"working",
+				"idle",
 			]);
 		});
 	});

@@ -153,16 +153,19 @@ impl Queue for FailFirstClaim {
     ) -> Result<(Vec<pij_core::fyi::HeldFyi>, Vec<pij_core::model::Event>)> {
         self.inner.claim_fyis(recipient, via, at, spine).await
     }
-    async fn restore_fyis(
+    async fn enqueue_delivery_carrying_fyis(
         &self,
-        recipient: &SeatId,
-        ids: &[String],
-        reason: &str,
+        job: pij_core::model::Job,
+        via: &str,
         at: u64,
+        attach: pij_core::ports::AttachFyis,
         spine: &dyn pij_core::ports::Spine,
-    ) -> Result<Vec<pij_core::model::Event>> {
+    ) -> Result<(
+        pij_core::ports::DeliveryEnqueue,
+        Vec<pij_core::model::Event>,
+    )> {
         self.inner
-            .restore_fyis(recipient, ids, reason, at, spine)
+            .enqueue_delivery_carrying_fyis(job, via, at, attach, spine)
             .await
     }
     async fn pending_fyi_count(&self, recipient: &SeatId) -> Result<u64> {
@@ -727,16 +730,19 @@ impl Queue for RefuseFirstDelivery {
     ) -> Result<(Vec<pij_core::fyi::HeldFyi>, Vec<pij_core::model::Event>)> {
         self.inner.claim_fyis(recipient, via, at, spine).await
     }
-    async fn restore_fyis(
+    async fn enqueue_delivery_carrying_fyis(
         &self,
-        recipient: &SeatId,
-        ids: &[String],
-        reason: &str,
+        job: pij_core::model::Job,
+        via: &str,
         at: u64,
+        attach: pij_core::ports::AttachFyis,
         spine: &dyn pij_core::ports::Spine,
-    ) -> Result<Vec<pij_core::model::Event>> {
+    ) -> Result<(
+        pij_core::ports::DeliveryEnqueue,
+        Vec<pij_core::model::Event>,
+    )> {
         self.inner
-            .restore_fyis(recipient, ids, reason, at, spine)
+            .enqueue_delivery_carrying_fyis(job, via, at, attach, spine)
             .await
     }
     async fn pending_fyi_count(&self, recipient: &SeatId) -> Result<u64> {

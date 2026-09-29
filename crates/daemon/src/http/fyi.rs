@@ -127,7 +127,7 @@ pub(crate) async fn activity(
             );
         }
     };
-    let mut seat = match bound_seat(
+    let seat = match bound_seat(
         &state,
         ACTIVITY,
         Some(request.seat),
@@ -139,13 +139,17 @@ pub(crate) async fn activity(
         Ok(seat) => seat,
         Err(response) => return *response,
     };
-    let changed = seat.state != observed;
-    if changed {
-        seat.state = observed;
-        if let Err(error) = state.services.registry.put(seat.clone()).await {
-            return internal(ACTIVITY, error);
-        }
-    }
+    // A targeted state write, never a put of the row read above: a tombstone,
+    // role or declaration landing in between must survive (review MEDIUM-2).
+    let changed = match state
+        .services
+        .registry
+        .set_activity(&seat.id, observed)
+        .await
+    {
+        Ok(seq) => seq.is_some(),
+        Err(error) => return internal(ACTIVITY, error),
+    };
     envelope(
         StatusCode::OK,
         &Envelope::ok(

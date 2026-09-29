@@ -63,12 +63,14 @@ async function startExtension() {
 	const stop = (cause) => {
 		if (signal.aborted) return;
 		controller.abort();
-		bridge?.stop(cause);
+		// A seat left working publishes idle (bounded, never rejects) before exit.
+		const settled = bridge?.stop(cause);
 		unsubscribe?.();
 		// A disconnected parent may never answer detach; only this extension process is stopped.
-		void Promise.race([session?.disconnect().catch(() => undefined), sleep(1000)]).finally(() =>
-			process.exit(0),
-		);
+		void Promise.all([
+			settled,
+			Promise.race([session?.disconnect().catch(() => undefined), sleep(1000)]),
+		]).finally(() => process.exit(0));
 	};
 	for (const event of ["SIGTERM", "SIGINT", "SIGHUP", "disconnect"])
 		process.once(event, () => stop(event));

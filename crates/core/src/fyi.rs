@@ -111,16 +111,6 @@ pub fn delivered_event(recipient: &SeatId, ids: &[String], via: &str, at: u64) -
     )
 }
 
-/// The `fyi.restored` fact: a failed carrier returned its FYIs to pending.
-pub fn restored_event(recipient: &SeatId, ids: &[String], reason: &str, at: u64) -> Event {
-    fyi_event(
-        "fyi.restored",
-        recipient,
-        at,
-        serde_json::json!({"ids": ids, "reason": reason}),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

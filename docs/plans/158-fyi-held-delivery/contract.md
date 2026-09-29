@@ -18,7 +18,7 @@ The body is an ordinary send body plus `"fyi": true`, for example
 - The shim form is `pij send <seat> --fyi "<text>"`, and the native form is `pij-rs send --to <seat> --fyi <text>`.
 
 ### Ride-along
-The next non-control, non-FYI message that reaches the seat carries every pending FYI. This holds for every harness and every route (UDS, tmux, queue, inbox pull, pointer).
+The next non-control, non-FYI message that reaches the seat carries every pending FYI. The FYIs are claimed in the same transaction as the message's durable queue row. A pane-bound direct send that would carry FYIs is queued for the drain worker (`fyi-ride-along`). A paneless socket seat's FYIs arrive through its typed-turn hook. (Revised after review HIGH-1.)
 The FYIs are appended to the SAME message body, after its content, in the golden format below. No client work is needed for this.
 
 ### Claim: `POST /v1/fyi/claim`
@@ -38,7 +38,7 @@ Used by the typed-turn hooks.
 ### Count
 - `pij state <seat> --json` shows `data.pendingFyis: N`.
 - `/v1/whoami` (and `pij-rs --json whoami --pane "$TMUX_PANE"`) gains `data.pending_fyis: N`. The status lines read it there, so they need no extra call.
-- The events on `/v1/events`, whose `seat` is the recipient, are `fyi.held`, `fyi.delivered` and `fyi.restored`.
+- The events on `/v1/events`, whose `seat` is the recipient, are `fyi.held` and `fyi.delivered`; busy/idle changes publish `seat.activity`.
   A tombstone drops pending FYIs and records `pending_fyis_dropped` in the `seat.tombstone` payload, present only when at least one was dropped.
   Extensions refresh their count on any `fyi.*` event, or on `seat.tombstone`, for their seat.
 

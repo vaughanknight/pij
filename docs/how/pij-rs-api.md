@@ -479,13 +479,14 @@ pij-rs send --to <seat> --fyi 'text'   # native form
 | Surface | Contract |
 |---|---|
 | POST `/v1/send` with `"fyi": true` | An ordinary send body plus `fyi`. The daemon stores the FYI durably and opens no turn: no tmux, UDS or extension push. `data` is a Receipt whose `outcome` is `{"outcome":"held","reason":"fyi"}`. Refused (`ok:false`, `error:"refused"`) with a control `command` or a remote `seat@machine` recipient; a tombstoned or unknown recipient gets the same errors as a normal send. |
-| Ride-along | The next non-control, non-FYI message that reaches the seat carries every pending FYI, on every harness and route (UDS, tmux, queue, inbox pull, pointer). The FYIs are appended to the same body as `<original body>\n\n<block>`, never sent as a separate message. No client work is needed. |
+| Ride-along | The next non-control, non-FYI message to the seat carries every pending FYI, appended to the same body as `<original body>\n\n<block>` and never sent as a separate message. The FYIs are claimed by the same transaction that creates the message's durable queue row (`fyi.delivered` names `message:<msg_id>`), so an FYI is never claimed without its carrier. A retry or duplicate of a message the queue or ledger already has claims nothing. A pane-bound direct send (socket or typed) that would carry FYIs is queued instead, with reason `fyi-ride-along`, and the drain worker delivers it moments later. A paneless socket seat's direct sends carry none, so its FYIs arrive through the typed-turn hook. A failed FYI claim never fails the send: the send goes out plain and the FYIs stay pending. No client work is needed. |
 | POST `/v1/fyi/claim` | Typed-turn hooks only. Request `{seat?, pane?, native_session?, via}`, where `via` is `hook:claude`, `hook:copilot`, `hook:omp` or `hook:pi`. At least one of `pane` or `native_session` is binding evidence; `seat` may be omitted when `pane` resolves a live seat, and a `seat` that mismatches the pane or session refuses. `data` is `{seat, count, block, ids}`; `count: 0` means `block: ""`. The claim is atomic: pending → delivered exactly once, with one `fyi.delivered` event carrying `via`. Racing claims, or a claim racing a ride-along, never deliver the same FYI twice. |
 | `pij-rs fyi-claim --pane <P> [--native-session <S>] --via hook:claude` | Prints the raw `block` to stdout, or nothing at count 0, and exits 0. Global `--json` prints the envelope instead. An unreachable daemon exits non-zero; the calling hook then prints nothing and exits 0, so it never blocks the human's prompt. |
 | `POST /v1/state` → `data.pendingFyis` | Pending count on the camelCase card (`pij state <seat> --json`). |
 | `/v1/whoami` → `data.pending_fyis` | The same count on whoami (`pij-rs --json whoami --pane "$TMUX_PANE"`). Status lines and footers read it here, with no extra call, and show `✉N` only while N > 0. |
-| `/v1/events` kinds `fyi.held`, `fyi.delivered`, `fyi.restored` | `seat` is the recipient. `fyi.restored` means a failed carrier returned its FYIs to pending. Extensions refresh their count on any `fyi.*` event, or `seat.tombstone`, for their seat. |
+| `/v1/events` kinds `fyi.held`, `fyi.delivered` | `seat` is the recipient. Extensions refresh their count on any `fyi.*` event, or `seat.tombstone`, for their seat. |
 | `seat.tombstone` payload `pending_fyis_dropped` | A tombstone drops the seat's pending FYIs and records how many in this field, present only when at least one was dropped. |
+| Hook claim window | A hook claim that commits in the daemon and then times out in the client (the hooks give up after 3 s) delivers nothing: those FYIs are claimed at most once, never twice. This is the one remaining loss window. |
 
 A claimed `block` is placed as: Claude `UserPromptSubmit` hook `additionalContext`; OMP and Pi `before_agent_start` custom message `pij-fyi`; Copilot native extension `onUserPromptSubmitted` `additionalContext`.
 
@@ -494,10 +495,11 @@ Sources: [`fyi.rs`](../../crates/core/src/fyi.rs), [contract](../plans/158-fyi-h
 ### Busy/idle publication: POST `/v1/activity`
 
 The request is `{seat, pane?, native_session?, state: "working"|"idle"}`. It takes the same binding evidence as `/v1/fyi/claim`, and a tombstoned seat is refused.
-It persists the seat's mechanical `state`, so `pij state` shows `working` during a turn and `idle` after it. `data` is `{seat, state, changed}`.
+It changes only the seat's mechanical `state` (a targeted write that never rewrites or revives the row), so `pij state` shows `working` during a turn and `idle` after it. Each change publishes a `seat.activity` event. `data` is `{seat, state, changed}`.
+- `working` never outlives its process: a tombstone resets it to `idle`, and so does a new incarnation registering the seat.
 
-- The OMP/Pi extension publishes `working` at `turn_start`, and `idle` at `turn_end` and `agent_end`.
-- The Copilot native extension publishes on `assistant.turn_start`, and on `assistant.turn_end` or `session.idle`.
+- The OMP/Pi extension publishes `working` at `turn_start`, and `idle` at `turn_end`, at `agent_end` and on shutdown.
+- The Copilot native extension publishes on `assistant.turn_start`, and on `assistant.turn_end`, `session.idle` or shutdown.
 - Publications are serialized per session, and a failure never breaks a turn. A route-absent 404 from an older daemon stops publishing.
 - Claude seats don't publish yet.
 

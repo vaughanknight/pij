@@ -822,6 +822,11 @@ impl RegistrationService {
         descriptor.extension_build = claim.extension_build;
         descriptor.extension_path = claim.extension_path;
         descriptor.pane = claim.pane;
+        // A new process has not started a turn yet: `working` belonged to the
+        // previous incarnation and must not outlive it (plan 158 review MEDIUM-3).
+        if descriptor.proc != proc && descriptor.state == pij_core::model::SystemState::Working {
+            descriptor.state = pij_core::model::SystemState::Idle;
+        }
         descriptor.proc = proc;
         if resuming {
             descriptor.tombstoned_at = None;
@@ -3051,6 +3056,32 @@ mod tests {
                 registry.list(SeatFilter::default()).await.expect("roster"),
                 vec![withdrawn]
             );
+        }
+    }
+
+    /// Plan 158 review MEDIUM-3: `working` belongs to the process that published
+    /// it. A new incarnation binding the seat starts idle; the same process
+    /// re-registering keeps its turn.
+    #[tokio::test]
+    async fn a_new_incarnation_does_not_inherit_working() {
+        for (claimed, expected) in [
+            (OTHER_HOST, pij_core::model::SystemState::Idle),
+            (HOST, pij_core::model::SystemState::Working),
+        ] {
+            let mut old =
+                SeatDescriptor::new("pij-busy", Harness::Omp, "/isolated/native-registration");
+            old.proc = Some(HOST);
+            old.state = pij_core::model::SystemState::Working;
+            let mut claim = native_claim("pij-busy");
+            claim.harness = Harness::Omp.as_str().to_string();
+            claim.pid = Some(claimed.pid);
+            claim.proc_start = Some(claimed.proc_start);
+            let (service, _) = native_service(vec![old], native_liveness()).await;
+            let (rebound, _) = service
+                .register_with_harness_session(claim, Some("legacy-session".to_string()))
+                .await
+                .expect("rebind");
+            assert_eq!(rebound.state, expected, "claimed {claimed:?}");
         }
     }
 

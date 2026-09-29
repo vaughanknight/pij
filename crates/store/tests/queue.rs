@@ -187,23 +187,65 @@ async fn fyi_contract(queue: &dyn Queue, spine: &dyn pij_core::ports::Spine) {
     );
     assert_eq!(queue.pending_fyi_count(&other).await.unwrap(), 1);
 
-    let restored = queue
-        .restore_fyis(
-            &seat,
-            &["late".to_string(), "never-held".to_string()],
-            "carrier-failed",
-            32,
-            spine,
+    // A carrier row claims every pending FYI in its own transaction and carries it.
+    queue
+        .hold_fyi(&fyi("ride", &seat, 40), spine)
+        .await
+        .unwrap();
+    let carrier = |msg_id: &str| {
+        job(
+            &format!("delivery:{}", seat.as_str()),
+            seat.as_str(),
+            msg_id,
         )
+    };
+    let attach: pij_core::ports::AttachFyis = std::sync::Arc::new(|payload, fyis| {
+        let ids: Vec<&str> = fyis.iter().map(|fyi| fyi.id.as_str()).collect();
+        Ok(format!("{payload}+{}", ids.join(",")))
+    });
+    let (enqueued, events) = queue
+        .enqueue_delivery_carrying_fyis(carrier("m-1"), "message:m-1", 41, attach.clone(), spine)
         .await
         .unwrap();
-    assert_eq!(restored.len(), 1);
+    assert!(matches!(enqueued, DeliveryEnqueue::Queued { .. }));
+    assert_eq!(events.len(), 1);
+    assert_eq!(queue.pending_fyi_count(&seat).await.unwrap(), 0);
+
+    // A retry of the still-queued message keeps its body and claims nothing new.
+    queue
+        .hold_fyi(&fyi("newer", &seat, 42), spine)
+        .await
+        .unwrap();
+    let (retried, events) = queue
+        .enqueue_delivery_carrying_fyis(carrier("m-1"), "message:m-1", 43, attach.clone(), spine)
+        .await
+        .unwrap();
+    assert!(matches!(retried, DeliveryEnqueue::Queued { .. }));
+    assert!(events.is_empty(), "a queued duplicate claims nothing");
     assert_eq!(queue.pending_fyi_count(&seat).await.unwrap(), 1);
-    let (reclaimed, _) = queue
-        .claim_fyis(&seat, "message:m-1", 33, spine)
+    let kinds = [format!("delivery:{}", seat.as_str())];
+    let (job_id, row) = queue
+        .claim(&kinds, "reader")
+        .await
+        .unwrap()
+        .expect("carrier row");
+    assert_eq!(
+        row.payload, "{}+ride",
+        "the carrier carries exactly what it claimed"
+    );
+
+    // A delivered message id creates no row and claims nothing either.
+    queue
+        .ack_delivery(job_id, DeliveryOrigin::ReaderRead)
         .await
         .unwrap();
-    assert_eq!(reclaimed, [fyi("late", &seat, 20)]);
+    let (duplicate, events) = queue
+        .enqueue_delivery_carrying_fyis(carrier("m-1"), "message:m-1", 44, attach, spine)
+        .await
+        .unwrap();
+    assert!(matches!(duplicate, DeliveryEnqueue::AlreadyDelivered(_)));
+    assert!(events.is_empty());
+    assert_eq!(queue.pending_fyi_count(&seat).await.unwrap(), 1);
 }
 
 #[tokio::test]

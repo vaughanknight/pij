@@ -185,15 +185,16 @@ impl Queue for CountingQueue {
     ) -> Result<(Vec<pij_core::fyi::HeldFyi>, Vec<Event>)> {
         Ok((Vec::new(), Vec::new()))
     }
-    async fn restore_fyis(
+    async fn enqueue_delivery_carrying_fyis(
         &self,
-        _recipient: &SeatId,
-        _ids: &[String],
-        _reason: &str,
+        job: Job,
+        _via: &str,
         _at: u64,
+        _attach: pij_core::ports::AttachFyis,
         _spine: &dyn Spine,
-    ) -> Result<Vec<Event>> {
-        Ok(Vec::new())
+    ) -> Result<(DeliveryEnqueue, Vec<Event>)> {
+        // Nothing is ever held here: carrying FYIs is an ordinary enqueue.
+        Ok((self.enqueue_delivery(job).await?, Vec::new()))
     }
     async fn pending_fyi_count(&self, _recipient: &SeatId) -> Result<u64> {
         Ok(0)

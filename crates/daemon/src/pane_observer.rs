@@ -492,6 +492,14 @@ mod tests {
         ) -> Result<pij_core::model::Seq> {
             self.inner.tombstone_if_unchanged(expected, reason).await
         }
+
+        async fn set_activity(
+            &self,
+            seat: &SeatId,
+            state: pij_core::model::SystemState,
+        ) -> Result<Option<pij_core::model::Seq>> {
+            self.inner.set_activity(seat, state).await
+        }
     }
 
     #[tokio::test]

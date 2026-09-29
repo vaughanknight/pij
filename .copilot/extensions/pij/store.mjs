@@ -10,8 +10,8 @@ export const HOLD_ESCALATED_RETRY_MS = 60000;
 export const NATIVE_RPC_DEADLINE_MS = 15000;
 export const RECEIVER_EMPTY_READ_LIMIT = 3;
 export const RECEIVER_PROBE_INTERVAL_MS = 1000;
-/** A typed prompt never waits on a wedged daemon for its held FYIs (plan 158). */
-export const FYI_CLAIM_TIMEOUT_MS = 3000;
+/** A wedged daemon holds neither a typed prompt (held FYIs, plan 158) nor shutdown. */
+export const HOOK_REQUEST_TIMEOUT_MS = 3000;
 const ERROR_BODY_LIMIT = 4096;
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const nonempty = (value) => typeof value === "string" && value.trim().length > 0;
@@ -690,6 +690,9 @@ export class NativeBridge {
 		this.activity = Promise.resolve();
 		this.activityState = undefined;
 		this.activityUnsupported = false;
+		/** The last state the daemon accepted; stop settles a seat left `working`. */
+		this.activityPublished = undefined;
+		this.stopped = undefined;
 	}
 	emit(kind, details = {}) {
 		this.report({
@@ -699,8 +702,13 @@ export class NativeBridge {
 			...details,
 		});
 	}
+	/**
+	 * Stops synchronously. The returned promise settles once a seat that may still
+	 * read `working` has published `idle`, bounded by HOOK_REQUEST_TIMEOUT_MS; it
+	 * never rejects, and repeated stops share it.
+	 */
 	stop(cause = "stop") {
-		if (this.controller.signal.aborted) return;
+		if (this.controller.signal.aborted) return this.stopped;
 		if (this.completion && !this.completion.terminal)
 			this.emit("receiver-stopped", {
 				cause,
@@ -714,6 +722,34 @@ export class NativeBridge {
 		this.heartbeatController.abort();
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
+		// The aborted signal settles any in-flight publication before this runs.
+		this.stopped = this.activity.then(() => this.publishStopIdle());
+		return this.stopped;
+	}
+	async publishStopIdle() {
+		if (
+			this.activityUnsupported ||
+			(this.activityPublished !== "working" && this.activityState !== "working")
+		)
+			return;
+		try {
+			await this.client.request(
+				"/v1/activity",
+				{
+					seat: this.registration.id,
+					native_session: this.registration.harness_session,
+					state: "idle",
+				},
+				AbortSignal.timeout(HOOK_REQUEST_TIMEOUT_MS),
+			);
+			this.activityPublished = "idle";
+		} catch (error) {
+			this.emit("activity-unpublished", {
+				state: "idle",
+				status: error?.status ?? null,
+				safeDiagnostic: error instanceof NativeError ? error.safeDiagnostic : null,
+			});
+		}
 	}
 	run() {
 		if (!this.running) this.running = this.consume();
@@ -1368,6 +1404,7 @@ export class NativeBridge {
 				{ seat: this.registration.id, native_session: this.registration.harness_session, state },
 				this.controller.signal,
 			);
+			this.activityPublished = state;
 		} catch (error) {
 			if (this.controller.signal.aborted) return;
 			if (this.activityState === state) this.activityState = undefined;
@@ -1394,7 +1431,7 @@ export class NativeBridge {
 					native_session: this.registration.harness_session,
 					via: "hook:copilot",
 				},
-				AbortSignal.any([this.controller.signal, AbortSignal.timeout(FYI_CLAIM_TIMEOUT_MS)]),
+				AbortSignal.any([this.controller.signal, AbortSignal.timeout(HOOK_REQUEST_TIMEOUT_MS)]),
 			);
 			return claim?.count > 0 && nonempty(claim.block)
 				? { additionalContext: claim.block }

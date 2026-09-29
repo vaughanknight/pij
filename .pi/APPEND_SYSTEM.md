@@ -172,9 +172,7 @@ How it actually reaches you:
 When YOU want to use pij (only when it serves the user's request):
 
 - **Send / control — use the `pij_send` tool**: `pij_send { to, message }` to
-  message a peer, `pij_send { to, message, fyi: true }` to hold information that
-  needs no action until the peer's next turn (opens no turn), or
-  `pij_send { to, command: "compact"|"new"|"reload" }` to run
+  message a peer, or `pij_send { to, command: "compact"|"new"|"reload" }` to run
   an allow-listed control command. Do NOT shell out to the CLI to send.
 - Observe with the CLI: `pij list --here` (peers), `pij tail <id>` /
   `pij state <id>` (watch one) — drive via `just pij …` in the pij repo, or the

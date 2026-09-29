@@ -223,10 +223,14 @@ export class PijDaemonClient {
 	 * Publish the seat's turn state. Resolves false when the daemon has no
 	 * /v1/activity route: a bare 404, as opposed to a refusal envelope.
 	 */
-	async publishActivity(request: ActivityRequest): Promise<boolean> {
+	async publishActivity(request: ActivityRequest, signal?: AbortSignal): Promise<boolean> {
 		const response = await this.request(
 			"/v1/activity",
-			{ method: "POST", body: JSON.stringify(request) },
+			{
+				method: "POST",
+				body: JSON.stringify(request),
+				...(signal === undefined ? {} : { signal }),
+			},
 			{ "Content-Type": "application/json" },
 		);
 		const text = await response.text();
