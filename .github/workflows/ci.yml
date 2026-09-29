@@ -152,5 +152,14 @@ jobs:
           export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}" RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
           sudo chmod -R a+rwX "$GITHUB_WORKSPACE" "$CARGO_HOME" "$RUSTUP_HOME"
           sudo git config --system --add safe.directory '*'
+          echo 1 | sudo tee /sys/kernel/tracing/events/signal/signal_generate/enable >/dev/null
+          echo 65536 | sudo tee /sys/kernel/tracing/buffer_size_kb >/dev/null
+          set +e
           sudo -E -u pij-ci env "PATH=$PATH" HOME=/home/pij-ci \
             cargo nextest run --locked --workspace --profile ci
+          status=$?
+          echo "== DIAGNOSTIC: signals to nextest/sudo/env and last SIGKILLs"
+          sudo grep -E 'signal_generate: sig=(9|15) .*comm=(cargo-nextest|sudo|env|cargo) ' /sys/kernel/tracing/trace | tail -n 20
+          sudo grep -E 'signal_generate: sig=9 ' /sys/kernel/tracing/trace | tail -n 40
+          sudo dmesg | grep -iE 'oom|killed process' | tail -n 10
+          exit "$status"
