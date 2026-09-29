@@ -450,3 +450,31 @@ sha256 = "11f4e9a209b67ddbe833258b4629a60db5f18c0edc83ad3d1b691724e2897a1c"
 bytes = 146
 note = "Plan 158: the ONE definition of the held-FYI block. pij_core::fyi::render_block produces it, the daemon appends it after a message body or returns it from /v1/fyi/claim, and the Claude hook, the Pi/OMP extension and the Copilot extension each pass it through byte-for-byte."
 answer = "Two FYIs, oldest first, at UTC offset 0 and held at 14:02 and 14:10 UTC: the header `Also, 2 FYIs were queued for you:`, lines `N. [from <sender>, HH:MM] <body>`, continuation lines of a multi-line body indented 3 spaces, and no trailing newline."
+
+[[fixture]]
+path = "harnesses/claude-2.1.284-idle.txt"
+sha256 = "2aeba82a2d582b23d4fcf80cf4fd86aa926fd0c2ff6f127036ee45130ce8fd58"
+bytes = 1692
+note = "Live Claude Code 2.1.284, --permission-mode auto, 220-col tmux pane, fresh session at its prompt (placeholder composer text, NBSP after the chevron). Captured for plan 157 re-review 3."
+answer = "Not busy: HarnessPort::busy is false and readiness is Ready (ready footer, composer between rules, no spinner row)."
+
+[[fixture]]
+path = "harnesses/claude-2.1.284-after-esc.txt"
+sha256 = "2b964681824b05dceed93c6a59f00d1bd3534a52c6c6b8a53211c68402aff305"
+bytes = 3269
+note = "Live Claude Code 2.1.284, auto mode, captured 3 s after an Esc interrupted a streaming reply ('Interrupted · What should Claude do instead?'). No Claude hook fired. Plan 157 re-review 3."
+answer = "Not busy: HarnessPort::busy is false and readiness is Ready; the interrupted turn left no spinner row."
+
+[[fixture]]
+path = "harnesses/claude-2.1.284-tool-run.txt"
+sha256 = "ed2024d93675a4f008a1bf6391445a2c8371636dd0e945b8f880c6b9c36c6c68"
+bytes = 4140
+note = "Live Claude Code 2.1.284, auto mode, 220-col pane, 12 s into a foreground python sleep tool call. Plan 157 re-review 3."
+answer = "Busy: the spinner row 'Fiddle-faddling… (11s · ↓ 120 tokens)' is a turn in progress, so HarnessPort::busy is true and readiness is Busy even though the ready footer and composer are visible."
+
+[[fixture]]
+path = "harnesses/claude-2.1.284-tool-run-narrow.txt"
+sha256 = "d7ec1567128c7dac360ab6fa154288edb09f20122cbc36995d8c6df9cfa6a63b"
+bytes = 1213
+note = "The same live tool call after resizing the pane to 36 columns: the spinner row truncates to 'Fiddle-faddling… (12s)' and the footer is cut short. Plan 157 re-review 3."
+answer = "Busy: a truncated spinner row still marks a turn in progress; HarnessPort::busy is true."
