@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use pij_core::error::{PijError, Result};
 use pij_core::model::{SeatDescriptor, SeatId, Seq};
 use pij_core::ports::{PutBinding, Registry, SeatFilter};
-use pij_store::registry::{descriptor_event, tombstone_event};
+use pij_store::registry::{activity_event, descriptor_event, tombstone_event};
 use pij_store::spine::RegistryPublisher;
 use pij_testkit::fakes::FakeRegistry;
 
@@ -56,6 +56,9 @@ impl PublishedFakeRegistry {
             descriptor.tombstoned_at = Some(event.at);
             descriptor.tombstone_reason = Some(reason);
             descriptor.native_extension_delivery = false;
+            if descriptor.state == pij_core::model::SystemState::Working {
+                descriptor.state = pij_core::model::SystemState::Idle;
+            }
             let seq = spine.append(event.clone()).await?;
             registry.put(descriptor).await.map_err(|error| PijError::Adapter {
                 adapter: "daemon/events".to_string(),
@@ -115,5 +118,39 @@ impl Registry for PublishedFakeRegistry {
     ) -> Result<Seq> {
         self.publish_tombstone(expected.id.clone(), reason, Some(expected))
             .await
+    }
+
+    async fn set_activity(
+        &self,
+        seat: &SeatId,
+        state: pij_core::model::SystemState,
+    ) -> Result<Option<Seq>> {
+        match self.registry.get(seat).await? {
+            Some(current) if current.tombstoned_at.is_none() && current.state != state => {}
+            _ => return Ok(None),
+        }
+        let registry = self.registry.clone();
+        let spine = self.bus.spine.clone();
+        let seat = seat.clone();
+        let published = self
+            .bus
+            .publish_registry(Box::pin(async move {
+                let mut event = activity_event(&seat, state)?;
+                let seq = spine.append(event.clone()).await?;
+                if registry.set_activity(&seat, state).await?.is_none() {
+                    return Err(PijError::SeatIsGone {
+                        seat,
+                        tombstone_reason: None,
+                    });
+                }
+                event.seq = Some(seq);
+                Ok((event, None))
+            }))
+            .await;
+        match published {
+            Ok((seq, _)) => Ok(Some(seq)),
+            Err(PijError::SeatIsGone { .. }) => Ok(None),
+            Err(error) => Err(error),
+        }
     }
 }

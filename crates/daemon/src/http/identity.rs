@@ -1039,10 +1039,38 @@ async fn whoami_resolved(
                 Ok(descriptor) => descriptor,
                 Err(error) => return internal(WHOAMI, error),
             };
-            envelope(StatusCode::OK, &Envelope::ok(WHOAMI, descriptor))
+            // The status lines already call whoami once per render; the FYI count
+            // rides on it so `✉N` costs no second request (plan 158).
+            let pending_fyis = match state
+                .services
+                .delivery
+                .pending_fyi_count(&descriptor.id)
+                .await
+            {
+                Ok(count) => count,
+                Err(error) => return internal(WHOAMI, error),
+            };
+            envelope(
+                StatusCode::OK,
+                &Envelope::ok(
+                    WHOAMI,
+                    WhoamiProjection {
+                        descriptor,
+                        pending_fyis,
+                    },
+                ),
+            )
         }
         Resolved::Refusal(response) => response,
     }
+}
+
+/// The seat, plus the count of FYIs held for it.
+#[derive(serde::Serialize)]
+struct WhoamiProjection {
+    #[serde(flatten)]
+    descriptor: SeatDescriptor,
+    pending_fyis: u64,
 }
 
 /// The identity ladder's answer.

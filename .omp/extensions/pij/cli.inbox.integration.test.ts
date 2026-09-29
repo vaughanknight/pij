@@ -666,7 +666,13 @@ send({ type: "ready", pid: process.pid });
 			proc_source?: string;
 		};
 		const answer = success<Descriptor>(await host.run(["whoami", "--json"]), "pij whoami");
-		expect(answer).toEqual({ v: 2, command: "pij whoami", ok: true, data: persisted });
+		// whoami adds the held-FYI count the status lines read (plan 158).
+		expect(answer).toEqual({
+			v: 2,
+			command: "pij whoami",
+			ok: true,
+			data: { ...persisted, pending_fyis: 0 },
+		});
 		expect(answer.data.proc.pid).toBe(host.process.child.pid);
 	});
 

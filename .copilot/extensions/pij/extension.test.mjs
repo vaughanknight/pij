@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { EventEmitter, once } from "node:events";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { registerHooks } from "node:module";
 import { tmpdir } from "node:os";
@@ -91,6 +91,14 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
             history.push(event);
             for (const listener of listeners) listener(event);
           }
+          return;
+        }
+        if (input.userPrompt !== undefined) {
+          const result = await config.hooks.onUserPromptSubmitted(
+            {sessionId: input.hookSessionId ?? session.sessionId, prompt: input.userPrompt, timestamp: new Date(), workingDirectory: process.cwd()},
+            {sessionId: input.invocationSessionId ?? session.sessionId},
+          );
+          emit({kind:'hook-result', returned: result !== undefined, result: result ?? null});
           return;
         }
         const result = await config.tools[0].handler(input, {sessionId:session.sessionId});
@@ -184,10 +192,12 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 			registerRefusal,
 			controlledClock = false,
 			startupReadFails = false,
+			fyiClaims = [],
 		} = {},
 	) {
 		const home = await mkdtemp(join(tmpdir(), "pij-native-shell-"));
 		const requests = [];
+		const requestSeen = new EventEmitter();
 		let registered;
 		let registeredView;
 		let claimed = 0;
@@ -200,6 +210,7 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 				for await (const chunk of request) raw += chunk;
 				const body = raw ? JSON.parse(raw) : undefined;
 				requests.push({ path: request.url, method: request.method, body });
+				requestSeen.emit("request");
 				const url = new URL(request.url, "http://127.0.0.1");
 				assert.equal(request.headers.authorization, "Bearer fixture-secret");
 				let data;
@@ -306,6 +317,12 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 					data = body.job_id;
 				} else if (request.url === "/v1/send")
 					data = { msg_id: body.msg_id, outcome: { outcome: "queued" }, at: 137 };
+				else if (request.url === "/v1/activity")
+					data = { seat: body.seat, state: body.state, changed: true };
+				else if (request.url === "/v1/fyi/claim")
+					({ data, refusal, status } = fyiClaims.shift() ?? {
+						data: { seat: registered.id, count: 0, block: "", ids: [] },
+					});
 				else throw new Error(`Unexpected native endpoint ${request.url}`);
 				response.setHeader("Content-Type", "application/json");
 				response.statusCode = status ?? (refusal ? 400 : 200);
@@ -404,6 +421,20 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 				}
 			}
 		}
+		async function waitForRequest(matches) {
+			const signal = AbortSignal.timeout(5000);
+			for (;;) {
+				const found = requests.find(matches);
+				if (found) return found;
+				try {
+					await once(requestSeen, "request", { signal });
+				} catch (error) {
+					throw new Error(`Waiting for a daemon request; observed ${JSON.stringify(requests)}`, {
+						cause: error,
+					});
+				}
+			}
+		}
 		let clock = 0;
 		async function advance(ms) {
 			clock += ms;
@@ -416,7 +447,16 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 				(event) =>
 					(event.source === "registration" || event.source === "receiver") && matches(event),
 			);
-		return { child, events, requests, waitFor, waitForRetry, advance, stdout: () => stdout };
+		return {
+			child,
+			events,
+			requests,
+			waitFor,
+			waitForRequest,
+			waitForRetry,
+			advance,
+			stdout: () => stdout,
+		};
 	}
 
 	const transientHold = {
@@ -868,6 +908,90 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		assert.match(f.events.find((e) => e.kind === "native-send").input.prompt, /SHELL_NONCE_137/);
 		assert.equal(f.events.filter((event) => event.kind === "native-log").length, 0);
 		assert.equal(f.stdout(), "");
+	});
+
+	test("typed prompt claims held FYIs once and passes the daemon block through byte for byte", async (t) => {
+		const golden = await readFile(
+			new URL("../../../crates/testkit/fixtures/golden/fyi/block.txt", import.meta.url),
+			"utf8",
+		);
+		const f = await launch(t, {
+			messages: 0,
+			fyiClaims: [
+				{ data: { seat: "pij-bright-otter", count: 2, block: golden, ids: ["fyi-1", "fyi-2"] } },
+				{ status: 503, refusal: { ok: false, v: 2, error: "unavailable" } },
+			],
+		});
+		await f.waitFor("registered");
+		const answer = async (input, kind) => {
+			const seen = f.events.filter((event) => event.kind === kind).length;
+			f.child.stdin.write(`${JSON.stringify(input)}\n`);
+			return f.waitFor(
+				kind,
+				(event) => f.events.filter((e) => e.kind === kind).indexOf(event) === seen,
+			);
+		};
+		const claims = () => f.requests.filter((request) => request.path === "/v1/fyi/claim");
+
+		// A sub-agent's prompt is not the seat's turn: nothing is claimed for it.
+		const subAgent = await answer(
+			{ userPrompt: "sub", hookSessionId: "sub-agent-9" },
+			"hook-result",
+		);
+		assert.equal(subAgent.returned, false);
+		assert.equal(claims().length, 0);
+		// Nor is a prompt whose hook invocation belongs to another session.
+		const foreign = await answer(
+			{ userPrompt: "other", invocationSessionId: "sub-agent-9" },
+			"hook-result",
+		);
+		assert.equal(foreign.returned, false);
+		assert.equal(claims().length, 0);
+
+		const held = await answer({ userPrompt: "hi" }, "hook-result");
+		assert.deepEqual(held.result, { additionalContext: golden });
+		assert.deepEqual(claims()[0].body, {
+			seat: "pij-bright-otter",
+			native_session: "native-shell-137",
+			via: "hook:copilot",
+		});
+		// A failing daemon and an empty claim both leave the prompt untouched.
+		assert.equal((await answer({ userPrompt: "again" }, "hook-result")).returned, false);
+		assert.equal((await answer({ userPrompt: "later" }, "hook-result")).returned, false);
+		assert.equal(claims().length, 3);
+
+		assert.equal(
+			(await answer({ to: "pij-peer", message: "ack", fyi: true }, "tool-result")).result.ok,
+			true,
+		);
+		assert.equal(
+			(await answer({ to: "pij-peer", message: "do this" }, "tool-result")).result.ok,
+			true,
+		);
+		const sends = f.requests.filter((request) => request.path === "/v1/send");
+		assert.equal(sends[0].body.fyi, true);
+		assert.equal("fyi" in sends[1].body, false);
+		assert.equal(f.events.filter((event) => event.kind === "native-log").length, 0);
+		assert.equal(f.stdout(), "");
+	});
+
+	test("native shutdown mid-turn publishes idle before the extension exits", async (t) => {
+		const f = await launch(t, { messages: 0 });
+		await f.waitFor("registered");
+		const native = (events) => f.child.stdin.write(`${JSON.stringify({ nativeEvents: events })}\n`);
+		native([{ type: "assistant.turn_start", id: "turn-1", data: {} }]);
+		await f.waitForRequest(
+			(request) => request.path === "/v1/activity" && request.body.state === "working",
+		);
+		const exited = once(f.child, "exit");
+		native([{ type: "session.shutdown", data: {} }]);
+		assert.equal((await exited)[0], 0);
+		assert.deepEqual(
+			f.requests
+				.filter((request) => request.path === "/v1/activity")
+				.map((request) => request.body.state),
+			["working", "idle"],
+		);
 	});
 
 	test("Linux native host uses the kernel executable when comm is MainThread", {

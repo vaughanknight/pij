@@ -2213,6 +2213,44 @@ mod tests {
         ) -> pij_core::error::Result<pij_core::ports::ReleaseOutcome> {
             self.inner.release_deferred(job).await
         }
+        async fn hold_fyi(
+            &self,
+            fyi: &pij_core::fyi::HeldFyi,
+            spine: &dyn pij_core::ports::Spine,
+        ) -> pij_core::error::Result<Vec<pij_core::model::Event>> {
+            self.inner.hold_fyi(fyi, spine).await
+        }
+        async fn claim_fyis(
+            &self,
+            recipient: &pij_core::model::SeatId,
+            via: &str,
+            at: u64,
+            spine: &dyn pij_core::ports::Spine,
+        ) -> pij_core::error::Result<(Vec<pij_core::fyi::HeldFyi>, Vec<pij_core::model::Event>)>
+        {
+            self.inner.claim_fyis(recipient, via, at, spine).await
+        }
+        async fn enqueue_delivery_carrying_fyis(
+            &self,
+            job: pij_core::model::Job,
+            via: &str,
+            at: u64,
+            attach: pij_core::ports::AttachFyis,
+            spine: &dyn pij_core::ports::Spine,
+        ) -> pij_core::error::Result<(
+            pij_core::ports::DeliveryEnqueue,
+            Vec<pij_core::model::Event>,
+        )> {
+            self.inner
+                .enqueue_delivery_carrying_fyis(job, via, at, attach, spine)
+                .await
+        }
+        async fn pending_fyi_count(
+            &self,
+            recipient: &pij_core::model::SeatId,
+        ) -> pij_core::error::Result<u64> {
+            self.inner.pending_fyi_count(recipient).await
+        }
         async fn recover_native_delivery(
             &self,
             job: JobId,

@@ -13,9 +13,14 @@ const INBOUND_KEY: &str = "crossSessionInbound";
 const ACCEPT: &str = "accept";
 const HOOKS_KEY: &str = "hooks";
 const SESSION_START_KEY: &str = "SessionStart";
+const USER_PROMPT_SUBMIT_KEY: &str = "UserPromptSubmit";
 const STATUS_LINE_KEY: &str = "statusLine";
+const SESSION_START_SCRIPT_NAME: &str = "claude-session-start-pij.sh";
+const USER_PROMPT_SUBMIT_SCRIPT_NAME: &str = "claude-user-prompt-submit-pij.sh";
 const CLAUDE_SESSION_START_SCRIPT: &str =
     include_str!("../../../harness/scripts/claude-session-start-pij.sh");
+const CLAUDE_USER_PROMPT_SUBMIT_SCRIPT: &str =
+    include_str!("../../../harness/scripts/claude-user-prompt-submit-pij.sh");
 const CLAUDE_STATUSLINE_SCRIPT: &str =
     include_str!("../../../harness/scripts/claude-statusline-pij.sh");
 const COPILOT_STATUSLINE_SCRIPT: &str =
@@ -56,7 +61,8 @@ pub struct ClaudeInboundState {
     pub error: Option<String>,
 }
 
-/// Read-only state of the pij SessionStart hook in one Claude settings file.
+/// Read-only state of one pij-managed hook (SessionStart or UserPromptSubmit)
+/// in one Claude settings file.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClaudeHookState {
     pub home: PathBuf,
@@ -281,9 +287,38 @@ fn backup_statusline_script(home: &Path, command: &str) -> Result<(), String> {
 /// Plan the minimal safe edit that installs pij's Claude SessionStart hook.
 #[must_use]
 pub fn plan_claude_session_start_hook(existing: Option<&str>, command: &str) -> EnsurePlan {
+    plan_claude_hook(
+        existing,
+        command,
+        SESSION_START_KEY,
+        SESSION_START_SCRIPT_NAME,
+    )
+}
+
+/// Plan the minimal safe edit that installs pij's Claude UserPromptSubmit hook,
+/// which claims held FYIs into the human's prompt (plan 158).
+#[must_use]
+pub fn plan_claude_user_prompt_submit_hook(existing: Option<&str>, command: &str) -> EnsurePlan {
+    plan_claude_hook(
+        existing,
+        command,
+        USER_PROMPT_SUBMIT_KEY,
+        USER_PROMPT_SUBMIT_SCRIPT_NAME,
+    )
+}
+
+/// Install `command` as the single pij-managed entry under `hooks.<event>`.
+/// A command is pij-managed when it names `script_name`; foreign entries are
+/// preserved byte for byte and stale managed commands are reconciled in place.
+fn plan_claude_hook(
+    existing: Option<&str>,
+    command: &str,
+    event: &str,
+    script_name: &str,
+) -> EnsurePlan {
     if command.is_empty() {
         return EnsurePlan::Refuse {
-            error: "SessionStart hook command must not be empty".to_string(),
+            error: format!("{event} hook command must not be empty"),
         };
     }
     let entry = serde_json::json!({
@@ -294,17 +329,13 @@ pub fn plan_claude_session_start_hook(existing: Option<&str>, command: &str) -> 
     let Some(existing) = existing else {
         return EnsurePlan::Write {
             before: None,
-            contents: format!(
-                "{{\n  \"{HOOKS_KEY}\": {{\n    \"{SESSION_START_KEY}\": [{entry}]\n  }}\n}}\n"
-            ),
+            contents: format!("{{\n  \"{HOOKS_KEY}\": {{\n    \"{event}\": [{entry}]\n  }}\n}}\n"),
         };
     };
     if existing.trim().is_empty() {
         return EnsurePlan::Write {
             before: None,
-            contents: format!(
-                "{{\n  \"{HOOKS_KEY}\": {{\n    \"{SESSION_START_KEY}\": [{entry}]\n  }}\n}}\n"
-            ),
+            contents: format!("{{\n  \"{HOOKS_KEY}\": {{\n    \"{event}\": [{entry}]\n  }}\n}}\n"),
         };
     }
     let parsed: Value = match serde_json::from_str(existing) {
@@ -327,7 +358,7 @@ pub fn plan_claude_session_start_hook(existing: Option<&str>, command: &str) -> 
                 existing,
                 root.is_empty(),
                 HOOKS_KEY,
-                &format!("{{\"{SESSION_START_KEY}\":[{entry}]}}"),
+                &format!("{{\"{event}\":[{entry}]}}"),
             ),
         };
     };
@@ -342,11 +373,11 @@ pub fn plan_claude_session_start_hook(existing: Option<&str>, command: &str) -> 
         };
     };
     let hooks_document = &existing[hooks_range.clone()];
-    let Some(session_start) = hooks_object.get(SESSION_START_KEY) else {
+    let Some(event_entries) = hooks_object.get(event) else {
         let updated_hooks = insert_object_property(
             hooks_document,
             hooks_object.is_empty(),
-            SESSION_START_KEY,
+            event,
             &format!("[{entry}]"),
         );
         return EnsurePlan::Write {
@@ -354,19 +385,19 @@ pub fn plan_claude_session_start_hook(existing: Option<&str>, command: &str) -> 
             contents: replace_range(existing, hooks_range, &updated_hooks),
         };
     };
-    let Some(session_start) = session_start.as_array() else {
+    let Some(event_entries) = event_entries.as_array() else {
         return EnsurePlan::Refuse {
-            error: "settings.json hooks.SessionStart must be a JSON array".to_string(),
+            error: format!("settings.json hooks.{event} must be a JSON array"),
         };
     };
-    let Some(session_range) = find_top_level_value(hooks_document, SESSION_START_KEY) else {
+    let Some(event_range) = find_top_level_value(hooks_document, event) else {
         return EnsurePlan::Refuse {
-            error: "could not locate hooks.SessionStart in valid settings.json".to_string(),
+            error: format!("could not locate hooks.{event} in valid settings.json"),
         };
     };
-    let managed_count = managed_hook_count(session_start);
+    let managed_count = managed_hook_count(event_entries, script_name);
     if managed_count == 1
-        && session_start
+        && event_entries
             .iter()
             .any(|entry| hook_entry_contains(entry, command))
     {
@@ -374,37 +405,37 @@ pub fn plan_claude_session_start_hook(existing: Option<&str>, command: &str) -> 
             before: Some(command.to_string()),
         };
     }
-    if let Some(before) = first_managed_hook_command(session_start) {
-        let updated_session = reconcile_managed_hook_commands(session_start, command);
-        let updated_session =
-            serde_json::to_string(&updated_session).expect("hook serialization is infallible");
-        let updated_hooks = replace_range(hooks_document, session_range, &updated_session);
+    if let Some(before) = first_managed_hook_command(event_entries, script_name) {
+        let updated_event = reconcile_managed_hook_commands(event_entries, command, script_name);
+        let updated_event =
+            serde_json::to_string(&updated_event).expect("hook serialization is infallible");
+        let updated_hooks = replace_range(hooks_document, event_range, &updated_event);
         return EnsurePlan::Write {
             before: Some(before),
             contents: replace_range(existing, hooks_range, &updated_hooks),
         };
     }
-    let updated_session = append_array_value(
-        &hooks_document[session_range.clone()],
-        session_start.is_empty(),
+    let updated_event = append_array_value(
+        &hooks_document[event_range.clone()],
+        event_entries.is_empty(),
         &entry,
     );
-    let updated_hooks = replace_range(hooks_document, session_range, &updated_session);
+    let updated_hooks = replace_range(hooks_document, event_range, &updated_event);
     EnsurePlan::Write {
         before: None,
         contents: replace_range(existing, hooks_range, &updated_hooks),
     }
 }
-fn first_managed_hook_command(entries: &[Value]) -> Option<String> {
+fn first_managed_hook_command(entries: &[Value], script_name: &str) -> Option<String> {
     entries.iter().find_map(|entry| {
         entry.get("hooks")?.as_array()?.iter().find_map(|hook| {
             let command = hook.get("command")?.as_str()?;
-            is_managed_hook_command(command).then(|| command.to_string())
+            is_managed_hook_command(command, script_name).then(|| command.to_string())
         })
     })
 }
 
-fn managed_hook_count(entries: &[Value]) -> usize {
+fn managed_hook_count(entries: &[Value], script_name: &str) -> usize {
     entries
         .iter()
         .map(|entry| {
@@ -417,7 +448,9 @@ fn managed_hook_count(entries: &[Value]) -> usize {
                         .filter(|hook| {
                             hook.get("command")
                                 .and_then(Value::as_str)
-                                .is_some_and(is_managed_hook_command)
+                                .is_some_and(|command| {
+                                    is_managed_hook_command(command, script_name)
+                                })
                         })
                         .count()
                 })
@@ -425,7 +458,11 @@ fn managed_hook_count(entries: &[Value]) -> usize {
         .sum()
 }
 
-fn reconcile_managed_hook_commands(entries: &[Value], command: &str) -> Vec<Value> {
+fn reconcile_managed_hook_commands(
+    entries: &[Value],
+    command: &str,
+    script_name: &str,
+) -> Vec<Value> {
     let mut kept = false;
     let mut reconciled = Vec::with_capacity(entries.len());
     for original in entries {
@@ -439,7 +476,7 @@ fn reconcile_managed_hook_commands(entries: &[Value], command: &str) -> Vec<Valu
             let managed = hook
                 .get("command")
                 .and_then(Value::as_str)
-                .is_some_and(is_managed_hook_command);
+                .is_some_and(|command| is_managed_hook_command(command, script_name));
             if !managed {
                 return true;
             }
@@ -456,10 +493,11 @@ fn reconcile_managed_hook_commands(entries: &[Value], command: &str) -> Vec<Valu
     }
     reconciled
 }
-fn is_managed_hook_command(command: &str) -> bool {
+fn is_managed_hook_command(command: &str, script_name: &str) -> bool {
     command
         .trim_matches('\'')
-        .ends_with("/claude-session-start-pij.sh")
+        .strip_suffix(script_name)
+        .is_some_and(|prefix| prefix.ends_with('/'))
 }
 
 /// Ensure every named Claude home invokes pij's SessionStart hook.
@@ -479,11 +517,45 @@ pub fn ensure_claude_session_start_hook(
         .collect()
 }
 
+/// Ensure every named Claude home invokes pij's UserPromptSubmit FYI hook.
+#[must_use]
+pub fn ensure_claude_user_prompt_submit_hook(
+    homes: &[PathBuf],
+    script_path: &Path,
+) -> Vec<EnsureReport> {
+    let command = shell_command(script_path);
+    homes
+        .iter()
+        .map(|home| {
+            ensure_home(home, &command, |existing| {
+                plan_claude_user_prompt_submit_hook(existing, &command)
+            })
+        })
+        .collect()
+}
+
 /// Inspect the pij SessionStart hook in every named Claude home.
 #[must_use]
 pub fn inspect_claude_session_start_hook(
     homes: &[PathBuf],
     script_path: &Path,
+) -> Vec<ClaudeHookState> {
+    inspect_claude_hook(homes, script_path, plan_claude_session_start_hook)
+}
+
+/// Inspect the pij UserPromptSubmit FYI hook in every named Claude home.
+#[must_use]
+pub fn inspect_claude_user_prompt_submit_hook(
+    homes: &[PathBuf],
+    script_path: &Path,
+) -> Vec<ClaudeHookState> {
+    inspect_claude_hook(homes, script_path, plan_claude_user_prompt_submit_hook)
+}
+
+fn inspect_claude_hook(
+    homes: &[PathBuf],
+    script_path: &Path,
+    plan: fn(Option<&str>, &str) -> EnsurePlan,
 ) -> Vec<ClaudeHookState> {
     let command = shell_command(script_path);
     homes
@@ -491,7 +563,7 @@ pub fn inspect_claude_session_start_hook(
         .map(|home| {
             let path = home.join("settings.json");
             match fs::read_to_string(&path) {
-                Ok(existing) => match plan_claude_session_start_hook(Some(&existing), &command) {
+                Ok(existing) => match plan(Some(&existing), &command) {
                     EnsurePlan::NoChange { before } => ClaudeHookState {
                         home: home.clone(),
                         file_exists: true,
@@ -535,10 +607,28 @@ pub fn inspect_claude_session_start_hook(
 
 /// Materialize the embedded Claude hook at a stable daemon-owned path.
 pub fn install_claude_session_start_script(state_dir: &Path) -> std::io::Result<PathBuf> {
+    install_script(
+        state_dir,
+        SESSION_START_SCRIPT_NAME,
+        CLAUDE_SESSION_START_SCRIPT,
+    )
+}
+
+/// Materialize the embedded Claude UserPromptSubmit FYI hook at a stable
+/// daemon-owned path (plan 158).
+pub fn install_claude_user_prompt_submit_script(state_dir: &Path) -> std::io::Result<PathBuf> {
+    install_script(
+        state_dir,
+        USER_PROMPT_SUBMIT_SCRIPT_NAME,
+        CLAUDE_USER_PROMPT_SUBMIT_SCRIPT,
+    )
+}
+
+fn install_script(state_dir: &Path, name: &str, contents: &str) -> std::io::Result<PathBuf> {
     fs::create_dir_all(state_dir)?;
-    let path = state_dir.join("claude-session-start-pij.sh");
-    if fs::read_to_string(&path).ok().as_deref() != Some(CLAUDE_SESSION_START_SCRIPT) {
-        atomic_replace(&path, CLAUDE_SESSION_START_SCRIPT.as_bytes())?;
+    let path = state_dir.join(name);
+    if fs::read_to_string(&path).ok().as_deref() != Some(contents) {
+        atomic_replace(&path, contents.as_bytes())?;
     }
     make_executable(&path)?;
     Ok(path)
@@ -601,24 +691,20 @@ pub fn inspect_claude_statusline(
 
 /// Materialize the embedded statusline at a stable daemon-owned path.
 pub fn install_claude_statusline_script(state_dir: &Path) -> std::io::Result<PathBuf> {
-    fs::create_dir_all(state_dir)?;
-    let path = state_dir.join("claude-statusline-pij.sh");
-    if fs::read_to_string(&path).ok().as_deref() != Some(CLAUDE_STATUSLINE_SCRIPT) {
-        atomic_replace(&path, CLAUDE_STATUSLINE_SCRIPT.as_bytes())?;
-    }
-    make_executable(&path)?;
-    Ok(path)
+    install_script(
+        state_dir,
+        "claude-statusline-pij.sh",
+        CLAUDE_STATUSLINE_SCRIPT,
+    )
 }
 
 /// Materialize pij's Copilot statusline at a stable daemon-owned path (plan 156).
 pub fn install_copilot_statusline_script(state_dir: &Path) -> std::io::Result<PathBuf> {
-    fs::create_dir_all(state_dir)?;
-    let path = state_dir.join("copilot-statusline-pij.sh");
-    if fs::read_to_string(&path).ok().as_deref() != Some(COPILOT_STATUSLINE_SCRIPT) {
-        atomic_replace(&path, COPILOT_STATUSLINE_SCRIPT.as_bytes())?;
-    }
-    make_executable(&path)?;
-    Ok(path)
+    install_script(
+        state_dir,
+        "copilot-statusline-pij.sh",
+        COPILOT_STATUSLINE_SCRIPT,
+    )
 }
 
 /// The Copilot CLI home (`$COPILOT_HOME`, else `~/.copilot`), when it exists.
@@ -1921,6 +2007,304 @@ mod tests {
         assert_eq!(
             unstamped(&fs::read_to_string(state_dir.join("hook.log")).expect("hook log")),
             "refused:adopt pane=%42 reason=permission denied second line\n"
+        );
+    }
+
+    const PROMPT_HOOK: &str = "/Users/test/.pij-rs/claude-user-prompt-submit-pij.sh";
+
+    fn written_settings(home: &Path) -> Value {
+        serde_json::from_str(&fs::read_to_string(home.join("settings.json")).expect("settings"))
+            .expect("valid settings")
+    }
+
+    #[test]
+    fn prompt_hook_joins_managed_session_start_without_disturbing_it() {
+        let root = TestDir::new();
+        let home = root.path().join(".claude");
+        fs::create_dir_all(&home).expect("home");
+        let original = r#"{"hooks":{"SessionStart":[{"matcher":"","hooks":[{"type":"command","command":"/Users/test/.pij-rs/claude-session-start-pij.sh"}]}]},"theme":"dark"}"#;
+        fs::write(home.join("settings.json"), original).expect("seed settings");
+
+        let report = ensure_claude_user_prompt_submit_hook(
+            std::slice::from_ref(&home),
+            Path::new(PROMPT_HOOK),
+        )
+        .into_iter()
+        .next()
+        .expect("report");
+
+        assert!(report.changed);
+        assert_eq!(
+            report.before, None,
+            "SessionStart is not a stale prompt hook"
+        );
+        let written = fs::read_to_string(home.join("settings.json")).expect("settings");
+        assert!(written.contains(
+            r#""SessionStart":[{"matcher":"","hooks":[{"type":"command","command":"/Users/test/.pij-rs/claude-session-start-pij.sh"}]}]"#
+        ));
+        let parsed = written_settings(&home);
+        assert_eq!(parsed["theme"], "dark");
+        assert_eq!(
+            parsed["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"],
+            PROMPT_HOOK
+        );
+        // Each managed hook is settled once both are present; neither planner
+        // claims the other's script.
+        assert!(matches!(
+            plan_claude_session_start_hook(
+                Some(&written),
+                "/Users/test/.pij-rs/claude-session-start-pij.sh"
+            ),
+            EnsurePlan::NoChange { .. }
+        ));
+        assert!(matches!(
+            plan_claude_user_prompt_submit_hook(Some(&written), PROMPT_HOOK),
+            EnsurePlan::NoChange { .. }
+        ));
+    }
+
+    #[test]
+    fn prompt_hook_reconciles_stale_managed_commands_and_keeps_foreign_ones() {
+        let root = TestDir::new();
+        let home = root.path().join(".claude");
+        fs::create_dir_all(&home).expect("home");
+        let original = r#"{"hooks":{"UserPromptSubmit":[{"matcher":"","hooks":[{"type":"command","command":"/tmp/a/claude-user-prompt-submit-pij.sh"}]},{"hooks":[{"type":"command","command":"foreign-prompt-guard"}]},{"matcher":"","hooks":[{"type":"command","command":"'/tmp/b c/claude-user-prompt-submit-pij.sh'"}]}]}}"#;
+        fs::write(home.join("settings.json"), original).expect("seed settings");
+        let before = inspect_claude_user_prompt_submit_hook(
+            std::slice::from_ref(&home),
+            Path::new(PROMPT_HOOK),
+        )
+        .into_iter()
+        .next()
+        .expect("inspection");
+        assert!(!before.installed);
+        assert_eq!(
+            before.command.as_deref(),
+            Some("/tmp/a/claude-user-prompt-submit-pij.sh")
+        );
+
+        let report = ensure_claude_user_prompt_submit_hook(
+            std::slice::from_ref(&home),
+            Path::new(PROMPT_HOOK),
+        )
+        .into_iter()
+        .next()
+        .expect("report");
+
+        assert!(report.changed);
+        assert_eq!(
+            fs::read_to_string(report.backup.expect("backup")).expect("backup readable"),
+            original
+        );
+        let parsed = written_settings(&home);
+        let entries = parsed["hooks"]["UserPromptSubmit"]
+            .as_array()
+            .expect("array");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0]["hooks"][0]["command"], PROMPT_HOOK);
+        assert_eq!(entries[1]["hooks"][0]["command"], "foreign-prompt-guard");
+        let after = inspect_claude_user_prompt_submit_hook(
+            std::slice::from_ref(&home),
+            Path::new(PROMPT_HOOK),
+        )
+        .into_iter()
+        .next()
+        .expect("inspection");
+        assert!(after.installed);
+    }
+
+    #[test]
+    fn prompt_hook_covers_every_home_and_refuses_malformed_ones_untouched() {
+        let root = TestDir::new();
+        let claude = root.path().join(".claude");
+        let alt = root.path().join(".claude-alt");
+        fs::create_dir_all(&alt).expect("alt home");
+        fs::write(alt.join("settings.json"), "{not-json").expect("seed alt");
+        let fresh = root.path().join(".claude-fresh");
+
+        let reports = ensure_claude_user_prompt_submit_hook(
+            &[claude.clone(), alt.clone(), fresh.clone()],
+            Path::new(PROMPT_HOOK),
+        );
+
+        assert_eq!(reports.len(), 3);
+        assert!(reports[0].changed && reports[0].error.is_none());
+        assert!(!reports[1].changed && reports[1].error.is_some());
+        assert!(reports[2].changed && reports[2].error.is_none());
+        for home in [&claude, &fresh] {
+            assert_eq!(
+                written_settings(home)["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"],
+                PROMPT_HOOK
+            );
+        }
+        assert_eq!(
+            fs::read_to_string(alt.join("settings.json")).expect("alt settings"),
+            "{not-json"
+        );
+        let again = ensure_claude_user_prompt_submit_hook(
+            &[claude.clone(), fresh.clone()],
+            Path::new(PROMPT_HOOK),
+        );
+        assert!(
+            again
+                .iter()
+                .all(|report| !report.changed && report.backup.is_none())
+        );
+    }
+
+    /// A fake `pij-rs` whose `fyi-claim` behaviour `FAKE_MODE` picks; every call
+    /// is recorded as `<PIJ_SESSION_ID or unset>|<argv>`.
+    #[cfg(unix)]
+    struct PromptHookRig {
+        root: TestDir,
+        script: PathBuf,
+        path: String,
+    }
+
+    #[cfg(unix)]
+    impl PromptHookRig {
+        fn new() -> Self {
+            use std::os::unix::fs::PermissionsExt;
+
+            let root = TestDir::new();
+            let bin_dir = root.path().join("bin");
+            fs::create_dir_all(&bin_dir).expect("bin directory");
+            let fake = bin_dir.join("pij-rs");
+            fs::write(
+                &fake,
+                concat!(
+                    "#!/bin/sh\n",
+                    "printf '%s|%s\\n' \"${PIJ_SESSION_ID:-unset}\" \"$*\" >>\"$FAKE_CALLS\"\n",
+                    "case \"$FAKE_MODE\" in\n",
+                    "  block) cat \"$FAKE_BLOCK\" ;;\n",
+                    "  block-newline) cat \"$FAKE_BLOCK\"; printf '\\n' ;;\n",
+                    "  empty) ;;\n",
+                    "  fail) printf 'daemon unreachable\\n' >&2; exit 3 ;;\n",
+                    "  hang) exec sleep 30 ;;\n",
+                    "esac\n"
+                ),
+            )
+            .expect("fake rs");
+            let mut permissions = fs::metadata(&fake).expect("metadata").permissions();
+            permissions.set_mode(0o700);
+            fs::set_permissions(&fake, permissions).expect("executable fake");
+            let jq_dir = std::env::var_os("PATH")
+                .and_then(|path| std::env::split_paths(&path).find(|dir| dir.join("jq").is_file()))
+                .map(|dir| format!(":{}", dir.display()))
+                .unwrap_or_default();
+            let path = format!("{}{jq_dir}:/usr/bin:/bin", bin_dir.display());
+            let script = install_claude_user_prompt_submit_script(&root.path().join("state"))
+                .expect("install script");
+            Self { root, script, path }
+        }
+
+        fn golden() -> PathBuf {
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../testkit/fixtures/golden/fyi/block.txt")
+        }
+
+        fn run(&self, mode: &str, payload: &str) -> (std::process::Output, std::time::Duration) {
+            use std::io::Write as _;
+            use std::process::Stdio;
+
+            let mut hook = std::process::Command::new(&self.script);
+            hook.env("PATH", &self.path)
+                .env("HOME", self.root.path())
+                .env("PIJ_RS_STATE_DIR", self.root.path().join("state"))
+                .env("PIJ_RS_FYI_CLAIM_TIMEOUT", "1")
+                .env("TMUX_PANE", "%42")
+                .env("PIJ_SESSION_ID", "pij-inherited-seat")
+                .env("FAKE_MODE", mode)
+                .env("FAKE_BLOCK", Self::golden())
+                .env("FAKE_CALLS", self.root.path().join("calls"))
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped());
+            let started = std::time::Instant::now();
+            let mut child = retry_etxtbsy(|| hook.spawn());
+            child
+                .stdin
+                .take()
+                .expect("stdin")
+                .write_all(payload.as_bytes())
+                .expect("write input");
+            let output = wait_bounded(child, std::time::Duration::from_secs(10));
+            (output, started.elapsed())
+        }
+
+        fn calls(&self) -> Vec<String> {
+            fs::read_to_string(self.root.path().join("calls"))
+                .unwrap_or_default()
+                .lines()
+                .map(str::to_string)
+                .collect()
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prompt_hook_passes_the_claimed_block_through_byte_for_byte() {
+        let rig = PromptHookRig::new();
+        let golden = fs::read_to_string(PromptHookRig::golden()).expect("golden block");
+        for mode in ["block", "block-newline"] {
+            let (output, _) = rig.run(
+                mode,
+                r#"{"session_id":"sess-7","hook_event_name":"UserPromptSubmit","prompt":"hi"}"#,
+            );
+
+            assert!(output.status.success());
+            let stdout = String::from_utf8(output.stdout).expect("utf-8 stdout");
+            assert_eq!(stdout.lines().count(), 1, "one JSON document: {stdout}");
+            let parsed: Value = serde_json::from_str(&stdout).expect("hook JSON");
+            assert_eq!(
+                parsed,
+                serde_json::json!({"hookSpecificOutput": {
+                    "hookEventName": "UserPromptSubmit",
+                    "additionalContext": golden,
+                }}),
+                "{mode}"
+            );
+        }
+        assert_eq!(
+            rig.calls(),
+            vec![
+                "unset|fyi-claim --pane %42 --native-session sess-7 --via hook:claude".to_string();
+                2
+            ],
+            "one claim per prompt, bound by pane and session, never an inherited seat"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prompt_hook_is_silent_when_nothing_is_held_or_the_claim_fails() {
+        let rig = PromptHookRig::new();
+        for mode in ["empty", "fail"] {
+            let (output, _) = rig.run(mode, "{}");
+            assert!(output.status.success(), "{mode}");
+            assert!(output.stdout.is_empty(), "{mode} printed output");
+        }
+        assert_eq!(
+            rig.calls(),
+            vec!["unset|fyi-claim --pane %42 --via hook:claude".to_string(); 2],
+            "no session in the payload: the pane alone binds the claim"
+        );
+        let log = fs::read_to_string(rig.root.path().join("state/hook.log")).expect("hook log");
+        assert_eq!(
+            unstamped(&log),
+            "refused:fyi-claim pane=%42 status=3 reason=daemon unreachable \n"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prompt_hook_gives_up_on_a_wedged_daemon_without_holding_the_prompt() {
+        let rig = PromptHookRig::new();
+        let (output, took) = rig.run("hang", r#"{"session_id":"sess-7"}"#);
+
+        assert!(output.status.success());
+        assert!(output.stdout.is_empty());
+        assert!(
+            took < std::time::Duration::from_secs(5),
+            "prompt held {took:?}"
         );
     }
 }

@@ -47,6 +47,10 @@ export class PiRuntimeAdapter implements PiRuntimePort {
 		this.ctx.ui.setStatus("pij-mail", text);
 	}
 
+	setFyiStatus(text: string | undefined): void {
+		this.ctx.ui.setStatus("pij-fyi", text);
+	}
+
 	inject(
 		text: string,
 		mode: "immediate" | "steer",

@@ -126,7 +126,9 @@ function renderShimSend(payload: unknown): string {
 			? (field(outcome, "outcome") ?? "?")
 			: (outcome ?? "?");
 	const reason = text(outcome, "reason");
-	return `sent (rs) — msg ${text(payload, "msg_id") ?? "?"} — receipt ${String(word)}${reason === undefined ? "" : ` — ${reason}`}`;
+	const msgId = text(payload, "msg_id") ?? "?";
+	if (word === "held" && reason === "fyi") return `pij send: held (fyi) — ${msgId}`;
+	return `sent (rs) — msg ${msgId} — receipt ${String(word)}${reason === undefined ? "" : ` — ${reason}`}`;
 }
 
 function renderShimInbox(payload: unknown): string {

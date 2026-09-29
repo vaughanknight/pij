@@ -74,10 +74,26 @@ impl SqliteRegistry {
                         }
                     }
                     let mut event = tombstone_event(&seat, &reason, expected.as_ref())?;
+                    // Plan 158: a retired seat's held FYIs can never ride along, so
+                    // they are dropped in the same transaction and the tombstone
+                    // records how many. Close, reap and revive all pass through here.
+                    let dropped = sqlx::query(
+                        "UPDATE fyis SET state = 'dropped', settled_at_ms = ?2, \
+                         settled_via = 'tombstone' WHERE recipient = ?1 AND state = 'pending'",
+                    )
+                    .bind(seat.as_str())
+                    .bind(event.at as i64)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(adapter_error)?
+                    .rows_affected();
+                    record_dropped_fyis(&mut event, dropped)?;
                     let seq = append_in_transaction(&mut tx, &event).await?;
+                    // A retired seat's turn is over: `working` must not outlive it.
                     let affected = sqlx::query(
                         "UPDATE seats SET tombstoned_at = ?2, tombstone_reason = ?3, \
-                 native_extension_delivery = 0, seq = ?4 WHERE id = ?1",
+                 native_extension_delivery = 0, seq = ?4, \
+                 state = CASE WHEN state = 'working' THEN 'idle' ELSE state END WHERE id = ?1",
                     )
                     .bind(seat.as_str())
                     .bind(event.at as i64)
@@ -254,6 +270,33 @@ pub fn registry_event(kind: &str, seat: &SeatId, payload: String) -> Result<Even
     })
 }
 
+/// Encode a seat's own busy/idle observation as a `seat.activity` fact (plan 158).
+pub fn activity_event(seat: &SeatId, state: pij_core::model::SystemState) -> Result<Event> {
+    registry_event(
+        "seat.activity",
+        seat,
+        serde_json::json!({ "state": state.as_str() }).to_string(),
+    )
+}
+
+/// Stamp `pending_fyis_dropped` onto a `seat.tombstone` payload (plan 158).
+///
+/// Only when something was dropped: a seat with nothing held keeps the canonical
+/// payload, identical to the fake registry's.
+fn record_dropped_fyis(event: &mut Event, dropped: u64) -> Result<()> {
+    if dropped == 0 {
+        return Ok(());
+    }
+    let mut payload: serde_json::Value =
+        serde_json::from_str(&event.payload).map_err(|error| PijError::Adapter {
+            adapter: "store/registry".to_string(),
+            message: format!("could not re-encode the tombstone payload: {error}"),
+        })?;
+    payload["pending_fyis_dropped"] = dropped.into();
+    event.payload = payload.to_string();
+    Ok(())
+}
+
 /// Encode a retirement fact; observed-dead reasons carry the compared binding.
 /// The caller owns the two-witness observation; the store owns its atomic commit.
 pub fn tombstone_event(
@@ -421,5 +464,59 @@ impl Registry for SqliteRegistry {
     ) -> Result<Seq> {
         self.publish_tombstone(expected.id.clone(), reason, Some(expected))
             .await
+    }
+
+    async fn set_activity(
+        &self,
+        seat: &SeatId,
+        state: pij_core::model::SystemState,
+    ) -> Result<Option<Seq>> {
+        // An unchanged or retired seat publishes nothing.
+        match self.get(seat).await? {
+            Some(current) if current.tombstoned_at.is_none() && current.state != state => {}
+            _ => return Ok(None),
+        }
+        let pool = self.pool.clone();
+        let seat = seat.clone();
+        let published = self
+            .publisher
+            .publish_registry(Box::pin(async move {
+                owned_write(async move {
+                    require_current_schema(&pool).await?;
+                    let mut tx = begin_write(&pool).await?;
+                    let mut event = activity_event(&seat, state)?;
+                    let seq = append_in_transaction(&mut tx, &event).await?;
+                    // Only the mechanical state, and only on a live row: a
+                    // concurrent tombstone, role or declaration is never overwritten.
+                    let affected = sqlx::query(
+                        "UPDATE seats SET state = ?2, seq = ?3 \
+                         WHERE id = ?1 AND tombstoned_at IS NULL",
+                    )
+                    .bind(seat.as_str())
+                    .bind(state.as_str())
+                    .bind(seq.0 as i64)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(adapter_error)?
+                    .rows_affected();
+                    if affected == 0 {
+                        tx.rollback().await.map_err(adapter_error)?;
+                        return Err(PijError::SeatIsGone {
+                            seat,
+                            tombstone_reason: None,
+                        });
+                    }
+                    tx.commit().await.map_err(adapter_error)?;
+                    event.seq = Some(seq);
+                    Ok((event, None))
+                })
+                .await
+            }))
+            .await;
+        match published {
+            Ok((seq, _)) => Ok(Some(seq)),
+            Err(PijError::SeatIsGone { .. }) => Ok(None),
+            Err(error) => Err(error),
+        }
     }
 }

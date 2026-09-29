@@ -63,12 +63,14 @@ async function startExtension() {
 	const stop = (cause) => {
 		if (signal.aborted) return;
 		controller.abort();
-		bridge?.stop(cause);
+		// A seat left working publishes idle (bounded, never rejects) before exit.
+		const settled = bridge?.stop(cause);
 		unsubscribe?.();
 		// A disconnected parent may never answer detach; only this extension process is stopped.
-		void Promise.race([session?.disconnect().catch(() => undefined), sleep(1000)]).finally(() =>
-			process.exit(0),
-		);
+		void Promise.all([
+			settled,
+			Promise.race([session?.disconnect().catch(() => undefined), sleep(1000)]),
+		]).finally(() => process.exit(0));
 	};
 	for (const event of ["SIGTERM", "SIGINT", "SIGHUP", "disconnect"])
 		process.once(event, () => stop(event));
@@ -82,12 +84,17 @@ async function startExtension() {
 				{
 					name: "pij_send",
 					description:
-						"Send a message to a Pij peer from this native Copilot seat. A receipt proves queue/native acceptance, not completed model work. Call explicitly; replies are never automatically forwarded.",
+						"Send a message to a Pij peer from this native Copilot seat. A receipt proves queue/native acceptance, not completed model work. Call explicitly; replies are never automatically forwarded. Set fyi for information that needs no action: it is held and rides along on the recipient's next turn instead of opening one.",
 					parameters: {
 						type: "object",
 						properties: {
 							to: { type: "string", description: "Exact recipient Pij seat ID" },
 							message: { type: "string", description: "Message body" },
+							fyi: {
+								type: "boolean",
+								description:
+									"Hold as an FYI: no-action information delivered with the recipient's next turn, never opening one",
+							},
 						},
 						required: ["to", "message"],
 						additionalProperties: false,
@@ -99,6 +106,20 @@ async function startExtension() {
 					},
 				},
 			],
+			hooks: {
+				// Plan 158: a typed prompt carries this seat's held FYIs as context.
+				onUserPromptSubmitted: async (input, invocation) => {
+					if (
+						!session ||
+						!bridge ||
+						signal.aborted ||
+						invocation?.sessionId !== session.sessionId ||
+						(input?.sessionId ?? session.sessionId) !== session.sessionId
+					)
+						return undefined;
+					return bridge.claimFyis();
+				},
+			},
 		});
 		signal.throwIfAborted();
 		if (!session.sessionId || session.sessionId !== process.env.SESSION_ID)

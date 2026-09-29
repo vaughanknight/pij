@@ -207,6 +207,8 @@ pub(crate) struct SendCall {
     pub body: String,
     pub command: Option<String>,
     pub in_reply_to: Option<String>,
+    /// Hold for the recipient's next real turn (plan 158).
+    pub fyi: bool,
 }
 
 /// Parse a body send or one allowlisted, bodyless control command.
@@ -216,7 +218,7 @@ pub(crate) struct SendCall {
 ///
 /// ```text
 /// pij send <id> "<text>" | <id> --body-file <path|-> | --to <id> --to <id> "<text>"
-///          | <id> --command <name> [--wait]
+///          | <id> --command <name> [--wait] | <id> --fyi "<text>"
 /// ```
 ///
 /// Unsupported broadcast, attachment and wait shapes refuse by name.
@@ -232,6 +234,7 @@ pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<
     let mut saw_body_file = false;
     let mut command = None;
     let mut in_reply_to = None;
+    let mut fyi = false;
     let mut rest = tokens.collect::<Vec<_>>().into_iter().peekable();
     while let Some(token) = rest.next() {
         let flag = token
@@ -255,6 +258,7 @@ pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<
             }
             // `--json` is answered by the shim's own projection layer, not here.
             "json" => {}
+            "fyi" => fyi = true,
             "to" => {
                 return Err(
                     "rs cannot serve a broadcast `pij send --to <id> --to <id>`: it fans one \
@@ -315,6 +319,9 @@ pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<
         return Err("usage: pij send <id> \"<text>\" (no recipient was given)".to_string());
     };
 
+    if fyi && command.is_some() {
+        return Err("--fyi holds a message; a --command control cannot be held".to_string());
+    }
     if let Some(command) = command {
         if saw_body_file {
             return Err(
@@ -338,6 +345,7 @@ pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<
             body: String::new(),
             command: Some(command),
             in_reply_to,
+            fyi: false,
         });
     }
     // The two body channels are exclusive, and BOTH must be refused rather than
@@ -379,6 +387,7 @@ pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<
         body,
         command: None,
         in_reply_to,
+        fyi,
     })
 }
 
@@ -444,20 +453,21 @@ pub(crate) async fn shim_send(State(state): State<AppState>, body: axum::body::B
         Ok(seat) => seat.id,
         Err(response) => return *response,
     };
-    match state
-        .services
-        .delivery
-        .accept(Msg {
-            from,
-            to: call.to,
-            body: call.body,
-            msg_id: state.services.delivery.next_message_id(),
-            from_machine: None,
-            in_reply_to: call.in_reply_to,
-            command: None,
-        })
-        .await
-    {
+    let msg = Msg {
+        from,
+        to: call.to,
+        body: call.body,
+        msg_id: state.services.delivery.next_message_id(),
+        from_machine: None,
+        in_reply_to: call.in_reply_to,
+        command: None,
+    };
+    let accepted = if call.fyi {
+        state.services.delivery.hold_fyi(msg).await
+    } else {
+        state.services.delivery.accept(msg).await
+    };
+    match accepted {
         Ok(receipt) => super::envelope(
             axum::http::StatusCode::OK,
             &pij_core::model::Envelope::ok(SEND, receipt),

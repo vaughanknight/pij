@@ -55,8 +55,13 @@ if [ -n "${TMUX_PANE:-}" ] && command -v pij-rs >/dev/null 2>&1; then
   RS=$(env -u PIJ_SESSION_ID pij-rs --json whoami --pane "$TMUX_PANE" 2>/dev/null)
   case "$RS" in
     *'"ok":true'*)
-      PIJID=$(printf '%s' "$RS" | jq -r '.data.id // empty' 2>/dev/null)
-      PIJ_FMT=$(printf ' \033[34m⛓ %s\033[0m' "$PIJID") ;;
+      # Held FYIs (plan 158) ride on the same whoami answer; ✉N only while N > 0.
+      IFS=$'\x1f' read -r PIJID FYIS < <(printf '%s' "$RS" | jq -j \
+        '[(.data.id // ""), (.data.pending_fyis // 0 | tostring)] | join("\u001f")' 2>/dev/null)
+      PIJ_FMT=$(printf ' \033[34m⛓ %s\033[0m' "$PIJID")
+      if [ "${FYIS:-0}" -gt 0 ] 2>/dev/null; then
+        PIJ_FMT="$PIJ_FMT$(printf ' \033[33m✉%s\033[0m' "$FYIS")"
+      fi ;;
     *'seat `'*)
       DEAD=${RS#*'seat `'}; DEAD=${DEAD%%'`'*}
       PIJ_FMT=$(printf ' \033[31m⛓ %s dead\033[0m' "$DEAD") ;;
