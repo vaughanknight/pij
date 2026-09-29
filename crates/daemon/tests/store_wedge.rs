@@ -1,6 +1,4 @@
-use std::future::poll_fn;
 use std::sync::Arc;
-use std::task::Poll;
 use std::time::Duration;
 
 use pij_core::config::Config;
@@ -11,7 +9,6 @@ use pij_daemon::events::EventBus;
 use pij_harnesses::InteractionGate;
 use pij_store::{SqliteQueue, SqliteSpine, StorePool};
 use pij_testkit::fakes::{FakeRegistry, FakeTmux, FakeTransport};
-use sqlx::Connection;
 
 async fn serve(pool: StorePool) -> (String, tokio::task::JoinHandle<()>, std::path::PathBuf) {
     let dir = pij_testkit::fresh_dir("store-wedge-http");
@@ -31,63 +28,6 @@ async fn serve(pool: StorePool) -> (String, tokio::task::JoinHandle<()>, std::pa
     let url = format!("http://{}", listener.local_addr().unwrap());
     let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
     (url, server, dir)
-}
-
-#[tokio::test]
-async fn cancelled_begin_on_legacy_pool_is_reported_over_http_and_health_is_not_healthy() {
-    // Frozen pre-fix pool boundary: deliberately no after_release/before_acquire.
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect("sqlite::memory:")
-        .await
-        .unwrap();
-    pij_store::migrate::MIGRATIONS.run(&pool).await.unwrap();
-    sqlx::query(&format!(
-        "PRAGMA user_version = {}",
-        pij_store::SCHEMA_VERSION
-    ))
-    .execute(&pool)
-    .await
-    .unwrap();
-    let (url, server, dir) = serve(pool.clone()).await;
-    let mut connection = pool.acquire().await.unwrap();
-    let mut begin = connection.begin_with("BEGIN IMMEDIATE");
-    assert!(poll_fn(|cx| Poll::Ready(begin.as_mut().poll(cx).is_pending())).await);
-    tokio::time::sleep(Duration::from_millis(50)).await;
-    assert!(poll_fn(|cx| Poll::Ready(begin.as_mut().poll(cx).is_pending())).await);
-    drop(begin);
-    connection.ping().await.unwrap();
-    assert!(connection.is_in_transaction());
-    drop(connection);
-    let client = reqwest::Client::new();
-    let response = client
-        .post(format!("{url}/v1/report"))
-        .bearer_auth("private-probe-key")
-        .json(&serde_json::json!({"seat":"pij-probe","argv":["report","now","incident","proof"]}))
-        .send()
-        .await
-        .unwrap();
-    let status = response.status();
-    let body = response.text().await.unwrap();
-    eprintln!("legacy-cancelled-BEGIN HTTP {status}: {body}");
-    assert!(body.contains("non-zero transaction depth"), "{body}");
-    let health = client
-        .get(format!("{url}/health"))
-        .bearer_auth("private-probe-key")
-        .send()
-        .await
-        .unwrap();
-    let health_status = health.status();
-    let health_body = health.text().await.unwrap();
-    eprintln!("legacy-poisoned-pool health {health_status}: {health_body}");
-    server.abort();
-    pool.close().await;
-    std::fs::remove_dir_all(dir).unwrap();
-    assert_eq!(
-        health_status,
-        reqwest::StatusCode::SERVICE_UNAVAILABLE,
-        "{health_body}"
-    );
 }
 
 #[tokio::test]

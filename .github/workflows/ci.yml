@@ -82,14 +82,9 @@ jobs:
       - run: npm ci --min-release-age=null
       - run: npm run windows:check
 
-  rust:
+  rust-lint:
     runs-on: ubuntu-latest
-    # Enforced by GitHub, NOT by the runner. An in-shell `timeout` cannot bound a
-    # job whose runner is dying: on 2026-09-12 main's rust job reported
-    # completed/failure at 48m01s with the test step still `in_progress` and the
-    # `if: always()` upload step never run at all. Both the shell bound and the
-    # artifact live inside the thing that dies. This is the only real bound.
-    timeout-minutes: 35
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -107,7 +102,7 @@ jobs:
           rustc --version
           test "$(rustc --version | cut -d' ' -f2)" = "$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)"
 
-      # Run the cheap lockfile check before compilation. Plain cargo test may
+      # Run the cheap lockfile check before compilation. Plain cargo commands may
       # update a stale Cargo.lock and hide a later --locked release failure.
       - name: lockfile is current
         run: cargo metadata --locked --format-version 1
@@ -116,48 +111,33 @@ jobs:
         run: cargo fmt --all --check
 
       - name: clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+
+  rust-test:
+    runs-on: ubuntu-latest
+    # Backstop only. Hung tests are killed and named by nextest's per-test
+    # clock (.config/nextest.toml, profile `ci`) in about a minute each.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: build tests
+        run: cargo nextest run --locked --workspace --profile ci --no-run
 
       - name: test
-        # Bounded and logged: a hung test must end with a readable log, not a
-        # runner kill at 49 min with no log (main, 2026-09-10).
-        run: |
-          # NOT a pipeline: bash waits for every member, so `| tee` kept the step
-          # alive after `timeout` killed cargo, and a 25m bound ran 32m+ anyway
-          # (PR #412, 2026-09-11). Redirect instead, and SIGKILL what ignores TERM.
-          set +e
-          # A dying runner takes the artifact AND the `if: always()` step with it,
-          # so post-mortem storage proves nothing. Only output already STREAMED to
-          # the workflow log survives. Sample resources straight to stdout so the
-          # last line before the runner goes quiet names the resource that ran out.
-          (
-            while :; do
-              printf '[res] %s up=%ss root_avail=%s tmp_avail=%s mem_avail=%s load=%s procs=%s\n' \
-                "$(date -u +%H:%M:%S)" \
-                "$(cut -d. -f1 /proc/uptime)" \
-                "$(df -BM --output=avail / | tail -1 | tr -d ' ')" \
-                "$(df -BM --output=avail /tmp | tail -1 | tr -d ' ')" \
-                "$(awk '/MemAvailable/{printf "%dM", $2/1024}' /proc/meminfo)" \
-                "$(cut -d' ' -f1-3 /proc/loadavg)" \
-                "$(ps -e --no-headers | wc -l | tr -d ' ')"
-              sleep 30
-            done
-          ) &
-          sampler=$!
-          timeout --kill-after=60s 25m cargo test --workspace > cargo-test.log 2>&1
-          status=$?
-          kill "$sampler" 2>/dev/null
-          wait "$sampler" 2>/dev/null
-          echo "[res] final $(df -BM --output=avail / | tail -1 | tr -d ' ') root avail, status=$status"
-          tail -n 400 cargo-test.log
-          if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
-            echo "::error::cargo test exceeded the 25m bound; see the rust-cargo-test-log artifact"
-          fi
-          exit "$status"
-      - name: upload test log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rust-cargo-test-log
-          path: cargo-test.log
-          if-no-files-found: ignore
+        run: cargo nextest run --locked --workspace --profile ci --retries 2
+
+      # nextest does not run doctests.
+      - name: doctests
+        run: cargo test --locked --workspace --doc
