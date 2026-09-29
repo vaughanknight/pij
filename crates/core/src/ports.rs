@@ -648,6 +648,12 @@ pub trait HarnessPort: Send + Sync {
     /// is the entire reason this port exists (BUSY_RE-class drift).
     async fn busy(&self, pane: &str) -> Result<bool>;
 
+    /// Does the pane show POSITIVE evidence of an idle harness at its prompt?
+    /// Unlike `!busy`, an empty, blank, truncated, dialog or unrecognised frame
+    /// is `false`: the caller acts on idleness, so only a vetted idle frame
+    /// counts (plan 157 cold-wake guard).
+    async fn idle(&self, pane: &str) -> Result<bool>;
+
     /// This harness's model catalog.
     async fn models(&self) -> Result<Vec<ModelRow>>;
 }

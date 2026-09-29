@@ -199,6 +199,34 @@ note = "Captured Claude narrow-pane readiness shape copied from the live-capture
 answer = "Claude is Ready from the persistent bypass-permissions footer; cwd and Opus 4.8 remain pane-observed facts, while native session id must come from caller transcript discovery."
 
 [[fixture]]
+path = "harnesses/claude-2.1.284-streaming.txt"
+sha256 = "f7b4c42730f65a3e193f38d22de99c9e051008141d88eccf18623c795453e23d"
+bytes = 3543
+note = "Live Claude Code 2.1.284, auto mode, captured about 7 s into a streaming text reply. Plan 157 re-review 3."
+answer = "Known limit: no spinner row shows while text streams, so HarnessPort::idle reads true. The cold-wake guard must not correct on this frame alone; it requires the working fact to be older than COLD_IDLE_MS."
+
+[[fixture]]
+path = "harnesses/claude-2.1.284-permission-dialog.txt"
+sha256 = "7782dda89485277476e7735b0de5d6fb2287b9f9e14f89d9fa9151ab1ddf3a5d"
+bytes = 4866
+note = "Live Claude Code 2.1.284, manual permission mode, a Bash permission dialog ('Do you want to proceed?', 'Esc to cancel · Tab to amend'). Plan 157 re-review 3."
+answer = "Not idle: the dialog replaces the composer and footer, so HarnessPort::idle is false and the seat's working state stands."
+
+[[fixture]]
+path = "harnesses/claude-2.1.284-after-esc-manual-mode.txt"
+sha256 = "001803c8d5767088e0d09117b32e834a78bb15d9107e71e6bfb141ee54a99d08"
+bytes = 4359
+note = "Live Claude Code 2.1.284 in manual permission mode, captured after an Esc interrupt; the footer reads 'manual mode on'. Plan 157 re-review 3."
+answer = "Not idle evidence: the footer carries none of Claude's ready anchors, so HarnessPort::idle is false and the guard trusts working."
+
+
+
+
+
+
+
+
+[[fixture]]
 path = "harnesses/copilot-ready.txt"
 sha256 = "d15a4c76b79ded5fe8557143acd1abeab2e7471b434e01679447ed5519b105d2"
 bytes = 482
@@ -456,14 +484,14 @@ path = "harnesses/claude-2.1.284-idle.txt"
 sha256 = "2aeba82a2d582b23d4fcf80cf4fd86aa926fd0c2ff6f127036ee45130ce8fd58"
 bytes = 1692
 note = "Live Claude Code 2.1.284, --permission-mode auto, 220-col tmux pane, fresh session at its prompt (placeholder composer text, NBSP after the chevron). Captured for plan 157 re-review 3."
-answer = "Not busy: HarnessPort::busy is false and readiness is Ready (ready footer, composer between rules, no spinner row)."
+answer = "Not busy: HarnessPort::busy is false and readiness is Ready (ready footer, composer between rules, no spinner row). Positive idle evidence: HarnessPort::idle is true."
 
 [[fixture]]
 path = "harnesses/claude-2.1.284-after-esc.txt"
 sha256 = "2b964681824b05dceed93c6a59f00d1bd3534a52c6c6b8a53211c68402aff305"
 bytes = 3269
 note = "Live Claude Code 2.1.284, auto mode, captured 3 s after an Esc interrupted a streaming reply ('Interrupted · What should Claude do instead?'). No Claude hook fired. Plan 157 re-review 3."
-answer = "Not busy: HarnessPort::busy is false and readiness is Ready; the interrupted turn left no spinner row."
+answer = "Not busy: HarnessPort::busy is false and readiness is Ready; the interrupted turn left no spinner row. Positive idle evidence: HarnessPort::idle is true; this is the frame the cold-wake guard corrects a stale working state from."
 
 [[fixture]]
 path = "harnesses/claude-2.1.284-tool-run.txt"

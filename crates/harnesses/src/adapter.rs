@@ -55,6 +55,10 @@ impl AdapterCore {
         Ok(is_busy(&self.capture(pane).await?))
     }
 
+    async fn idle(&self, pane: &str) -> Result<bool> {
+        Ok(shows_idle_prompt(self.kind, &self.capture(pane).await?))
+    }
+
     async fn observe_bind(
         &self,
         descriptor: &SeatDescriptor,
@@ -228,6 +232,34 @@ fn is_spinner_row(line: &str) -> bool {
     };
     let digits = elapsed.chars().take_while(char::is_ascii_digit).count();
     digits > 0 && matches!(elapsed[digits..].chars().next(), Some('s' | 'm' | 'h'))
+}
+
+/// POSITIVE evidence that the harness sits idle at its prompt (plan 157 re-review
+/// 3). This is NOT `!is_busy`: an empty, blank, truncated or dialog frame is not
+/// evidence of anything. It is true only for Claude, and only when the footer
+/// marks the prompt ready (so nothing busy shows, spinner row included) and the
+/// composer sits between its two rules. Every other harness answers `false`
+/// because none has a vetted idle frame.
+///
+/// Known limit, from live Claude 2.1.284 frames: while a reply streams text,
+/// Claude shows no spinner, so that frame reads as idle. Callers that act on
+/// this must rule that case out some other way.
+fn shows_idle_prompt(kind: Harness, text: &str) -> bool {
+    kind == Harness::Claude
+        && matches!(classify_readiness(kind, text), Readiness::Ready)
+        && has_claude_composer(text)
+}
+
+/// Claude's composer: a `❯` row between two rules. The row can carry
+/// placeholder text (`❯ Try "fix typecheck errors"`). A dialog's `❯ 1. Yes`
+/// never sits between rules.
+fn has_claude_composer(text: &str) -> bool {
+    let lines: Vec<_> = text.lines().collect();
+    lines.windows(3).any(|window| {
+        is_horizontal_rule(window[0])
+            && window[1].trim_start().starts_with('❯')
+            && is_horizontal_rule(window[2])
+    })
 }
 
 fn classify_readiness(kind: Harness, text: &str) -> Readiness {
@@ -430,6 +462,10 @@ macro_rules! adapter {
                 self.core.busy(pane).await
             }
 
+            async fn idle(&self, pane: &str) -> Result<bool> {
+                self.core.idle(pane).await
+            }
+
             async fn models(&self) -> Result<Vec<ModelRow>> {
                 self.core.models()
             }
@@ -592,7 +628,7 @@ mod tests {
 
     use super::{
         ClaudeHarness, CodexHarness, CopilotHarness, HarnessRegistry, OmpHarness, PiHarness,
-        expand_home,
+        expand_home, shows_idle_prompt,
     };
 
     const CLAUDE: &str = include_str!("../../testkit/fixtures/harnesses/claude-ready.txt");
@@ -792,6 +828,81 @@ mod tests {
             block_on(adapter.readiness("%108")).expect("busy classification"),
             Readiness::Busy
         );
+    }
+
+    /// Plan 157 re-review 3: only a vetted idle frame is idle evidence. Frames
+    /// are live Claude Code 2.1.284 captures.
+    #[test]
+    fn only_a_vetted_idle_claude_frame_is_idle_evidence() {
+        let idle = [
+            (
+                "live idle",
+                include_str!("../../testkit/fixtures/harnesses/claude-2.1.284-idle.txt"),
+            ),
+            (
+                "live after Esc",
+                include_str!("../../testkit/fixtures/harnesses/claude-2.1.284-after-esc.txt"),
+            ),
+        ];
+        let not_idle = [
+            ("empty", ""),
+            ("blank", "\n\n\n\n"),
+            (
+                "tool run",
+                include_str!("../../testkit/fixtures/harnesses/claude-2.1.284-tool-run.txt"),
+            ),
+            (
+                "truncated spinner",
+                include_str!("../../testkit/fixtures/harnesses/claude-2.1.284-tool-run-narrow.txt"),
+            ),
+            (
+                "permission dialog",
+                include_str!(
+                    "../../testkit/fixtures/harnesses/claude-2.1.284-permission-dialog.txt"
+                ),
+            ),
+            (
+                "manual mode, no ready footer",
+                include_str!(
+                    "../../testkit/fixtures/harnesses/claude-2.1.284-after-esc-manual-mode.txt"
+                ),
+            ),
+        ];
+        for (name, frame) in idle {
+            assert!(shows_idle_prompt(Harness::Claude, frame), "{name}");
+        }
+        for (name, frame) in not_idle {
+            assert!(!shows_idle_prompt(Harness::Claude, frame), "{name}");
+        }
+        // A footer without the composer between its rules (here a two-line
+        // draft) is not the idle prompt.
+        let live_idle = include_str!("../../testkit/fixtures/harnesses/claude-2.1.284-idle.txt");
+        let draft: String = live_idle
+            .lines()
+            .map(|line| {
+                if line.starts_with('❯') {
+                    "❯ first line\n  second line\n".to_string()
+                } else {
+                    format!("{line}\n")
+                }
+            })
+            .collect();
+        assert!(
+            draft.contains("second line"),
+            "the fixture has the composer row"
+        );
+        assert!(
+            !shows_idle_prompt(Harness::Claude, &draft),
+            "multi-line draft"
+        );
+        // No other harness has a vetted idle frame.
+        assert!(!shows_idle_prompt(Harness::Omp, OMP));
+        // The known limit: mid-stream text shows no spinner, so it reads idle.
+        // The cold-wake guard rules this out by the age of `working`.
+        assert!(shows_idle_prompt(
+            Harness::Claude,
+            include_str!("../../testkit/fixtures/harnesses/claude-2.1.284-streaming.txt")
+        ));
     }
 
     #[test]

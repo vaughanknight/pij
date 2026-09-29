@@ -2108,8 +2108,9 @@ struct HarnessState {
     bind: Option<BindHealth>,
     readiness: VecDeque<Readiness>,
     busy: VecDeque<bool>,
-    busy_errors: usize,
-    busy_probes: usize,
+    idle: VecDeque<bool>,
+    idle_errors: usize,
+    idle_probes: usize,
     models: Vec<ModelRow>,
 }
 
@@ -2156,9 +2157,19 @@ impl FakeHarness {
         self
     }
 
-    /// Make the next busy probe fail, as a failed pane capture would.
-    pub fn script_busy_error(self) -> Self {
-        self.state.lock().expect("fake harness mutex").busy_errors += 1;
+    /// Queue an `idle` answer (positive idle evidence from the pane).
+    pub fn script_idle(self, idle: bool) -> Self {
+        self.state
+            .lock()
+            .expect("fake harness mutex")
+            .idle
+            .push_back(idle);
+        self
+    }
+
+    /// Make the next idle probe fail, as a failed pane capture would.
+    pub fn script_idle_error(self) -> Self {
+        self.state.lock().expect("fake harness mutex").idle_errors += 1;
         self
     }
 
@@ -2168,9 +2179,9 @@ impl FakeHarness {
         self
     }
 
-    /// How many busy probes this harness has answered, failed ones included.
-    pub fn busy_probes(&self) -> usize {
-        self.state.lock().expect("fake harness mutex").busy_probes
+    /// How many idle probes this harness has answered, failed ones included.
+    pub fn idle_probes(&self) -> usize {
+        self.state.lock().expect("fake harness mutex").idle_probes
     }
 }
 
@@ -2208,15 +2219,21 @@ impl HarnessPort for FakeHarness {
         // default would make every delivery test arrange its way out of a state
         // it never asked for.
         let mut state = self.state.lock().expect("fake harness mutex");
-        state.busy_probes += 1;
-        if state.busy_errors > 0 {
-            state.busy_errors -= 1;
+        Ok(state.busy.pop_front().unwrap_or(false))
+    }
+
+    async fn idle(&self, _pane: &str) -> Result<bool> {
+        // Unscripted means NO idle evidence: idleness is what the caller acts on.
+        let mut state = self.state.lock().expect("fake harness mutex");
+        state.idle_probes += 1;
+        if state.idle_errors > 0 {
+            state.idle_errors -= 1;
             return Err(PijError::Adapter {
                 adapter: "fake/harness".to_string(),
                 message: "pane capture failed".to_string(),
             });
         }
-        Ok(state.busy.pop_front().unwrap_or(false))
+        Ok(state.idle.pop_front().unwrap_or(false))
     }
 
     async fn models(&self) -> Result<Vec<ModelRow>> {

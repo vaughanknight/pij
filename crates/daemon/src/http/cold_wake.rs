@@ -9,7 +9,9 @@
 use std::time::Duration;
 
 use axum::response::Response;
-use pij_core::cold_wake::{COLD_WAKE_CODE, COLD_WAKE_FORCED_KIND, ColdCheck, check, refusal};
+use pij_core::cold_wake::{
+    COLD_IDLE_MS, COLD_WAKE_CODE, COLD_WAKE_FORCED_KIND, ColdCheck, check, refusal,
+};
 use pij_core::model::{Event, SeatId};
 use pij_core::session_status::SessionStatusBlock;
 
@@ -23,11 +25,32 @@ const STATUS_WAIT: Duration = Duration::from_secs(3);
 /// The `seat.activity` reason when the guard corrects a stale `working`.
 const STALE_WORKING_REASON: &str = "stale working (esc)";
 
-/// How long one pane busy probe may take before it counts as failed.
+/// How long one pane idle probe may take before it counts as failed.
 const PANE_PROBE_WAIT: Duration = Duration::from_secs(1);
 
-/// Does the seat's live pane show no turn in progress? `false` for no pane,
-/// a failed or slow probe, or a busy pane: only a positive idle reading counts.
+/// Has the seat said `working` for longer than the cold idle threshold? Read
+/// from its latest `seat.activity` fact. A turn that began recently is live,
+/// whatever its pane shows: mid-stream Claude shows no spinner, so a seat just
+/// woken after a long idle looks idle, with cold facts, until its reply is
+/// written. An Esc-stale `working` is always at least as old as the last call.
+/// A missing, unreadable or non-`working` fact is `false`.
+async fn working_is_old(state: &AppState, seat: &SeatId, now_ms: u64) -> bool {
+    let Ok(Some(event)) = state
+        .services
+        .spine
+        .latest_matching(seat, &["seat.activity"])
+        .await
+    else {
+        return false;
+    };
+    let working = serde_json::from_str::<serde_json::Value>(&event.payload)
+        .is_ok_and(|payload| payload["state"] == "working");
+    working && now_ms.saturating_sub(event.at) > COLD_IDLE_MS
+}
+
+/// Does the seat's live pane show POSITIVE evidence of an idle prompt
+/// (`HarnessPort::idle`)? `false` for no pane, a failed or slow probe, or any
+/// frame that is not a vetted idle one: empty, blank, truncated, dialog, busy.
 ///
 /// The real capture is a synchronous `tmux` child inside an `async fn`, which a
 /// timeout cannot preempt. So the probe runs on the blocking pool, and the send
@@ -38,10 +61,10 @@ async fn pane_is_idle(state: &AppState, seat: &pij_core::model::SeatDescriptor) 
     };
     let harness = state.services.harnesses.get(seat.harness).clone();
     let runtime = tokio::runtime::Handle::current();
-    let probe = tokio::task::spawn_blocking(move || runtime.block_on(harness.busy(&pane)));
+    let probe = tokio::task::spawn_blocking(move || runtime.block_on(harness.idle(&pane)));
     matches!(
         tokio::time::timeout(PANE_PROBE_WAIT, probe).await,
-        Ok(Ok(Ok(false)))
+        Ok(Ok(Ok(true)))
     )
 }
 
@@ -99,14 +122,18 @@ pub(crate) async fn guard(
     });
     let mut verdict = check(seat.state, &block, now_ms);
     // A seat can SAY working after its turn ended unseen (a Claude Esc interrupt
-    // fires no hook). Only in the rare case that the facts alone say cold, the
-    // live pane decides: one busy probe of that one pane. A pane that shows no
-    // turn in progress means the `working` was stale: refuse, and correct it.
-    // No pane, or a failed probe, keeps trusting `working`, so the brake stays
-    // off rather than refuse on a guess.
+    // fires no hook). Only in the rare case that the facts alone say cold AND
+    // the `working` itself is older than the idle threshold, the live pane
+    // decides: one idle probe of that one pane. Only positive idle evidence
+    // means the `working` was stale: refuse, and correct it. Anything else
+    // keeps trusting `working`, so the brake stays off rather than refuse on a
+    // guess.
     if verdict == ColdCheck::Busy {
         let as_idle = check(pij_core::model::SystemState::Idle, &block, now_ms);
-        if matches!(as_idle, ColdCheck::Cold { .. }) && pane_is_idle(state, &seat).await {
+        if matches!(as_idle, ColdCheck::Cold { .. })
+            && working_is_old(state, &seat.id, now_ms).await
+            && pane_is_idle(state, &seat).await
+        {
             if let Err(error) = state
                 .services
                 .registry

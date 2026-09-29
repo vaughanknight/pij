@@ -157,3 +157,42 @@ spine seat.activity: working 23:06:54 → idle 23:06:56 (Stop) → working 23:07
 | C: probe bound 1 s changed to 1 h | KILLED `a_wedged_pane_capture_is_abandoned_at_its_bound` |
 | E: probe awaited inline, no blocking pool | KILLED `a_wedged_pane_capture_is_abandoned_at_its_bound` |
 | B: failed probe reads idle | KILLED `a_failed_pane_capture_trusts_working` |
+
+### Re-review 3 fixes (uther REQUEST_CHANGES on `c726e61b`): refuse only on POSITIVE idle evidence
+- **Cause.** The guard read `!busy(pane)` as idle. `busy` is a negative test (it looks for busy strings), so any frame without them read as idle: empty, blank, truncated, or a permission dialog. **Worse, found live (Claude Code 2.1.284):** the Claude busy markers miss this release's spinner row (`✻ Fiddle-faddling… (11s · ↓ 120 tokens)`: no "esc to interrupt", and `↓` is not at the start of the line). So a seat running a two-hour tool call also read as idle. The delivery-side `busy()` has the same gap; that is out of this change's scope and is reported to prime.
+- **New port method `HarnessPort::idle`: positive idle evidence.** For Claude (`shows_idle_prompt`), all three must hold:
+  - the footer shows ready (`classify_readiness == Ready`);
+  - the composer `❯` row sits between its two rules;
+  - no spinner row (spinner glyph + a verb ending in `…`) is visible.
+  Every other harness answers `false`. The guard's probe now calls `idle`, not `!busy`.
+- **Found live: streaming looks idle.** Mid-stream Claude shows no spinner, so its frame is indistinguishable from idle. A seat woken after a long idle sits in exactly that frame with cold facts until its first reply is written. So the guard also requires the seat's latest `seat.activity` to say `working` **and to be older than `COLD_IDLE_MS`**. An Esc-stale `working` is always at least as old as the last call. A fresh wake is seconds old. A missing, non-`working` or unreadable fact allows. This condition can only refuse less. It is a brake, not a policy.
+- **Fixtures.** Live Claude Code 2.1.284 frames captured from an isolated `claude` in tmux: `crates/testkit/fixtures/harnesses/claude-2.1.284-{idle,after-esc,streaming,tool-run,tool-run-narrow,permission-dialog,after-esc-manual-mode}.txt`.
+- **RED first.** `a_pane_without_positive_idle_evidence_allows_and_keeps_working` uses the real `ClaudeHarness` over a real `TmuxAdapter` whose `tmux` prints the frame, with the seat `working` and cold facts. Before the fix, every row was refused and corrected. Outcome tuples are `(HTTP status, cold_check, queued, state after)`:
+
+```
+"empty: (400, Null, 0, String(\"idle\"))",
+"blank: (400, Null, 0, String(\"idle\"))",
+"truncated-spinner: (400, Null, 0, String(\"idle\"))",
+"permission-dialog: (400, Null, 0, String(\"idle\"))",
+"tool-run: (400, Null, 0, String(\"idle\"))",
+"streaming-fresh-wake: (400, Null, 0, String(\"idle\"))",
+```
+  After the fix, every row is `(200, "busy", 1, "working")`. The positive end-to-end test is `a_live_idle_claude_frame_under_a_long_stale_working_is_refused`: a live post-Esc frame with `working` for 2 h gives 400 and the state is corrected to idle.
+- **Other pins.**
+  - `a_recent_working_is_trusted_without_a_pane_probe`: 0 probes.
+  - `an_old_activity_fact_that_is_not_working_is_no_evidence`.
+  - Harness unit tests `only_a_vetted_idle_claude_frame_is_idle_evidence` and `a_spinner_row_needs_a_glyph_and_an_ellipsised_verb`.
+- **Mutants.** Run against the daemon stale/cold set (14 tests) plus the two harness tests. All killed:
+
+| mutant | result |
+|---|---|
+| M1-no-working-age | KILLED a_recent_working_is_trusted_without_a_pane_probe, an_old_activity_fact_that_is_not_working_is_no_evidence, a_pane_without_positive_idle_evidence_allows_and_keeps_working |
+| M2-pane-before-age | KILLED a_recent_working_is_trusted_without_a_pane_probe, an_old_activity_fact_that_is_not_working_is_no_evidence |
+| M3-any-activity-state | KILLED an_old_activity_fact_that_is_not_working_is_no_evidence |
+| M4-idle-is-not-busy | KILLED a_failed_pane_capture_trusts_working, a_stale_working_seat_with_an_idle_pane_is_refused_and_corrected, a_stale_working_seat_with_a_busy_pane_is_allowed, a_pane_without_positive_idle_evidence_allows_and_keeps_working |
+| M5-failed-probe-idle | KILLED a_failed_pane_capture_trusts_working |
+| M6-bound-1h | KILLED a_wedged_pane_capture_is_abandoned_at_its_bound |
+| M7-no-ready-footer | KILLED only_a_vetted_idle_claude_frame_is_idle_evidence |
+| M8-no-composer | KILLED only_a_vetted_idle_claude_frame_is_idle_evidence |
+| M9-no-spinner-check | KILLED a_pane_without_positive_idle_evidence_allows_and_keeps_working, only_a_vetted_idle_claude_frame_is_idle_evidence |
+| M10-any-harness | KILLED only_a_vetted_idle_claude_frame_is_idle_evidence |

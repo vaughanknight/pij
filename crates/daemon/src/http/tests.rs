@@ -6581,12 +6581,14 @@ async fn stale_working_daemon(
     Arc<FakeQueue>,
     Arc<FakeSpine>,
 ) {
-    stale_working_daemon_with(claude, cold_status()).await
+    stale_working_daemon_with(claude, cold_status(), 2 * 60 * 60 * 1_000).await
 }
 
+/// `working_for_ms`: how long ago the seat's `working` was published.
 async fn stale_working_daemon_with(
     claude: Arc<dyn pij_core::ports::HarnessPort>,
     reply: pij_core::session_status::SessionStatusReply,
+    working_for_ms: u64,
 ) -> (
     SocketAddr,
     tokio::task::JoinHandle<()>,
@@ -6597,6 +6599,11 @@ async fn stale_working_daemon_with(
     let spine = Arc::new(FakeSpine::new());
     let mut seat = cold_seat(pij_core::model::SystemState::Working);
     seat.pane = Some("%stale".to_string());
+    let mut working =
+        pij_store::registry::activity_event(&seat.id, pij_core::model::SystemState::Working, None)
+            .expect("activity event");
+    working.at -= working_for_ms;
+    spine.append(working).await.expect("seed working");
     let mut services = test_services(
         Arc::new(FakeRegistry::new().with_seat(seat)),
         queue.clone(),
@@ -6619,9 +6626,144 @@ async fn stale_working_daemon_with(
     (addr, server, queue, spine)
 }
 
+/// A real Claude adapter over a real tmux adapter whose `tmux` prints `frame`.
+async fn real_claude_stale_daemon(
+    frame: &str,
+    working_for_ms: u64,
+    tag: &str,
+) -> (
+    SocketAddr,
+    tokio::task::JoinHandle<()>,
+    Arc<FakeQueue>,
+    Arc<FakeSpine>,
+    std::path::PathBuf,
+) {
+    let dir = std::env::temp_dir().join(format!("pij-frame-{tag}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    std::fs::write(dir.join("frame.txt"), frame).expect("frame");
+    let tmux_bin = dir.join("tmux");
+    std::fs::write(
+        &tmux_bin,
+        format!("#!/bin/sh\ncat '{}'\n", dir.join("frame.txt").display()),
+    )
+    .expect("fake tmux");
+    std::fs::set_permissions(
+        &tmux_bin,
+        std::os::unix::fs::PermissionsExt::from_mode(0o755),
+    )
+    .expect("chmod");
+    let tmux: Arc<dyn pij_core::ports::TmuxPort> = Arc::new(pij_tmux::TmuxAdapter::with_binary(
+        tmux_bin.as_os_str(),
+        dir.join("taps"),
+    ));
+    let (addr, server, queue, spine) = stale_working_daemon_with(
+        Arc::new(pij_harnesses::ClaudeHarness::new(tmux)),
+        cold_status(),
+        working_for_ms,
+    )
+    .await;
+    (addr, server, queue, spine, dir)
+}
+
+const TWO_HOURS_MS: u64 = 2 * 60 * 60 * 1_000;
+
+/// Re-review 3: only POSITIVE idle evidence may refuse and correct. Each of
+/// these panes is a working seat whose facts are cold, and none of them shows
+/// an idle Claude, so every one must allow and leave `working` alone.
+#[tokio::test]
+async fn a_pane_without_positive_idle_evidence_allows_and_keeps_working() {
+    let rows: [(&str, &str, u64); 6] = [
+        ("empty", "", TWO_HOURS_MS),
+        ("blank", "\n\n\n\n", TWO_HOURS_MS),
+        (
+            "truncated-spinner",
+            include_str!("../../../testkit/fixtures/harnesses/claude-2.1.284-tool-run-narrow.txt"),
+            TWO_HOURS_MS,
+        ),
+        (
+            "permission-dialog",
+            include_str!(
+                "../../../testkit/fixtures/harnesses/claude-2.1.284-permission-dialog.txt"
+            ),
+            TWO_HOURS_MS,
+        ),
+        (
+            "tool-run",
+            include_str!("../../../testkit/fixtures/harnesses/claude-2.1.284-tool-run.txt"),
+            TWO_HOURS_MS,
+        ),
+        // Live: mid-stream Claude shows no spinner and looks idle. A seat woken
+        // after a long idle is in exactly this frame with cold facts, until its
+        // first reply is written. Its `working` is seconds old, so it is fresh.
+        (
+            "streaming-fresh-wake",
+            include_str!("../../../testkit/fixtures/harnesses/claude-2.1.284-streaming.txt"),
+            10_000,
+        ),
+    ];
+    let mut wrong = Vec::new();
+    for (name, frame, working_for_ms) in rows {
+        let (addr, server, queue, _, dir) =
+            real_claude_stale_daemon(frame, working_for_ms, name).await;
+        let (status, reply) = post_json(
+            addr,
+            "/v1/send",
+            cold_send(&format!("m-{name}"), serde_json::json!({})),
+        )
+        .await;
+        let (_, card) = post_json(addr, "/v1/state", serde_json::json!({"id": "pij-cold"})).await;
+        let outcome = (
+            status,
+            reply["data"]["cold_check"].clone(),
+            queue.live_len(),
+            card["data"]["state"].clone(),
+        );
+        if outcome
+            != (
+                200,
+                serde_json::json!("busy"),
+                1,
+                serde_json::json!("working"),
+            )
+        {
+            wrong.push(format!("{name}: {outcome:?}"));
+        }
+        server.abort();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    assert!(
+        wrong.is_empty(),
+        "refused or corrected without idle evidence: {wrong:#?}"
+    );
+}
+
+/// The positive case end to end: a live Claude frame just after an Esc
+/// interrupt, `working` for two hours, cold facts. Refused and corrected.
+#[tokio::test]
+async fn a_live_idle_claude_frame_under_a_long_stale_working_is_refused() {
+    let (addr, server, queue, _, dir) = real_claude_stale_daemon(
+        include_str!("../../../testkit/fixtures/harnesses/claude-2.1.284-after-esc.txt"),
+        TWO_HOURS_MS,
+        "idle",
+    )
+    .await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-live-idle", serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(status, 400, "{reply}");
+    assert_eq!(queue.live_len(), 0);
+    let (_, card) = post_json(addr, "/v1/state", serde_json::json!({"id": "pij-cold"})).await;
+    assert_eq!(card["data"]["state"], "idle");
+    server.abort();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[tokio::test]
 async fn a_stale_working_seat_with_an_idle_pane_is_refused_and_corrected() {
-    let claude = Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_busy(false));
+    let claude = Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_idle(true));
     let (addr, server, queue, spine) = stale_working_daemon(claude.clone()).await;
     let (status, reply) = post_json(
         addr,
@@ -6638,7 +6780,7 @@ async fn a_stale_working_seat_with_an_idle_pane_is_refused_and_corrected() {
         "{reply}"
     );
     assert_eq!(queue.live_len(), 0);
-    assert_eq!(claude.busy_probes(), 1, "exactly one pane probe");
+    assert_eq!(claude.idle_probes(), 1, "exactly one pane probe");
     let (_, card) = post_json(addr, "/v1/state", serde_json::json!({"id": "pij-cold"})).await;
     assert_eq!(
         card["data"]["state"], "idle",
@@ -6649,6 +6791,7 @@ async fn a_stale_working_seat_with_an_idle_pane_is_refused_and_corrected() {
         .await
         .expect("tail")
         .into_iter()
+        .rev()
         .find(|event| event.kind == "seat.activity")
         .expect("the correction is on the spine");
     let payload: serde_json::Value = serde_json::from_str(&correction.payload).unwrap();
@@ -6662,7 +6805,7 @@ async fn a_stale_working_seat_with_an_idle_pane_is_refused_and_corrected() {
 #[tokio::test]
 async fn a_stale_working_seat_with_a_busy_pane_is_allowed() {
     let (addr, server, queue, _) = stale_working_daemon(Arc::new(
-        pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_busy(true),
+        pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_idle(false),
     ))
     .await;
     let (status, reply) = post_json(
@@ -6682,7 +6825,7 @@ async fn a_stale_working_seat_with_a_busy_pane_is_allowed() {
 #[tokio::test]
 async fn a_failed_pane_capture_trusts_working() {
     let (addr, server, queue, _) = stale_working_daemon(Arc::new(
-        pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_busy_error(),
+        pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_idle_error(),
     ))
     .await;
     let (status, reply) = post_json(
@@ -6750,8 +6893,9 @@ async fn a_working_seat_that_is_not_cold_by_its_facts_is_not_probed() {
         last_call_at_ms: Fact::native(now - 5 * 60 * 1_000),
         ..SeatStatus::unknown()
     });
-    let claude = Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_busy(false));
-    let (addr, server, _, _) = stale_working_daemon_with(claude.clone(), recent).await;
+    let claude = Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_idle(true));
+    let (addr, server, _, _) =
+        stale_working_daemon_with(claude.clone(), recent, TWO_HOURS_MS).await;
     let (status, reply) = post_json(
         addr,
         "/v1/send",
@@ -6766,9 +6910,58 @@ async fn a_working_seat_that_is_not_cold_by_its_facts_is_not_probed() {
         "not corrected outside the rare case"
     );
     assert_eq!(
-        claude.busy_probes(),
+        claude.idle_probes(),
         0,
         "no pane probe outside the rare case"
     );
+    server.abort();
+}
+
+/// A `working` younger than the idle threshold is a live turn, whatever its
+/// pane shows (mid-stream Claude looks idle). It is trusted without a probe.
+#[tokio::test]
+async fn a_recent_working_is_trusted_without_a_pane_probe() {
+    let claude = Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_idle(true));
+    let (addr, server, queue, _) =
+        stale_working_daemon_with(claude.clone(), cold_status(), 30_000).await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-fresh-wake", serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["cold_check"], "busy");
+    assert_eq!(queue.live_len(), 1);
+    assert_eq!(claude.idle_probes(), 0, "no pane probe for a fresh turn");
+    let (_, card) = post_json(addr, "/v1/state", serde_json::json!({"id": "pij-cold"})).await;
+    assert_eq!(card["data"]["state"], "working");
+    server.abort();
+}
+
+/// The age that counts is that of the latest activity fact, and only if it
+/// says `working`. An old `idle` fact is no evidence of a stale `working`.
+#[tokio::test]
+async fn an_old_activity_fact_that_is_not_working_is_no_evidence() {
+    let claude = Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_idle(true));
+    let (addr, server, queue, spine) =
+        stale_working_daemon_with(claude.clone(), cold_status(), 3 * 60 * 60 * 1_000).await;
+    let mut idle = pij_store::registry::activity_event(
+        &cold_seat(pij_core::model::SystemState::Working).id,
+        pij_core::model::SystemState::Idle,
+        None,
+    )
+    .expect("activity event");
+    idle.at -= TWO_HOURS_MS;
+    spine.append(idle).await.expect("seed idle");
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-old-idle-fact", serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(queue.live_len(), 1);
+    assert_eq!(claude.idle_probes(), 0);
     server.abort();
 }
