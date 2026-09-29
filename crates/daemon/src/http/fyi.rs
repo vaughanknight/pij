@@ -146,7 +146,7 @@ pub(crate) async fn activity(
     let changed = match state
         .services
         .registry
-        .set_activity(&seat.id, observed)
+        .set_activity(&seat.id, observed, None)
         .await
     {
         Ok(seq) => seq.is_some(),

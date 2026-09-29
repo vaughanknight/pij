@@ -6570,3 +6570,165 @@ async fn a_forwarded_send_is_not_guarded() {
     assert_eq!(queue.live_len(), 1);
     server.abort();
 }
+
+/// Review ruling (Esc fires no Claude hook): a seat that SAYS working but is
+/// large and 60+ min past its last call is checked against its live pane.
+async fn stale_working_daemon(
+    claude: pij_testkit::fakes::FakeHarness,
+) -> (
+    SocketAddr,
+    tokio::task::JoinHandle<()>,
+    Arc<FakeQueue>,
+    Arc<FakeSpine>,
+) {
+    stale_working_daemon_with(claude, cold_status()).await
+}
+
+async fn stale_working_daemon_with(
+    claude: pij_testkit::fakes::FakeHarness,
+    reply: pij_core::session_status::SessionStatusReply,
+) -> (
+    SocketAddr,
+    tokio::task::JoinHandle<()>,
+    Arc<FakeQueue>,
+    Arc<FakeSpine>,
+) {
+    let queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
+    let spine = Arc::new(FakeSpine::new());
+    let mut seat = cold_seat(pij_core::model::SystemState::Working);
+    seat.pane = Some("%stale".to_string());
+    let mut services = test_services(
+        Arc::new(FakeRegistry::new().with_seat(seat)),
+        queue.clone(),
+        spine.clone(),
+    )
+    .await;
+    services.session_status =
+        Arc::new(pij_testkit::fakes::FakeSessionStatus::new().with_reply(COLD_SESSION, reply));
+    services.harnesses = Arc::new(
+        pij_harnesses::HarnessRegistry::new([
+            Arc::new(claude) as Arc<dyn pij_core::ports::HarnessPort>,
+            Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Copilot)),
+            Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Codex)),
+            Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Pi)),
+            Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Omp)),
+        ])
+        .expect("harness registry"),
+    );
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    (addr, server, queue, spine)
+}
+
+#[tokio::test]
+async fn a_stale_working_seat_with_an_idle_pane_is_refused_and_corrected() {
+    let (addr, server, queue, spine) = stale_working_daemon(
+        pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_busy(false),
+    )
+    .await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-stale", serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(status, 400, "{reply}");
+    assert!(
+        reply["meta"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("E-RS-COLD-WAKE"),
+        "{reply}"
+    );
+    assert_eq!(queue.live_len(), 0);
+    let (_, card) = post_json(addr, "/v1/state", serde_json::json!({"id": "pij-cold"})).await;
+    assert_eq!(
+        card["data"]["state"], "idle",
+        "the stale state is corrected"
+    );
+    let correction = spine
+        .tail(None, Seq(0))
+        .await
+        .expect("tail")
+        .into_iter()
+        .find(|event| event.kind == "seat.activity")
+        .expect("the correction is on the spine");
+    let payload: serde_json::Value = serde_json::from_str(&correction.payload).unwrap();
+    assert_eq!(
+        payload,
+        serde_json::json!({"state": "idle", "reason": "stale working (esc)"})
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn a_stale_working_seat_with_a_busy_pane_is_allowed() {
+    let (addr, server, queue, _) = stale_working_daemon(
+        pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_busy(true),
+    )
+    .await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-busy-pane", serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["cold_check"], "busy");
+    assert_eq!(queue.live_len(), 1);
+    let (_, card) = post_json(addr, "/v1/state", serde_json::json!({"id": "pij-cold"})).await;
+    assert_eq!(card["data"]["state"], "working");
+    server.abort();
+}
+
+#[tokio::test]
+async fn a_failed_pane_capture_trusts_working() {
+    let (addr, server, queue, _) = stale_working_daemon(
+        pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_busy_error(),
+    )
+    .await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-capture-fail", serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["cold_check"], "busy");
+    assert_eq!(queue.live_len(), 1);
+    server.abort();
+}
+
+/// The pane is consulted only in the rare case: a working seat whose facts
+/// are NOT cold is trusted as busy without a probe, even if its pane is idle.
+#[tokio::test]
+async fn a_working_seat_that_is_not_cold_by_its_facts_is_not_probed() {
+    use pij_core::session_status::{Fact, SeatStatus, SessionStatusReply};
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    let recent = SessionStatusReply::Status(SeatStatus {
+        context_used_tokens: Fact::derived(720_000),
+        last_call_at_ms: Fact::native(now - 5 * 60 * 1_000),
+        ..SeatStatus::unknown()
+    });
+    let (addr, server, _, _) = stale_working_daemon_with(
+        pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_busy(false),
+        recent,
+    )
+    .await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-recent", serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["cold_check"], "busy");
+    let (_, card) = post_json(addr, "/v1/state", serde_json::json!({"id": "pij-cold"})).await;
+    assert_eq!(
+        card["data"]["state"], "working",
+        "not corrected outside the rare case"
+    );
+    server.abort();
+}

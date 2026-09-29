@@ -109,3 +109,38 @@ It also documents the Claude busy signal and its limit: only a submitted prompt 
 ```
     (In a separate idle session, the `idle_prompt` notification did fire about 60 s after a completed turn, but never after an interrupt, so it does not cover this case.)
   - **Consequence:** after an Esc, a Claude seat reads `working` until its next prompt or completed turn. An exit or kill leaves it `working` until the tombstone or a new incarnation. While it reads `working`, the cold-wake guard allows sends to it. That is a false allow, in the brake's safe direction. Both cases are documented in `docs/how/pij-rs-api.md`.
+
+## Stale `working` (Esc) confirmed by the live pane (prime's ruling, uther delta)
+- **Rule, narrow:** the pane is checked only when the recipient says `working` AND its facts alone say cold (over 300k context, last call more than 60 min ago). The guard then probes that one pane once with `HarnessPort::busy`, bounded at 1 s:
+  - Pane shows a turn in progress: busy, allowed as before.
+  - Pane shows no turn in progress: the `working` is stale. The send is refused as cold, and the seat is corrected to `idle` through `Registry::set_activity`. The `seat.activity` fact carries `{"reason":"stale working (esc)"}`.
+  - No pane, a failed probe or a slow probe: trust `working` and allow. Unknown never refuses.
+- **Tests:**
+  - RED first: `a_stale_working_seat_with_an_idle_pane_is_refused_and_corrected` failed before the change (HTTP 200 `busy`) and is GREEN after.
+  - `a_stale_working_seat_with_a_busy_pane_is_allowed`, `a_failed_pane_capture_trusts_working` and `a_working_seat_that_is_not_cold_by_its_facts_is_not_probed` guard behaviour that existed before. Each is RED under a mutant:
+
+| mutant | result |
+|---|---|
+| S1-busy-or-failed-pane-reads-idle | test result: FAILED. 2 passed; 2 failed; 0 ignored; 0 measur |
+| S2-no-correction | test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measur |
+| S3-probes-outside-rare-case | test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measur |
+| S4-no-reason | test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measur |
+
+- **Live proof (isolated worktree daemon on 127.0.0.1:7499, fresh store, real session source and real tmux/harness):**
+  - Thresholds were shortened in the proof build only, to context > 1,000 and idle > 30 s. The constants were reverted before commit, and the diff is clean.
+  - Real Claude Code v2.1.284 ran with the worktree's hooks.
+  - Steps and results:
+    - One completed turn: `Stop` fired, the seat was `idle`, context 33,264.
+    - A 3000-word essay prompt: `working`.
+    - **Esc** 7 s in: Claude showed `Interrupted`, no hook fired, and the seat stayed `working`.
+    - 50 s after the last call, one `POST /v1/send`:
+
+```
+23:08:02 before send: working (last call 50s ago)
+{"ok": false, "error": "refused",
+ "meta": "E-RS-COLD-WAKE: pij-stale-proof is cold (idle 0m, 33k context). Waking it rewrites ~33k tokens (price unknown for this model). Use --fyi to hold it, or --force --reason \"<why>\"."}
+23:08:02 after send: idle
+spine seat.activity: working 23:06:54 → idle 23:06:56 (Stop) → working 23:07:08 → {"reason":"stale working (esc)","state":"idle"} 23:08:02
+```
+  - Nothing was delivered to the pane.
+  - The message reads `idle 0m` only because of the shortened proof threshold. The model (Sonnet 5.5) is unpriced.

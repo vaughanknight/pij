@@ -103,11 +103,14 @@ pub trait Registry: Send + Sync {
     /// its mechanical `state` and nothing else on the row. `None` when nothing
     /// changed: the seat is absent, tombstoned, or already in `state`. A
     /// read-then-put here would overwrite a concurrent tombstone, role or
-    /// declaration with the stale row it read.
+    /// declaration with the stale row it read. `reason` travels on the
+    /// `seat.activity` fact when the daemon corrects a state it did not observe
+    /// from the seat itself (e.g. `stale working (esc)`).
     async fn set_activity(
         &self,
         seat: &SeatId,
         state: crate::model::SystemState,
+        reason: Option<&str>,
     ) -> Result<Option<Seq>>;
 }
 

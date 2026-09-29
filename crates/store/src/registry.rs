@@ -271,12 +271,16 @@ pub fn registry_event(kind: &str, seat: &SeatId, payload: String) -> Result<Even
 }
 
 /// Encode a seat's own busy/idle observation as a `seat.activity` fact (plan 158).
-pub fn activity_event(seat: &SeatId, state: pij_core::model::SystemState) -> Result<Event> {
-    registry_event(
-        "seat.activity",
-        seat,
-        serde_json::json!({ "state": state.as_str() }).to_string(),
-    )
+pub fn activity_event(
+    seat: &SeatId,
+    state: pij_core::model::SystemState,
+    reason: Option<&str>,
+) -> Result<Event> {
+    let mut payload = serde_json::json!({ "state": state.as_str() });
+    if let Some(reason) = reason {
+        payload["reason"] = reason.into();
+    }
+    registry_event("seat.activity", seat, payload.to_string())
 }
 
 /// Stamp `pending_fyis_dropped` onto a `seat.tombstone` payload (plan 158).
@@ -470,6 +474,7 @@ impl Registry for SqliteRegistry {
         &self,
         seat: &SeatId,
         state: pij_core::model::SystemState,
+        reason: Option<&str>,
     ) -> Result<Option<Seq>> {
         // An unchanged or retired seat publishes nothing.
         match self.get(seat).await? {
@@ -478,13 +483,14 @@ impl Registry for SqliteRegistry {
         }
         let pool = self.pool.clone();
         let seat = seat.clone();
+        let reason = reason.map(str::to_string);
         let published = self
             .publisher
             .publish_registry(Box::pin(async move {
                 owned_write(async move {
                     require_current_schema(&pool).await?;
                     let mut tx = begin_write(&pool).await?;
-                    let mut event = activity_event(&seat, state)?;
+                    let mut event = activity_event(&seat, state, reason.as_deref())?;
                     let seq = append_in_transaction(&mut tx, &event).await?;
                     // Only the mechanical state, and only on a live row: a
                     // concurrent tombstone, role or declaration is never overwritten.

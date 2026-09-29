@@ -20,6 +20,25 @@ use super::{AppState, internal, refused, session_status_block, system_time_ms};
 /// then stays off for that send rather than delaying it.
 const STATUS_WAIT: Duration = Duration::from_secs(3);
 
+/// The `seat.activity` reason when the guard corrects a stale `working`.
+const STALE_WORKING_REASON: &str = "stale working (esc)";
+
+/// How long one pane busy probe may take before it counts as failed.
+const PANE_PROBE_WAIT: Duration = Duration::from_secs(1);
+
+/// Does the seat's live pane show no turn in progress? `false` for no pane,
+/// a failed or slow probe, or a busy pane: only a positive idle reading counts.
+async fn pane_is_idle(state: &AppState, seat: &pij_core::model::SeatDescriptor) -> bool {
+    let Some(pane) = seat.pane.as_deref() else {
+        return false;
+    };
+    let probe = state.services.harnesses.get(seat.harness).busy(pane);
+    matches!(
+        tokio::time::timeout(PANE_PROBE_WAIT, probe).await,
+        Ok(Ok(false))
+    )
+}
+
 /// What the sender asked for about a cold recipient.
 pub(crate) struct Override<'a> {
     pub(crate) force: bool,
@@ -72,7 +91,31 @@ pub(crate) async fn guard(
     .unwrap_or_else(|_| SessionStatusBlock::Failed {
         error: format!("no answer within {}s", STATUS_WAIT.as_secs()),
     });
-    let verdict = check(seat.state, &block, now_ms);
+    let mut verdict = check(seat.state, &block, now_ms);
+    // A seat can SAY working after its turn ended unseen (a Claude Esc interrupt
+    // fires no hook). Only in the rare case that the facts alone say cold, the
+    // live pane decides: one busy probe of that one pane. A pane that shows no
+    // turn in progress means the `working` was stale: refuse, and correct it.
+    // No pane, or a failed probe, keeps trusting `working`, so the brake stays
+    // off rather than refuse on a guess.
+    if verdict == ColdCheck::Busy {
+        let as_idle = check(pij_core::model::SystemState::Idle, &block, now_ms);
+        if matches!(as_idle, ColdCheck::Cold { .. }) && pane_is_idle(state, &seat).await {
+            if let Err(error) = state
+                .services
+                .registry
+                .set_activity(
+                    &seat.id,
+                    pij_core::model::SystemState::Idle,
+                    Some(STALE_WORKING_REASON),
+                )
+                .await
+            {
+                return Err(Box::new(internal(command, error)));
+            }
+            verdict = as_idle;
+        }
+    }
     if let Some(message) = refusal(to, &verdict)
         && !over.force
     {

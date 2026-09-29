@@ -196,6 +196,7 @@ impl Registry for FakeRegistry {
         &self,
         seat: &SeatId,
         state: pij_core::model::SystemState,
+        _reason: Option<&str>,
     ) -> Result<Option<Seq>> {
         let mut guard = self.state.lock().expect("fake registry mutex");
         guard
@@ -2107,6 +2108,7 @@ struct HarnessState {
     bind: Option<BindHealth>,
     readiness: VecDeque<Readiness>,
     busy: VecDeque<bool>,
+    busy_errors: usize,
     models: Vec<ModelRow>,
 }
 
@@ -2153,6 +2155,12 @@ impl FakeHarness {
         self
     }
 
+    /// Make the next busy probe fail, as a failed pane capture would.
+    pub fn script_busy_error(self) -> Self {
+        self.state.lock().expect("fake harness mutex").busy_errors += 1;
+        self
+    }
+
     /// Set the catalog this harness reports.
     pub fn with_models(self, models: Vec<ModelRow>) -> Self {
         self.state.lock().expect("fake harness mutex").models = models;
@@ -2194,6 +2202,13 @@ impl HarnessPort for FakeHarness {
         // default would make every delivery test arrange its way out of a state
         // it never asked for.
         let mut state = self.state.lock().expect("fake harness mutex");
+        if state.busy_errors > 0 {
+            state.busy_errors -= 1;
+            return Err(PijError::Adapter {
+                adapter: "fake/harness".to_string(),
+                message: "pane capture failed".to_string(),
+            });
+        }
         Ok(state.busy.pop_front().unwrap_or(false))
     }
 
