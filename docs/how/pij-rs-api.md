@@ -485,7 +485,7 @@ pij-rs send --to <seat> --fyi 'text'   # native form
 | `POST /v1/state` → `data.pendingFyis` | Pending count on the camelCase card (`pij state <seat> --json`). |
 | `/v1/whoami` → `data.pending_fyis` | The same count on whoami (`pij-rs --json whoami --pane "$TMUX_PANE"`). Status lines and footers read it here, with no extra call, and show `✉N` only while N > 0. |
 | `/v1/events` kinds `fyi.held`, `fyi.delivered`, `fyi.restored` | `seat` is the recipient. `fyi.restored` means a failed carrier returned its FYIs to pending. Extensions refresh their count on any `fyi.*` event, or `seat.tombstone`, for their seat. |
-| `seat.tombstone` payload `pending_fyis_dropped` | A tombstone drops the seat's pending FYIs and records that it did in this field. |
+| `seat.tombstone` payload `pending_fyis_dropped` | A tombstone drops the seat's pending FYIs and records how many in this field, present only when at least one was dropped. |
 
 A claimed `block` is placed as: Claude `UserPromptSubmit` hook `additionalContext`; OMP and Pi `before_agent_start` custom message `pij-fyi`; Copilot native extension `onUserPromptSubmitted` `additionalContext`.
 

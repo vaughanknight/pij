@@ -39,7 +39,7 @@ Used by the typed-turn hooks.
 - `pij state <seat> --json` shows `data.pendingFyis: N`.
 - `/v1/whoami` (and `pij-rs --json whoami --pane "$TMUX_PANE"`) gains `data.pending_fyis: N`. The status lines read it there, so they need no extra call.
 - The events on `/v1/events`, whose `seat` is the recipient, are `fyi.held`, `fyi.delivered` and `fyi.restored`.
-  A tombstone drops pending FYIs and records `pending_fyis_dropped` in the `seat.tombstone` payload.
+  A tombstone drops pending FYIs and records `pending_fyis_dropped` in the `seat.tombstone` payload, present only when at least one was dropped.
   Extensions refresh their count on any `fyi.*` event, or on `seat.tombstone`, for their seat.
 
 ## Golden format (the only definition)

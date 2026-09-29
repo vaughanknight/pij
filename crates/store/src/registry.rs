@@ -269,7 +269,13 @@ pub fn registry_event(kind: &str, seat: &SeatId, payload: String) -> Result<Even
 }
 
 /// Stamp `pending_fyis_dropped` onto a `seat.tombstone` payload (plan 158).
+///
+/// Only when something was dropped: a seat with nothing held keeps the canonical
+/// payload, identical to the fake registry's.
 fn record_dropped_fyis(event: &mut Event, dropped: u64) -> Result<()> {
+    if dropped == 0 {
+        return Ok(());
+    }
     let mut payload: serde_json::Value =
         serde_json::from_str(&event.payload).map_err(|error| PijError::Adapter {
             adapter: "store/registry".to_string(),
