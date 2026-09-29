@@ -429,10 +429,21 @@ mod tests {
             harness: Harness::Claude,
             session: "s-1".into(),
         };
-        // Give up before the fold can possibly finish.
+        // Hold the seat's slot so the read cannot finish before the caller
+        // gives up. A zero timeout alone raced a tiny fold on a fast runner.
+        let slot = Arc::clone(
+            source
+                .cursors
+                .lock()
+                .expect("cursor map")
+                .entry(target.seat.clone())
+                .or_default(),
+        );
+        let held = slot.lock_owned().await;
         let cancelled =
             tokio::time::timeout(std::time::Duration::ZERO, source.status(&target)).await;
         assert!(cancelled.is_err(), "the caller gave up");
+        drop(held);
         let mut kept = false;
         for _ in 0..200 {
             if source.holds_cursor(&target.seat).await {
