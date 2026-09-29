@@ -118,10 +118,10 @@ jobs:
     # Backstop only. Hung tests are killed and named by nextest's per-test
     # clock (.config/nextest.toml, profile `ci`) in about a minute each.
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        package: [pij-core, pij-testkit, pij-store, pij-tmux, pij-harnesses, pij-transport, pij-sidecars, pij-daemon, pij-cli]
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -137,17 +137,37 @@ jobs:
           tool: cargo-nextest
 
       - name: build tests
-        run: cargo nextest run --locked -p ${{ matrix.package }} --profile ci --no-run
+        run: cargo nextest run --locked --workspace --profile ci --no-run
 
-      # The suite runs inside a capped systemd scope. A test that leaks memory
-      # or processes gets killed inside the scope and named by nextest, instead
-      # of taking the runner (and its log) down with it.
+      # DIAGNOSTIC: mirror progress into a PR comment every 20s, because a dying
+      # runner loses its own log.
       - name: test
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set +e
+          cid=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" -f body="rust-test telemetry: starting" --jq .id)
+          (
+            while sleep 20; do
+              body=$(printf 'rust-test telemetry %s\nroot=%s tmp=%s mem=%s load=%s procs=%s\n```\n%s\n```\n```\n%s\n```\n' \
+                "$(date -u +%H:%M:%S)" \
+                "$(df -BM --output=avail / | tail -1 | tr -d ' ')" \
+                "$(df -BM --output=avail /tmp | tail -1 | tr -d ' ')" \
+                "$(awk '/MemAvailable/{printf "%dM", $2/1024}' /proc/meminfo)" \
+                "$(cut -d' ' -f1-3 /proc/loadavg)" \
+                "$(ps -e --no-headers | wc -l | tr -d ' ')" \
+                "$(ps -eo pid,ppid,etimes,pcpu,rss,args --sort=-pcpu | head -12 | cut -c1-180)" \
+                "$(tail -n 40 nextest.out | cut -c1-200)")
+              gh api -X PATCH "repos/${{ github.repository }}/issues/comments/$cid" -f body="$body" >/dev/null 2>&1
+            done
+          ) &
           sudo -E env "PATH=$PATH" systemd-run --scope --quiet \
             -p MemoryMax=11G -p TasksMax=4096 -p CPUQuota=300% \
             --uid="$(id -u)" --gid="$(id -g)" \
-            cargo nextest run --locked -p ${{ matrix.package }} --profile ci --retries 2 --status-level pass
+            cargo nextest run --locked --workspace --profile ci --status-level pass > nextest.out 2>&1
+          status=$?
+          cat nextest.out
+          exit "$status"
 
       # nextest does not run doctests.
       - name: doctests
