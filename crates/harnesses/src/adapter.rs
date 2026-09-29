@@ -190,11 +190,13 @@ fn is_busy(text: &str) -> bool {
         })
 }
 
-/// Claude's in-turn spinner row, by shape: a glyph, a word, `…`, then a
-/// parenthesised elapsed time — `✻ Fiddle-faddling… (11s · ↓ 120 tokens)`.
-/// Glyph and verb both rotate, so neither is listed. A finished turn's row
+/// Claude's in-turn spinner row, by shape: a glyph, one or more words, `…`,
+/// then a parenthesised elapsed time — `✻ Fiddle-faddling… (11s · ↓ 120 tokens)`,
+/// `✢ Compacting conversation… (3s)`. Glyph and verb both rotate, so neither
+/// is listed; separators may be a space or NBSP. A finished turn's row
 /// (`✻ Brewed for 11s · done`) has no ellipsis and does not match.
 fn is_spinner_row(line: &str) -> bool {
+    let is_gap = |c: char| c == ' ' || c == '\u{a0}';
     let mut chars = line.chars();
     let Some(glyph) = chars.next() else {
         return false;
@@ -202,21 +204,26 @@ fn is_spinner_row(line: &str) -> bool {
     if glyph.is_alphanumeric() || glyph.is_whitespace() {
         return false;
     }
-    let Some((word, tail)) = chars
+    let Some((words, tail)) = chars
         .as_str()
-        .strip_prefix(' ')
+        .strip_prefix(is_gap)
         .and_then(|rest| rest.split_once('…'))
     else {
         return false;
     };
-    if word.is_empty()
-        || !word
-            .chars()
-            .all(|c| c.is_alphabetic() || c == '-' || c == '\'')
-    {
+    let is_word = |word: &str| {
+        !word.is_empty()
+            && word
+                .chars()
+                .all(|c| c.is_alphabetic() || c == '-' || c == '\'')
+    };
+    if !words.split(is_gap).all(is_word) {
         return false;
     }
-    let Some(elapsed) = tail.strip_prefix(" (") else {
+    let Some(elapsed) = tail
+        .strip_prefix(is_gap)
+        .and_then(|rest| rest.strip_prefix('('))
+    else {
         return false;
     };
     let digits = elapsed.chars().take_while(char::is_ascii_digit).count();
@@ -820,14 +827,32 @@ mod tests {
                 "{frame}"
             );
         }
-        // Rows from the same live session once turns ended: past tense, no
-        // ellipsis. A tool's own elapsed line has no spinner glyph.
+        // Rows from the same live session once turns ended, and a tool's own
+        // elapsed line: neither has the `…` + `(elapsed` shape.
         for line in [
             "✻ Brewed for 11s · done 11:32 pm",
             "✻ Worked for 2s · done 11:34 pm",
             "⏺ Sleeping for 40 seconds · 9s",
         ] {
             assert!(!super::is_busy(line), "{line}");
+        }
+    }
+
+    #[test]
+    fn spinner_row_variants_are_busy() {
+        for (case, line) in [
+            ("multi-word verb", "✻ Compacting conversation… (3s)"),
+            (
+                "NBSP after glyph",
+                "✻\u{a0}Fiddle-faddling… (11s · ↓ 120 tokens)",
+            ),
+            ("NBSP between words", "✻ Compacting\u{a0}conversation… (3s)"),
+            ("NBSP before elapsed", "✻ Fiddle-faddling…\u{a0}(12s)"),
+            ("glyph ✢", "✢ Fiddle-faddling… (12s)"),
+            ("glyph ✳", "✳ Fiddle-faddling… (12s)"),
+            ("glyph *", "* Fiddle-faddling… (12s)"),
+        ] {
+            assert!(super::is_busy(line), "{case}: {line}");
         }
     }
 
