@@ -2109,6 +2109,7 @@ struct HarnessState {
     readiness: VecDeque<Readiness>,
     busy: VecDeque<bool>,
     busy_errors: usize,
+    busy_probes: usize,
     models: Vec<ModelRow>,
 }
 
@@ -2166,6 +2167,11 @@ impl FakeHarness {
         self.state.lock().expect("fake harness mutex").models = models;
         self
     }
+
+    /// How many busy probes this harness has answered, failed ones included.
+    pub fn busy_probes(&self) -> usize {
+        self.state.lock().expect("fake harness mutex").busy_probes
+    }
 }
 
 #[async_trait]
@@ -2202,6 +2208,7 @@ impl HarnessPort for FakeHarness {
         // default would make every delivery test arrange its way out of a state
         // it never asked for.
         let mut state = self.state.lock().expect("fake harness mutex");
+        state.busy_probes += 1;
         if state.busy_errors > 0 {
             state.busy_errors -= 1;
             return Err(PijError::Adapter {

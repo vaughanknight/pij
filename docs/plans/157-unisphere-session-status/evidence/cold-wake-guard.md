@@ -144,3 +144,16 @@ spine seat.activity: working 23:06:54 → idle 23:06:56 (Stop) → working 23:07
 ```
   - Nothing was delivered to the pane.
   - The message reads `idle 0m` only because of the shortened proof threshold. The model (Sonnet 5.5) is unpriced.
+
+### Re-review 2 fixes (uther REQUEST_CHANGES on `05b4fd1f`)
+- **The probe bound now holds.** The real capture is a synchronous `tmux` child inside an `async fn`, so `timeout` could not preempt it; uther measured 5.2 s with `timed_out=false`. `pane_is_idle` now runs the probe on the blocking pool (`spawn_blocking` + `Handle::block_on`) and times out the `JoinHandle`. A wedged capture is abandoned at 1 s and `working` is trusted.
+- **New test `a_wedged_pane_capture_is_abandoned_at_its_bound`.** It uses the real `ClaudeHarness` over a real `TmuxAdapter` whose binary is a shell script that runs `sleep 4`, on a multi-thread runtime as the daemon runs. RED before the fix: the send waited the full 4 s, then read the empty capture as an idle pane and **refused** (`400 E-RS-COLD-WAKE`). A wedged tmux turned into a false refusal, not just a delay. GREEN after: 200, `busy`, and the reply comes back in under 2.5 s.
+- **`FakeHarness::busy_probes()`** counts probes. The idle-pane test asserts exactly one probe. The not-cold-by-facts test asserts zero.
+- Mutants (`http::tests` stale-working set plus the cold set, 10 tests):
+
+| mutant | result |
+|---|---|
+| A: probe before the facts test (operands swapped) | KILLED `a_working_seat_that_is_not_cold_by_its_facts_is_not_probed` |
+| C: probe bound 1 s changed to 1 h | KILLED `a_wedged_pane_capture_is_abandoned_at_its_bound` |
+| E: probe awaited inline, no blocking pool | KILLED `a_wedged_pane_capture_is_abandoned_at_its_bound` |
+| B: failed probe reads idle | KILLED `a_failed_pane_capture_trusts_working` |

@@ -28,14 +28,20 @@ const PANE_PROBE_WAIT: Duration = Duration::from_secs(1);
 
 /// Does the seat's live pane show no turn in progress? `false` for no pane,
 /// a failed or slow probe, or a busy pane: only a positive idle reading counts.
+///
+/// The real capture is a synchronous `tmux` child inside an `async fn`, which a
+/// timeout cannot preempt. So the probe runs on the blocking pool, and the send
+/// stops waiting at the bound. A wedged capture finishes, or not, on its own.
 async fn pane_is_idle(state: &AppState, seat: &pij_core::model::SeatDescriptor) -> bool {
-    let Some(pane) = seat.pane.as_deref() else {
+    let Some(pane) = seat.pane.clone() else {
         return false;
     };
-    let probe = state.services.harnesses.get(seat.harness).busy(pane);
+    let harness = state.services.harnesses.get(seat.harness).clone();
+    let runtime = tokio::runtime::Handle::current();
+    let probe = tokio::task::spawn_blocking(move || runtime.block_on(harness.busy(&pane)));
     matches!(
         tokio::time::timeout(PANE_PROBE_WAIT, probe).await,
-        Ok(Ok(false))
+        Ok(Ok(Ok(false)))
     )
 }
 

@@ -6574,7 +6574,7 @@ async fn a_forwarded_send_is_not_guarded() {
 /// Review ruling (Esc fires no Claude hook): a seat that SAYS working but is
 /// large and 60+ min past its last call is checked against its live pane.
 async fn stale_working_daemon(
-    claude: pij_testkit::fakes::FakeHarness,
+    claude: Arc<dyn pij_core::ports::HarnessPort>,
 ) -> (
     SocketAddr,
     tokio::task::JoinHandle<()>,
@@ -6585,7 +6585,7 @@ async fn stale_working_daemon(
 }
 
 async fn stale_working_daemon_with(
-    claude: pij_testkit::fakes::FakeHarness,
+    claude: Arc<dyn pij_core::ports::HarnessPort>,
     reply: pij_core::session_status::SessionStatusReply,
 ) -> (
     SocketAddr,
@@ -6607,7 +6607,7 @@ async fn stale_working_daemon_with(
         Arc::new(pij_testkit::fakes::FakeSessionStatus::new().with_reply(COLD_SESSION, reply));
     services.harnesses = Arc::new(
         pij_harnesses::HarnessRegistry::new([
-            Arc::new(claude) as Arc<dyn pij_core::ports::HarnessPort>,
+            claude,
             Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Copilot)),
             Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Codex)),
             Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Pi)),
@@ -6621,10 +6621,8 @@ async fn stale_working_daemon_with(
 
 #[tokio::test]
 async fn a_stale_working_seat_with_an_idle_pane_is_refused_and_corrected() {
-    let (addr, server, queue, spine) = stale_working_daemon(
-        pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_busy(false),
-    )
-    .await;
+    let claude = Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_busy(false));
+    let (addr, server, queue, spine) = stale_working_daemon(claude.clone()).await;
     let (status, reply) = post_json(
         addr,
         "/v1/send",
@@ -6640,6 +6638,7 @@ async fn a_stale_working_seat_with_an_idle_pane_is_refused_and_corrected() {
         "{reply}"
     );
     assert_eq!(queue.live_len(), 0);
+    assert_eq!(claude.busy_probes(), 1, "exactly one pane probe");
     let (_, card) = post_json(addr, "/v1/state", serde_json::json!({"id": "pij-cold"})).await;
     assert_eq!(
         card["data"]["state"], "idle",
@@ -6662,9 +6661,9 @@ async fn a_stale_working_seat_with_an_idle_pane_is_refused_and_corrected() {
 
 #[tokio::test]
 async fn a_stale_working_seat_with_a_busy_pane_is_allowed() {
-    let (addr, server, queue, _) = stale_working_daemon(
+    let (addr, server, queue, _) = stale_working_daemon(Arc::new(
         pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_busy(true),
-    )
+    ))
     .await;
     let (status, reply) = post_json(
         addr,
@@ -6682,9 +6681,9 @@ async fn a_stale_working_seat_with_a_busy_pane_is_allowed() {
 
 #[tokio::test]
 async fn a_failed_pane_capture_trusts_working() {
-    let (addr, server, queue, _) = stale_working_daemon(
+    let (addr, server, queue, _) = stale_working_daemon(Arc::new(
         pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_busy_error(),
-    )
+    ))
     .await;
     let (status, reply) = post_json(
         addr,
@@ -6696,6 +6695,45 @@ async fn a_failed_pane_capture_trusts_working() {
     assert_eq!(reply["data"]["cold_check"], "busy");
     assert_eq!(queue.live_len(), 1);
     server.abort();
+}
+
+/// A wedged tmux (a real child that does not answer) cannot hold the send: the
+/// probe is abandoned at its bound and `working` is trusted.
+/// Multi-threaded, as the daemon runs; the fake-harness tests cover current-thread.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_wedged_pane_capture_is_abandoned_at_its_bound() {
+    let dir = std::env::temp_dir().join(format!("pij-wedged-tmux-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let tmux_bin = dir.join("tmux");
+    std::fs::write(&tmux_bin, "#!/bin/sh\nsleep 4\n").expect("fake tmux");
+    std::fs::set_permissions(
+        &tmux_bin,
+        std::os::unix::fs::PermissionsExt::from_mode(0o755),
+    )
+    .expect("chmod");
+    let tmux: Arc<dyn pij_core::ports::TmuxPort> = Arc::new(pij_tmux::TmuxAdapter::with_binary(
+        tmux_bin.as_os_str(),
+        dir.join("taps"),
+    ));
+    let (addr, server, queue, _) =
+        stale_working_daemon(Arc::new(pij_harnesses::ClaudeHarness::new(tmux))).await;
+    let started = std::time::Instant::now();
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-wedged", serde_json::json!({})),
+    )
+    .await;
+    let elapsed = started.elapsed();
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["cold_check"], "busy");
+    assert_eq!(queue.live_len(), 1);
+    assert!(
+        elapsed < std::time::Duration::from_millis(2_500),
+        "the probe bound held: {elapsed:?}"
+    );
+    server.abort();
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// The pane is consulted only in the rare case: a working seat whose facts
@@ -6712,11 +6750,8 @@ async fn a_working_seat_that_is_not_cold_by_its_facts_is_not_probed() {
         last_call_at_ms: Fact::native(now - 5 * 60 * 1_000),
         ..SeatStatus::unknown()
     });
-    let (addr, server, _, _) = stale_working_daemon_with(
-        pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_busy(false),
-        recent,
-    )
-    .await;
+    let claude = Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_busy(false));
+    let (addr, server, _, _) = stale_working_daemon_with(claude.clone(), recent).await;
     let (status, reply) = post_json(
         addr,
         "/v1/send",
@@ -6729,6 +6764,11 @@ async fn a_working_seat_that_is_not_cold_by_its_facts_is_not_probed() {
     assert_eq!(
         card["data"]["state"], "working",
         "not corrected outside the rare case"
+    );
+    assert_eq!(
+        claude.busy_probes(),
+        0,
+        "no pane probe outside the rare case"
     );
     server.abort();
 }
