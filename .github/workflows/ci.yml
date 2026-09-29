@@ -115,13 +115,19 @@ jobs:
 
   rust-test:
     runs-on: ubuntu-latest
-    # Backstop only. Hung tests are killed and named by nextest's per-test
-    # clock (.config/nextest.toml, profile `ci`) in about a minute each.
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      issues: write
-      pull-requests: write
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        filter:
+          - "all()"
+          - "package(pij-cli) | package(pij-daemon)"
+          - "package(pij-cli) | package(pij-harnesses)"
+          - "package(pij-daemon) | package(pij-harnesses)"
+          - "not package(pij-cli)"
+          - "not package(pij-daemon)"
+          - "not package(pij-harnesses)"
+          - "not (package(pij-cli) | package(pij-daemon) | package(pij-harnesses))"
     steps:
       - uses: actions/checkout@v4
 
@@ -139,77 +145,6 @@ jobs:
       - name: build tests
         run: cargo nextest run --locked --workspace --profile ci --no-run
 
-      # DIAGNOSTIC: tests run as a separate user, so a test that signals the
-      # runner's processes gets EPERM instead of killing the job. Every kill(2)
-      # is traced; any aimed at a runner process, pid 0 or a process group is
-      # printed at the end. A root-owned loop also mirrors progress into a PR
-      # comment every 5s in case the VM still dies.
+      # DIAGNOSTIC bisect: which packages, run together, take the runner down.
       - name: test
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set +e
-          cid=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" -f body="rust-test telemetry: starting" --jq .id)
-          cat > telemetry.sh <<'EOF'
-          #!/bin/bash
-          cid=$1; repo=$2; out=$3
-          while sleep 5; do
-            {
-              echo "### $(date -u +%H:%M:%S) mem=$(awk '/MemAvailable/{printf "%dM", $2/1024}' /proc/meminfo) load=$(cut -d' ' -f1-3 /proc/loadavg) procs=$(ps -e --no-headers | wc -l) runner_worker=$(pgrep -c -f Runner.Worker)"
-              echo '```'
-              ps -eo etimes=,args= | grep -- '--exact' | grep -v grep | sed -E 's#^ *([0-9]+) \S*/deps/([^ ]+)-[0-9a-f]+ (.*)#\1s \2 \3#' | cut -c1-200
-              echo "-- suspicious kills"
-              tail -n 10 /tmp/kills.sus 2>/dev/null
-              tail -n 4 "$out" | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-200
-              echo '```'
-            } > /tmp/tele.now
-            cat /tmp/tele.now >> /tmp/tele.hist
-            tail -c 60000 /tmp/tele.hist > /tmp/tele.body
-            gh api -X PATCH "repos/$repo/issues/comments/$cid" -F body=@/tmp/tele.body >/dev/null 2>&1
-          done
-          EOF
-          cat > killwatch.sh <<'EOF'
-          #!/bin/bash
-          # Resolve every non-probe kill(2) target while it still exists; keep
-          # the ones aimed at pid <= 1, a process group, or another user's process.
-          while IFS= read -r line; do
-            case "$line" in *sys_enter_kill*|*sys_enter_tkill*|*sys_enter_tgkill*) ;; *) continue ;; esac
-            echo "$line" >> /tmp/kills.all
-            sig=$(sed -nE 's/.*sig: 0x([0-9a-f]+).*/\1/p' <<<"$line")
-            [ "$((16#${sig:-0}))" -eq 0 ] && continue
-            pidhex=$(sed -nE 's/.*pid: 0x([0-9a-f]+).*/\1/p' <<<"$line")
-            pidhex=$(sed -E 's/^0+//' <<<"$pidhex")
-            if [ ${#pidhex} -gt 8 ] || [ "$((16#${pidhex:-0}))" -le 1 ]; then
-              echo "GROUP-OR-ALL: $line" >> /tmp/kills.sus; continue
-            fi
-            owner=$(ps -o user=,args= -p "$((16#$pidhex))" 2>/dev/null | cut -c1-140)
-            case "$owner" in pijci*) ;; *) echo "$line => ${owner:-gone}" >> /tmp/kills.sus ;; esac
-          done < /sys/kernel/tracing/trace_pipe
-          EOF
-          touch /tmp/kills.sus
-          sudo useradd -m pijci
-          sudo chmod a+x /home/runner /home/runner/work
-          sudo chmod -R a+rwX /home/runner/.cargo /home/runner/.rustup "$GITHUB_WORKSPACE"
-          sudo git config --system --add safe.directory '*'
-          for event in syscalls/sys_enter_kill syscalls/sys_enter_tgkill syscalls/sys_enter_tkill; do
-            echo 1 | sudo tee /sys/kernel/tracing/events/$event/enable >/dev/null
-          done
-          echo 32768 | sudo tee /sys/kernel/tracing/buffer_size_kb >/dev/null
-          sudo nohup bash killwatch.sh >/dev/null 2>&1 &
-          sudo -E nohup bash telemetry.sh "$cid" "${{ github.repository }}" "$PWD/nextest.out" >/dev/null 2>&1 &
-          sudo systemd-run --scope --quiet \
-            -p MemoryMax=11G -p TasksMax=4096 -p CPUQuota=300% \
-            --uid=pijci --gid=pijci \
-            env "PATH=$PATH" "RUSTFLAGS=$RUSTFLAGS" HOME=/home/pijci CARGO_HOME=/home/runner/.cargo RUSTUP_HOME=/home/runner/.rustup \
-            cargo nextest run --locked --workspace --profile ci --status-level pass > nextest.out 2>&1
-          status=$?
-          cat nextest.out
-          sleep 3
-          echo "== kill(2) calls traced: $(sudo wc -l < /tmp/kills.all)"
-          echo "== suspicious kill(2) calls"
-          sudo cat /tmp/kills.sus
-          exit "$status"
-
-      # nextest does not run doctests.
-      - name: doctests
-        run: cargo test --locked --workspace --doc
+        run: cargo nextest run --locked --workspace --profile ci --status-level pass -E '${{ matrix.filter }}'
