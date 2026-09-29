@@ -136,9 +136,21 @@ jobs:
       - name: build tests
         run: cargo nextest run --locked --workspace --profile ci --no-run
 
-      - name: test
-        run: cargo nextest run --locked --workspace --profile ci
-
       # nextest does not run doctests.
       - name: doctests
         run: cargo test --locked --workspace --doc
+
+      # The suite runs as a throwaway unprivileged user with its own HOME. Run as
+      # the runner user, some test under full-suite concurrency took down the
+      # runner itself (job killed at the time limit, log lost, since 2026-09-10);
+      # as another user it cannot signal or rewrite anything the runner owns.
+      # `sudo -E` keeps the CARGO_* build env, so nothing is recompiled.
+      - name: test
+        run: |
+          sudo useradd --create-home pij-ci
+          sudo chmod a+x /home/runner /home/runner/work
+          export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}" RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
+          sudo chmod -R a+rwX "$GITHUB_WORKSPACE" "$CARGO_HOME" "$RUSTUP_HOME"
+          sudo git config --system --add safe.directory '*'
+          sudo -E -u pij-ci env "PATH=$PATH" HOME=/home/pij-ci \
+            cargo nextest run --locked --workspace --profile ci
