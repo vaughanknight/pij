@@ -7004,9 +7004,8 @@ async fn a_missing_or_unreadable_activity_fact_allows_without_a_probe() {
     }
 }
 
-/// A host with no `tmux` (a missing binary; the Windows case once the daemon
-/// runs there) makes the pane probe fail, and a failed probe is unknown:
-/// the send is allowed and `working` stands.
+/// A host with no `tmux` binary makes the pane probe fail, and a failed probe
+/// is unknown: the send is allowed and `working` stands.
 #[tokio::test]
 async fn a_missing_tmux_binary_is_unknown_and_allows() {
     let dir = std::env::temp_dir().join(format!("pij-no-tmux-{}", std::process::id()));
