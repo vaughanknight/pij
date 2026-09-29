@@ -38,3 +38,8 @@ In the 2026-09-28 usage blowout, 3,773 message-opened turns (15% of spend) were 
 - The hook scripts are deployed to ~/.pij-rs and registered.
 - The daemon has been bounced: pull main first, then `just bounce-rs`. This is the one production-daemon action you're allowed, after merge.
 - The live proof is recorded.
+
+## Addendum (Jordan): the OMP/Pi extension carries `--fyi` on both sides
+- **Sending:** every send surface the extension offers (the `pij_send` tool, any slash command or wrapper around `pij send`) gains an `fyi` option with the same meaning as the CLI flag. The tool description tells the model to use it for information that needs no action.
+- **Receiving:** the before-turn injection and the `✉N` footer (already in Behaviour 3 and 5).
+- Check other send surfaces too, e.g. the Claude and Copilot skill examples and `pij send` help text, so the option is discoverable wherever a seat sends. Search with `rg --hidden`.
