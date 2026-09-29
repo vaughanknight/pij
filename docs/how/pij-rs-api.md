@@ -328,7 +328,7 @@ pane/session still refuses; paneless readers retain their exact host tuple check
 
 | Row fields | Wire contract |
 |---|---|
-| `id`, `harness`, `folder`, `state` | Stable seat id, harness enum, absolute working folder and stored mechanical state. OMP, Pi and Copilot seats publish `working`/`idle` at their own turn boundaries through `/v1/activity`; Claude seats still default to `idle`, which is not observed inactivity. |
+| `id`, `harness`, `folder`, `state` | Stable seat id, harness enum, absolute working folder and stored mechanical state. OMP, Pi and Copilot seats publish `working`/`idle` at their own turn boundaries through `/v1/activity`, and Claude seats publish them through their managed `UserPromptSubmit` and `Stop` hooks. A seat that has not published since the daemon learned it reads `idle` by default, which is not observed inactivity. |
 | `generation`, `relay`, `native_extension_delivery` | Present `"rs"` and boolean flags. False is an explicit value, not omission. Display role does not grant native delivery attestation. |
 | `session`, `pane`, `proc`, `semantic_state`, `role`, `parent` | Present even when null. `session` is the serialized native harness-session id (not `harness_session`); null is unknown. `pane:null` is paneless; `proc:null` is no bound process identity. Non-null `proc` is `{pid, proc_start}`; never interpret pid alone as identity. Null semantic state/role means no declaration/assertion; null parent means no recorded governing seat. |
 | `extension_build`, `extension_path` | Present string or null on current-daemon whoami, seats and state responses. Build is the loaded runtime extension's `<sha10>`, `<sha10>+dirty`, or `hash:<12 hex>`; path is its resolved real source directory, not the seat's working folder. Null means no build was reported (a pre-144 extension in OMP or Pi, or a harness without this feature), never a retroactive guess from today's checkout. Older daemons omit these keys entirely. |
@@ -526,7 +526,7 @@ It changes only the seat's mechanical `state` (a targeted write that never rewri
 - The OMP/Pi extension publishes `working` at `turn_start`, and `idle` at `turn_end`, at `agent_end` and on shutdown.
 - The Copilot native extension publishes on `assistant.turn_start`, and on `assistant.turn_end`, `session.idle` or shutdown.
 - Publications are serialized per session, and a failure never breaks a turn. A route-absent 404 from an older daemon stops publishing.
-- Claude seats don't publish yet.
+- Claude seats publish through their managed hooks (plan 157): `UserPromptSubmit` sends `working` and `Stop` sends `idle`. The seat is resolved by pane, via `pij-rs activity`, with the same 3 s bound and silent failure as the FYI claim. Only a prompt submitted to Claude fires `UserPromptSubmit`, so a turn opened another way stays `idle` until the next typed or pasted prompt.
 
 ### Cold-wake guard (plan 157 phase 2)
 
@@ -546,6 +546,9 @@ pij-rs send --to <seat> --force --reason '<why>' --body 'text'   # native form
 | Unknown ⇒ allow | Any fact the rule needs but cannot establish (unbound or unsupported harness, no transcript, a source error, unknown context or last-call time) allows the send as `unknown: <why>`. The guard waits 3 s for the recipient's session facts; after that the send is allowed as `unknown: no answer within 3s`. |
 | Never guarded | FYIs (`fyi:true` opens no turn), controls (`command`), and forwarded (federated) sends: a `seat@machine` send is not checked on either daemon, because only the originating sender could choose `--fyi` or `--force`. |
 | One recipient per send | rs has no multi-recipient send, and the shim refuses broadcasts, so the per-recipient rule is met by one recipient per send. |
+| Remote peers | A message forwarded from another machine (`from_machine` set) is delivered unguarded, so a remote peer can still cold-wake a local seat. The receiving daemon cannot offer that sender `--fyi` or `--force`. |
+| `pij bounce` announcement | The bounce announcement is an ordinary send from `pij-daemon`. A cold seat refuses it, so the bounce output lists `announcement failed … E-RS-COLD-WAKE` for each cold seat, and those seats are not woken. |
+| Cursor warm-up | At daemon start every live, bound seat's session is read once in the background, one at a time with a pause between seats. The first send after a bounce is then a warm read. A read the guard stops waiting for still completes and keeps its cursor. |
 
 Sources: [`cold_wake.rs`](../../crates/core/src/cold_wake.rs) (rule), [`http/cold_wake.rs`](../../crates/daemon/src/http/cold_wake.rs) (guard and audit).
 

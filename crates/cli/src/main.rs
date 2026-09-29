@@ -24,9 +24,10 @@ use pij_core::model::{Envelope, ErrorKind, Event, Harness, SeatDescriptor, SeatI
 use pij_core::wire;
 use pij_harnesses::{
     claude_homes, copilot_home, ensure_claude_inbound_accept, ensure_claude_session_start_hook,
-    ensure_claude_statusline, ensure_claude_user_prompt_submit_hook, ensure_copilot_statusline,
-    inspect_claude_inbound, inspect_claude_session_start_hook, inspect_claude_statusline,
-    install_claude_session_start_script, install_claude_statusline_script,
+    ensure_claude_statusline, ensure_claude_stop_hook, ensure_claude_user_prompt_submit_hook,
+    ensure_copilot_statusline, inspect_claude_inbound, inspect_claude_session_start_hook,
+    inspect_claude_statusline, install_claude_session_start_script,
+    install_claude_statusline_script, install_claude_stop_script,
     install_claude_user_prompt_submit_script, install_copilot_statusline_script,
     validate_executable_override,
 };
@@ -303,6 +304,22 @@ enum Command {
         /// Why a forced cold wake is worth its price.
         #[arg(long, requires = "force")]
         reason: Option<String>,
+    },
+    /// Publish this seat's busy/idle state, for a turn-boundary hook (Claude's
+    /// UserPromptSubmit and Stop). Prints nothing on success; `--json` prints the envelope.
+    Activity {
+        /// The seat. Defaults to the live seat bound to `--pane`.
+        #[arg(long)]
+        seat: Option<String>,
+        /// The seat's tmux pane, as binding evidence.
+        #[arg(long)]
+        pane: Option<String>,
+        /// The seat's harness-native session id, as binding evidence.
+        #[arg(long)]
+        native_session: Option<String>,
+        /// `working` or `idle`.
+        #[arg(long, value_parser = ["working", "idle"])]
+        state: String,
     },
     /// Claim the FYIs held for a seat, for a typed-turn hook. Prints the block, or
     /// nothing when none are held; `--json` prints the envelope.
@@ -1055,6 +1072,25 @@ async fn run(cli: Cli) -> ExitCode {
             }
             emit(&response, cli.json)
         }
+        Command::Activity {
+            seat,
+            pane,
+            native_session,
+            state,
+        } => {
+            let response = client
+                .activity(&serde_json::json!({
+                    "seat": seat,
+                    "pane": pane,
+                    "native_session": native_session,
+                    "state": state,
+                }))
+                .await;
+            if cli.json || !response.ok {
+                return emit(&response, cli.json);
+            }
+            ExitCode::SUCCESS
+        }
         Command::FyiClaim {
             seat,
             pane,
@@ -1767,6 +1803,13 @@ async fn run_daemon(
         .as_ref()
         .map(|script| ensure_claude_user_prompt_submit_hook(&homes, script))
         .unwrap_or_default();
+    // Plan 157: Claude's turn ending publishes the seat idle, in every Claude home.
+    let stop_hook_script = install_claude_stop_script(&hook_dir)
+        .map_err(|error| format!("could not install Claude Stop hook script: {error}"));
+    let stop_hook_reports = stop_hook_script
+        .as_ref()
+        .map(|script| ensure_claude_stop_hook(&homes, script))
+        .unwrap_or_default();
     let statusline_script = install_claude_statusline_script(&hook_dir)
         .map_err(|error| format!("could not install Claude statusline script: {error}"));
     let statusline_reports = statusline_script
@@ -1805,6 +1848,11 @@ async fn run_daemon(
                     "config.claude-prompt-hook-ensured",
                     "Claude UserPromptSubmit hook",
                     prompt_hook_reports.as_slice(),
+                ),
+                (
+                    "config.claude-stop-hook-ensured",
+                    "Claude Stop hook",
+                    stop_hook_reports.as_slice(),
                 ),
                 (
                     "config.claude-statusline-ensured",
@@ -1853,6 +1901,7 @@ async fn run_daemon(
                 ("inbound", &inbound_reports),
                 ("hook", &hook_reports),
                 ("prompt hook", &prompt_hook_reports),
+                ("stop hook", &stop_hook_reports),
                 ("statusline", &statusline_reports),
                 ("copilot statusline", &copilot_statusline_reports),
             ] {
@@ -1887,6 +1936,9 @@ async fn run_daemon(
             }
             if let Err(error) = prompt_hook_script {
                 eprintln!("pij-rs claude prompt hook: {error}");
+            }
+            if let Err(error) = stop_hook_script {
+                eprintln!("pij-rs claude stop hook: {error}");
             }
             if let Err(error) = statusline_script {
                 eprintln!("pij-rs claude statusline: {error}");
@@ -2356,6 +2408,7 @@ impl Command {
             Command::Adopt { .. } => "pij adopt",
             Command::Whoami { .. } => "pij whoami",
             Command::FyiClaim { .. } => "pij fyi-claim",
+            Command::Activity { .. } => "pij activity",
             Command::CommitTrailers => "pij commit-trailers",
             Command::Phonehome { .. } => "pij phonehome",
             Command::Send { .. } => "pij send",
@@ -2532,6 +2585,7 @@ mod tests {
                 "spawn",
                 "revive",
                 "send",
+                "activity",
                 "fyi-claim",
                 "compact-self",
                 "inbox",

@@ -191,6 +191,11 @@ impl DaemonClient {
         self.post("pij send", "/v1/send", request).await
     }
 
+    /// Publish a seat's own busy/idle observation (plan 158; Claude hooks, plan 157).
+    pub async fn activity(&self, request: &serde_json::Value) -> Envelope<serde_json::Value> {
+        self.post("pij activity", "/v1/activity", request).await
+    }
+
     /// Claim the FYIs held for a seat (plan 158).
     pub async fn fyi_claim(&self, request: &serde_json::Value) -> Envelope<serde_json::Value> {
         self.post("pij fyi-claim", "/v1/fyi/claim", request).await

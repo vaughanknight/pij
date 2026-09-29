@@ -94,7 +94,9 @@ pub(crate) async fn claim(
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ActivityRequest {
-    seat: SeatId,
+    /// Optional when `pane` resolves a live seat (the Claude hooks know only the pane).
+    #[serde(default)]
+    seat: Option<SeatId>,
     #[serde(default)]
     pane: Option<String>,
     #[serde(default)]
@@ -130,7 +132,7 @@ pub(crate) async fn activity(
     let seat = match bound_seat(
         &state,
         ACTIVITY,
-        Some(request.seat),
+        request.seat,
         request.pane,
         request.native_session,
     )

@@ -21,6 +21,7 @@ pub mod pointer;
 pub mod reaper;
 mod registration;
 mod serve;
+pub mod session_warmup;
 
 // u-orchestration's git-facts gatherer: IO belongs at the runtime root, and a
 // ninth crate would have been a graph change for one module.
@@ -185,6 +186,8 @@ pub struct Daemon {
     sidecars: pij_sidecars::SidecarHandles,
     governance_shutdown: tokio::sync::oneshot::Sender<()>,
     governance_observer: tokio::task::JoinHandle<Result<()>>,
+    /// One-shot warming of live seats' session cursors; aborted if still running.
+    session_warmup: tokio::task::JoinHandle<()>,
 }
 
 impl Daemon {
@@ -206,6 +209,7 @@ impl Daemon {
         // HTTP drain can leave queue workers claiming new rows in the meantime.
         let _ = self.shutdown.send(());
         let _ = self.governance_shutdown.send(());
+        self.session_warmup.abort();
         let (served, drained, bound, observed, forwarded, background, deaths, (), governance) = tokio::join!(
             async {
                 self.joined.await.map_err(|error| PijError::Adapter {
@@ -828,6 +832,10 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         }
     });
     let death_sweep_loop = death_sweep::start(Arc::new(services.clone()), death_interval);
+    let session_warmup = session_warmup::start(
+        Arc::clone(&services.registry),
+        Arc::clone(&services.session_status),
+    );
 
     let event_bus = Arc::clone(&services.event_bus);
     let delivery = Arc::clone(&services.delivery);
@@ -866,6 +874,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         sidecars,
         governance_shutdown,
         governance_observer,
+        session_warmup,
     })
 }
 

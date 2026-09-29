@@ -52,3 +52,46 @@ E-RS-COLD-WAKE: pij-exceptional-bug is cold (idle 34h45m, 520k context). Waking 
   - M3 (busy not exempt): FAILED.
   - M4 (unknown refuses; also kills the daemon unknown test): FAILED.
   - All are GREEN on the code.
+
+## Review fixes (uther, REQUEST_CHANGES on 553199ac)
+
+### Finding 1: a cancellation-proof cursor read and warm-up at start
+- **Cancellation:** `pij_unisphere` now runs take → fold → store in a detached task that owns the seat's slot. A caller that stops waiting (the guard's 3 s bound) drops only the handle, and the cursor is kept.
+  - Test: `a_cancelled_read_still_keeps_its_cursor`. It was RED before the change ("the abandoned read's cursor was lost, so the next read refolds cold") and is GREEN after.
+- **Warm-up:** `session_warmup` reads every live, bound seat once at daemon start, off the request path. It goes one seat at a time with a 250 ms pause between seats, and the task is aborted at shutdown.
+  - Test: `only_live_bound_seats_are_read_once_each`. It was RED under mutant W1 (unbound seats warmed).
+
+### Finding 2: the fail-open paths and pinned thresholds
+
+| survivor | new test | RED (mutant) |
+|---|---|---|
+| G6 future last-call | `a_future_last_call_is_not_cold` | `wrapping_sub` → FAILED |
+| G7 300k | `the_thresholds_are_the_rulings_300k_and_one_hour` (literal) | 30_000 → FAILED |
+| G8 60 min | same | 60 s → FAILED |
+| D1 shim `--fyi` | `a_shim_fyi_to_a_cold_seat_is_held_not_refused` | the shim FYI takes the guard → FAILED |
+| D8 source error / 3 s timeout | `a_failing_or_silent_session_source_allows_the_send` (Err and a hang: 200, `unknown: source failed: …`, queued, under 6 s) | timeout reads as cold → FAILED |
+| D2 forwarded | `a_forwarded_send_is_not_guarded` (documents the bypass) | forwards guarded → FAILED |
+
+### Finding 3 (prime's ruling): Claude publishes busy/idle
+- **Hooks:** Claude's `UserPromptSubmit` hook publishes `working`, and a new managed `Stop` hook publishes `idle`. Both are installed into every Claude home at daemon boot. They go through a new `pij-rs activity --pane … [--native-session …] --state working|idle`, where `/v1/activity` resolves the seat from the pane.
+  - The calls use the same 3 s watchdog and the same one-line hook.log on failure. They never block a prompt or a stop, and the Stop hook prints nothing.
+- **Tests (ClaudeBusyHooks):** each was RED against the missing behaviour or a mutant, then GREEN. They cover: the prompt hook publishes working and still claims FYIs; the Stop hook publishes idle and prints nothing; both are silent and bounded when the daemon fails or hangs; and the planner covers every home. `a_hook_publishes_activity_by_pane_alone` was RED with the seat required, and is GREEN now.
+- **Live proof (isolated: worktree build, not the production daemon):**
+  - Setup: a private in-process daemon on 127.0.0.1:7499 with a fresh store, and one registered Claude seat. A real Claude Code v2.1.284 (Sonnet 5.5) ran in a new tmux pane with `--setting-sources project --settings <proof hooks>`, so only the worktree's hook scripts ran, pointed at the private daemon.
+  - The prompt was one that runs `sleep 20`. `pij-rs state` was polled every 2 s:
+
+```
+22:35:31 before: idle
+     12 22:35:34 working
+     13 22:35:59 idle
+```
+  - The seat was `working` from 22:35:34 to 22:35:57 while the turn ran (Claude reported "Cooked for 26s"), and `idle` from 22:35:59.
+  - The spine recorded `seat.activity {"state":"working"}` at 22:35:32 and `{"state":"idle"}` at 22:35:58.
+
+### Docs (6.2, 6.3)
+`docs/how/pij-rs-api.md` now notes three things:
+- A remote peer's forwarded send is unguarded, and can still cold-wake a local seat.
+- A cold seat refuses the `pij bounce` announcement, so the bounce output lists `E-RS-COLD-WAKE` failures and those seats are not woken.
+- The cursor warm-up.
+
+It also documents the Claude busy signal and its limit: only a submitted prompt fires `UserPromptSubmit`.

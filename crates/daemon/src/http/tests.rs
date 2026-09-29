@@ -6490,3 +6490,83 @@ async fn the_shim_send_is_guarded_and_forceable() {
     assert_eq!(queue.live_len(), 1);
     server.abort();
 }
+
+/// Review D8: a session source that fails, or does not answer within the
+/// guard's wait, allows the send and says why. The brake never blocks on it.
+#[tokio::test]
+async fn a_failing_or_silent_session_source_allows_the_send() {
+    let (addr, server, queue, _) = cold_daemon(
+        pij_core::model::SystemState::Idle,
+        pij_testkit::fakes::FakeSessionStatus::new().with_failure(COLD_SESSION, "fold exploded"),
+    )
+    .await;
+    let (status, reply) =
+        post_json(addr, "/v1/send", cold_send("m-err", serde_json::json!({}))).await;
+    assert_eq!(status, 200, "{reply}");
+    assert!(
+        reply["data"]["cold_check"]
+            .as_str()
+            .is_some_and(|label| label.starts_with("unknown: source failed:")
+                && label.contains("fold exploded")),
+        "{reply}"
+    );
+    assert_eq!(queue.live_len(), 1, "the message was sent");
+    server.abort();
+
+    let (addr, server, queue, _) = cold_daemon(
+        pij_core::model::SystemState::Idle,
+        pij_testkit::fakes::FakeSessionStatus::new().with_hang(COLD_SESSION),
+    )
+    .await;
+    let started = std::time::Instant::now();
+    let (status, reply) =
+        post_json(addr, "/v1/send", cold_send("m-hang", serde_json::json!({}))).await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(
+        reply["data"]["cold_check"],
+        "unknown: source failed: no answer within 3s"
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(6),
+        "bounded wait"
+    );
+    assert_eq!(queue.live_len(), 1, "the message was sent");
+    server.abort();
+}
+
+/// Review D1: the shim's own `--fyi` (the surface `pij send --fyi` uses) holds
+/// a message for a cold seat instead of refusing it.
+#[tokio::test]
+async fn a_shim_fyi_to_a_cold_seat_is_held_not_refused() {
+    let source =
+        pij_testkit::fakes::FakeSessionStatus::new().with_reply(COLD_SESSION, cold_status());
+    let (addr, server, _, _) = cold_daemon(pij_core::model::SystemState::Idle, source).await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/shim/send",
+        serde_json::json!({"argv": ["send", "pij-cold", "--fyi", "note"], "caller": {"PIJ_SESSION_ID": "pij-sender"}}),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["outcome"]["outcome"], "held", "{reply}");
+    server.abort();
+}
+
+/// Review D2: a message forwarded from another machine is not guarded here: its
+/// sender cannot be offered --fyi or --force by this daemon. Documented bypass.
+#[tokio::test]
+async fn a_forwarded_send_is_not_guarded() {
+    let source =
+        pij_testkit::fakes::FakeSessionStatus::new().with_reply(COLD_SESSION, cold_status());
+    let (addr, server, queue, _) = cold_daemon(pij_core::model::SystemState::Idle, source).await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-fwd", serde_json::json!({"from_machine": "laptop"})),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert!(reply["data"].get("cold_check").is_none(), "{reply}");
+    assert_eq!(queue.live_len(), 1);
+    server.abort();
+}

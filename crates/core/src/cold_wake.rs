@@ -245,6 +245,29 @@ mod tests {
         ));
     }
 
+    /// The ruling's values, pinned literally: a test that compared against the
+    /// constants would pass if someone changed them.
+    #[test]
+    fn the_thresholds_are_the_rulings_300k_and_one_hour() {
+        assert_eq!(COLD_CONTEXT_TOKENS, 300_000);
+        assert_eq!(COLD_IDLE_MS, 3_600_000);
+        let just_over = known(Some(300_001), Some(NOW - 3_600_001), None);
+        assert!(matches!(
+            check(SystemState::Idle, &just_over, NOW),
+            ColdCheck::Cold { .. }
+        ));
+        let recent = known(Some(900_000), Some(NOW - 59 * 60 * 1_000), None);
+        assert_eq!(check(SystemState::Idle, &recent, NOW), ColdCheck::Clear);
+    }
+
+    /// A last call stamped after the daemon's clock (skew) is recent, never
+    /// "idle for centuries".
+    #[test]
+    fn a_future_last_call_is_not_cold() {
+        let skewed = known(Some(900_000), Some(NOW + 60 * 60 * 1_000), None);
+        assert_eq!(check(SystemState::Idle, &skewed, NOW), ColdCheck::Clear);
+    }
+
     #[test]
     fn a_working_seat_is_never_cold() {
         let cold = known(Some(900_000), Some(0), Some("claude-opus-5-5"));

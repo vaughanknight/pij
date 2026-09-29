@@ -81,6 +81,23 @@ fn unisphere_harness(harness: Harness) -> Option<&'static str> {
     }
 }
 
+impl UnisphereSessionStatus {
+    /// Whether a read position is held for `seat` (tests only).
+    #[cfg(test)]
+    async fn holds_cursor(&self, seat: &SeatId) -> bool {
+        let slot = self
+            .cursors
+            .lock()
+            .expect("session-status cursor map")
+            .get(seat)
+            .cloned();
+        match slot {
+            Some(slot) => slot.lock().await.is_some(),
+            None => false,
+        }
+    }
+}
+
 #[async_trait]
 impl SessionStatusPort for UnisphereSessionStatus {
     async fn status(&self, target: &SessionTarget) -> Result<SessionStatusReply> {
@@ -99,41 +116,53 @@ impl SessionStatusPort for UnisphereSessionStatus {
                 .entry(target.seat.clone())
                 .or_default(),
         );
-        // Held across the read: one reader per seat, always the latest cursor.
-        let mut cursor = slot.lock_owned().await;
-        let previous = cursor.take();
         let now_ms = now_ms()?;
         let service = Arc::clone(&self.service);
-        // A cold fold reads a whole transcript: keep it off the reactor.
-        let (answer, previous) = tokio::task::spawn_blocking(move || {
-            let answer = service.status_incremental(&request, previous.as_ref(), now_ms);
-            (answer, previous)
-        })
-        .await
-        .map_err(|error| PijError::Adapter {
-            adapter: ADAPTER.to_string(),
-            message: format!("status read task failed: {error}"),
-        })?;
-        match answer {
-            Ok((status, next)) => {
-                *cursor = Some(next);
-                Ok(SessionStatusReply::Status(seat_status(&status)))
-            }
-            Err(failure) => {
-                // The SDK leaves a failed read's cursor valid: keep it.
-                *cursor = previous;
-                match failure.kind {
-                    StatusFailureKind::UnsupportedHarness => Ok(SessionStatusReply::Unsupported),
-                    StatusFailureKind::TranscriptNotFound => Ok(SessionStatusReply::NotFound {
-                        detail: format!("{}: {}", failure.code(), failure.message),
-                    }),
-                    _ => Err(PijError::Adapter {
-                        adapter: ADAPTER.to_string(),
-                        message: format!("{}: {}", failure.code(), failure.message),
-                    }),
+        // The whole take -> fold -> store runs in a detached task that owns the
+        // seat's slot. A caller that stops waiting (the cold-wake guard's bound)
+        // drops only the handle; the fold still finishes and keeps its cursor,
+        // and a later read of the seat queues behind it and resumes warm.
+        let read = tokio::spawn(async move {
+            // Held across the read: one reader per seat, always the latest cursor.
+            let mut cursor = slot.lock_owned().await;
+            let previous = cursor.take();
+            // A cold fold reads a whole transcript: keep it off the reactor.
+            let (answer, previous) = tokio::task::spawn_blocking(move || {
+                let answer = service.status_incremental(&request, previous.as_ref(), now_ms);
+                (answer, previous)
+            })
+            .await
+            .map_err(|error| PijError::Adapter {
+                adapter: ADAPTER.to_string(),
+                message: format!("status read task failed: {error}"),
+            })?;
+            match answer {
+                Ok((status, next)) => {
+                    *cursor = Some(next);
+                    Ok(SessionStatusReply::Status(seat_status(&status)))
+                }
+                Err(failure) => {
+                    // The SDK leaves a failed read's cursor valid: keep it.
+                    *cursor = previous;
+                    match failure.kind {
+                        StatusFailureKind::UnsupportedHarness => {
+                            Ok(SessionStatusReply::Unsupported)
+                        }
+                        StatusFailureKind::TranscriptNotFound => Ok(SessionStatusReply::NotFound {
+                            detail: format!("{}: {}", failure.code(), failure.message),
+                        }),
+                        _ => Err(PijError::Adapter {
+                            adapter: ADAPTER.to_string(),
+                            message: format!("{}: {}", failure.code(), failure.message),
+                        }),
+                    }
                 }
             }
-        }
+        });
+        read.await.map_err(|error| PijError::Adapter {
+            adapter: ADAPTER.to_string(),
+            message: format!("status read task failed: {error}"),
+        })?
     }
 }
 
@@ -375,6 +404,47 @@ mod tests {
             );
             assert_eq!(status.context_used_tokens.value(), Some(&15));
         }
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    /// Review finding 1: a caller that gives up on a read (the cold-wake
+    /// guard's 3 s wait) must not throw away the fold it started. The read
+    /// finishes, its cursor is kept, and the next read is warm.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a_cancelled_read_still_keeps_its_cursor() {
+        let home =
+            std::env::temp_dir().join(format!("pij-unisphere-cancel-{}", std::process::id()));
+        let project = home.join("projects").join("proj");
+        std::fs::create_dir_all(&project).unwrap();
+        let usage = r#"{"input_tokens":10,"output_tokens":2,"cache_read_input_tokens":4,"cache_creation_input_tokens":1}"#;
+        std::fs::write(
+            project.join("s-1.jsonl"),
+            record("u1", "null", "user", "2026-09-08T00:00:00Z", "")
+                + &record("a1", "\"u1\"", "assistant", "2026-09-08T00:00:01Z", usage),
+        )
+        .unwrap();
+        let source = UnisphereSessionStatus::new(vec![home.clone()]);
+        let target = SessionTarget {
+            seat: SeatId("pij-cancel".into()),
+            harness: Harness::Claude,
+            session: "s-1".into(),
+        };
+        // Give up before the fold can possibly finish.
+        let cancelled =
+            tokio::time::timeout(std::time::Duration::ZERO, source.status(&target)).await;
+        assert!(cancelled.is_err(), "the caller gave up");
+        let mut kept = false;
+        for _ in 0..200 {
+            if source.holds_cursor(&target.seat).await {
+                kept = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert!(
+            kept,
+            "the abandoned read's cursor was lost, so the next read refolds cold"
+        );
         std::fs::remove_dir_all(&home).unwrap();
     }
 

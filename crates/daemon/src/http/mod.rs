@@ -2618,7 +2618,7 @@ fn state_card(
 fn unsupported_state_fields() -> Vec<UnsupportedField> {
     [
         ("lifecycle", "rs seats have no pending/bound/dissolved lifecycle field; binding evidence lives in `proc` and is reported through `liveness`"),
-        ("activity", "the TS activity object has no rs counterpart; `state` carries working/idle published at OMP, Pi and Copilot turn boundaries (plan 158). Claude seats publish none yet, so their idle is the default, not evidence of inactivity"),
+        ("activity", "the TS activity object has no rs counterpart; `state` carries working/idle published at OMP, Pi and Copilot turn boundaries (plan 158) and by Claude's turn hooks (plan 157); a seat that has not published reads idle by default, not as evidence of inactivity"),
         ("ageMs", "not emitted; consumers may subtract last_event_at from their epoch-ms clock"),
         ("liveness:stale", "the card reports a live process-identity probe, not activity staleness; activity staleness is not tracked"),
         ("daemonLastTickAt", "no per-seat daemon tick is recorded in the rs store"),

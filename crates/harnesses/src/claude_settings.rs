@@ -14,13 +14,16 @@ const ACCEPT: &str = "accept";
 const HOOKS_KEY: &str = "hooks";
 const SESSION_START_KEY: &str = "SessionStart";
 const USER_PROMPT_SUBMIT_KEY: &str = "UserPromptSubmit";
+const STOP_KEY: &str = "Stop";
 const STATUS_LINE_KEY: &str = "statusLine";
 const SESSION_START_SCRIPT_NAME: &str = "claude-session-start-pij.sh";
 const USER_PROMPT_SUBMIT_SCRIPT_NAME: &str = "claude-user-prompt-submit-pij.sh";
+const STOP_SCRIPT_NAME: &str = "claude-stop-pij.sh";
 const CLAUDE_SESSION_START_SCRIPT: &str =
     include_str!("../../../harness/scripts/claude-session-start-pij.sh");
 const CLAUDE_USER_PROMPT_SUBMIT_SCRIPT: &str =
     include_str!("../../../harness/scripts/claude-user-prompt-submit-pij.sh");
+const CLAUDE_STOP_SCRIPT: &str = include_str!("../../../harness/scripts/claude-stop-pij.sh");
 const CLAUDE_STATUSLINE_SCRIPT: &str =
     include_str!("../../../harness/scripts/claude-statusline-pij.sh");
 const COPILOT_STATUSLINE_SCRIPT: &str =
@@ -61,8 +64,8 @@ pub struct ClaudeInboundState {
     pub error: Option<String>,
 }
 
-/// Read-only state of one pij-managed hook (SessionStart or UserPromptSubmit)
-/// in one Claude settings file.
+/// Read-only state of one pij-managed hook (SessionStart, UserPromptSubmit or
+/// Stop) in one Claude settings file.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClaudeHookState {
     pub home: PathBuf,
@@ -307,6 +310,13 @@ pub fn plan_claude_user_prompt_submit_hook(existing: Option<&str>, command: &str
     )
 }
 
+/// Plan the minimal safe edit that installs pij's Claude Stop hook, which
+/// publishes the seat idle when Claude finishes its turn (plan 157).
+#[must_use]
+pub fn plan_claude_stop_hook(existing: Option<&str>, command: &str) -> EnsurePlan {
+    plan_claude_hook(existing, command, STOP_KEY, STOP_SCRIPT_NAME)
+}
+
 /// Install `command` as the single pij-managed entry under `hooks.<event>`.
 /// A command is pij-managed when it names `script_name`; foreign entries are
 /// preserved byte for byte and stale managed commands are reconciled in place.
@@ -534,6 +544,20 @@ pub fn ensure_claude_user_prompt_submit_hook(
         .collect()
 }
 
+/// Ensure every named Claude home invokes pij's Stop idle hook (plan 157).
+#[must_use]
+pub fn ensure_claude_stop_hook(homes: &[PathBuf], script_path: &Path) -> Vec<EnsureReport> {
+    let command = shell_command(script_path);
+    homes
+        .iter()
+        .map(|home| {
+            ensure_home(home, &command, |existing| {
+                plan_claude_stop_hook(existing, &command)
+            })
+        })
+        .collect()
+}
+
 /// Inspect the pij SessionStart hook in every named Claude home.
 #[must_use]
 pub fn inspect_claude_session_start_hook(
@@ -550,6 +574,12 @@ pub fn inspect_claude_user_prompt_submit_hook(
     script_path: &Path,
 ) -> Vec<ClaudeHookState> {
     inspect_claude_hook(homes, script_path, plan_claude_user_prompt_submit_hook)
+}
+
+/// Inspect the pij Stop idle hook in every named Claude home (plan 157).
+#[must_use]
+pub fn inspect_claude_stop_hook(homes: &[PathBuf], script_path: &Path) -> Vec<ClaudeHookState> {
+    inspect_claude_hook(homes, script_path, plan_claude_stop_hook)
 }
 
 fn inspect_claude_hook(
@@ -622,6 +652,12 @@ pub fn install_claude_user_prompt_submit_script(state_dir: &Path) -> std::io::Re
         USER_PROMPT_SUBMIT_SCRIPT_NAME,
         CLAUDE_USER_PROMPT_SUBMIT_SCRIPT,
     )
+}
+
+/// Materialize the embedded Claude Stop idle hook at a stable daemon-owned
+/// path (plan 157).
+pub fn install_claude_stop_script(state_dir: &Path) -> std::io::Result<PathBuf> {
+    install_script(state_dir, STOP_SCRIPT_NAME, CLAUDE_STOP_SCRIPT)
 }
 
 fn install_script(state_dir: &Path, name: &str, contents: &str) -> std::io::Result<PathBuf> {
@@ -2152,18 +2188,27 @@ mod tests {
         );
     }
 
-    /// A fake `pij-rs` whose `fyi-claim` behaviour `FAKE_MODE` picks; every call
-    /// is recorded as `<PIJ_SESSION_ID or unset>|<argv>`.
+    /// A fake `pij-rs` on PATH. `fyi-claim` behaves per `FAKE_MODE`, `activity`
+    /// per `FAKE_ACTIVITY` (default: succeeds with stray stdout the hooks must
+    /// swallow); every call is recorded as `<PIJ_SESSION_ID or unset>|<argv>`.
     #[cfg(unix)]
-    struct PromptHookRig {
+    struct HookRig {
         root: TestDir,
         script: PathBuf,
         path: String,
     }
 
     #[cfg(unix)]
-    impl PromptHookRig {
-        fn new() -> Self {
+    impl HookRig {
+        fn prompt() -> Self {
+            Self::new(install_claude_user_prompt_submit_script)
+        }
+
+        fn stop() -> Self {
+            Self::new(install_claude_stop_script)
+        }
+
+        fn new(install: fn(&Path) -> std::io::Result<PathBuf>) -> Self {
             use std::os::unix::fs::PermissionsExt;
 
             let root = TestDir::new();
@@ -2175,6 +2220,13 @@ mod tests {
                 concat!(
                     "#!/bin/sh\n",
                     "printf '%s|%s\\n' \"${PIJ_SESSION_ID:-unset}\" \"$*\" >>\"$FAKE_CALLS\"\n",
+                    "if [ \"$1\" = activity ]; then\n",
+                    "  case \"${FAKE_ACTIVITY:-ok}\" in\n",
+                    "    fail) printf 'daemon down\\n' >&2; exit 4 ;;\n",
+                    "    hang) exec sleep 30 ;;\n",
+                    "  esac\n",
+                    "  printf 'activity noise\\n'; exit 0\n",
+                    "fi\n",
                     "case \"$FAKE_MODE\" in\n",
                     "  block) cat \"$FAKE_BLOCK\" ;;\n",
                     "  block-newline) cat \"$FAKE_BLOCK\"; printf '\\n' ;;\n",
@@ -2193,8 +2245,7 @@ mod tests {
                 .map(|dir| format!(":{}", dir.display()))
                 .unwrap_or_default();
             let path = format!("{}{jq_dir}:/usr/bin:/bin", bin_dir.display());
-            let script = install_claude_user_prompt_submit_script(&root.path().join("state"))
-                .expect("install script");
+            let script = install(&root.path().join("state")).expect("install script");
             Self { root, script, path }
         }
 
@@ -2203,6 +2254,15 @@ mod tests {
         }
 
         fn run(&self, mode: &str, payload: &str) -> (std::process::Output, std::time::Duration) {
+            self.run_with(mode, "ok", payload)
+        }
+
+        fn run_with(
+            &self,
+            mode: &str,
+            activity: &str,
+            payload: &str,
+        ) -> (std::process::Output, std::time::Duration) {
             use std::io::Write as _;
             use std::process::Stdio;
 
@@ -2211,9 +2271,11 @@ mod tests {
                 .env("HOME", self.root.path())
                 .env("PIJ_RS_STATE_DIR", self.root.path().join("state"))
                 .env("PIJ_RS_FYI_CLAIM_TIMEOUT", "1")
+                .env("PIJ_RS_ACTIVITY_TIMEOUT", "1")
                 .env("TMUX_PANE", "%42")
                 .env("PIJ_SESSION_ID", "pij-inherited-seat")
                 .env("FAKE_MODE", mode)
+                .env("FAKE_ACTIVITY", activity)
                 .env("FAKE_BLOCK", Self::golden())
                 .env("FAKE_CALLS", self.root.path().join("calls"))
                 .stdin(Stdio::piped())
@@ -2237,46 +2299,76 @@ mod tests {
                 .map(str::to_string)
                 .collect()
         }
+
+        fn log(&self) -> String {
+            fs::read_to_string(self.root.path().join("state/hook.log"))
+                .map(|log| unstamped(&log))
+                .unwrap_or_default()
+        }
     }
+
+    #[cfg(unix)]
+    fn assert_prompt_block(output: std::process::Output, golden: &str, label: &str) {
+        assert!(output.status.success(), "{label}");
+        let stdout = String::from_utf8(output.stdout).expect("utf-8 stdout");
+        assert_eq!(stdout.lines().count(), 1, "one JSON document: {stdout}");
+        let parsed: Value = serde_json::from_str(&stdout).expect("hook JSON");
+        assert_eq!(
+            parsed,
+            serde_json::json!({"hookSpecificOutput": {
+                "hookEventName": "UserPromptSubmit",
+                "additionalContext": golden,
+            }}),
+            "{label}"
+        );
+    }
+
+    #[cfg(unix)]
+    const WORKING_SESS_7: &str =
+        "unset|activity --pane %42 --native-session sess-7 --state working";
+    #[cfg(unix)]
+    const CLAIM_SESS_7: &str =
+        "unset|fyi-claim --pane %42 --native-session sess-7 --via hook:claude";
 
     #[cfg(unix)]
     #[test]
     fn prompt_hook_passes_the_claimed_block_through_byte_for_byte() {
-        let rig = PromptHookRig::new();
-        let golden = fs::read_to_string(PromptHookRig::golden()).expect("golden block");
+        let rig = HookRig::prompt();
+        let golden = fs::read_to_string(HookRig::golden()).expect("golden block");
         for mode in ["block", "block-newline"] {
             let (output, _) = rig.run(
                 mode,
                 r#"{"session_id":"sess-7","hook_event_name":"UserPromptSubmit","prompt":"hi"}"#,
             );
-
-            assert!(output.status.success());
-            let stdout = String::from_utf8(output.stdout).expect("utf-8 stdout");
-            assert_eq!(stdout.lines().count(), 1, "one JSON document: {stdout}");
-            let parsed: Value = serde_json::from_str(&stdout).expect("hook JSON");
-            assert_eq!(
-                parsed,
-                serde_json::json!({"hookSpecificOutput": {
-                    "hookEventName": "UserPromptSubmit",
-                    "additionalContext": golden,
-                }}),
-                "{mode}"
-            );
+            assert_prompt_block(output, &golden, mode);
         }
         assert_eq!(
             rig.calls(),
-            vec![
-                "unset|fyi-claim --pane %42 --native-session sess-7 --via hook:claude".to_string();
-                2
-            ],
-            "one claim per prompt, bound by pane and session, never an inherited seat"
+            [WORKING_SESS_7, CLAIM_SESS_7, WORKING_SESS_7, CLAIM_SESS_7],
+            "each prompt publishes working, then claims once; both bound by pane and session, never an inherited seat"
+        );
+        assert_eq!(rig.log(), "", "a healthy prompt logs nothing");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prompt_hook_still_claims_when_publishing_working_fails() {
+        let rig = HookRig::prompt();
+        let golden = fs::read_to_string(HookRig::golden()).expect("golden block");
+        let (output, _) = rig.run_with("block", "fail", r#"{"session_id":"sess-7"}"#);
+
+        assert_prompt_block(output, &golden, "activity refused");
+        assert_eq!(rig.calls(), [WORKING_SESS_7, CLAIM_SESS_7]);
+        assert_eq!(
+            rig.log(),
+            "refused:activity pane=%42 state=working status=4 reason=daemon down \n"
         );
     }
 
     #[cfg(unix)]
     #[test]
     fn prompt_hook_is_silent_when_nothing_is_held_or_the_claim_fails() {
-        let rig = PromptHookRig::new();
+        let rig = HookRig::prompt();
         for mode in ["empty", "fail"] {
             let (output, _) = rig.run(mode, "{}");
             assert!(output.status.success(), "{mode}");
@@ -2284,8 +2376,12 @@ mod tests {
         }
         assert_eq!(
             rig.calls(),
-            vec!["unset|fyi-claim --pane %42 --via hook:claude".to_string(); 2],
-            "no session in the payload: the pane alone binds the claim"
+            [
+                "unset|activity --pane %42 --state working",
+                "unset|fyi-claim --pane %42 --via hook:claude",
+            ]
+            .repeat(2),
+            "no session in the payload: the pane alone binds both calls"
         );
         let log = fs::read_to_string(rig.root.path().join("state/hook.log")).expect("hook log");
         assert_eq!(
@@ -2297,14 +2393,121 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn prompt_hook_gives_up_on_a_wedged_daemon_without_holding_the_prompt() {
-        let rig = PromptHookRig::new();
-        let (output, took) = rig.run("hang", r#"{"session_id":"sess-7"}"#);
+        let rig = HookRig::prompt();
+        let (output, took) = rig.run_with("hang", "hang", r#"{"session_id":"sess-7"}"#);
 
         assert!(output.status.success());
         assert!(output.stdout.is_empty());
         assert!(
             took < std::time::Duration::from_secs(5),
             "prompt held {took:?}"
+        );
+        assert_eq!(rig.calls(), [WORKING_SESS_7, CLAIM_SESS_7]);
+    }
+
+    const STOP_HOOK: &str = "/Users/test/.pij-rs/claude-stop-pij.sh";
+
+    #[test]
+    fn stop_hook_covers_every_home_reconciling_stale_and_keeping_foreign() {
+        let root = TestDir::new();
+        let claude = root.path().join(".claude");
+        let alt = root.path().join(".claude-alt");
+        fs::create_dir_all(&claude).expect("home");
+        let original = r#"{"hooks":{"UserPromptSubmit":[{"matcher":"","hooks":[{"type":"command","command":"/Users/test/.pij-rs/claude-user-prompt-submit-pij.sh"}]}],"Stop":[{"matcher":"","hooks":[{"type":"command","command":"/tmp/a/claude-stop-pij.sh"}]},{"hooks":[{"type":"command","command":"foreign-stop-notifier"}]},{"matcher":"","hooks":[{"type":"command","command":"'/tmp/b c/claude-stop-pij.sh'"}]}]}}"#;
+        fs::write(claude.join("settings.json"), original).expect("seed settings");
+        let homes = [claude.clone(), alt.clone()];
+        let before = inspect_claude_stop_hook(&homes, Path::new(STOP_HOOK));
+        assert!(!before[0].installed);
+        assert_eq!(
+            before[0].command.as_deref(),
+            Some("/tmp/a/claude-stop-pij.sh")
+        );
+        assert!(!before[1].file_exists && !before[1].installed);
+
+        let reports = ensure_claude_stop_hook(&homes, Path::new(STOP_HOOK));
+
+        assert!(
+            reports
+                .iter()
+                .all(|report| report.changed && report.error.is_none())
+        );
+        assert_eq!(
+            fs::read_to_string(reports[0].backup.as_ref().expect("backup")).expect("backup"),
+            original
+        );
+        let parsed = written_settings(&claude);
+        let entries = parsed["hooks"]["Stop"].as_array().expect("array");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0]["hooks"][0]["command"], STOP_HOOK);
+        assert_eq!(entries[1]["hooks"][0]["command"], "foreign-stop-notifier");
+        assert_eq!(
+            parsed["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"], PROMPT_HOOK,
+            "the prompt hook is not the Stop hook's to reconcile"
+        );
+        assert_eq!(
+            written_settings(&alt)["hooks"]["Stop"][0]["hooks"][0]["command"],
+            STOP_HOOK
+        );
+        assert!(
+            inspect_claude_stop_hook(&homes, Path::new(STOP_HOOK))
+                .iter()
+                .all(|state| state.installed)
+        );
+        assert!(
+            ensure_claude_stop_hook(&homes, Path::new(STOP_HOOK))
+                .iter()
+                .all(|report| !report.changed && report.backup.is_none())
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stop_hook_publishes_idle_and_prints_nothing() {
+        let rig = HookRig::stop();
+        let (output, _) = rig.run(
+            "block",
+            r#"{"session_id":"sess-7","hook_event_name":"Stop","stop_hook_active":false}"#,
+        );
+        assert!(output.status.success());
+        assert!(
+            output.stdout.is_empty(),
+            "Stop-hook stdout can block a stop"
+        );
+
+        let (output, _) = rig.run("block", "{}");
+        assert!(output.status.success());
+        assert!(output.stdout.is_empty());
+        assert_eq!(
+            rig.calls(),
+            [
+                "unset|activity --pane %42 --native-session sess-7 --state idle",
+                "unset|activity --pane %42 --state idle",
+            ],
+            "idle only, bound by pane and session, never an inherited seat"
+        );
+        assert_eq!(rig.log(), "");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stop_hook_is_silent_and_bounded_when_the_daemon_fails_or_hangs() {
+        let rig = HookRig::stop();
+        for activity in ["fail", "hang"] {
+            let (output, took) = rig.run_with("block", activity, r#"{"session_id":"sess-7"}"#);
+            assert!(output.status.success(), "{activity}");
+            assert!(output.stdout.is_empty(), "{activity} printed output");
+            assert!(
+                took < std::time::Duration::from_secs(3),
+                "{activity} held the stop {took:?}"
+            );
+        }
+        assert_eq!(
+            rig.log(),
+            concat!(
+                "refused:activity pane=%42 state=idle status=4 reason=daemon down \n",
+                "refused:activity pane=%42 state=idle status=143 reason=\n",
+            ),
+            "one line per failure"
         );
     }
 }

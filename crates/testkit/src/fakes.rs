@@ -2258,6 +2258,7 @@ impl LivenessPort for FakeLiveness {
 #[derive(Default)]
 pub struct FakeSessionStatus {
     replies: Mutex<HashMap<String, std::result::Result<SessionStatusReply, String>>>,
+    hangs: Mutex<Vec<String>>,
     recorder: Mutex<Recorder>,
 }
 
@@ -2285,6 +2286,16 @@ impl FakeSessionStatus {
         self
     }
 
+    /// Never answer reads of the session `session`: the read hangs until the
+    /// caller gives up, as a stuck transcript fold would.
+    pub fn with_hang(self, session: &str) -> Self {
+        self.hangs
+            .lock()
+            .expect("fake session-status mutex")
+            .push(session.to_string());
+        self
+    }
+
     /// Every read, in order: `status:<seat>:<harness>:<session>`.
     pub fn calls(&self) -> Vec<Call> {
         self.recorder
@@ -2307,6 +2318,14 @@ impl SessionStatusPort for FakeSessionStatus {
                 target.harness.as_str(),
                 target.session
             ));
+        let hangs = self
+            .hangs
+            .lock()
+            .expect("fake session-status mutex")
+            .contains(&target.session);
+        if hangs {
+            std::future::pending::<()>().await;
+        }
         match self
             .replies
             .lock()
