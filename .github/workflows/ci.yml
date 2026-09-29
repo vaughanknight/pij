@@ -115,14 +115,10 @@ jobs:
 
   rust-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
-    strategy:
-      fail-fast: false
-      matrix:
-        filter:
-          - "not binary_id(pij-cli::governance_boot)"
-          - "not binary_id(pij-cli::daemon_log)"
-          - "not binary_id(pij-cli::lifecycle)"
+    # Backstop only. nextest's per-test clock (.config/nextest.toml, profile
+    # `ci`) names a test at 30s and kills it at 60s, so a hung test fails the
+    # job in about a minute with its name in the log.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -140,6 +136,9 @@ jobs:
       - name: build tests
         run: cargo nextest run --locked --workspace --profile ci --no-run
 
-      # DIAGNOSTIC bisect.
       - name: test
-        run: cargo nextest run --locked --workspace --profile ci --status-level pass -E '${{ matrix.filter }}'
+        run: cargo nextest run --locked --workspace --profile ci
+
+      # nextest does not run doctests.
+      - name: doctests
+        run: cargo test --locked --workspace --doc
