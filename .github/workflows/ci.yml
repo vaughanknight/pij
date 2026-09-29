@@ -142,3 +142,42 @@ jobs:
 
       - name: test
         run: cargo nextest run --locked --workspace --profile ci
+
+      - name: upload the JUnit list of tests that ran
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-linux
+          path: target/nextest/ci/junit.xml
+
+  # pij-daemon is Unix-only (Unix sockets, nix signals, tmux). The crates
+  # that ARE portable run here: the pure cold-wake decision and session
+  # status (pij-core) and the Unisphere session-status adapter
+  # (pij-unisphere), which reads transcripts through native Windows paths.
+  rust-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: build and test the portable crates
+        run: cargo nextest run --locked --profile ci -p pij-core -p pij-unisphere
+
+      - name: upload the JUnit list of tests that ran
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-windows
+          path: target/nextest/ci/junit.xml

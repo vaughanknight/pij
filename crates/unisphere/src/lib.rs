@@ -448,6 +448,40 @@ mod tests {
         std::fs::remove_dir_all(&home).unwrap();
     }
 
+    /// A transcript under the project directory Claude writes on Windows
+    /// (`C:\Users\jordan\proj` becomes `C--Users-jordan-proj`) is found by
+    /// session id. On the Windows CI runner the home itself is a native
+    /// `C:\…\Temp\…` path, so this reads a transcript through Windows paths.
+    #[tokio::test]
+    async fn a_transcript_under_a_windows_project_directory_is_read() {
+        let home =
+            std::env::temp_dir().join(format!("pij-unisphere-windows-{}", std::process::id()));
+        let project = home.join("projects").join("C--Users-jordan-proj");
+        std::fs::create_dir_all(&project).unwrap();
+        let usage = r#"{"input_tokens":10,"output_tokens":2,"cache_read_input_tokens":4,"cache_creation_input_tokens":1}"#;
+        std::fs::write(
+            project.join("s-win.jsonl"),
+            record("u1", "null", "user", "2026-09-08T00:00:00Z", "")
+                + &record("a1", "\"u1\"", "assistant", "2026-09-08T00:00:01Z", usage),
+        )
+        .unwrap();
+        let source = UnisphereSessionStatus::new(vec![home.clone()]);
+        let reply = source
+            .status(&SessionTarget {
+                seat: SeatId("pij-windows".into()),
+                harness: Harness::Claude,
+                session: "s-win".into(),
+            })
+            .await
+            .expect("status");
+        let SessionStatusReply::Status(status) = reply else {
+            panic!("expected facts, got {reply:?}");
+        };
+        assert_eq!(status.context_used_tokens.value(), Some(&15));
+        drop(source);
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
     #[tokio::test]
     async fn harnesses_the_sdk_cannot_read_are_unsupported() {
         let source = UnisphereSessionStatus::new(Vec::new());

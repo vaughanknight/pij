@@ -7003,3 +7003,29 @@ async fn a_missing_or_unreadable_activity_fact_allows_without_a_probe() {
         server.abort();
     }
 }
+
+/// A host with no `tmux` (a missing binary; the Windows case once the daemon
+/// runs there) makes the pane probe fail, and a failed probe is unknown:
+/// the send is allowed and `working` stands.
+#[tokio::test]
+async fn a_missing_tmux_binary_is_unknown_and_allows() {
+    let dir = std::env::temp_dir().join(format!("pij-no-tmux-{}", std::process::id()));
+    let tmux: Arc<dyn pij_core::ports::TmuxPort> = Arc::new(pij_tmux::TmuxAdapter::with_binary(
+        dir.join("no-such-tmux").as_os_str(),
+        dir.join("taps"),
+    ));
+    let (addr, server, queue, _) =
+        stale_working_daemon(Arc::new(pij_harnesses::ClaudeHarness::new(tmux))).await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-no-tmux", serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["cold_check"], "busy");
+    assert_eq!(queue.live_len(), 1);
+    let (_, card) = post_json(addr, "/v1/state", serde_json::json!({"id": "pij-cold"})).await;
+    assert_eq!(card["data"]["state"], "working");
+    server.abort();
+}
