@@ -5988,6 +5988,109 @@ async fn state_reports_a_seat_with_no_process_as_unbound() {
     server.abort();
 }
 
+async fn state_card_with_source(
+    seat: SeatDescriptor,
+    source: Arc<pij_testkit::fakes::FakeSessionStatus>,
+) -> serde_json::Value {
+    let mut services = test_services(
+        Arc::new(FakeRegistry::new().with_seat(seat)),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.session_status = source;
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/state"))
+        .bearer_auth("key")
+        .json(&serde_json::json!({ "id": "pij-b" }))
+        .send()
+        .await
+        .expect("state request");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body: Envelope<serde_json::Value> = response.json().await.expect("state envelope");
+    server.abort();
+    body.data.expect("state data")
+}
+
+/// Plan 157: the card carries the bound session's facts, and the daemon derives
+/// cache state on its own clock. An unknown fact stays unknown on the wire.
+#[tokio::test]
+async fn state_reads_the_bound_sessions_facts_and_derives_cache_state() {
+    use pij_core::session_status::{CacheTtl, Fact, SeatStatus, SessionStatusReply};
+    let status = SeatStatus {
+        model: Fact::native("claude-opus-5".to_string()),
+        context_used_tokens: Fact::derived(142_000),
+        // Epoch ms 1 with a 5-minute TTL has long expired at any real clock.
+        last_call_at_ms: Fact::native(1),
+        cache_ttl: Fact::derived(CacheTtl::FiveMinutes),
+        ..SeatStatus::unknown()
+    };
+    let source = Arc::new(
+        pij_testkit::fakes::FakeSessionStatus::new()
+            .with_reply("claude-native-7", SessionStatusReply::Status(status)),
+    );
+    let card = state_card_with_source(readback_seat(), source.clone()).await;
+
+    assert_eq!(source.calls(), ["status:pij-b:claude:claude-native-7"]);
+    let block = &card["sessionStatus"];
+    assert_eq!(block["outcome"], "known");
+    assert_eq!(
+        block["status"]["contextUsedTokens"],
+        serde_json::json!({"value": 142_000, "basis": "derived"})
+    );
+    assert_eq!(
+        block["status"]["contextWindowTokens"],
+        serde_json::json!({"basis": "unknown"})
+    );
+    assert_eq!(block["cacheState"]["basis"], "derived");
+    assert_eq!(block["cacheState"]["value"]["state"], "cold");
+    assert!(
+        block["cacheState"]["value"]["expiredForMs"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+    assert!(block["elapsedMs"].is_u64());
+    // Busy/idle stays the daemon's own observation.
+    assert_eq!(card["state"], "working");
+}
+
+/// A failing source fills the block and leaves the rest of the card intact.
+#[tokio::test]
+async fn state_survives_a_session_status_source_failure() {
+    let source = Arc::new(
+        pij_testkit::fakes::FakeSessionStatus::new()
+            .with_failure("claude-native-7", "transcript unreadable"),
+    );
+    let card = state_card_with_source(readback_seat(), source).await;
+
+    assert_eq!(card["sessionStatus"]["outcome"], "failed");
+    assert!(
+        card["sessionStatus"]["error"]
+            .as_str()
+            .unwrap()
+            .contains("transcript unreadable")
+    );
+    assert_eq!(card["id"], "pij-b");
+    assert_eq!(card["state"], "working");
+}
+
+/// A seat with no harness session is `unbound`, and the source is never asked.
+#[tokio::test]
+async fn state_does_not_read_a_session_for_a_seat_with_none_bound() {
+    let mut seat = readback_seat();
+    seat.harness_session = None;
+    let source = Arc::new(pij_testkit::fakes::FakeSessionStatus::new());
+    let card = state_card_with_source(seat, source.clone()).await;
+
+    assert_eq!(
+        card["sessionStatus"],
+        serde_json::json!({"outcome": "unbound"})
+    );
+    assert!(source.calls().is_empty());
+}
+
 /// A field rs cannot answer is NAMED, never nulled.
 ///
 /// The discriminating arm is the second assertion, and it is the whole point: a

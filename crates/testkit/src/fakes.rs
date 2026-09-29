@@ -1,4 +1,4 @@
-//! A deterministic, scriptable fake for each of the seven frozen ports.
+//! A deterministic, scriptable fake for each of the eight ports.
 //!
 //! Shipped as a crate, not copied per unit (mining note DL-004: every fs3
 //! adapter re-invented a ~110-line recorder because no shared fake existed).
@@ -30,9 +30,10 @@ use pij_core::model::{
 };
 use pij_core::ports::{
     DeferNoopReason, DeferOutcome, DeliveryAck, DeliveryEnqueue, HarnessPort, LaunchCommand,
-    LivenessPort, Queue, Registry, ReleaseOutcome, STAGED_SUBMIT_RECOVERY, SeatFilter, Spine,
-    StagedSubmit, TmuxPort, Transport,
+    LivenessPort, Queue, Registry, ReleaseOutcome, STAGED_SUBMIT_RECOVERY, SeatFilter,
+    SessionStatusPort, Spine, StagedSubmit, TmuxPort, Transport,
 };
+use pij_core::session_status::{SessionStatusReply, SessionTarget};
 
 /// One recorded interaction, rendered as a stable string so assertions read as
 /// the story of what happened: `["put:pij-seat", "tombstone:pij-seat:dead"]`.
@@ -2247,5 +2248,78 @@ impl LivenessPort for FakeLiveness {
             .expect("fake liveness mutex")
             .get(&pid)
             .copied())
+    }
+}
+
+/// Session facts, scripted per native session id.
+///
+/// An unscripted session answers [`SessionStatusReply::Unsupported`], the reply a
+/// source gives for a harness it can't read, so an unarranged test never sees facts.
+#[derive(Default)]
+pub struct FakeSessionStatus {
+    replies: Mutex<HashMap<String, std::result::Result<SessionStatusReply, String>>>,
+    recorder: Mutex<Recorder>,
+}
+
+impl FakeSessionStatus {
+    /// A source that has read nothing.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Answer `reply` for the session `session`.
+    pub fn with_reply(self, session: &str, reply: SessionStatusReply) -> Self {
+        self.replies
+            .lock()
+            .expect("fake session-status mutex")
+            .insert(session.to_string(), Ok(reply));
+        self
+    }
+
+    /// Fail reads of the session `session` with an adapter error.
+    pub fn with_failure(self, session: &str, message: &str) -> Self {
+        self.replies
+            .lock()
+            .expect("fake session-status mutex")
+            .insert(session.to_string(), Err(message.to_string()));
+        self
+    }
+
+    /// Every read, in order: `status:<seat>:<harness>:<session>`.
+    pub fn calls(&self) -> Vec<Call> {
+        self.recorder
+            .lock()
+            .expect("fake session-status recorder")
+            .calls
+            .clone()
+    }
+}
+
+#[async_trait]
+impl SessionStatusPort for FakeSessionStatus {
+    async fn status(&self, target: &SessionTarget) -> Result<SessionStatusReply> {
+        self.recorder
+            .lock()
+            .expect("fake session-status recorder")
+            .record(format!(
+                "status:{}:{}:{}",
+                target.seat.0,
+                target.harness.as_str(),
+                target.session
+            ));
+        match self
+            .replies
+            .lock()
+            .expect("fake session-status mutex")
+            .get(&target.session)
+            .cloned()
+        {
+            Some(Ok(reply)) => Ok(reply),
+            Some(Err(message)) => Err(PijError::Adapter {
+                adapter: "fake/session-status".to_string(),
+                message,
+            }),
+            None => Ok(SessionStatusReply::Unsupported),
+        }
     }
 }

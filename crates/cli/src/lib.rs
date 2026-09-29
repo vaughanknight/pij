@@ -165,6 +165,7 @@ pub fn daemon_config(bind_addr: &str, store_path: &Path, offline: bool) -> Confi
             liveness: AdapterChoice::Real,
             tmux: AdapterChoice::Real,
             harness: AdapterChoice::Real,
+            session_status: AdapterChoice::Real,
             // Real and conditionally open: the spawn path stamps
             // `cross_session_inbound_accept: Some(true)` only when it emitted
             // Claude's explicit inbound-accept setting. Unstamped seats remain

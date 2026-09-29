@@ -471,3 +471,15 @@ WORLD what it owns; ask the AUTHORITY who read.
 
 **Merge discipline ratified**: stream branch merges composed head rather than cherry-picking —
 true ancestry, one author.
+
+## R3-AMEND-10 — SessionStatusPort, the eighth port (2026-09-29, prime pij-far-jackal ruling, plan 157)
+
+**ADMITTED**: `SessionStatusPort::status(&SessionTarget) -> Result<SessionStatusReply>`.
+The daemon needs each seat's live context size, last-call time and cache state to price a
+`pij send`, because a cold wake costs about 40× a warm one (2026-09-28 usage RCA). Those
+facts live in harness-native transcripts, and reading them is IO that core can't do. So this is
+a port, not a function. Core owns the pij shape (`pij_core::session_status::SeatStatus`, where
+every fact carries a basis or is `Unknown`, never 0). `pij-unisphere` is the only crate that
+names the Unisphere SDK. The source is stateful, with one transcript read position per seat.
+Busy/idle stays the daemon's own observation and is never taken from this port. Ruling source:
+`docs/plans/157-unisphere-session-status/plan.md`.

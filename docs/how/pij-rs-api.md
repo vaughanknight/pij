@@ -409,6 +409,31 @@ Like other atomic queue/spine mutations, counted deferral publication refuses a
 real Queue paired with a fake Spine (`E-RS-INBOX-AUTHORITY-SPLIT`), rather than
 broadcasting a cursor allocated by another store. The body and retry policy remain.
 
+`data.sessionStatus` holds the seat's session facts, read in-process from the harness
+transcript through `SessionStatusPort` (plan 157, adapter `pij-unisphere` over
+`unisphere-sdk`). Its `outcome` is one of:
+- `known`: carries `status`, `cacheState` and `elapsedMs`.
+- `unbound`: no `harness_session`, so the source isn't asked.
+- `unsupported` (`harness`)
+- `not-found` (`detail`)
+- `failed` (`error`): the rest of the card is still served.
+
+Each fact is `{"value":V,"basis":"native|derived|table@vN|mtime-fallback"}` or
+`{"basis":"unknown"}`. There is never a null, and never a 0 standing in for unknown.
+`status` covers:
+- `model`
+- `contextUsedTokens` and `contextWindowTokens`
+- `lastCallAtMs`
+- the last call's input, cache-read, 5-minute and 1-hour cache-write tokens
+- `cacheTtl` (`five-minutes|one-hour`)
+- `compactions`
+- `reset`: why the source re-read from the start. It is absent on the warm path.
+
+`cacheState` is derived on the daemon clock as `warm` (`expiresInMs`) or `cold`
+(`expiredForMs`). It is unknown when the last call time or the TTL is unknown.
+The source keeps one read position per seat, so a warm read folds only appended bytes.
+Busy/idle is `state`, never this block. The human CLI prints one `session:` line.
+
 The one closed severity order is the exported
 [`pij_core::status::BADGE_SEVERITY`](../../crates/core/src/status.rs).
 [`badge_of`](../../crates/core/src/status.rs) selects the worst mechanical state

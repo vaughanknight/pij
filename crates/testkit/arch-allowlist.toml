@@ -25,6 +25,7 @@
 #   crates/tmux/       every tmux syscall in the workspace.              -> core
 #   crates/harnesses/  per-harness detect/bind/readiness/models quirks.  -> core, tmux
 #   crates/transport/  UDS and friends behind the Transport port.        -> core
+#   crates/unisphere/  unisphere-sdk behind the SessionStatus port.      -> core
 #   crates/daemon/     HTTP, tick loop, workers. COMPOSITION ROOT.       -> all adapters
 #   crates/cli/        the `pij-rs` binary. COMPOSITION ROOT.            -> core, daemon
 #   crates/testkit/    fakes, fixtures, gate binaries. Never a prod dep. -> core, store
@@ -95,6 +96,16 @@ internal = ["pij-core"]
 external = ["async-trait", "serde", "serde_json", "tokio"]
 why = "Claude UDS transport behind the frozen Transport port: async Unix socket IO plus serde codecs for Claude session records, peer keys, frames and negative acknowledgements."
 
+[crates.pij-unisphere]
+internal = ["pij-core"]
+# `unisphere-sdk` is the whole point of the crate: the in-process session-status
+# fold (plan 157), named nowhere else, so no Unisphere type reaches core or the
+# daemon. The SDK is synchronous, so `tokio` supplies the blocking pool that
+# keeps a cold whole-transcript read off the reactor. `async-trait` implements
+# the port.
+external = ["async-trait", "tokio", "unisphere-sdk"]
+why = "Session facts behind SessionStatusPort (R3-AMEND-10): per-seat transcript read positions over the in-process Unisphere SDK, mapped into pij-core's SeatStatus."
+
 [crates.pij-sidecars]
 internal = ["pij-core", "pij-store@dev", "pij-testkit@dev"]
 external = ["async-trait@dev", "axum@dev", "nix", "reqwest", "serde", "serde_json", "tokio"]
@@ -113,6 +124,7 @@ internal = [
   "pij-testkit",
   "pij-tmux",
   "pij-transport",
+  "pij-unisphere",
 ]
 # `axum` is the server; `getrandom` is the per-boot bearer key (OS entropy, no
 # PRNG state to seed or leak); `reqwest` is the one-request peer forwarding

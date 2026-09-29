@@ -543,6 +543,12 @@ pub struct StateCard {
     /// FYIs held for this seat's next real turn (plan 158).
     #[serde(default)]
     pub pending_fyis: u64,
+    /// Session facts read from the seat's transcript (plan 157): context size,
+    /// last call and cache state. Busy/idle is `state`, never this block.
+    ///
+    /// `None` only when decoding a card from a daemon that predates the block.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_status: Option<pij_core::session_status::SessionStatusBlock>,
     /// Every TS field this store cannot answer, named with its reason.
     pub unsupported: Vec<UnsupportedField>,
 }

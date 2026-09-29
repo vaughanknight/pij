@@ -1973,8 +1973,49 @@ fn render_state(envelope: &Envelope<pij_daemon::http::StateCard>, json: bool) ->
         if card.pending_fyis > 0 {
             let _ = write!(output, "\nFYIs held: {}", card.pending_fyis);
         }
+        if let Some(block) = &card.session_status {
+            let _ = write!(output, "\nsession: {}", render_session_status(block));
+        }
     }
     output
+}
+
+/// One line of session facts: model, context used of window, cache state.
+fn render_session_status(block: &pij_core::session_status::SessionStatusBlock) -> String {
+    use pij_core::session_status::{CacheState, Fact, SessionStatusBlock};
+    fn known<T: std::fmt::Display>(fact: &Fact<T>) -> String {
+        fact.value()
+            .map_or_else(|| "unknown".to_string(), ToString::to_string)
+    }
+    match block {
+        SessionStatusBlock::Known {
+            status,
+            cache_state,
+            elapsed_ms,
+        } => {
+            let cache = match cache_state.value() {
+                Some(CacheState::Warm { expires_in_ms }) => {
+                    format!("warm ({}s left)", expires_in_ms / 1_000)
+                }
+                Some(CacheState::Cold { expired_for_ms }) => {
+                    format!("cold ({}s ago)", expired_for_ms / 1_000)
+                }
+                None => "unknown".to_string(),
+            };
+            format!(
+                "model {} · context {}/{} tokens · cache {cache} · read in {elapsed_ms} ms",
+                known(&status.model),
+                known(&status.context_used_tokens),
+                known(&status.context_window_tokens),
+            )
+        }
+        SessionStatusBlock::Unbound => "no harness session bound".to_string(),
+        SessionStatusBlock::Unsupported { harness } => {
+            format!("{} sessions are not readable yet", harness.as_str())
+        }
+        SessionStatusBlock::NotFound { detail } => format!("transcript not found: {detail}"),
+        SessionStatusBlock::Failed { error } => format!("read failed: {error}"),
+    }
 }
 
 fn parse_machine_cursor(value: &str) -> Result<MachineCursor, String> {

@@ -37,12 +37,14 @@ use pij_core::config::{AdapterChoice, Config};
 use pij_core::error::{PijError, Result};
 use pij_core::model::{Event, Harness, ProcIdentity, Seq};
 use pij_core::orchestration::OrchestrationService;
-use pij_core::ports::{HarnessPort, LivenessPort, Queue, Registry, Spine, TmuxPort, Transport};
+use pij_core::ports::{
+    HarnessPort, LivenessPort, Queue, Registry, SessionStatusPort, Spine, TmuxPort, Transport,
+};
 use pij_harnesses::proc::ProcLiveness;
 use pij_harnesses::{HarnessRegistry, InteractionGate};
 use pij_store::{SqliteQueue, SqliteRegistry, SqliteSpine};
 use pij_testkit::fakes::{
-    FakeHarness, FakeLiveness, FakeQueue, FakeRegistry, FakeTmux, FakeTransport,
+    FakeHarness, FakeLiveness, FakeQueue, FakeRegistry, FakeSessionStatus, FakeTmux, FakeTransport,
 };
 use pij_tmux::TmuxAdapter;
 use pij_transport::UdsTransport;
@@ -106,6 +108,8 @@ pub struct Services {
     pub harnesses: Arc<HarnessRegistry>,
     /// Process liveness.
     pub liveness: Arc<dyn LivenessPort>,
+    /// Session facts from harness transcripts, for `pij state`'s `sessionStatus`.
+    pub session_status: Arc<dyn SessionStatusPort>,
     /// The ONE delivery path.
     ///
     /// `/v1/send` used to enqueue a private payload shape of its own and
@@ -397,6 +401,12 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         AdapterChoice::Fake => Arc::new(FakeLiveness::new()),
         AdapterChoice::Real => Arc::new(ProcLiveness::new()),
     };
+    // Stateful: the real source keeps one transcript read position per seat, so
+    // it is composed once here and shared by every request.
+    let session_status: Arc<dyn SessionStatusPort> = match config.adapters.session_status {
+        AdapterChoice::Fake => Arc::new(FakeSessionStatus::new()),
+        AdapterChoice::Real => Arc::new(pij_unisphere::UnisphereSessionStatus::new()),
+    };
 
     let orchestration = Arc::new(OrchestrationService::new());
 
@@ -463,6 +473,7 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         interaction,
         harnesses,
         liveness,
+        session_status,
         delivery,
         roles,
         governance,

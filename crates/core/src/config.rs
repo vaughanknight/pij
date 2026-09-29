@@ -46,6 +46,8 @@ pub struct Adapters {
     pub harness: AdapterChoice,
     /// Process liveness.
     pub liveness: AdapterChoice,
+    /// Session facts from harness transcripts.
+    pub session_status: AdapterChoice,
 }
 
 /// One manually bootstrapped peer machine.
@@ -193,6 +195,7 @@ impl Config {
             a.tmux,
             a.harness,
             a.liveness,
+            a.session_status,
         ]
         .iter()
         .any(|choice| choice.is_real())

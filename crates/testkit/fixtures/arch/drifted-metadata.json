@@ -279,6 +279,10 @@
           "kind": null
         },
         {
+          "name": "pij-unisphere",
+          "kind": null
+        },
+        {
           "name": "reqwest",
           "kind": null
         },
@@ -325,6 +329,28 @@
         {
           "name": "tokio-stream",
           "kind": "dev"
+        }
+      ]
+    },
+    {
+      "name": "pij-unisphere",
+      "id": "path+file:///workspace/pij/crates/unisphere#pij-unisphere@0.1.0",
+      "dependencies": [
+        {
+          "name": "async-trait",
+          "kind": null
+        },
+        {
+          "name": "pij-core",
+          "kind": null
+        },
+        {
+          "name": "tokio",
+          "kind": null
+        },
+        {
+          "name": "unisphere-sdk",
+          "kind": null
         }
       ]
     },
@@ -404,6 +430,7 @@
     "path+file:///workspace/pij/crates/transport#pij-transport@0.1.0",
     "path+file:///workspace/pij/crates/sidecars#pij-sidecars@0.1.0",
     "path+file:///workspace/pij/crates/daemon#pij-daemon@0.1.0",
+    "path+file:///workspace/pij/crates/unisphere#pij-unisphere@0.1.0",
     "path+file:///workspace/pij/crates/cli#pij-cli@0.1.0"
   ],
   "version": 1

@@ -2390,7 +2390,16 @@ async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequ
         Ok(record) => record,
         Err(error) => return internal("pij state", error),
     };
+    let session_status = session_status_block(
+        state.services.session_status.as_ref(),
+        &seat.id,
+        seat.harness,
+        seat.harness_session.clone(),
+        clock,
+    )
+    .await;
     let mut projection = state_card(seat, liveness, &state.machine_alias, card, state_record);
+    projection.card.session_status = Some(session_status);
     projection.card.held = match active_holds(&state, &id).await {
         Ok(holds) => holds,
         Err(error) => return internal("pij state", error),
@@ -2410,6 +2419,43 @@ async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequ
         };
 
     envelope(StatusCode::OK, &Envelope::ok("pij state", projection))
+}
+
+/// Read one seat's session facts into the `sessionStatus` block.
+///
+/// A source failure fills the block and never fails the card, because the rest
+/// of `pij state` stays true without it.
+async fn session_status_block(
+    source: &dyn pij_core::ports::SessionStatusPort,
+    seat: &SeatId,
+    harness: Harness,
+    session: Option<String>,
+    now_ms: u64,
+) -> pij_core::session_status::SessionStatusBlock {
+    use pij_core::session_status::{SessionStatusBlock, SessionStatusReply, SessionTarget};
+    let Some(session) = session else {
+        return SessionStatusBlock::Unbound;
+    };
+    let target = SessionTarget {
+        seat: seat.clone(),
+        harness,
+        session,
+    };
+    let started = std::time::Instant::now();
+    let reply = source.status(&target).await;
+    let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    match reply {
+        Ok(SessionStatusReply::Status(status)) => SessionStatusBlock::Known {
+            cache_state: pij_core::session_status::cache_state(&status, now_ms),
+            status: Box::new(status),
+            elapsed_ms,
+        },
+        Ok(SessionStatusReply::Unsupported) => SessionStatusBlock::Unsupported { harness },
+        Ok(SessionStatusReply::NotFound { detail }) => SessionStatusBlock::NotFound { detail },
+        Err(error) => SessionStatusBlock::Failed {
+            error: error.to_string(),
+        },
+    }
 }
 
 async fn active_holds(state: &AppState, seat: &SeatId) -> Result<Vec<HeldEvent>> {
@@ -2529,6 +2575,7 @@ fn state_card(
             held: Vec::new(),
             delivery_deferrals: Vec::new(),
             pending_fyis: 0,
+            session_status: None,
             unsupported: unsupported_state_fields(),
         },
     }
