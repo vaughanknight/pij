@@ -118,6 +118,10 @@ jobs:
     # Backstop only. Hung tests are killed and named by nextest's per-test
     # clock (.config/nextest.toml, profile `ci`) in about a minute each.
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [pij-core, pij-testkit, pij-store, pij-tmux, pij-harnesses, pij-transport, pij-sidecars, pij-daemon, pij-cli]
     steps:
       - uses: actions/checkout@v4
 
@@ -133,7 +137,7 @@ jobs:
           tool: cargo-nextest
 
       - name: build tests
-        run: cargo nextest run --locked --workspace --profile ci --no-run
+        run: cargo nextest run --locked -p ${{ matrix.package }} --profile ci --no-run
 
       # The suite runs inside a capped systemd scope. A test that leaks memory
       # or processes gets killed inside the scope and named by nextest, instead
@@ -141,9 +145,9 @@ jobs:
       - name: test
         run: |
           sudo -E env "PATH=$PATH" systemd-run --scope --quiet \
-            -p MemoryMax=11G -p TasksMax=4096 \
+            -p MemoryMax=11G -p TasksMax=4096 -p CPUQuota=300% \
             --uid="$(id -u)" --gid="$(id -g)" \
-            cargo nextest run --locked --workspace --profile ci --retries 2 --status-level pass
+            cargo nextest run --locked -p ${{ matrix.package }} --profile ci --retries 2 --status-level pass
 
       # nextest does not run doctests.
       - name: doctests
