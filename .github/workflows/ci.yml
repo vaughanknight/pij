@@ -139,9 +139,11 @@ jobs:
       - name: build tests
         run: cargo nextest run --locked --workspace --profile ci --no-run
 
-      # DIAGNOSTIC: a root-owned loop mirrors progress into a PR comment every
-      # 5s, because a dying runner loses its own log. Root, so a test that
-      # signals every runner-user process cannot silence it.
+      # DIAGNOSTIC: tests run as a separate user, so a test that signals the
+      # runner's processes gets EPERM instead of killing the job. Every kill(2)
+      # is traced; any aimed at a runner process, pid 0 or a process group is
+      # printed at the end. A root-owned loop also mirrors progress into a PR
+      # comment every 5s in case the VM still dies.
       - name: test
         env:
           GH_TOKEN: ${{ github.token }}
@@ -153,14 +155,12 @@ jobs:
           cid=$1; repo=$2; out=$3
           while sleep 5; do
             {
-              echo "### $(date -u +%H:%M:%S) root=$(df -BM --output=avail / | tail -1 | tr -d ' ') mem=$(awk '/MemAvailable/{printf "%dM", $2/1024}' /proc/meminfo) load=$(cut -d' ' -f1-3 /proc/loadavg) procs=$(ps -e --no-headers | wc -l) runner_worker=$(pgrep -c -f Runner.Worker)"
+              echo "### $(date -u +%H:%M:%S) mem=$(awk '/MemAvailable/{printf "%dM", $2/1024}' /proc/meminfo) load=$(cut -d' ' -f1-3 /proc/loadavg) procs=$(ps -e --no-headers | wc -l) runner_worker=$(pgrep -c -f Runner.Worker)"
               echo '```'
-              echo "-- running tests"
               ps -eo etimes=,args= | grep -- '--exact' | grep -v grep | sed -E 's#^ *([0-9]+) \S*/deps/([^ ]+)-[0-9a-f]+ (.*)#\1s \2 \3#' | cut -c1-200
-              echo "-- fatal signals (sender => target)"
-              grep -E 'sig=(1|2|3|6|9|15) ' /sys/kernel/tracing/trace | tail -n 25 | sed -E 's/^ +//' | cut -c1-200
-              echo "-- nextest tail"
-              tail -n 8 "$out" | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-200
+              echo "-- suspicious kills"
+              cat /tmp/suspicious 2>/dev/null | tail -n 10
+              tail -n 4 "$out" | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-200
               echo '```'
             } > /tmp/tele.now
             cat /tmp/tele.now >> /tmp/tele.hist
@@ -168,15 +168,33 @@ jobs:
             gh api -X PATCH "repos/$repo/issues/comments/$cid" -F body=@/tmp/tele.body >/dev/null 2>&1
           done
           EOF
-          echo 1 | sudo tee /sys/kernel/tracing/events/signal/signal_generate/enable >/dev/null
-          echo 16384 | sudo tee /sys/kernel/tracing/buffer_size_kb >/dev/null
+          cat > suspicious.sh <<'EOF'
+          #!/bin/bash
+          # kill(2) aimed at pid 0, a negative pid/group, or a runner-owned pid.
+          pids=$(ps -u runner -o pid= | tr -d ' ')
+          pat='pid: 0x(0+|f{8,}[0-9a-f]*)[,)]'
+          for p in $pids; do pat="$pat|pid: 0x0*$(printf '%x' "$p")[,)]"; done
+          grep -E 'sys_enter_(kill|tgkill|tkill)' /sys/kernel/tracing/trace | grep -E "$pat" | sed -E 's/^ +//' | cut -c1-200
+          EOF
+          sudo useradd -m pijci
+          sudo chmod a+x /home/runner /home/runner/work
+          sudo chmod -R a+rwX /home/runner/.cargo /home/runner/.rustup "$GITHUB_WORKSPACE"
+          sudo git config --system --add safe.directory '*'
+          for event in syscalls/sys_enter_kill syscalls/sys_enter_tgkill syscalls/sys_enter_tkill; do
+            echo 1 | sudo tee /sys/kernel/tracing/events/$event/enable >/dev/null
+          done
+          echo 32768 | sudo tee /sys/kernel/tracing/buffer_size_kb >/dev/null
           sudo -E nohup bash telemetry.sh "$cid" "${{ github.repository }}" "$PWD/nextest.out" >/dev/null 2>&1 &
-          sudo -E env "PATH=$PATH" systemd-run --scope --quiet \
+          sudo -E nohup bash -c 'while sleep 3; do bash '"$PWD"'/suspicious.sh > /tmp/suspicious.new && mv /tmp/suspicious.new /tmp/suspicious; done' >/dev/null 2>&1 &
+          sudo systemd-run --scope --quiet \
             -p MemoryMax=11G -p TasksMax=4096 -p CPUQuota=300% \
-            --uid="$(id -u)" --gid="$(id -g)" \
+            --uid=pijci --gid=pijci \
+            env "PATH=$PATH" HOME=/home/pijci CARGO_HOME=/home/runner/.cargo RUSTUP_HOME=/home/runner/.rustup \
             cargo nextest run --locked --workspace --profile ci --status-level pass > nextest.out 2>&1
           status=$?
           cat nextest.out
+          echo "== suspicious kill(2) calls"
+          sudo bash suspicious.sh
           exit "$status"
 
       # nextest does not run doctests.
