@@ -135,6 +135,37 @@ fn a_known_event_round_trips_through_the_wire() {
     }
 }
 
+/// Plan 158: the facts a held FYI and a seat's own busy/idle publication
+/// produce are this build's own kinds, decoded as known, not forwarded as unknown.
+#[test]
+fn plan_158_event_kinds_are_known() {
+    let events = [
+        pij_core::fyi::held_event(&pij_core::fyi::HeldFyi {
+            id: "m-1".to_string(),
+            recipient: "pij-seat".into(),
+            sender: "pij-sender".into(),
+            body: "note".to_string(),
+            held_at_ms: 1,
+        }),
+        pij_core::fyi::delivered_event(&"pij-seat".into(), &["m-1".to_string()], "hook:omp", 2),
+        Event {
+            seq: None,
+            v: wire::EVENT_VERSION,
+            at: 3,
+            kind: "seat.activity".to_string(),
+            seat: Some("pij-seat".into()),
+            payload: "{\"state\":\"working\"}".to_string(),
+        },
+    ];
+    for event in events {
+        let line = wire::encode_event(&event).expect("encode");
+        match wire::decode_event_line(1, line.trim()).expect("decode") {
+            WireEvent::Known(decoded) => assert_eq!(decoded, event),
+            other => panic!("{}: expected Known, got {other:?}", event.kind),
+        }
+    }
+}
+
 #[test]
 fn an_envelope_round_trips_and_a_current_version_is_accepted() {
     let envelope = Envelope::ok("pij ping", serde_json::json!({"status": "healthy"}));
