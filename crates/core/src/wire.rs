@@ -173,6 +173,10 @@ pub const KNOWN_EVENT_KINDS: &[&str] = &[
     "job.acked",
     "delivery.held",
     "delivery.released",
+    // Plan 158: held FYIs and a seat's own busy/idle publication.
+    "fyi.held",
+    "fyi.delivered",
+    "seat.activity",
 ];
 
 /// Decode one NDJSON line.
