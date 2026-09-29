@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { type ControlOutcome, isControlCommand, validateCommand } from "../core/commands.js";
 import {
+	COLD_WAKE_CODE,
 	type FyiClaimRequest,
 	isHeldFyi,
 	type Registration,
@@ -43,6 +44,15 @@ interface RustBootInput extends Omit<BootInput, "id">, ExtensionBuildIdentity {
 	readonly actualModel?: string | null;
 	readonly reason: SessionShutdownReason | "startup";
 	readonly notice?: (text: string) => void;
+}
+
+/** How a send may deviate from a plain waking message. */
+export interface RustSendOptions {
+	readonly command?: string;
+	/** Hold until the recipient's next turn (plan 158). */
+	readonly fyi?: boolean;
+	/** Wake a cold recipient anyway (plan 157 phase 2); the reason is audited. */
+	readonly force?: { readonly reason: string };
 }
 
 interface VisibleRuntimePort extends PiRuntimePort {
@@ -368,11 +378,20 @@ export class RustRuntimeSession {
 	async send(
 		to: string,
 		body: string,
-		command?: string,
-		fyi = false,
-	): Promise<{ readonly msgId: string; readonly held: boolean }> {
+		options: RustSendOptions = {},
+	): Promise<{ readonly msgId: string; readonly held: boolean; readonly coldCheck?: string }> {
+		const { command, fyi = false, force } = options;
 		if (fyi && command !== undefined) {
 			throw new Error("fyi cannot be combined with a control command");
+		}
+		if (force !== undefined) {
+			// The daemon refuses these too; refusing here sends nothing at all.
+			if (fyi || command !== undefined)
+				throw new Error(`${COLD_WAKE_CODE}: force wakes a message; never with fyi or a command`);
+			if (force.reason.trim() === "")
+				throw new Error(
+					`${COLD_WAKE_CODE}: force needs a non-empty reason saying why the wake is worth it`,
+				);
 		}
 		if (command !== undefined) {
 			const validated = validateCommand(command);
@@ -400,10 +419,15 @@ export class RustRuntimeSession {
 						}),
 					}),
 			...(fyi ? { fyi: true } : {}),
+			...(force === undefined ? {} : { force: true, reason: force.reason }),
 			...(inReplyTo === undefined ? {} : { in_reply_to: inReplyTo }),
 		});
 		if (inReplyTo !== undefined) this.lastInbound.delete(to);
-		return { msgId, held: isHeldFyi(receipt) };
+		return {
+			msgId,
+			held: isHeldFyi(receipt),
+			...(receipt.cold_check === undefined ? {} : { coldCheck: receipt.cold_check }),
+		};
 	}
 
 	/**

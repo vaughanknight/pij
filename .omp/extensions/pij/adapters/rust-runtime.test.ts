@@ -452,14 +452,14 @@ describe("RustRuntimeSession", () => {
 		vi.stubEnv("TMUX_PANE", "%42");
 		const { runtime, sends } = await bootPushedEvent(PUSHED_EVENT_WIRE, new FakePiRuntime());
 		try {
-			await runtime.send("pij-target", frame("pij-from", ""), "compact");
+			await runtime.send("pij-target", frame("pij-from", ""), { command: "compact" });
 			expect(sends.at(-1)).toMatchObject({
 				to: { seat: "pij-target" },
 				body: "",
 				command: "compact",
 				caller: { tmuxPane: "%42", pid: process.pid, procStart: 20260829103052 },
 			});
-			await expect(runtime.send("pij-target", "real body", "compact")).rejects.toThrow(
+			await expect(runtime.send("pij-target", "real body", { command: "compact" })).rejects.toThrow(
 				/body|message/i,
 			);
 			expect(sends).toHaveLength(1);

@@ -101,11 +101,12 @@ export default function (pi: ExtensionAPI): void {
 		name: "pij_send",
 		label: "pij send",
 		description:
-			"Send a message — or run an allow-listed control command (compact/new/reload) — to another pij peer session in this project. Prefer this over shelling out to the `pij` CLI: it resolves your id, delivers, and reports the receipt. Reply to a `[pij-rs from <id>] … [/pij]` message by passing that <id> as `to`. Set `fyi: true` for information that needs no action from the recipient: it waits for their next turn instead of waking them (receipt: held (fyi)).",
+			"Send a message — or run an allow-listed control command (compact/new/reload) — to another pij peer session in this project. Prefer this over shelling out to the `pij` CLI: it resolves your id, delivers, and reports the receipt. Reply to a `[pij-rs from <id>] … [/pij]` message by passing that <id> as `to`. Prefer `fyi: true` for anything that needs no action from the recipient: it waits for their next turn instead of waking them (receipt: held (fyi)). A cold recipient (large context, idle past its prompt-cache TTL, not working) refuses a waking message with E-RS-COLD-WAKE naming the price; resend with `fyi: true`, or with `force: true` and a `reason` only when the wake is worth that price.",
 		promptSnippet: "Message or control a peer pij session (reply to [pij-rs from <id>] … [/pij])",
 		promptGuidelines: [
 			"Use pij_send to reply to a `[pij-rs from <id>] … [/pij]` message or to message/control a peer — do not shell out to the `pij` CLI to send.",
-			"Use pij_send with `fyi: true` for information the recipient need not act on (status, heads-ups): it is held until their next turn instead of waking them. Acks needing no action are better not sent at all.",
+			"Prefer pij_send with `fyi: true` for anything the recipient need not act on (status, heads-ups): it is held until their next turn instead of waking them. Acks needing no action are better not sent at all.",
+			"A cold seat refuses a waking pij_send with E-RS-COLD-WAKE and the price of waking it. Use `fyi: true` instead, or `force: true` with a `reason` only when the wake is worth that price; every forced wake is audited.",
 		],
 		parameters: Type.Object(
 			{
@@ -128,7 +129,20 @@ export default function (pi: ExtensionAPI): void {
 				fyi: Type.Optional(
 					Type.Boolean({
 						description:
-							"true = hold this message until the recipient's next turn instead of waking them. Use for information that needs no action. Message only; never with `command`.",
+							"true = hold this message until the recipient's next turn instead of waking them. Use for information that needs no action. Message only; never with `command` or `force`.",
+					}),
+				),
+				force: Type.Optional(
+					Type.Boolean({
+						description:
+							"true = wake a cold recipient anyway (the daemon otherwise refuses with E-RS-COLD-WAKE and the price). Needs `reason`. Message only; never with `fyi` or `command`.",
+					}),
+				),
+				reason: Type.Optional(
+					Type.String({
+						pattern: "\\S",
+						description:
+							"Why this forced cold wake is worth its price; recorded in the daemon's audit. Required with `force`.",
 					}),
 				),
 			},
@@ -142,13 +156,30 @@ export default function (pi: ExtensionAPI): void {
 				// `type: "object"` for the tool-calling wire format. See
 				// docs/plans/099-send-tool-xor/assets/union-spike.md.
 				oneOf: [
-					{ required: ["message"], not: { required: ["command"] } },
+					{
+						required: ["message"],
+						not: {
+							anyOf: [
+								{ required: ["command"] },
+								{
+									required: ["fyi", "force"],
+									properties: { fyi: { const: true }, force: { const: true } },
+								},
+							],
+						},
+						// Plan 157 phase 2: force carries a non-blank reason.
+						anyOf: [
+							{ not: { required: ["force"], properties: { force: { const: true } } } },
+							{ required: ["reason"] },
+						],
+					},
 					{
 						required: ["command"],
 						not: {
 							anyOf: [
 								{ required: ["message"] },
 								{ required: ["fyi"], properties: { fyi: { const: true } } },
+								{ required: ["force"], properties: { force: { const: true } } },
 							],
 						},
 					},
@@ -166,13 +197,20 @@ export default function (pi: ExtensionAPI): void {
 			if (fyi && command !== undefined) {
 				throw new Error("pij_send `fyi` cannot be combined with a control `command`.");
 			}
+			const force = params.force === true;
 			if (rustRuntime) {
-				const receipt = await rustRuntime.send(params.to, message, command, fyi);
+				const receipt = await rustRuntime.send(params.to, message, {
+					command,
+					fyi,
+					...(force ? { force: { reason: params.reason ?? "" } } : {}),
+				});
+				const coldCheck =
+					receipt.coldCheck === undefined ? "" : ` (cold-check: ${receipt.coldCheck})`;
 				return {
 					content: [
 						{
 							type: "text",
-							text: `${receipt.held ? "held (fyi)" : "queued"} ${receipt.msgId} -> ${params.to}`,
+							text: `${receipt.held ? "held (fyi)" : "queued"} ${receipt.msgId} -> ${params.to}${coldCheck}`,
 						},
 					],
 					details: {},
@@ -181,6 +219,11 @@ export default function (pi: ExtensionAPI): void {
 			if (fyi) {
 				throw new Error(
 					"pij_send `fyi` needs the Rust daemon (pij-rs); legacy delivery cannot hold.",
+				);
+			}
+			if (force) {
+				throw new Error(
+					"pij_send `force` needs the Rust daemon (pij-rs); legacy delivery has no cold-wake guard.",
 				);
 			}
 			const deps: CliDeps = {

@@ -528,6 +528,27 @@ It changes only the seat's mechanical `state` (a targeted write that never rewri
 - Publications are serialized per session, and a failure never breaks a turn. A route-absent 404 from an older daemon stops publishing.
 - Claude seats don't publish yet.
 
+### Cold-wake guard (plan 157 phase 2)
+
+Waking a seat whose prompt cache has expired re-writes its whole context at cache-write prices. The daemon therefore refuses a waking send to a **cold** recipient. The constants, the price table and the pure rule live in [`cold_wake.rs`](../../crates/core/src/cold_wake.rs): context over `COLD_CONTEXT_TOKENS`, last API call older than `COLD_IDLE_MS`, and the daemon does not see the seat working. The guard is a brake: it only ever refuses, and it never changes what is delivered.
+
+```bash
+pij send <seat> --force --reason '<why>' 'text'             # shim → /v1/shim/send argv verbatim
+pij-rs send --to <seat> --force --reason '<why>' --body 'text'   # native form
+```
+
+| Surface | Contract |
+|---|---|
+| Refusal | HTTP 400, `{ok:false, error:"refused", meta:"E-RS-COLD-WAKE: pij-x is cold (idle 1h52m, 720k context). Waking it rewrites ~720k tokens ≈ $5.76 at list price. Use --fyi to hold it, or --force --reason \"<why>\"."}`. Nothing is sent. The price is a list-price estimate; an unpriced model says `(price unknown for this model)`. The shim prints the meta alone on stderr; the OMP/Pi and Copilot `pij_send` tools return it verbatim as the tool error. |
+| POST `/v1/send` `"force": true, "reason": "<why>"` | Wakes a cold recipient anyway. `force` without a non-empty `reason` is refused with a meta starting `E-RS-COLD-WAKE:` that names `--reason`. The tools refuse it too, before any request. |
+| Spine `send.cold-wake-forced` | The audit of every forced cold wake, persisted before the wake. `seat` is the recipient; payload `{from, msg_id, reason, context_tokens, idle_ms, model, estimate_usd}`. |
+| Receipt `data.cold_check` | `clear`, `busy`, `forced` or `unknown: <why>` on every guarded send; absent when the guard did not run. The shim prints `— cold-check: <verdict>`; the OMP/Pi tool appends `(cold-check: <verdict>)`. |
+| Unknown ⇒ allow | Any fact the rule needs but cannot establish (unbound or unsupported harness, no transcript, a source error, unknown context or last-call time) allows the send as `unknown: <why>`. The guard waits 3 s for the recipient's session facts; after that the send is allowed as `unknown: no answer within 3s`. |
+| Never guarded | FYIs (`fyi:true` opens no turn), controls (`command`), and forwarded (federated) sends: a `seat@machine` send is not checked on either daemon, because only the originating sender could choose `--fyi` or `--force`. |
+| One recipient per send | rs has no multi-recipient send, and the shim refuses broadcasts, so the per-recipient rule is met by one recipient per send. |
+
+Sources: [`cold_wake.rs`](../../crates/core/src/cold_wake.rs) (rule), [`http/cold_wake.rs`](../../crates/daemon/src/http/cold_wake.rs) (guard and audit).
+
 ## Governance route inventory
 
 All POST families below use argv/caller unless the typed alternative is named. Unknown leaves refuse; unsupported flags are not dropped. These are the daemon routes, not invented `/v1/report/<leaf>` endpoints.

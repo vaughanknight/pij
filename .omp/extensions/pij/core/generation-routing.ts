@@ -1,7 +1,7 @@
 /** The shim has one authority: an explicit rs route or a named refusal.
  * Business grammar and caller authorization remain in the daemon. */
 import { COPILOT_CONTROL_REFUSAL, validateCommand } from "./commands.js";
-import { PIJ_ENVELOPE_VERSION } from "./daemon-wire.js";
+import { COLD_WAKE_CODE, PIJ_ENVELOPE_VERSION } from "./daemon-wire.js";
 
 interface RouteIdentity {
 	readonly verb: string;
@@ -128,7 +128,8 @@ function renderShimSend(payload: unknown): string {
 	const reason = text(outcome, "reason");
 	const msgId = text(payload, "msg_id") ?? "?";
 	if (word === "held" && reason === "fyi") return `pij send: held (fyi) — ${msgId}`;
-	return `sent (rs) — msg ${msgId} — receipt ${String(word)}${reason === undefined ? "" : ` — ${reason}`}`;
+	const coldCheck = text(payload, "cold_check");
+	return `sent (rs) — msg ${msgId} — receipt ${String(word)}${reason === undefined ? "" : ` — ${reason}`}${coldCheck === undefined ? "" : ` — cold-check: ${coldCheck}`}`;
 }
 
 function renderShimInbox(payload: unknown): string {
@@ -433,6 +434,14 @@ export function describeOutcome(outcome: RouteOutcome): string {
 		case "rs-error":
 			return `${outcome.detail} (rs at ${outcome.addr})`;
 	}
+}
+
+/** The human stderr line for a refusal. A cold-wake refusal is the daemon's
+ *  whole answer — the price and both ways forward — so it prints alone. */
+export function refusalText(outcome: RouteOutcome): string {
+	if (outcome.kind === "rs-error" && outcome.detail.startsWith(`${COLD_WAKE_CODE}:`))
+		return outcome.detail;
+	return `E-RS: ${describeOutcome(outcome)}`;
 }
 
 /** Locally detected refusals use the same v2 shape; a daemon envelope is NEVER rebuilt. */
