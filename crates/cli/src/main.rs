@@ -2478,6 +2478,7 @@ mod tests {
                 "spawn",
                 "revive",
                 "send",
+                "fyi-claim",
                 "compact-self",
                 "inbox",
                 "bg",
