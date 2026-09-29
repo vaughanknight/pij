@@ -105,7 +105,13 @@ function fakeDaemon(options: {
 				throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
 			if (options.claim === "refused" || options.claim === undefined)
 				return new Response(
-					JSON.stringify({ ok: false, command: "pij fyi-claim", v: 2, error: "refused", meta: "no" }),
+					JSON.stringify({
+						ok: false,
+						command: "pij fyi-claim",
+						v: 2,
+						error: "refused",
+						meta: "no",
+					}),
 				);
 			return envelope("pij fyi-claim", { seat: state.seat, ...options.claim, ids: [] });
 		}

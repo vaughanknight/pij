@@ -909,7 +909,10 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		const claims = () => f.requests.filter((request) => request.path === "/v1/fyi/claim");
 
 		// A sub-agent's prompt is not the seat's turn: nothing is claimed for it.
-		const subAgent = await answer({ userPrompt: "sub", hookSessionId: "sub-agent-9" }, "hook-result");
+		const subAgent = await answer(
+			{ userPrompt: "sub", hookSessionId: "sub-agent-9" },
+			"hook-result",
+		);
 		assert.equal(subAgent.returned, false);
 		assert.equal(claims().length, 0);
 
@@ -925,8 +928,14 @@ if (process.env.PIJ_NATIVE_EXTENSION_TEST === "1") {
 		assert.equal((await answer({ userPrompt: "later" }, "hook-result")).returned, false);
 		assert.equal(claims().length, 3);
 
-		assert.equal((await answer({ to: "pij-peer", message: "ack", fyi: true }, "tool-result")).result.ok, true);
-		assert.equal((await answer({ to: "pij-peer", message: "do this" }, "tool-result")).result.ok, true);
+		assert.equal(
+			(await answer({ to: "pij-peer", message: "ack", fyi: true }, "tool-result")).result.ok,
+			true,
+		);
+		assert.equal(
+			(await answer({ to: "pij-peer", message: "do this" }, "tool-result")).result.ok,
+			true,
+		);
 		const sends = f.requests.filter((request) => request.path === "/v1/send");
 		assert.equal(sends[0].body.fyi, true);
 		assert.equal("fyi" in sends[1].body, false);

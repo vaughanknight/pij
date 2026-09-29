@@ -179,7 +179,9 @@ export default function (pi: ExtensionAPI): void {
 				};
 			}
 			if (fyi) {
-				throw new Error("pij_send `fyi` needs the Rust daemon (pij-rs); legacy delivery cannot hold.");
+				throw new Error(
+					"pij_send `fyi` needs the Rust daemon (pij-rs); legacy delivery cannot hold.",
+				);
 			}
 			const deps: CliDeps = {
 				registry: new FsRegistry(pijHome),
