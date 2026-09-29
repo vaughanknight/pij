@@ -1340,6 +1340,8 @@ dependencies = [
  "async-trait",
  "pij-core",
  "tokio",
+ "unisphere-adapter-claude",
+ "unisphere-loader-jsonl",
  "unisphere-sdk",
 ]
 
@@ -2449,6 +2451,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7df058c713841ad818f1dc5d3fd88063241cc61f49f5fbea4b951e8cf5a8d71d"
 
 [[package]]
+name = "unisphere-adapter-claude"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "time",
+ "unisphere-core",
+]
+
+[[package]]
 name = "unisphere-core"
 version = "0.1.0"
 dependencies = [
@@ -2456,6 +2467,15 @@ dependencies = [
  "serde_json",
  "sha2",
  "time",
+]
+
+[[package]]
+name = "unisphere-loader-jsonl"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "sha2",
+ "unisphere-core",
 ]
 
 [[package]]

@@ -17,3 +17,5 @@ pij-core = { workspace = true }
 # on tokio's blocking pool rather than on a reactor worker.
 tokio = { workspace = true }
 unisphere-sdk = { workspace = true }
+unisphere-loader-jsonl = { workspace = true }
+unisphere-adapter-claude = { workspace = true }

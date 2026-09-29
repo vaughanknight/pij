@@ -51,9 +51,14 @@ pij-unisphere = { path = "crates/unisphere" }
 # `async-trait`: object-safe async port traits (workshop 001 R3-AMEND-2).
 async-trait = "0.1"
 # Session facts for `pij state` (plan 157), linked in-process by pij-unisphere only.
-# DEVELOPMENT PATH DEP: replaced by a `rev`-pinned git dependency on
+# DEVELOPMENT PATH DEPS: a `git archive` of builder/029-session-status at ca6aac8b
+# (kiwi's dogfood pin). Replaced by `rev`-pinned git dependencies on
 # github.com/AI-Substrate/Unisphere before merge; a path dep never lands on main.
-unisphere-sdk = { path = "/Users/jordanknight/substrate/unisphere/unisphere-session-status/crates/sdk" }
+# Only these three: loader-query/loader-snapshot pull rusqlite, whose
+# libsqlite3-sys `links` would collide with sqlx's.
+unisphere-sdk = { path = "/Users/jordanknight/pi-hacking/unisphere-029-ca6aac8/crates/sdk" }
+unisphere-loader-jsonl = { path = "/Users/jordanknight/pi-hacking/unisphere-029-ca6aac8/crates/loader-jsonl" }
+unisphere-adapter-claude = { path = "/Users/jordanknight/pi-hacking/unisphere-029-ca6aac8/crates/adapter-claude" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

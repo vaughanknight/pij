@@ -405,7 +405,9 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
     // it is composed once here and shared by every request.
     let session_status: Arc<dyn SessionStatusPort> = match config.adapters.session_status {
         AdapterChoice::Fake => Arc::new(FakeSessionStatus::new()),
-        AdapterChoice::Real => Arc::new(pij_unisphere::UnisphereSessionStatus::new()),
+        AdapterChoice::Real => Arc::new(pij_unisphere::UnisphereSessionStatus::new(
+            pij_harnesses::claude_homes(),
+        )),
     };
 
     let orchestration = Arc::new(OrchestrationService::new());
