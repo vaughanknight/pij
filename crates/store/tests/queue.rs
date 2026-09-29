@@ -122,6 +122,104 @@ async fn sqlite_and_fake_deferrals_share_sampling_and_completion_contract() {
     .await;
 }
 
+/// Plan 158: hold is idempotent per id, a claim takes every pending FYI oldest
+/// first exactly once with one receipt, and restore returns only what it names.
+async fn fyi_contract(queue: &dyn Queue, spine: &dyn pij_core::ports::Spine) {
+    let seat = SeatId::from("pij-fyi");
+    let other = SeatId::from("pij-other");
+    let fyi = |id: &str, to: &SeatId, at: u64| pij_core::fyi::HeldFyi {
+        id: id.to_string(),
+        recipient: to.clone(),
+        sender: SeatId::from("pij-sender"),
+        body: format!("body {id}"),
+        held_at_ms: at,
+    };
+    assert_eq!(
+        queue
+            .hold_fyi(&fyi("late", &seat, 20), spine)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        queue
+            .hold_fyi(&fyi("early", &seat, 10), spine)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        queue
+            .hold_fyi(&fyi("early", &seat, 10), spine)
+            .await
+            .unwrap()
+            .is_empty(),
+        "a retried hold of the same id is one FYI"
+    );
+    queue
+        .hold_fyi(&fyi("theirs", &other, 5), spine)
+        .await
+        .unwrap();
+    assert_eq!(queue.pending_fyi_count(&seat).await.unwrap(), 2);
+
+    let (claimed, events) = queue
+        .claim_fyis(&seat, "hook:omp", 30, spine)
+        .await
+        .unwrap();
+    let ids: Vec<&str> = claimed.iter().map(|fyi| fyi.id.as_str()).collect();
+    assert_eq!(ids, ["early", "late"], "oldest first, only this seat's");
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].kind, "fyi.delivered");
+    let receipt: serde_json::Value = serde_json::from_str(&events[0].payload).unwrap();
+    assert_eq!(
+        receipt,
+        serde_json::json!({"ids": ["early", "late"], "via": "hook:omp"})
+    );
+    let (again, events) = queue
+        .claim_fyis(&seat, "hook:omp", 31, spine)
+        .await
+        .unwrap();
+    assert!(
+        again.is_empty() && events.is_empty(),
+        "claimed exactly once"
+    );
+    assert_eq!(queue.pending_fyi_count(&other).await.unwrap(), 1);
+
+    let restored = queue
+        .restore_fyis(
+            &seat,
+            &["late".to_string(), "never-held".to_string()],
+            "carrier-failed",
+            32,
+            spine,
+        )
+        .await
+        .unwrap();
+    assert_eq!(restored.len(), 1);
+    assert_eq!(queue.pending_fyi_count(&seat).await.unwrap(), 1);
+    let (reclaimed, _) = queue
+        .claim_fyis(&seat, "message:m-1", 33, spine)
+        .await
+        .unwrap();
+    assert_eq!(reclaimed, [fyi("late", &seat, 20)]);
+}
+
+#[tokio::test]
+async fn sqlite_and_fake_queues_share_the_fyi_contract() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.unwrap();
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).unwrap();
+    let spine = pij_store::SqliteSpine::new(pool);
+    fyi_contract(&queue, &spine).await;
+    fyi_contract(
+        &FakeQueue::new(1_024).unwrap(),
+        &pij_testkit::fakes::FakeSpine::new(),
+    )
+    .await;
+}
+
 #[tokio::test]
 async fn alternating_deferrals_emit_at_most_sixty_events_per_hour() {
     let fresh = FreshStore::new();

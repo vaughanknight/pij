@@ -158,6 +158,7 @@ async fn announce(state_dir: &Path, runtime: &DaemonRuntime) -> Vec<String> {
             msg_id: format!("bounce-{}-{index}", runtime.process.proc_start),
             in_reply_to: None,
             command: None,
+            fyi: false,
         };
         let reply = client.send(&request).await;
         if reply.ok {

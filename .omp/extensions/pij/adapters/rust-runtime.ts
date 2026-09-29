@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { type ControlOutcome, isControlCommand, validateCommand } from "../core/commands.js";
-import type { Registration, RustSeatDescriptor } from "../core/daemon-wire.js";
+import {
+	type FyiClaimRequest,
+	isHeldFyi,
+	type Registration,
+	type RustSeatDescriptor,
+} from "../core/daemon-wire.js";
 import { memorableIdentitySeed } from "../core/discovery.js";
 import { buildCallerContext } from "../core/generation-routing.js";
 import { memorablePijIdCandidates } from "../core/memorable-id.js";
@@ -42,6 +47,8 @@ interface RustBootInput extends Omit<BootInput, "id">, ExtensionBuildIdentity {
 
 interface VisibleRuntimePort extends PiRuntimePort {
 	setStatus?(text: string | undefined): void;
+	/** The `✉N` footer slot, separate from the pij-mail pending count. */
+	setFyiStatus?(text: string | undefined): void;
 	notify?(text: string, level?: "info" | "warning" | "error"): void;
 }
 
@@ -83,6 +90,9 @@ const PARKED_OUTCOMES = new Set([
 
 /** How much of an arriving body the announcement shows. */
 const ANNOUNCE_BODY_CHARS = 80;
+
+/** A typed turn waits on the claim; a hung daemon must not hold the human's prompt. */
+const FYI_CLAIM_TIMEOUT_MS = 3_000;
 
 /**
  * Snap-in recipe (composition owner: PM, index.ts unchanged):
@@ -132,6 +142,14 @@ export class RustRuntimeSession {
 	private releasedStartupHead: number | undefined;
 	private compacting = false;
 	private compactionExpiresAt = 0;
+	private nativeSession: string | undefined;
+	private paneId: string | undefined;
+	/** Only the newest count request may paint the footer. */
+	private fyiCountTicket = 0;
+	/** Activity publications land in call order: a late `working` never follows `idle`. */
+	private activityChain: Promise<void> = Promise.resolve();
+	/** Set when the daemon has no /v1/activity route; cleared by a new client. */
+	private activityUnsupported = false;
 
 	constructor(
 		client: PijDaemonClient,
@@ -180,6 +198,7 @@ export class RustRuntimeSession {
 	}
 
 	setClient(client: PijDaemonClient): void {
+		if (client !== this.client) this.activityUnsupported = false;
 		this.client = client;
 	}
 
@@ -222,6 +241,9 @@ export class RustRuntimeSession {
 		this.startupRecovery = true;
 		this.releasedStartupHead = undefined;
 		this.pi.setStatus(undefined);
+		this.pi.setFyiStatus(undefined);
+		this.nativeSession = input.piSessionId;
+		this.paneId = input.paneId;
 		const continuityRegistration = registrationFor(acceptedId, procStart, input);
 		for (const seat of seats) this.registry.seed(fromRustDescriptor(seat));
 		if (replacing && previousSelf) this.registry.dissolve(previousSelf);
@@ -246,6 +268,13 @@ export class RustRuntimeSession {
 				if (this.lifecycle !== lifecycle) return;
 				const seat = this.self;
 				const client = this.client;
+				// FYIs never ride the pushed path; recipient-scoped fyi.* and tombstone
+				// events only repaint the pending count.
+				if (
+					frame.event.seat === seat &&
+					(frame.event.kind.startsWith("fyi.") || frame.event.kind === "seat.tombstone")
+				)
+					this.refreshFyiCount(seat, client, lifecycle);
 				if (frame.event.kind === "delivery.parked") {
 					const payload = JSON.parse(frame.event.payload) as Record<string, unknown>;
 					if (
@@ -330,10 +359,19 @@ export class RustRuntimeSession {
 				});
 		}, MAIL_STATUS_TICK_MS);
 		this.mailTicker.unref?.();
+		this.refreshFyiCount(acceptedId, this.client, lifecycle);
 		return { id: boot.id, role: boot.role };
 	}
 
-	async send(to: string, body: string, command?: string): Promise<string> {
+	async send(
+		to: string,
+		body: string,
+		command?: string,
+		fyi = false,
+	): Promise<{ readonly msgId: string; readonly held: boolean }> {
+		if (fyi && command !== undefined) {
+			throw new Error("fyi cannot be combined with a control command");
+		}
 		if (command !== undefined) {
 			const validated = validateCommand(command);
 			if (!validated.ok) throw new Error(validated.message);
@@ -344,7 +382,7 @@ export class RustRuntimeSession {
 		}
 		const msgId = randomUUID();
 		const inReplyTo = this.lastInbound.get(to);
-		await this.client.send({
+		const receipt = await this.client.send({
 			from: this.self,
 			to: { seat: to },
 			body,
@@ -359,10 +397,90 @@ export class RustRuntimeSession {
 							procStart: this.client.processStart(process.pid),
 						}),
 					}),
+			...(fyi ? { fyi: true } : {}),
 			...(inReplyTo === undefined ? {} : { in_reply_to: inReplyTo }),
 		});
 		if (inReplyTo !== undefined) this.lastInbound.delete(to);
-		return msgId;
+		return { msgId, held: isHeldFyi(receipt) };
+	}
+
+	/**
+	 * Claim this seat's held FYIs for a typed turn. Returns the daemon's block
+	 * verbatim, or undefined when none are pending or the claim fails: a claim
+	 * failure is logged and never blocks the human's turn.
+	 */
+	async claimFyi(via: FyiClaimRequest["via"]): Promise<string | undefined> {
+		const seat = this.self;
+		const client = this.client;
+		const lifecycle = this.lifecycle;
+		if (seat === "") return undefined;
+		const evidence = this.bindingEvidence("fyi-claim");
+		if (evidence === undefined) return undefined;
+		try {
+			const claim = await client.claimFyi(
+				{ seat, ...evidence, via },
+				AbortSignal.timeout(FYI_CLAIM_TIMEOUT_MS),
+			);
+			this.refreshFyiCount(seat, client, lifecycle);
+			return claim.count > 0 ? claim.block : undefined;
+		} catch (error) {
+			this.session.capture("daemon_event_error", {
+				message: error instanceof Error ? error.message : String(error),
+				stage: "fyi-claim",
+			});
+			return undefined;
+		}
+	}
+
+	private refreshFyiCount(seat: string, client: PijDaemonClient, lifecycle: number): void {
+		const ticket = ++this.fyiCountTicket;
+		client.pendingFyis(seat).then(
+			(count) => {
+				if (this.lifecycle !== lifecycle || this.self !== seat || ticket !== this.fyiCountTicket)
+					return;
+				this.pi.setFyiStatus(count > 0 ? `✉${count}` : undefined);
+			},
+			(error: unknown) => {
+				this.session.capture("daemon_event_error", {
+					message: error instanceof Error ? error.message : String(error),
+					stage: "fyi-count",
+				});
+			},
+		);
+	}
+
+	/** Binding evidence for seat-scoped calls: the harness session, else the pane. */
+	private bindingEvidence(
+		stage: string,
+	): { readonly native_session: string } | { readonly pane: string } | undefined {
+		if (this.nativeSession !== undefined) return { native_session: this.nativeSession };
+		if (this.paneId !== undefined) return { pane: this.paneId };
+		this.session.capture("daemon_event_error", {
+			message: "no native session or pane to bind this seat",
+			stage,
+		});
+		return undefined;
+	}
+
+	/** Queue a turn-state publication; failures are logged and never reach the turn. */
+	private publishActivity(state: "working" | "idle"): void {
+		const seat = this.self;
+		const client = this.client;
+		if (seat === "" || this.activityUnsupported) return;
+		const evidence = this.bindingEvidence("activity");
+		if (evidence === undefined) return;
+		this.activityChain = this.activityChain.then(async () => {
+			if (this.activityUnsupported) return;
+			try {
+				if (!(await client.publishActivity({ seat, ...evidence, state })))
+					this.activityUnsupported = true;
+			} catch (error) {
+				this.session.capture("daemon_event_error", {
+					message: error instanceof Error ? error.message : String(error),
+					stage: "activity",
+				});
+			}
+		});
 	}
 
 	async spawn(opts: SpawnOpts): Promise<ReturnType<PijSession["spawn"]>> {
@@ -412,11 +530,13 @@ export class RustRuntimeSession {
 		this.idleSince = undefined;
 		this.repollAfterCompaction("turn_start");
 		this.session.onTurnStart(iso);
+		this.publishActivity("working");
 		void this.flush();
 	}
 
 	onTurnEnd(): void {
 		this.session.onTurnEnd();
+		this.publishActivity("idle");
 		if (this.pi.isIdle()) this.idleSince ??= this.clock();
 		this.queueBoundaryResend();
 	}
@@ -474,6 +594,8 @@ export class RustRuntimeSession {
 	/** Boundaries grant one grace-delayed resend; later retries still require idle. */
 	onAgentEnd(willContinue = false): void {
 		if (!willContinue && this.pi.isIdle()) this.idleSince ??= this.clock();
+		// Idempotent idle repair for a turn_end that never published.
+		if (!willContinue) this.publishActivity("idle");
 		this.repollAfterCompaction("agent_end");
 		this.queueBoundaryResend();
 	}
@@ -492,6 +614,7 @@ export class RustRuntimeSession {
 		this.pendingConsumption.clear();
 		this.lastAcknowledgedJobId = undefined;
 		this.pi.setStatus(undefined);
+		this.pi.setFyiStatus(undefined);
 		this.stopEvents?.();
 		this.stopEvents = undefined;
 		this.session.shutdown(reason);
@@ -1221,6 +1344,10 @@ class MutablePiRuntime implements PiRuntimePort {
 
 	setStatus(text: string | undefined): void {
 		this.current?.setStatus?.(text);
+	}
+
+	setFyiStatus(text: string | undefined): void {
+		this.current?.setFyiStatus?.(text);
 	}
 
 	/** Optional on the port: a runtime with no notification surface simply does

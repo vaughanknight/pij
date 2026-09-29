@@ -82,12 +82,17 @@ async function startExtension() {
 				{
 					name: "pij_send",
 					description:
-						"Send a message to a Pij peer from this native Copilot seat. A receipt proves queue/native acceptance, not completed model work. Call explicitly; replies are never automatically forwarded.",
+						"Send a message to a Pij peer from this native Copilot seat. A receipt proves queue/native acceptance, not completed model work. Call explicitly; replies are never automatically forwarded. Set fyi for information that needs no action: it is held and rides along on the recipient's next turn instead of opening one.",
 					parameters: {
 						type: "object",
 						properties: {
 							to: { type: "string", description: "Exact recipient Pij seat ID" },
 							message: { type: "string", description: "Message body" },
+							fyi: {
+								type: "boolean",
+								description:
+									"Hold as an FYI: no-action information delivered with the recipient's next turn, never opening one",
+							},
 						},
 						required: ["to", "message"],
 						additionalProperties: false,
@@ -99,6 +104,20 @@ async function startExtension() {
 					},
 				},
 			],
+			hooks: {
+				// Plan 158: a typed prompt carries this seat's held FYIs as context.
+				onUserPromptSubmitted: async (input, invocation) => {
+					if (
+						!session ||
+						!bridge ||
+						signal.aborted ||
+						invocation?.sessionId !== session.sessionId ||
+						(input?.sessionId ?? session.sessionId) !== session.sessionId
+					)
+						return undefined;
+					return bridge.claimFyis();
+				},
+			},
 		});
 		signal.throwIfAborted();
 		if (!session.sessionId || session.sessionId !== process.env.SESSION_ID)

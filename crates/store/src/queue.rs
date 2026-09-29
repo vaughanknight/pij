@@ -269,6 +269,13 @@ fn adapter_error(error: sqlx::Error) -> PijError {
     }
 }
 
+fn sql_ms(ms: u64) -> Result<i64> {
+    i64::try_from(ms).map_err(|_| PijError::Adapter {
+        adapter: "store/queue".into(),
+        message: "timestamp exceeds SQLite's integer range".into(),
+    })
+}
+
 fn decode_job(row: &sqlx::sqlite::SqliteRow) -> Result<Job> {
     Ok(Job {
         kind: row.try_get("kind").map_err(adapter_error)?,
@@ -938,6 +945,153 @@ impl Queue for SqliteQueue {
             })
         })
         .await
+    }
+
+    async fn hold_fyi(
+        &self,
+        fyi: &pij_core::fyi::HeldFyi,
+        _spine: &dyn pij_core::ports::Spine,
+    ) -> Result<Vec<pij_core::model::Event>> {
+        require_current_schema(&self.pool).await?;
+        let pool = self.pool.clone();
+        let fyi = fyi.clone();
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
+            // A retried send with the same msg_id is the same FYI, held once.
+            let inserted = sqlx::query(
+                "INSERT OR IGNORE INTO fyis (id, recipient, sender, body, held_at_ms, state) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'pending')",
+            )
+            .bind(&fyi.id)
+            .bind(fyi.recipient.as_str())
+            .bind(fyi.sender.as_str())
+            .bind(&fyi.body)
+            .bind(sql_ms(fyi.held_at_ms)?)
+            .execute(&mut *tx)
+            .await
+            .map_err(adapter_error)?
+            .rows_affected();
+            let mut events = Vec::new();
+            if inserted == 1 {
+                let mut event = pij_core::fyi::held_event(&fyi);
+                event.seq = Some(crate::spine::append_in_transaction(&mut tx, &event).await?);
+                events.push(event);
+            }
+            tx.commit().await.map_err(adapter_error)?;
+            Ok(events)
+        })
+        .await
+    }
+
+    async fn claim_fyis(
+        &self,
+        recipient: &SeatId,
+        via: &str,
+        at: u64,
+        _spine: &dyn pij_core::ports::Spine,
+    ) -> Result<(Vec<pij_core::fyi::HeldFyi>, Vec<pij_core::model::Event>)> {
+        require_current_schema(&self.pool).await?;
+        let pool = self.pool.clone();
+        let recipient = recipient.clone();
+        let via = via.to_owned();
+        owned_write(async move {
+            // One write transaction: select, transition and receipt together, so
+            // a racing claimer sees these rows already delivered.
+            let mut tx = begin_write(&pool).await?;
+            let rows = sqlx::query(
+                "UPDATE fyis SET state = 'delivered', settled_at_ms = ?2, settled_via = ?3 \
+                 WHERE recipient = ?1 AND state = 'pending' \
+                 RETURNING id, sender, body, held_at_ms",
+            )
+            .bind(recipient.as_str())
+            .bind(sql_ms(at)?)
+            .bind(&via)
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+            let mut fyis = rows
+                .iter()
+                .map(|row| {
+                    Ok(pij_core::fyi::HeldFyi {
+                        id: row.try_get("id").map_err(adapter_error)?,
+                        recipient: recipient.clone(),
+                        sender: SeatId(row.try_get("sender").map_err(adapter_error)?),
+                        body: row.try_get("body").map_err(adapter_error)?,
+                        held_at_ms: row.try_get::<i64, _>("held_at_ms").map_err(adapter_error)?
+                            as u64,
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            fyis.sort_by(|a, b| a.held_at_ms.cmp(&b.held_at_ms).then(a.id.cmp(&b.id)));
+            let mut events = Vec::new();
+            if !fyis.is_empty() {
+                let ids: Vec<String> = fyis.iter().map(|fyi| fyi.id.clone()).collect();
+                let mut event = pij_core::fyi::delivered_event(&recipient, &ids, &via, at);
+                event.seq = Some(crate::spine::append_in_transaction(&mut tx, &event).await?);
+                events.push(event);
+            }
+            tx.commit().await.map_err(adapter_error)?;
+            Ok((fyis, events))
+        })
+        .await
+    }
+
+    async fn restore_fyis(
+        &self,
+        recipient: &SeatId,
+        ids: &[String],
+        reason: &str,
+        at: u64,
+        _spine: &dyn pij_core::ports::Spine,
+    ) -> Result<Vec<pij_core::model::Event>> {
+        require_current_schema(&self.pool).await?;
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let pool = self.pool.clone();
+        let recipient = recipient.clone();
+        let ids = ids.to_vec();
+        let reason = reason.to_owned();
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
+            let mut restored = Vec::new();
+            for id in &ids {
+                let affected = sqlx::query(
+                    "UPDATE fyis SET state = 'pending', settled_at_ms = NULL, settled_via = NULL \
+                     WHERE id = ?1 AND recipient = ?2 AND state = 'delivered'",
+                )
+                .bind(id)
+                .bind(recipient.as_str())
+                .execute(&mut *tx)
+                .await
+                .map_err(adapter_error)?
+                .rows_affected();
+                if affected == 1 {
+                    restored.push(id.clone());
+                }
+            }
+            let mut events = Vec::new();
+            if !restored.is_empty() {
+                let mut event = pij_core::fyi::restored_event(&recipient, &restored, &reason, at);
+                event.seq = Some(crate::spine::append_in_transaction(&mut tx, &event).await?);
+                events.push(event);
+            }
+            tx.commit().await.map_err(adapter_error)?;
+            Ok(events)
+        })
+        .await
+    }
+
+    async fn pending_fyi_count(&self, recipient: &SeatId) -> Result<u64> {
+        require_current_schema(&self.pool).await?;
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM fyis WHERE recipient = ?1 AND state = 'pending'",
+        )
+        .bind(recipient.as_str())
+        .fetch_one(&self.pool)
+        .await
+        .map_err(adapter_error)?;
+        Ok(count as u64)
     }
 
     async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()> {

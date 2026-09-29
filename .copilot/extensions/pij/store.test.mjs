@@ -1243,6 +1243,98 @@ test("outgoing tool ignores spoofed from, mints unique ids and returns queue gra
 	await run;
 });
 
+test("activity: foreground turns publish working then idle in order; failures never break the turn", async () => {
+	const f = fixture();
+	const run = f.bridge.run();
+	await f.accepted.promise;
+	const published = [];
+	const gates = [];
+	const request = f.client.request;
+	f.client.request = (path, body, signal) => {
+		if (path !== "/v1/activity") return request(path, body, signal);
+		assert.deepEqual(Object.keys(body).sort(), ["native_session", "seat", "state"]);
+		assert.equal(body.seat, registration.id);
+		assert.equal(body.native_session, registration.harness_session);
+		published.push(body.state);
+		const gate = deferred();
+		gates.push(gate);
+		return gate.promise.then((outcome) => {
+			if (outcome instanceof Error) throw outcome;
+			return { seat: body.seat, state: body.state, changed: true };
+		});
+	};
+	const httpError = (status) => Object.assign(new Error(`Pij HTTP ${status}`), { status });
+
+	f.event({ type: "assistant.turn_start", id: "turn-1", data: {} });
+	f.event({ type: "assistant.turn_end", id: "sub-end", agentId: "sub-agent-9", data: {} });
+	f.event({ type: "assistant.turn_end", id: "turn-1-end", data: {} });
+	await flush();
+	assert.deepEqual(published, ["working"], "idle waits for the in-flight working publication");
+	gates[0].resolve("ok");
+	await flush();
+	assert.deepEqual(published, ["working", "idle"]);
+	f.event({ type: "session.idle", id: "idle-1", data: {} });
+	await flush();
+	assert.deepEqual(published, ["working", "idle"], "an unchanged state is not republished");
+
+	gates[1].resolve(httpError(500));
+	await flush();
+	assert.deepEqual(
+		f.reports.filter((event) => event.kind === "activity-unpublished").map((e) => e.state),
+		["idle"],
+	);
+	assert.equal((await f.bridge.send({ to: "pij-peer", message: "still usable" })).ok, true);
+
+	// An older daemon without the route stops publication for this runtime.
+	f.event({ type: "assistant.turn_start", id: "turn-2", data: {} });
+	await flush();
+	gates[2].resolve(httpError(404));
+	await flush();
+	f.event({ type: "assistant.turn_end", id: "turn-2-end", data: {} });
+	f.event({ type: "assistant.turn_start", id: "turn-3", data: {} });
+	await flush();
+	assert.deepEqual(published, ["working", "idle", "working"]);
+	f.bridge.stop();
+	await run;
+});
+
+test("fyi claim: count gates the verbatim block; empty and failed claims add nothing", async () => {
+	const golden = await readFile(
+		new URL("../../../crates/testkit/fixtures/golden/fyi/block.txt", import.meta.url),
+		"utf8",
+	);
+	const f = fixture();
+	const run = f.bridge.run();
+	await f.accepted.promise;
+	const answers = [
+		{ seat: registration.id, count: 2, block: golden, ids: ["fyi-1", "fyi-2"] },
+		{ seat: registration.id, count: 0, block: "", ids: [] },
+		new Error("Pij transport unavailable"),
+	];
+	const bodies = [];
+	const request = f.client.request;
+	f.client.request = async (path, body, signal) => {
+		if (path !== "/v1/fyi/claim") return request(path, body, signal);
+		bodies.push(body);
+		const answer = answers.shift();
+		if (answer instanceof Error) throw answer;
+		return answer;
+	};
+
+	assert.deepEqual(await f.bridge.claimFyis(), { additionalContext: golden });
+	assert.equal(await f.bridge.claimFyis(), undefined);
+	assert.equal(await f.bridge.claimFyis(), undefined);
+	assert.deepEqual(bodies[0], {
+		seat: registration.id,
+		native_session: registration.harness_session,
+		via: "hook:copilot",
+	});
+	f.bridge.stop();
+	await run;
+	assert.equal(await f.bridge.claimFyis(), undefined);
+	assert.equal(bodies.length, 3, "a stopped bridge claims nothing");
+});
+
 for (const patch of [
 	{ native_extension_delivery: false },
 	{ harness: "omp" },

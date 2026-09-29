@@ -9,6 +9,7 @@ mod background;
 mod client;
 pub mod decisions;
 mod exposure;
+mod fyi;
 pub mod governance;
 mod identity;
 mod lifecycle;
@@ -157,6 +158,10 @@ enum Endpoint {
     /// would reach this daemon as a bare URL with the `<id>` — this verb's only
     /// argument — dropped at the seam. Ruled POST-canonical by the plan-114 PM.
     State,
+    /// Atomic claim of held FYIs by a typed-turn hook (plan 158).
+    FyiClaim,
+    /// Busy/idle publication from a harness's own turn events (plan 158, addendum 3).
+    Activity,
     Role,
     Close,
     Reap,
@@ -177,7 +182,7 @@ enum Endpoint {
 }
 
 impl Endpoint {
-    const ALL: [Self; 45] = [
+    const ALL: [Self; 47] = [
         Self::Health,
         Self::Register,
         Self::Spawn,
@@ -201,6 +206,8 @@ impl Endpoint {
         Self::Whoami,
         Self::Phonehome,
         Self::State,
+        Self::FyiClaim,
+        Self::Activity,
         Self::ShimSend,
         Self::ShimCompactSelf,
         Self::ShimInbox,
@@ -250,6 +257,8 @@ impl Endpoint {
             Self::Whoami => "/v1/whoami",
             Self::Phonehome => "/v1/phonehome",
             Self::State => "/v1/state",
+            Self::FyiClaim => "/v1/fyi/claim",
+            Self::Activity => "/v1/activity",
             Self::Role => "/v1/role",
             Self::Close => "/v1/close",
             Self::Reap => "/v1/reap",
@@ -296,7 +305,7 @@ impl Endpoint {
             | Self::Sidecar
             | Self::Report => Method::POST,
             Self::Adopt | Self::Whoami | Self::Phonehome => Method::POST,
-            Self::State => Method::POST,
+            Self::State | Self::FyiClaim | Self::Activity => Method::POST,
             Self::Role
             | Self::Close
             | Self::Reap
@@ -432,6 +441,8 @@ fn router_with_optional_federation(
                     | Endpoint::Whoami
                     | Endpoint::Phonehome
                     | Endpoint::State
+                    | Endpoint::FyiClaim
+                    | Endpoint::Activity
                     | Endpoint::ShimSend
                     | Endpoint::ShimCompactSelf
                     | Endpoint::ShimInbox
@@ -494,6 +505,8 @@ fn router_with_optional_federation(
             ),
             Endpoint::Phonehome => router.route(endpoint.path(), post(identity::phonehome)),
             Endpoint::State => router.route(endpoint.path(), post(seat_state)),
+            Endpoint::FyiClaim => router.route(endpoint.path(), post(fyi::claim)),
+            Endpoint::Activity => router.route(endpoint.path(), post(fyi::activity)),
             Endpoint::Role => router.route(endpoint.path(), post(role::role)),
             Endpoint::Close => router.route(endpoint.path(), post(lifecycle::close)),
             Endpoint::Reap => router.route(endpoint.path(), post(lifecycle::reap)),
@@ -1463,6 +1476,9 @@ async fn send(State(state): State<AppState>, Json(request): Json<SendBodyRequest
             "pij-bg is a daemon-owned sender; callers cannot impersonate it",
         );
     }
+    if request.message.fyi {
+        return hold_fyi(&state, request).await;
+    }
     if let Some(command) = request.command {
         if request.message.to.machine.is_some() || request.message.from_machine.is_some() {
             return refused(
@@ -1524,6 +1540,38 @@ async fn send(State(state): State<AppState>, Json(request): Json<SendBodyRequest
     match accepted {
         Ok(receipt) => envelope(StatusCode::OK, &Envelope::ok("pij send", receipt)),
 
+        Err(error) => send_failure("pij send", error),
+    }
+}
+
+/// `pij send --fyi` (plan 158): hold the message for the recipient's next real
+/// turn. Refused with a control, or for a remote seat, whose daemon would have
+/// to hold it and cannot be asked to here.
+async fn hold_fyi(state: &AppState, request: SendBodyRequest) -> Response {
+    if request.command.is_some() {
+        return refused(
+            "pij send",
+            "--fyi holds a message; a control cannot be held",
+        );
+    }
+    let request = request.message;
+    if request.to.machine.is_some() || request.from_machine.is_some() {
+        return refused(
+            "pij send",
+            "E-RS-FYI-REMOTE: --fyi is held by the recipient's own daemon; send remote seats a normal message",
+        );
+    }
+    let msg = Msg {
+        from: request.from,
+        from_machine: None,
+        to: request.to.seat,
+        body: request.body,
+        msg_id: request.msg_id,
+        in_reply_to: request.in_reply_to,
+        command: None,
+    };
+    match state.services.delivery.hold_fyi(msg).await {
+        Ok(receipt) => envelope(StatusCode::OK, &Envelope::ok("pij send", receipt)),
         Err(error) => send_failure("pij send", error),
     }
 }
@@ -2351,6 +2399,10 @@ async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequ
         Ok(deferrals) => deferrals,
         Err(error) => return internal("pij state", error),
     };
+    projection.card.pending_fyis = match state.services.delivery.pending_fyi_count(&id).await {
+        Ok(count) => count,
+        Err(error) => return internal("pij state", error),
+    };
     projection.card.native_receiver_reason =
         match state.services.delivery.native_receiver_reason(&id).await {
             Ok(reason) => reason.map(str::to_string),
@@ -2476,6 +2528,7 @@ fn state_card(
             refs,
             held: Vec::new(),
             delivery_deferrals: Vec::new(),
+            pending_fyis: 0,
             unsupported: unsupported_state_fields(),
         },
     }
@@ -2492,9 +2545,9 @@ fn state_card(
 fn unsupported_state_fields() -> Vec<UnsupportedField> {
     [
         ("lifecycle", "rs seats have no pending/bound/dissolved lifecycle field; binding evidence lives in `proc` and is reported through `liveness`"),
-        ("activity", "no native work observation is published yet; mechanical idle is the legacy default, not evidence of inactivity"),
+        ("activity", "the TS activity object has no rs counterpart; `state` carries working/idle published at OMP, Pi and Copilot turn boundaries (plan 158). Claude seats publish none yet, so their idle is the default, not evidence of inactivity"),
         ("ageMs", "not emitted; consumers may subtract last_event_at from their epoch-ms clock"),
-        ("liveness:stale", "the card reports a live process-identity probe, not activity staleness; no native activity observer is published yet"),
+        ("liveness:stale", "the card reports a live process-identity probe, not activity staleness; activity staleness is not tracked"),
         ("daemonLastTickAt", "no per-seat daemon tick is recorded in the rs store"),
         ("daemonTickAgeMs", "derived from the tick rs does not record"),
         ("daemonTickStale", "derived from the tick rs does not record"),

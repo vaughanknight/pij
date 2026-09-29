@@ -207,6 +207,9 @@ pub struct SendRequest {
     /// Message id being answered, when this is a reply.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub in_reply_to: Option<String>,
+    /// Hold for the recipient's next real turn instead of delivering (plan 158).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fyi: bool,
 }
 
 // `QueuedSend` is GONE. The send route persisted it under `delivery:<seat>` and
@@ -537,6 +540,9 @@ pub struct StateCard {
     /// Durable diagnostics for live delivery jobs; sampled events are not the authority.
     #[serde(default)]
     pub delivery_deferrals: Vec<pij_core::model::DeliveryDeferral>,
+    /// FYIs held for this seat's next real turn (plan 158).
+    #[serde(default)]
+    pub pending_fyis: u64,
     /// Every TS field this store cannot answer, named with its reason.
     pub unsupported: Vec<UnsupportedField>,
 }

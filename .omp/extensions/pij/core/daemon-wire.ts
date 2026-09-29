@@ -79,12 +79,46 @@ export interface SendRequest {
 	readonly in_reply_to?: string;
 	readonly command?: string;
 	readonly caller?: CallerContext;
+	/** Plan 158: hold until the recipient's next turn; the daemon refuses it with `command`. */
+	readonly fyi?: true;
 }
 
 export interface QueueReceipt {
 	readonly msg_id: string;
 	readonly outcome: unknown;
 	readonly at: number;
+}
+
+/** A held FYI receipt carries `outcome: {outcome: "held", reason: "fyi"}`. */
+export function isHeldFyi(receipt: QueueReceipt): boolean {
+	const outcome = receipt.outcome;
+	if (typeof outcome !== "object" || outcome === null) return false;
+	const record = outcome as Record<string, unknown>;
+	return record.outcome === "held" && record.reason === "fyi";
+}
+
+/** POST /v1/fyi/claim; `pane` or `native_session` is the binding evidence. */
+export interface FyiClaimRequest {
+	readonly seat?: string;
+	readonly pane?: string;
+	readonly native_session?: string;
+	readonly via: "hook:claude" | "hook:copilot" | "hook:omp" | "hook:pi";
+}
+
+/** `block` is the daemon's golden FYI block, passed through verbatim; "" when count is 0. */
+export interface FyiClaim {
+	readonly seat: string;
+	readonly count: number;
+	readonly block: string;
+	readonly ids: readonly string[];
+}
+
+/** POST /v1/activity: the seat's turn state, bound like an fyi claim. */
+export interface ActivityRequest {
+	readonly seat: string;
+	readonly native_session?: string;
+	readonly pane?: string;
+	readonly state: "working" | "idle";
 }
 
 export interface HoldRequest {

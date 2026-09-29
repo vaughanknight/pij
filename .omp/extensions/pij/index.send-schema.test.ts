@@ -128,4 +128,17 @@ describe("pij_send registration schema — structural XOR (pij#166)", () => {
 			"exactly one of",
 		);
 	});
+
+	// --- Plan 158 · fyi is message-only ------------------------------------
+	it("C7: {to, command, fyi: true} is NOT schema-valid", () => {
+		expect(
+			Value.Check(sendSchema() as never, { to: "pij-x", command: "compact", fyi: true }),
+		).toBe(false);
+	});
+
+	it("C8: {to, message, fyi: true} is schema-valid", () => {
+		expect(Value.Check(sendSchema() as never, { to: "pij-x", message: "hi", fyi: true })).toBe(
+			true,
+		);
+	});
 });

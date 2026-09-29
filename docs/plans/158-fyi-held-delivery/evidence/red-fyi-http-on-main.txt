@@ -1,0 +1,19 @@
+# RED: crates/daemon/tests/fyi_http.rs run against origin/main 00f8daac in a detached worktree
+$ cargo test -p pij-daemon --test fyi_http
+test a_claim_needs_binding_evidence_that_matches_the_seat ... FAILED
+test fyi_refuses_controls_and_remote_seats ... FAILED
+test a_seats_own_turn_boundaries_publish_busy_then_idle ... FAILED
+test an_fyi_is_held_then_rides_along_appended_to_the_next_message_once ... FAILED
+test a_held_fyi_survives_a_daemon_restart ... FAILED
+test whoami_carries_the_pending_count_for_the_status_lines ... FAILED
+test racing_hook_claims_deliver_each_fyi_exactly_once ... FAILED
+test a_tombstone_drops_pending_fyis_and_records_how_many ... FAILED
+thread 'a_claim_needs_binding_evidence_that_matches_the_seat' (106517355) panicked at crates/daemon/tests/fyi_http.rs:233:9:
+thread 'fyi_refuses_controls_and_remote_seats' (106517360) panicked at crates/daemon/tests/fyi_http.rs:270:5:
+thread 'a_seats_own_turn_boundaries_publish_busy_then_idle' (106517357) panicked at crates/daemon/tests/fyi_http.rs:335:5:
+thread 'an_fyi_is_held_then_rides_along_appended_to_the_next_message_once' (106517359) panicked at crates/daemon/tests/fyi_http.rs:136:5:
+thread 'a_held_fyi_survives_a_daemon_restart' (106517356) panicked at crates/daemon/tests/fyi_http.rs:176:5:
+thread 'whoami_carries_the_pending_count_for_the_status_lines' (106517362) panicked at crates/daemon/tests/fyi_http.rs:315:5:
+thread 'racing_hook_claims_deliver_each_fyi_exactly_once' (106517361) panicked at crates/daemon/tests/fyi_http.rs:200:9:
+thread 'a_tombstone_drops_pending_fyis_and_records_how_many' (106517358) panicked at crates/daemon/tests/fyi_http.rs:292:5:
+test result: FAILED. 0 passed; 8 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.83s

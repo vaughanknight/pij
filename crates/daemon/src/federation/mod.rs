@@ -723,6 +723,7 @@ mod tests {
 
     fn request(machine: &str) -> SendRequest {
         SendRequest {
+            fyi: false,
             from: "alice".into(),
             to: Destination {
                 seat: "bob".into(),

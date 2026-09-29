@@ -328,7 +328,7 @@ pane/session still refuses; paneless readers retain their exact host tuple check
 
 | Row fields | Wire contract |
 |---|---|
-| `id`, `harness`, `folder`, `state` | Stable seat id, harness enum, absolute working folder and stored mechanical state. Every harness currently defaults to `idle`; this is not observed inactivity. |
+| `id`, `harness`, `folder`, `state` | Stable seat id, harness enum, absolute working folder and stored mechanical state. OMP, Pi and Copilot seats publish `working`/`idle` at their own turn boundaries through `/v1/activity`; Claude seats still default to `idle`, which is not observed inactivity. |
 | `generation`, `relay`, `native_extension_delivery` | Present `"rs"` and boolean flags. False is an explicit value, not omission. Display role does not grant native delivery attestation. |
 | `session`, `pane`, `proc`, `semantic_state`, `role`, `parent` | Present even when null. `session` is the serialized native harness-session id (not `harness_session`); null is unknown. `pane:null` is paneless; `proc:null` is no bound process identity. Non-null `proc` is `{pid, proc_start}`; never interpret pid alone as identity. Null semantic state/role means no declaration/assertion; null parent means no recorded governing seat. |
 | `extension_build`, `extension_path` | Present string or null on current-daemon whoami, seats and state responses. Build is the loaded runtime extension's `<sha10>`, `<sha10>+dirty`, or `hash:<12 hex>`; path is its resolved real source directory, not the seat's working folder. Null means no build was reported (a pre-144 extension in OMP or Pi, or a harness without this feature), never a retroactive guess from today's checkout. Older daemons omit these keys entirely. |
@@ -466,6 +466,40 @@ the roster; their retained card does not acquire a `dead` badge by inference.
 
 
 Sources: [`types.rs::FederatedRoster / UnavailablePeer`](../../crates/daemon/src/http/types.rs), [`model.rs::SeatDescriptor`](../../crates/core/src/model.rs), [`http/mod.rs::SeatProjection / seats`](../../crates/daemon/src/http/mod.rs).
+
+## FYI held delivery (plan 158)
+
+An FYI is information that needs no action. It never opens a turn: the daemon holds it until the recipient's next real turn, and it arrives with that turn. The frozen [plan 158 contract](../plans/158-fyi-held-delivery/contract.md) is authoritative. The only definition of the appended block is the golden fixture [`fyi/block.txt`](../../crates/testkit/fixtures/golden/fyi/block.txt); clients pass `block` through byte-for-byte and never re-render it.
+
+```bash
+pij send <seat> --fyi 'text'           # prints: pij send: held (fyi) — <msg_id>
+pij-rs send --to <seat> --fyi 'text'   # native form
+```
+
+| Surface | Contract |
+|---|---|
+| POST `/v1/send` with `"fyi": true` | An ordinary send body plus `fyi`. The daemon stores the FYI durably and opens no turn: no tmux, UDS or extension push. `data` is a Receipt whose `outcome` is `{"outcome":"held","reason":"fyi"}`. Refused (`ok:false`, `error:"refused"`) with a control `command` or a remote `seat@machine` recipient; a tombstoned or unknown recipient gets the same errors as a normal send. |
+| Ride-along | The next non-control, non-FYI message that reaches the seat carries every pending FYI, on every harness and route (UDS, tmux, queue, inbox pull, pointer). The FYIs are appended to the same body as `<original body>\n\n<block>`, never sent as a separate message. No client work is needed. |
+| POST `/v1/fyi/claim` | Typed-turn hooks only. Request `{seat?, pane?, native_session?, via}`, where `via` is `hook:claude`, `hook:copilot`, `hook:omp` or `hook:pi`. At least one of `pane` or `native_session` is binding evidence; `seat` may be omitted when `pane` resolves a live seat, and a `seat` that mismatches the pane or session refuses. `data` is `{seat, count, block, ids}`; `count: 0` means `block: ""`. The claim is atomic: pending → delivered exactly once, with one `fyi.delivered` event carrying `via`. Racing claims, or a claim racing a ride-along, never deliver the same FYI twice. |
+| `pij-rs fyi-claim --pane <P> [--native-session <S>] --via hook:claude` | Prints the raw `block` to stdout, or nothing at count 0, and exits 0. Global `--json` prints the envelope instead. An unreachable daemon exits non-zero; the calling hook then prints nothing and exits 0, so it never blocks the human's prompt. |
+| `POST /v1/state` → `data.pendingFyis` | Pending count on the camelCase card (`pij state <seat> --json`). |
+| `/v1/whoami` → `data.pending_fyis` | The same count on whoami (`pij-rs --json whoami --pane "$TMUX_PANE"`). Status lines and footers read it here, with no extra call, and show `✉N` only while N > 0. |
+| `/v1/events` kinds `fyi.held`, `fyi.delivered`, `fyi.restored` | `seat` is the recipient. `fyi.restored` means a failed carrier returned its FYIs to pending. Extensions refresh their count on any `fyi.*` event, or `seat.tombstone`, for their seat. |
+| `seat.tombstone` payload `pending_fyis_dropped` | A tombstone drops the seat's pending FYIs and records that it did in this field. |
+
+A claimed `block` is placed as: Claude `UserPromptSubmit` hook `additionalContext`; OMP and Pi `before_agent_start` custom message `pij-fyi`; Copilot native extension `onUserPromptSubmitted` `additionalContext`.
+
+Sources: [`fyi.rs`](../../crates/core/src/fyi.rs), [contract](../plans/158-fyi-held-delivery/contract.md).
+
+### Busy/idle publication: POST `/v1/activity`
+
+The request is `{seat, pane?, native_session?, state: "working"|"idle"}`. It takes the same binding evidence as `/v1/fyi/claim`, and a tombstoned seat is refused.
+It persists the seat's mechanical `state`, so `pij state` shows `working` during a turn and `idle` after it. `data` is `{seat, state, changed}`.
+
+- The OMP/Pi extension publishes `working` at `turn_start`, and `idle` at `turn_end` and `agent_end`.
+- The Copilot native extension publishes on `assistant.turn_start`, and on `assistant.turn_end` or `session.idle`.
+- Publications are serialized per session, and a failure never breaks a turn. A route-absent 404 from an older daemon stops publishing.
+- Claude seats don't publish yet.
 
 ## Governance route inventory
 

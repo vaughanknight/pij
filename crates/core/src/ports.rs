@@ -28,6 +28,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 
 use crate::error::Result;
+use crate::fyi::HeldFyi;
 use crate::model::{
     BindHealth, DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, ModelRow, Msg,
     Outcome, Pane, PaneProcess, ProcIdentity, Readiness, SeatDescriptor, SeatId, Seq,
@@ -417,6 +418,43 @@ pub trait Queue: Send + Sync {
     /// Running rows return [`ReleaseOutcome::NotDeferred`] without losing ownership;
     /// absent/terminal rows are named no-ops and non-delivery rows are refused.
     async fn release_deferred(&self, job: JobId) -> Result<ReleaseOutcome>;
+
+    // --- held FYIs (plan 158) ----------------------------------------------
+    //
+    // Queue-owned because an FYI is deferred delivery: its row and its spine
+    // fact commit together, like a deferral. Real queue and spine share one
+    // store; the fake appends through `spine` before its infallible mutation.
+
+    /// Hold one FYI for its recipient: the pending row and its `fyi.held` event
+    /// commit together. Opens no turn and touches no transport.
+    async fn hold_fyi(&self, fyi: &HeldFyi, spine: &dyn Spine) -> Result<Vec<Event>>;
+
+    /// Atomically claim every pending FYI for `recipient`, oldest first:
+    /// pending -> delivered plus one `fyi.delivered` receipt naming `via`. Two
+    /// racing claims never both receive the same FYI. Nothing pending returns
+    /// no FYIs and no event.
+    async fn claim_fyis(
+        &self,
+        recipient: &SeatId,
+        via: &str,
+        at: u64,
+        spine: &dyn Spine,
+    ) -> Result<(Vec<HeldFyi>, Vec<Event>)>;
+
+    /// Return FYIs claimed by a carrier that then failed or turned out to be a
+    /// duplicate: delivered -> pending plus a `fyi.restored` event. Compensation
+    /// for [`Self::claim_fyis`], like [`Self::forget_delivered`] for a ledger claim.
+    async fn restore_fyis(
+        &self,
+        recipient: &SeatId,
+        ids: &[String],
+        reason: &str,
+        at: u64,
+        spine: &dyn Spine,
+    ) -> Result<Vec<Event>>;
+
+    /// How many FYIs wait for `recipient`.
+    async fn pending_fyi_count(&self, recipient: &SeatId) -> Result<u64>;
 }
 
 /// A way to get a message to a seat.

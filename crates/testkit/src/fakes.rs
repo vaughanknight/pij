@@ -439,6 +439,8 @@ struct QueueState {
     now: Duration,
     next_id: u64,
     delivered: Vec<(String, String, DeliveryOrigin)>,
+    /// Held FYIs with their state: `pending`, `delivered`.
+    fyis: Vec<(pij_core::fyi::HeldFyi, &'static str)>,
 }
 
 impl FakeQueue {
@@ -1191,6 +1193,118 @@ impl Queue for FakeQueue {
         let now = state.now;
         state.not_before.insert(job.0, now);
         Ok(outcome)
+    }
+
+    async fn hold_fyi(
+        &self,
+        fyi: &pij_core::fyi::HeldFyi,
+        spine: &dyn Spine,
+    ) -> Result<Vec<Event>> {
+        if self
+            .state
+            .lock()
+            .expect("fake queue mutex")
+            .fyis
+            .iter()
+            .any(|(held, _)| held.id == fyi.id)
+        {
+            return Ok(Vec::new());
+        }
+        let mut event = pij_core::fyi::held_event(fyi);
+        event.seq = Some(spine.append(event.clone()).await?);
+        self.state
+            .lock()
+            .expect("fake queue mutex")
+            .fyis
+            .push((fyi.clone(), "pending"));
+        Ok(vec![event])
+    }
+
+    async fn claim_fyis(
+        &self,
+        recipient: &SeatId,
+        via: &str,
+        at: u64,
+        spine: &dyn Spine,
+    ) -> Result<(Vec<pij_core::fyi::HeldFyi>, Vec<Event>)> {
+        // Transition under the lock first, so a racing claim cannot see these rows.
+        let mut claimed: Vec<pij_core::fyi::HeldFyi> = {
+            let mut state = self.state.lock().expect("fake queue mutex");
+            state
+                .fyis
+                .iter_mut()
+                .filter(|(held, fyi_state)| held.recipient == *recipient && *fyi_state == "pending")
+                .map(|(held, fyi_state)| {
+                    *fyi_state = "delivered";
+                    held.clone()
+                })
+                .collect()
+        };
+        if claimed.is_empty() {
+            return Ok((claimed, Vec::new()));
+        }
+        claimed.sort_by(|a, b| a.held_at_ms.cmp(&b.held_at_ms).then(a.id.cmp(&b.id)));
+        let ids: Vec<String> = claimed.iter().map(|fyi| fyi.id.clone()).collect();
+        let mut event = pij_core::fyi::delivered_event(recipient, &ids, via, at);
+        match spine.append(event.clone()).await {
+            Ok(seq) => event.seq = Some(seq),
+            Err(error) => {
+                self.set_fyi_state(&ids, "pending");
+                return Err(error);
+            }
+        }
+        Ok((claimed, vec![event]))
+    }
+
+    async fn restore_fyis(
+        &self,
+        recipient: &SeatId,
+        ids: &[String],
+        reason: &str,
+        at: u64,
+        spine: &dyn Spine,
+    ) -> Result<Vec<Event>> {
+        let restored: Vec<String> = {
+            let state = self.state.lock().expect("fake queue mutex");
+            state
+                .fyis
+                .iter()
+                .filter(|(held, fyi_state)| {
+                    held.recipient == *recipient
+                        && *fyi_state == "delivered"
+                        && ids.contains(&held.id)
+                })
+                .map(|(held, _)| held.id.clone())
+                .collect()
+        };
+        if restored.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut event = pij_core::fyi::restored_event(recipient, &restored, reason, at);
+        event.seq = Some(spine.append(event.clone()).await?);
+        self.set_fyi_state(&restored, "pending");
+        Ok(vec![event])
+    }
+
+    async fn pending_fyi_count(&self, recipient: &SeatId) -> Result<u64> {
+        Ok(self
+            .state
+            .lock()
+            .expect("fake queue mutex")
+            .fyis
+            .iter()
+            .filter(|(held, fyi_state)| held.recipient == *recipient && *fyi_state == "pending")
+            .count() as u64)
+    }
+}
+
+impl FakeQueue {
+    fn set_fyi_state(&self, ids: &[String], to: &'static str) {
+        for (held, fyi_state) in &mut self.state.lock().expect("fake queue mutex").fyis {
+            if ids.contains(&held.id) {
+                *fyi_state = to;
+            }
+        }
     }
 }
 

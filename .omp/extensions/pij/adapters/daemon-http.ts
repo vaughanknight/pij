@@ -4,10 +4,13 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ControlOutcome } from "../core/commands.js";
 import {
+	type ActivityRequest,
 	DaemonRefusalError,
 	decodeEnvelope,
 	decodeStreamLine,
 	type EventFrame,
+	type FyiClaim,
+	type FyiClaimRequest,
 	type HealthPayload,
 	type HoldRequest,
 	type HoldResponse,
@@ -181,6 +184,59 @@ export class PijDaemonClient {
 
 	send(request: SendRequest): Promise<QueueReceipt> {
 		return this.post<QueueReceipt>("/v1/send", request);
+	}
+
+	/** Atomic pending → delivered claim; a count of 0 carries an empty block. */
+	async claimFyi(request: FyiClaimRequest, signal?: AbortSignal): Promise<FyiClaim> {
+		const claim = await this.post<unknown>("/v1/fyi/claim", request, signal);
+		if (typeof claim !== "object" || claim === null || Array.isArray(claim))
+			throw new Error("pij fyi claim returned a non-object");
+		const row = claim as Record<string, unknown>;
+		if (
+			typeof row.seat !== "string" ||
+			typeof row.count !== "number" ||
+			!Number.isSafeInteger(row.count) ||
+			row.count < 0 ||
+			typeof row.block !== "string" ||
+			!Array.isArray(row.ids)
+		)
+			throw new Error("pij fyi claim needs string seat/block, count and ids");
+		return {
+			seat: row.seat,
+			count: row.count,
+			block: row.block,
+			ids: row.ids.filter((id): id is string => typeof id === "string"),
+		};
+	}
+
+	/** `pendingFyis` from the state card; a daemon that omits it holds none. */
+	async pendingFyis(seat: string): Promise<number> {
+		const state = await this.post<unknown>("/v1/state", { id: seat });
+		const count =
+			typeof state === "object" && state !== null
+				? (state as Record<string, unknown>).pendingFyis
+				: undefined;
+		return typeof count === "number" && Number.isSafeInteger(count) && count > 0 ? count : 0;
+	}
+
+	/**
+	 * Publish the seat's turn state. Resolves false when the daemon has no
+	 * /v1/activity route: a bare 404, as opposed to a refusal envelope.
+	 */
+	async publishActivity(request: ActivityRequest): Promise<boolean> {
+		const response = await this.request(
+			"/v1/activity",
+			{ method: "POST", body: JSON.stringify(request) },
+			{ "Content-Type": "application/json" },
+		);
+		const text = await response.text();
+		try {
+			decodeEnvelope<unknown>(text);
+		} catch (error) {
+			if (response.status === 404 && !(error instanceof DaemonRefusalError)) return false;
+			throw error;
+		}
+		return true;
 	}
 
 	claimInbox(seat: string): Promise<unknown> {
@@ -361,10 +417,10 @@ export class PijDaemonClient {
 		return decodeEnvelope<T>(await response.text()).data;
 	}
 
-	private async post<T>(path: string, body: unknown): Promise<T> {
+	private async post<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
 		const response = await this.request(
 			path,
-			{ method: "POST", body: JSON.stringify(body) },
+			{ method: "POST", body: JSON.stringify(body), ...(signal === undefined ? {} : { signal }) },
 			{ "Content-Type": "application/json" },
 		);
 		return decodeEnvelope<T>(await response.text()).data;

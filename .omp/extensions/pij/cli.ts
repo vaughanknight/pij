@@ -17,6 +17,8 @@ import {
 const SEND_USAGE = `pij send <id> <text> [--json]
   pij send <id> --body-file <path|-> [--json]
   --in-reply-to <msg-id> preserves reply correlation without changing the body.
+  --fyi holds a message needing no action until the recipient's next turn instead of
+    waking them; the receipt reads held (fyi). Refused with a control command.
   --body-file reads literal UTF-8 text from a path or stdin, without shell evaluation.
   Backticks and $(...) substitute in YOUR shell before pij starts: quoted relay text is UNSAFE.
   Use a file or a quoted heredoc: pij send <id> --body-file - <<'PIJ'

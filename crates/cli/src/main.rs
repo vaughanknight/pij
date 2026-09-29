@@ -24,10 +24,11 @@ use pij_core::model::{Envelope, ErrorKind, Event, Harness, SeatDescriptor, SeatI
 use pij_core::wire;
 use pij_harnesses::{
     claude_homes, copilot_home, ensure_claude_inbound_accept, ensure_claude_session_start_hook,
-    ensure_claude_statusline, ensure_copilot_statusline, inspect_claude_inbound,
-    inspect_claude_session_start_hook, inspect_claude_statusline,
+    ensure_claude_statusline, ensure_claude_user_prompt_submit_hook, ensure_copilot_statusline,
+    inspect_claude_inbound, inspect_claude_session_start_hook, inspect_claude_statusline,
     install_claude_session_start_script, install_claude_statusline_script,
-    install_copilot_statusline_script, validate_executable_override,
+    install_claude_user_prompt_submit_script, install_copilot_statusline_script,
+    validate_executable_override,
 };
 use serde_json::{Value, json};
 
@@ -266,7 +267,7 @@ enum Command {
     },
     /// Durably enqueue one message as the acting seat.
     #[command(
-        after_long_help = "Examples:\n  pij-rs send --to <id> --body 'hello'\n  pij-rs send --to <id> --body-file -"
+        after_long_help = "Examples:\n  pij-rs send --to <id> --body 'hello'\n  pij-rs send --to <id> --body-file -\n  pij-rs send --to <id> --fyi --body 'build is green' (no action needed: held, opens no turn)"
     )]
     Send {
         /// Assert the derived sending seat. Omit to use PIJ_SESSION_ID or TMUX_PANE.
@@ -290,6 +291,27 @@ enum Command {
         /// Message id being answered.
         #[arg(long)]
         in_reply_to: Option<String>,
+        /// Information needing no action: hold it until the recipient's next real
+        /// turn (appended to their next message, or their next typed prompt)
+        /// instead of opening a turn now. Receipt: `held (fyi)`.
+        #[arg(long, conflicts_with = "command")]
+        fyi: bool,
+    },
+    /// Claim the FYIs held for a seat, for a typed-turn hook. Prints the block, or
+    /// nothing when none are held; `--json` prints the envelope.
+    FyiClaim {
+        /// The seat. Defaults to the live seat bound to `--pane`.
+        #[arg(long)]
+        seat: Option<String>,
+        /// The seat's tmux pane, as binding evidence.
+        #[arg(long)]
+        pane: Option<String>,
+        /// The seat's harness-native session id, as binding evidence.
+        #[arg(long)]
+        native_session: Option<String>,
+        /// Which hook is claiming: hook:claude, hook:copilot, hook:omp or hook:pi.
+        #[arg(long)]
+        via: String,
     },
     /// Compact the current, daemon-derived seat.
     CompactSelf,
@@ -981,6 +1003,7 @@ async fn run(cli: Cli) -> ExitCode {
             command,
             msg_id,
             in_reply_to,
+            fyi,
         } => {
             let acting = match resolve_command_seat(&client, "pij send", from.as_deref()).await {
                 Ok(seat) => seat,
@@ -1003,6 +1026,7 @@ async fn run(cli: Cli) -> ExitCode {
                 msg_id: msg_id.unwrap_or_else(|| uuid::Uuid::now_v7().to_string()),
                 in_reply_to,
                 command,
+                fyi,
             };
             let mut response = if request.command.is_some() {
                 client.send_control(&request, &caller_context()).await
@@ -1014,7 +1038,39 @@ async fn run(cli: Cli) -> ExitCode {
                 // This is a CLI-derived receipt, not an unchanged daemon reply.
                 response.raw_json = None;
             }
+            if !cli.json && is_held_fyi(&response) {
+                println!("pij send: held (fyi) — {}", request.msg_id);
+                return ExitCode::SUCCESS;
+            }
             emit(&response, cli.json)
+        }
+        Command::FyiClaim {
+            seat,
+            pane,
+            native_session,
+            via,
+        } => {
+            let response = client
+                .fyi_claim(&serde_json::json!({
+                    "seat": seat,
+                    "pane": pane,
+                    "native_session": native_session,
+                    "via": via,
+                }))
+                .await;
+            if cli.json || !response.ok {
+                return emit(&response, cli.json);
+            }
+            // Raw block for a shell hook: nothing at all when nothing is held.
+            if let Some(block) = response
+                .data
+                .as_ref()
+                .and_then(|data| data["block"].as_str())
+                .filter(|block| !block.is_empty())
+            {
+                println!("{block}");
+            }
+            ExitCode::SUCCESS
         }
         Command::CompactSelf => {
             let acting = match resolve_command_seat(&client, "pij compact-self", None).await {
@@ -1030,6 +1086,7 @@ async fn run(cli: Cli) -> ExitCode {
                 command: Some("compact".to_string()),
                 msg_id: uuid::Uuid::now_v7().to_string(),
                 in_reply_to: None,
+                fyi: false,
             };
             let mut response = client.send_control(&request, &caller_context()).await;
             response.command = "pij compact-self".to_string();
@@ -1690,6 +1747,13 @@ async fn run_daemon(
         .as_ref()
         .map(|script| ensure_claude_session_start_hook(&homes, script))
         .unwrap_or_default();
+    // Plan 158: typed prompts carry held FYIs in, in every Claude home.
+    let prompt_hook_script = install_claude_user_prompt_submit_script(&hook_dir)
+        .map_err(|error| format!("could not install Claude UserPromptSubmit hook script: {error}"));
+    let prompt_hook_reports = prompt_hook_script
+        .as_ref()
+        .map(|script| ensure_claude_user_prompt_submit_hook(&homes, script))
+        .unwrap_or_default();
     let statusline_script = install_claude_statusline_script(&hook_dir)
         .map_err(|error| format!("could not install Claude statusline script: {error}"));
     let statusline_reports = statusline_script
@@ -1723,6 +1787,11 @@ async fn run_daemon(
                     "config.claude-hook-ensured",
                     "Claude SessionStart hook",
                     hook_reports.as_slice(),
+                ),
+                (
+                    "config.claude-prompt-hook-ensured",
+                    "Claude UserPromptSubmit hook",
+                    prompt_hook_reports.as_slice(),
                 ),
                 (
                     "config.claude-statusline-ensured",
@@ -1770,6 +1839,7 @@ async fn run_daemon(
             for (label, reports) in [
                 ("inbound", &inbound_reports),
                 ("hook", &hook_reports),
+                ("prompt hook", &prompt_hook_reports),
                 ("statusline", &statusline_reports),
                 ("copilot statusline", &copilot_statusline_reports),
             ] {
@@ -1801,6 +1871,9 @@ async fn run_daemon(
             }
             if let Err(error) = hook_script {
                 eprintln!("pij-rs claude hook: {error}");
+            }
+            if let Err(error) = prompt_hook_script {
+                eprintln!("pij-rs claude prompt hook: {error}");
             }
             if let Err(error) = statusline_script {
                 eprintln!("pij-rs claude statusline: {error}");
@@ -1840,6 +1913,14 @@ fn system_time_ms() -> Result<u64, PijError> {
         adapter: "pij daemon".to_string(),
         message: "system clock milliseconds exceed u64".to_string(),
     })
+}
+
+/// Is this send receipt an FYI held for the recipient's next turn?
+fn is_held_fyi(response: &Envelope<pij_core::model::Receipt>) -> bool {
+    response.ok
+        && response.data.as_ref().is_some_and(|receipt| {
+            matches!(&receipt.outcome, pij_core::model::DeliveryOutcome::Held { reason } if reason == "fyi")
+        })
 }
 
 fn emit<T: serde::Serialize>(envelope: &Envelope<T>, json: bool) -> ExitCode {
@@ -1888,6 +1969,9 @@ fn render_state(envelope: &Envelope<pij_daemon::http::StateCard>, json: bool) ->
         }
         if let Some(reason) = &card.native_receiver_reason {
             let _ = write!(output, "\nnative receiver: {reason}");
+        }
+        if card.pending_fyis > 0 {
+            let _ = write!(output, "\nFYIs held: {}", card.pending_fyis);
         }
     }
     output
@@ -2217,6 +2301,7 @@ impl Command {
             Command::Register { .. } => "pij register",
             Command::Adopt { .. } => "pij adopt",
             Command::Whoami { .. } => "pij whoami",
+            Command::FyiClaim { .. } => "pij fyi-claim",
             Command::CommitTrailers => "pij commit-trailers",
             Command::Phonehome { .. } => "pij phonehome",
             Command::Send { .. } => "pij send",

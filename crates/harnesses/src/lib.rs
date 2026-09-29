@@ -17,11 +17,13 @@ pub use adapter::{
 pub use claude_settings::{
     ClaudeHookState, ClaudeInboundState, ClaudeStatuslineState, EnsurePlan, EnsureReport,
     claude_homes, claude_homes_from, copilot_home, ensure_claude_inbound_accept,
-    ensure_claude_session_start_hook, ensure_claude_statusline, ensure_copilot_statusline,
-    inspect_claude_inbound, inspect_claude_session_start_hook, inspect_claude_statusline,
-    install_claude_session_start_script, install_claude_statusline_script,
+    ensure_claude_session_start_hook, ensure_claude_statusline,
+    ensure_claude_user_prompt_submit_hook, ensure_copilot_statusline, inspect_claude_inbound,
+    inspect_claude_session_start_hook, inspect_claude_statusline,
+    inspect_claude_user_prompt_submit_hook, install_claude_session_start_script,
+    install_claude_statusline_script, install_claude_user_prompt_submit_script,
     install_copilot_statusline_script, plan_claude_session_start_hook, plan_claude_statusline,
-    plan_inbound_accept,
+    plan_claude_user_prompt_submit_hook, plan_inbound_accept,
 };
 pub use composer::{ComposerRegion, composer_region};
 pub use interaction::{InjectionVerdict, InteractionGate, StagedSubmission};

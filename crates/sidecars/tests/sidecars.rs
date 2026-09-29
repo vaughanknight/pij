@@ -137,6 +137,37 @@ impl Queue for FailFirstClaim {
     async fn release_deferred(&self, job: JobId) -> Result<pij_core::ports::ReleaseOutcome> {
         self.inner.release_deferred(job).await
     }
+    async fn hold_fyi(
+        &self,
+        fyi: &pij_core::fyi::HeldFyi,
+        spine: &dyn pij_core::ports::Spine,
+    ) -> Result<Vec<pij_core::model::Event>> {
+        self.inner.hold_fyi(fyi, spine).await
+    }
+    async fn claim_fyis(
+        &self,
+        recipient: &SeatId,
+        via: &str,
+        at: u64,
+        spine: &dyn pij_core::ports::Spine,
+    ) -> Result<(Vec<pij_core::fyi::HeldFyi>, Vec<pij_core::model::Event>)> {
+        self.inner.claim_fyis(recipient, via, at, spine).await
+    }
+    async fn restore_fyis(
+        &self,
+        recipient: &SeatId,
+        ids: &[String],
+        reason: &str,
+        at: u64,
+        spine: &dyn pij_core::ports::Spine,
+    ) -> Result<Vec<pij_core::model::Event>> {
+        self.inner
+            .restore_fyis(recipient, ids, reason, at, spine)
+            .await
+    }
+    async fn pending_fyi_count(&self, recipient: &SeatId) -> Result<u64> {
+        self.inner.pending_fyi_count(recipient).await
+    }
     async fn recover_native_delivery(&self, job: JobId, recipient: &SeatId) -> Result<bool> {
         self.inner.recover_native_delivery(job, recipient).await
     }
@@ -679,6 +710,37 @@ impl Queue for RefuseFirstDelivery {
     }
     async fn release_deferred(&self, job: JobId) -> Result<pij_core::ports::ReleaseOutcome> {
         self.inner.release_deferred(job).await
+    }
+    async fn hold_fyi(
+        &self,
+        fyi: &pij_core::fyi::HeldFyi,
+        spine: &dyn pij_core::ports::Spine,
+    ) -> Result<Vec<pij_core::model::Event>> {
+        self.inner.hold_fyi(fyi, spine).await
+    }
+    async fn claim_fyis(
+        &self,
+        recipient: &SeatId,
+        via: &str,
+        at: u64,
+        spine: &dyn pij_core::ports::Spine,
+    ) -> Result<(Vec<pij_core::fyi::HeldFyi>, Vec<pij_core::model::Event>)> {
+        self.inner.claim_fyis(recipient, via, at, spine).await
+    }
+    async fn restore_fyis(
+        &self,
+        recipient: &SeatId,
+        ids: &[String],
+        reason: &str,
+        at: u64,
+        spine: &dyn pij_core::ports::Spine,
+    ) -> Result<Vec<pij_core::model::Event>> {
+        self.inner
+            .restore_fyis(recipient, ids, reason, at, spine)
+            .await
+    }
+    async fn pending_fyi_count(&self, recipient: &SeatId) -> Result<u64> {
+        self.inner.pending_fyi_count(recipient).await
     }
     async fn recover_native_delivery(&self, job: JobId, recipient: &SeatId) -> Result<bool> {
         self.inner.recover_native_delivery(job, recipient).await

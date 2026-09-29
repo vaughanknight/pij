@@ -54,3 +54,12 @@ Held FYIs go into the SAME delivery as the message that opens the turn, AFTER it
     2. [from pij-y, 14:10] <body>
 
 Use the same numbered 1–N block for the typed-turn hook (Claude UserPromptSubmit, OMP/Pi before-turn), appended after the human's prompt context. Order: oldest first. Pin the format with one golden test that the CLI, the hook script and the extension all read from, and don't restate it in each.
+
+## Addendum 3 (Jordan): fix OMP busy/idle as part of this plan
+- **Observed:** at 2026-09-29 14:53, `pij state pij-yelling-trout` said `idle · active` while the seat was mid-turn. Its pane showed "Reading arrive routing" and tool calls running.
+- **Why it matters:** the broadcast rule ("working now or warm") and the coming cold-wake guard both trust that signal, and FYI delivery (whether to deliver now or hold) may too. Right now it's wrong in the unsafe direction.
+- **Do:**
+  1. Find the root cause: the extension's turn start/end reporting, the daemon's state fold, or a stale projection. Whatever turns out to be the cause, check whether a busy report could still reach the daemon. Don't assume the obvious cause.
+  2. Fix it with a RED-then-GREEN test.
+  3. Prove it live: `pij state` shows busy during a real OMP turn and idle after it. Your own seat is a valid subject.
+  4. Check whether Claude and Copilot seats report correctly, and note the result in the evidence.

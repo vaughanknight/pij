@@ -10,6 +10,8 @@ export const HOLD_ESCALATED_RETRY_MS = 60000;
 export const NATIVE_RPC_DEADLINE_MS = 15000;
 export const RECEIVER_EMPTY_READ_LIMIT = 3;
 export const RECEIVER_PROBE_INTERVAL_MS = 1000;
+/** A typed prompt never waits on a wedged daemon for its held FYIs (plan 158). */
+export const FYI_CLAIM_TIMEOUT_MS = 3000;
 const ERROR_BODY_LIMIT = 4096;
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const nonempty = (value) => typeof value === "string" && value.trim().length > 0;
@@ -333,7 +335,7 @@ export class DaemonClient {
 				envelope.command === "pij register" &&
 				envelope.error === "refused" &&
 				envelope.details?.retryable === true;
-			throw new NativeError(
+			const error = new NativeError(
 				`Pij HTTP ${response.status}: ${diagnostic}`,
 				nativeUnavailable ||
 					registrationRetry ||
@@ -345,6 +347,8 @@ export class DaemonClient {
 					? "native-session"
 					: undefined,
 			);
+			error.status = response.status;
+			throw error;
 		}
 		return envelope;
 	}
@@ -681,6 +685,11 @@ export class NativeBridge {
 		this.running = undefined;
 		this.unsubscribe = undefined;
 		this.completion = undefined;
+		// Plan 158 addendum 3: busy/idle publication, serialized so a late
+		// `working` can never land after `idle`.
+		this.activity = Promise.resolve();
+		this.activityState = undefined;
+		this.activityUnsupported = false;
 	}
 	emit(kind, details = {}) {
 		this.report({
@@ -870,6 +879,7 @@ export class NativeBridge {
 			this.unsubscribe = this.native.on((event) => {
 				if (signal.aborted) return;
 				this.observeProgress(event);
+				this.observeActivity(event);
 				const completion = this.completion;
 				// Successful terminal observation clears ancestry; capture its pre-state, not the aftermath.
 				const metadata = [
@@ -1333,6 +1343,69 @@ export class NativeBridge {
 			grade: "native-consumed-not-model-complete",
 		});
 	}
+	/** Foreground turns only: sub-agent turns never flip the seat's busy/idle state. */
+	observeActivity(event) {
+		if (event?.agentId) return;
+		const state =
+			event?.type === "assistant.turn_start"
+				? "working"
+				: event?.type === "assistant.turn_end" || event?.type === "session.idle"
+					? "idle"
+					: undefined;
+		if (!state || state === this.activityState || this.activityUnsupported) return;
+		this.activityState = state;
+		this.activity = this.activity.then(() => this.publishActivity(state));
+	}
+	async publishActivity(state) {
+		if (this.activityUnsupported || !this.registered || this.controller.signal.aborted) {
+			// Not published: the next observed transition must try again.
+			if (this.activityState === state) this.activityState = undefined;
+			return;
+		}
+		try {
+			await this.client.request(
+				"/v1/activity",
+				{ seat: this.registration.id, native_session: this.registration.harness_session, state },
+				this.controller.signal,
+			);
+		} catch (error) {
+			if (this.controller.signal.aborted) return;
+			if (this.activityState === state) this.activityState = undefined;
+			// An older daemon has no activity route; stop asking for this runtime.
+			if (error?.status === 404) this.activityUnsupported = true;
+			this.emit("activity-unpublished", {
+				state,
+				status: error?.status ?? null,
+				safeDiagnostic: error instanceof NativeError ? error.safeDiagnostic : null,
+			});
+		}
+	}
+	/**
+	 * Claim this seat's held FYIs for a typed prompt (plan 158). The daemon's
+	 * block is the only rendering; it passes through verbatim. Never throws.
+	 */
+	async claimFyis() {
+		if (!this.registered || this.controller.signal.aborted) return undefined;
+		try {
+			const claim = await this.client.request(
+				"/v1/fyi/claim",
+				{
+					seat: this.registration.id,
+					native_session: this.registration.harness_session,
+					via: "hook:copilot",
+				},
+				AbortSignal.any([this.controller.signal, AbortSignal.timeout(FYI_CLAIM_TIMEOUT_MS)]),
+			);
+			return claim?.count > 0 && nonempty(claim.block)
+				? { additionalContext: claim.block }
+				: undefined;
+		} catch (error) {
+			this.emit("fyi-claim-failed", {
+				safeDiagnostic: error instanceof NativeError ? error.safeDiagnostic : null,
+			});
+			return undefined;
+		}
+	}
 	async send(input) {
 		if (!this.registered || this.controller.signal.aborted)
 			return { ok: false, error: "Pij native session is not registered; no message sent" };
@@ -1342,7 +1415,13 @@ export class NativeBridge {
 		try {
 			const receipt = await this.client.request(
 				"/v1/send",
-				{ from: this.registration.id, to: { seat: input.to }, body: input.message, msg_id: msgId },
+				{
+					from: this.registration.id,
+					to: { seat: input.to },
+					body: input.message,
+					msg_id: msgId,
+					...(input.fyi === true ? { fyi: true } : {}),
+				},
 				this.controller.signal,
 			);
 			throwIfStopped(this.controller.signal);

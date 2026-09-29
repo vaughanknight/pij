@@ -74,6 +74,20 @@ impl SqliteRegistry {
                         }
                     }
                     let mut event = tombstone_event(&seat, &reason, expected.as_ref())?;
+                    // Plan 158: a retired seat's held FYIs can never ride along, so
+                    // they are dropped in the same transaction and the tombstone
+                    // records how many. Close, reap and revive all pass through here.
+                    let dropped = sqlx::query(
+                        "UPDATE fyis SET state = 'dropped', settled_at_ms = ?2, \
+                         settled_via = 'tombstone' WHERE recipient = ?1 AND state = 'pending'",
+                    )
+                    .bind(seat.as_str())
+                    .bind(event.at as i64)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(adapter_error)?
+                    .rows_affected();
+                    record_dropped_fyis(&mut event, dropped)?;
                     let seq = append_in_transaction(&mut tx, &event).await?;
                     let affected = sqlx::query(
                         "UPDATE seats SET tombstoned_at = ?2, tombstone_reason = ?3, \
@@ -252,6 +266,18 @@ pub fn registry_event(kind: &str, seat: &SeatId, payload: String) -> Result<Even
         seat: Some(seat.clone()),
         payload,
     })
+}
+
+/// Stamp `pending_fyis_dropped` onto a `seat.tombstone` payload (plan 158).
+fn record_dropped_fyis(event: &mut Event, dropped: u64) -> Result<()> {
+    let mut payload: serde_json::Value =
+        serde_json::from_str(&event.payload).map_err(|error| PijError::Adapter {
+            adapter: "store/registry".to_string(),
+            message: format!("could not re-encode the tombstone payload: {error}"),
+        })?;
+    payload["pending_fyis_dropped"] = dropped.into();
+    event.payload = payload.to_string();
+    Ok(())
 }
 
 /// Encode a retirement fact; observed-dead reasons carry the compared binding.
