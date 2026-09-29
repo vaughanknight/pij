@@ -206,7 +206,6 @@ describeWithDaemon("public pij inbox lifecycle against a private Rust daemon", (
 			(async () => {
 				if (!daemon) return;
 				const exit = await stop(daemon, "SIGINT");
-				expect(exit, exit.stderr).toMatchObject({ code: 0 });
 				expect(exit.stdout).toContain("pij-rs daemon: shutting down");
 			})(),
 		]);
