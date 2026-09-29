@@ -4592,6 +4592,56 @@ mod tests {
         );
     }
 
+    /// Plan 158 review LOW-1: a pane-bound direct send that would carry FYIs is
+    /// queued as their durable carrier (receipt `queued`, reason
+    /// `fyi-ride-along`) with the block appended, and the next send, with
+    /// nothing held, goes direct again.
+    #[tokio::test]
+    async fn a_pane_bound_send_carrying_fyis_is_queued_as_their_carrier() {
+        let fixture = fixture(FakeTransport::reachable());
+        let mut seat = bound("pij-fyi-paned");
+        seat.pane = Some("%paned".into());
+        register(&fixture, seat).await;
+        fixture
+            .service
+            .hold_fyi(fyi_to("pij-fyi-paned", "fyi-1"))
+            .await
+            .expect("hold");
+        let real = |id: &str| Msg {
+            body: "real work".to_string(),
+            ..fyi_to("pij-fyi-paned", id)
+        };
+
+        let carried = fixture
+            .service
+            .accept(real("m-carrier"))
+            .await
+            .expect("send");
+        match &carried.outcome {
+            DeliveryOutcome::Queued { reason, .. } => {
+                assert_eq!(reason.as_deref(), Some("fyi-ride-along"));
+            }
+            other => panic!("expected a queued carrier, got {other:?}"),
+        }
+        assert!(fixture.transport.delivered().is_empty(), "not sent direct");
+        let bodies = queued_bodies(&fixture, "pij-fyi-paned").await;
+        assert_eq!(bodies.len(), 1);
+        assert!(
+            bodies[0].starts_with(
+                "real work\n\nAlso, 1 FYI was queued for you:\n1. [from pij-fyi-sender, "
+            ) && bodies[0].ends_with("] note fyi-1"),
+            "{:?}",
+            bodies[0]
+        );
+
+        let plain = fixture.service.accept(real("m-plain")).await.expect("send");
+        assert!(
+            matches!(plain.outcome, DeliveryOutcome::Delivered { .. }),
+            "{plain:?}"
+        );
+        assert_eq!(fixture.transport.delivered().len(), 1);
+    }
+
     /// Plan 158 review HIGH-2: a carrier whose delivery fails must not lose the
     /// FYIs it would have carried. Each one is still pending, or carried exactly
     /// once by a durable queued delivery.
