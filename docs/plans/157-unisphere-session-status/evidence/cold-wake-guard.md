@@ -199,6 +199,7 @@ spine seat.activity: working 23:06:54 → idle 23:06:56 (Stop) → working 23:07
 
 ### Re-review 4 follow-up tests (uther APPROVED `e2983d5c`; LOW gaps closed, tests only)
 - `a_spinner_row_needs_a_glyph_and_an_ellipsised_verb` now covers glyphs `✢ ✳ *`.
+  - **Superseded at rebase:** main's `60a11e0c` and `82807082` made `is_busy` recognise Claude's spinner row by shape (any glyph, several words, NBSP gaps, a parenthesised elapsed time). `shows_idle_prompt` now relies on that through `classify_readiness == Ready`. The plan's glyph-list `is_spinner_row` and its unit test were dropped in favour of main's rule and main's tests `claude_2_1_284_spinner_row_is_busy_at_any_width` and `spinner_row_variants_are_busy`. The I7a-c mutants no longer apply.
 - `only_a_vetted_idle_claude_frame_is_idle_evidence`: the live idle frame without the rule above the composer is not idle.
 - New `a_missing_or_unreadable_activity_fact_allows_without_a_probe`: no `seat.activity` fact, and a failing spine read, each allow with `busy` and 0 probes.
 
@@ -209,3 +210,7 @@ spine seat.activity: working 23:06:54 → idle 23:06:56 (Stop) → working 23:07
 | I7b-glyph-✳-dropped | KILLED a_spinner_row_needs_a_glyph_and_an_ellipsised_verb |
 | I7c-glyph-*-dropped | KILLED a_spinner_row_needs_a_glyph_and_an_ellipsised_verb |
 | J5-missing-fact-counts-as-old | KILLED a_missing_or_unreadable_activity_fact_allows_without_a_probe |
+
+### Merge gate
+- Unisphere deps pinned to `rev = 0d48d80609f6c2b2ff40d52732477a64673535d1` (builder/029-session-status, pushed by kiwi) on github.com/AI-Substrate/Unisphere. No path deps remain.
+- `cargo metadata --locked` is clean. The arch fixtures are unchanged (they list dependency names only), and `arch_drift` passes against the live workspace.
