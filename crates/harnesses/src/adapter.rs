@@ -895,6 +895,22 @@ mod tests {
             !shows_idle_prompt(Harness::Claude, &draft),
             "multi-line draft"
         );
+        // The composer needs its rule ABOVE as well as below.
+        let lines: Vec<&str> = live_idle.lines().collect();
+        let composer = lines
+            .iter()
+            .position(|line| line.starts_with('❯'))
+            .expect("the fixture has the composer row");
+        let no_top_rule: String = lines
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| *index + 1 != composer)
+            .map(|(_, line)| format!("{line}\n"))
+            .collect();
+        assert!(
+            !shows_idle_prompt(Harness::Claude, &no_top_rule),
+            "no top rule"
+        );
         // No other harness has a vetted idle frame.
         assert!(!shows_idle_prompt(Harness::Omp, OMP));
         // The known limit: mid-stream text shows no spinner, so it reads idle.

@@ -196,3 +196,16 @@ spine seat.activity: working 23:06:54 → idle 23:06:56 (Stop) → working 23:07
 | M8-no-composer | KILLED only_a_vetted_idle_claude_frame_is_idle_evidence |
 | M9-no-spinner-check | KILLED a_pane_without_positive_idle_evidence_allows_and_keeps_working, only_a_vetted_idle_claude_frame_is_idle_evidence |
 | M10-any-harness | KILLED only_a_vetted_idle_claude_frame_is_idle_evidence |
+
+### Re-review 4 follow-up tests (uther APPROVED `e2983d5c`; LOW gaps closed, tests only)
+- `a_spinner_row_needs_a_glyph_and_an_ellipsised_verb` now covers glyphs `✢ ✳ *`.
+- `only_a_vetted_idle_claude_frame_is_idle_evidence`: the live idle frame without the rule above the composer is not idle.
+- New `a_missing_or_unreadable_activity_fact_allows_without_a_probe`: no `seat.activity` fact, and a failing spine read, each allow with `busy` and 0 probes.
+
+| mutant | result |
+|---|---|
+| I5-top-rule-not-required | KILLED only_a_vetted_idle_claude_frame_is_idle_evidence |
+| I7a-glyph-✢-dropped | KILLED a_spinner_row_needs_a_glyph_and_an_ellipsised_verb |
+| I7b-glyph-✳-dropped | KILLED a_spinner_row_needs_a_glyph_and_an_ellipsised_verb |
+| I7c-glyph-*-dropped | KILLED a_spinner_row_needs_a_glyph_and_an_ellipsised_verb |
+| J5-missing-fact-counts-as-old | KILLED a_missing_or_unreadable_activity_fact_allows_without_a_probe |

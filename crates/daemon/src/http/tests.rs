@@ -6581,14 +6581,15 @@ async fn stale_working_daemon(
     Arc<FakeQueue>,
     Arc<FakeSpine>,
 ) {
-    stale_working_daemon_with(claude, cold_status(), 2 * 60 * 60 * 1_000).await
+    stale_working_daemon_with(claude, cold_status(), Some(TWO_HOURS_MS)).await
 }
 
-/// `working_for_ms`: how long ago the seat's `working` was published.
+/// `working_for_ms`: how long ago the seat's `working` was published (`None`:
+/// no `seat.activity` fact at all).
 async fn stale_working_daemon_with(
     claude: Arc<dyn pij_core::ports::HarnessPort>,
     reply: pij_core::session_status::SessionStatusReply,
-    working_for_ms: u64,
+    working_for_ms: Option<u64>,
 ) -> (
     SocketAddr,
     tokio::task::JoinHandle<()>,
@@ -6599,11 +6600,16 @@ async fn stale_working_daemon_with(
     let spine = Arc::new(FakeSpine::new());
     let mut seat = cold_seat(pij_core::model::SystemState::Working);
     seat.pane = Some("%stale".to_string());
-    let mut working =
-        pij_store::registry::activity_event(&seat.id, pij_core::model::SystemState::Working, None)
-            .expect("activity event");
-    working.at -= working_for_ms;
-    spine.append(working).await.expect("seed working");
+    if let Some(working_for_ms) = working_for_ms {
+        let mut working = pij_store::registry::activity_event(
+            &seat.id,
+            pij_core::model::SystemState::Working,
+            None,
+        )
+        .expect("activity event");
+        working.at -= working_for_ms;
+        spine.append(working).await.expect("seed working");
+    }
     let mut services = test_services(
         Arc::new(FakeRegistry::new().with_seat(seat)),
         queue.clone(),
@@ -6659,7 +6665,7 @@ async fn real_claude_stale_daemon(
     let (addr, server, queue, spine) = stale_working_daemon_with(
         Arc::new(pij_harnesses::ClaudeHarness::new(tmux)),
         cold_status(),
-        working_for_ms,
+        Some(working_for_ms),
     )
     .await;
     (addr, server, queue, spine, dir)
@@ -6895,7 +6901,7 @@ async fn a_working_seat_that_is_not_cold_by_its_facts_is_not_probed() {
     });
     let claude = Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_idle(true));
     let (addr, server, _, _) =
-        stale_working_daemon_with(claude.clone(), recent, TWO_HOURS_MS).await;
+        stale_working_daemon_with(claude.clone(), recent, Some(TWO_HOURS_MS)).await;
     let (status, reply) = post_json(
         addr,
         "/v1/send",
@@ -6923,7 +6929,7 @@ async fn a_working_seat_that_is_not_cold_by_its_facts_is_not_probed() {
 async fn a_recent_working_is_trusted_without_a_pane_probe() {
     let claude = Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_idle(true));
     let (addr, server, queue, _) =
-        stale_working_daemon_with(claude.clone(), cold_status(), 30_000).await;
+        stale_working_daemon_with(claude.clone(), cold_status(), Some(30_000)).await;
     let (status, reply) = post_json(
         addr,
         "/v1/send",
@@ -6945,7 +6951,7 @@ async fn a_recent_working_is_trusted_without_a_pane_probe() {
 async fn an_old_activity_fact_that_is_not_working_is_no_evidence() {
     let claude = Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_idle(true));
     let (addr, server, queue, spine) =
-        stale_working_daemon_with(claude.clone(), cold_status(), 3 * 60 * 60 * 1_000).await;
+        stale_working_daemon_with(claude.clone(), cold_status(), Some(3 * 60 * 60 * 1_000)).await;
     let mut idle = pij_store::registry::activity_event(
         &cold_seat(pij_core::model::SystemState::Working).id,
         pij_core::model::SystemState::Idle,
@@ -6964,4 +6970,36 @@ async fn an_old_activity_fact_that_is_not_working_is_no_evidence() {
     assert_eq!(queue.live_len(), 1);
     assert_eq!(claude.idle_probes(), 0);
     server.abort();
+}
+
+/// No `seat.activity` fact, or a spine that cannot answer, is no evidence that
+/// the `working` is stale: allow, without a pane probe.
+#[tokio::test]
+async fn a_missing_or_unreadable_activity_fact_allows_without_a_probe() {
+    for unreadable in [false, true] {
+        let claude =
+            Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_idle(true));
+        let (addr, server, queue, spine) = if unreadable {
+            stale_working_daemon_with(claude.clone(), cold_status(), Some(TWO_HOURS_MS)).await
+        } else {
+            stale_working_daemon_with(claude.clone(), cold_status(), None).await
+        };
+        if unreadable {
+            spine.script_latest_matching_error("spine read failed");
+        }
+        let (status, reply) = post_json(
+            addr,
+            "/v1/send",
+            cold_send("m-no-fact", serde_json::json!({})),
+        )
+        .await;
+        assert_eq!(status, 200, "unreadable={unreadable}: {reply}");
+        assert_eq!(
+            reply["data"]["cold_check"], "busy",
+            "unreadable={unreadable}"
+        );
+        assert_eq!(queue.live_len(), 1, "unreadable={unreadable}");
+        assert_eq!(claude.idle_probes(), 0, "unreadable={unreadable}");
+        server.abort();
+    }
 }
