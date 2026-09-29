@@ -135,8 +135,15 @@ jobs:
       - name: build tests
         run: cargo nextest run --locked --workspace --profile ci --no-run
 
+      # The suite runs inside a capped systemd scope. A test that leaks memory
+      # or processes gets killed inside the scope and named by nextest, instead
+      # of taking the runner (and its log) down with it.
       - name: test
-        run: cargo nextest run --locked --workspace --profile ci --retries 2
+        run: |
+          sudo -E env "PATH=$PATH" systemd-run --scope --quiet \
+            -p MemoryMax=11G -p TasksMax=4096 \
+            --uid="$(id -u)" --gid="$(id -g)" \
+            cargo nextest run --locked --workspace --profile ci --retries 2 --status-level pass
 
       # nextest does not run doctests.
       - name: doctests
