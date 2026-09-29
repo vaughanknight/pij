@@ -114,13 +114,13 @@ defect.
 
 Measured (RCA by pij-continued-bolvar, 2026-09-28, workspace `~/games/unasphere/scratch/usage-blowout/`): a week's Claude allowance went in 38.6 h. Turns opened by pij messages were 84% of spend (6,103 messages against 1,025 human turns). Warm cache reads on huge contexts were 64% (a mean of 336k tokens per call). Acks and FYIs alone were 15%, and cold wakes 10%. Primes were the hubs.
 
-1. **Price a send at the recipient's context, not the message.** A turn costs the recipient's whole context: warm, about 1×; cold, about 40×. Waking a dormant seat with a 200k+ context needs a reason you would defend to Jordan.
+1. **Price a send at the recipient's context, not the message.** A turn costs the recipient's whole context: warm, about 1×; cold, about 40×. Waking a large seat (over 300k) that has been idle for more than an hour needs a reason you would defend to Jordan.
 2. **No broadcasts.** Name explicit recipients from one project, filtered from `pij list --json` to active seats that must act. More than 5 recipients needs a human yes. A freeze ("hold commits") goes to the active committers only.
 3. **No acks, no FYIs, no-reply by default.** Batch what one seat needs into one message rather than several. Silence after a clean verify is the all-clear (C10).
 4. **Standing rules and status live in files.** Put rules in government files (the governance README, AGENTS.md), and read status from report files and `pij state` rather than asking for push reports.
 5. **A dormant seat is consulted, never informed.** Wake one or two only for their knowledge (the original owner, a reviewer).
 6. **Supervise by observation.** Read tmux captures and `pij list`; never message an idle seat to check on it. Stop after two quiet rounds.
-7. **Compact while warm (200–250k), never cold.** Compacting a dormant seat pays the cold read first.
+7. **Compact before going cold, but only if you'll be needed again.** When a prime ends a unit of work above ~200k and expects more work (an open stream, a pending ruling, a coming phase), it compacts itself at that boundary while its cache is still warm. A seat that is finished for good is not compacted: a compaction nobody reads is pure spend. Once a seat is idle past the cache lifetime (~1 h), it never compacts, because the whole history would be re-read uncached. Compaction is always the seat's own choice. Nobody forces it on another seat, and no guard triggers it.
 
 Platform guards that will enforce this are tracked in issue #446.
 
