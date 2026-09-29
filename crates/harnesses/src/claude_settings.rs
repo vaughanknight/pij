@@ -15,6 +15,8 @@ const HOOKS_KEY: &str = "hooks";
 const SESSION_START_KEY: &str = "SessionStart";
 const USER_PROMPT_SUBMIT_KEY: &str = "UserPromptSubmit";
 const STOP_KEY: &str = "Stop";
+/// A turn that ends on an API error fires this instead of `Stop` (review N1).
+const STOP_FAILURE_KEY: &str = "StopFailure";
 const STATUS_LINE_KEY: &str = "statusLine";
 const SESSION_START_SCRIPT_NAME: &str = "claude-session-start-pij.sh";
 const USER_PROMPT_SUBMIT_SCRIPT_NAME: &str = "claude-user-prompt-submit-pij.sh";
@@ -317,6 +319,13 @@ pub fn plan_claude_stop_hook(existing: Option<&str>, command: &str) -> EnsurePla
     plan_claude_hook(existing, command, STOP_KEY, STOP_SCRIPT_NAME)
 }
 
+/// Plan the same idle script under `StopFailure`: a turn that ends on an API
+/// error (rate limit, auth failure) fires that event and not `Stop`.
+#[must_use]
+pub fn plan_claude_stop_failure_hook(existing: Option<&str>, command: &str) -> EnsurePlan {
+    plan_claude_hook(existing, command, STOP_FAILURE_KEY, STOP_SCRIPT_NAME)
+}
+
 /// Install `command` as the single pij-managed entry under `hooks.<event>`.
 /// A command is pij-managed when it names `script_name`; foreign entries are
 /// preserved byte for byte and stale managed commands are reconciled in place.
@@ -574,6 +583,29 @@ pub fn inspect_claude_user_prompt_submit_hook(
     script_path: &Path,
 ) -> Vec<ClaudeHookState> {
     inspect_claude_hook(homes, script_path, plan_claude_user_prompt_submit_hook)
+}
+
+/// Ensure every named Claude home also runs the idle script on `StopFailure`.
+#[must_use]
+pub fn ensure_claude_stop_failure_hook(homes: &[PathBuf], script_path: &Path) -> Vec<EnsureReport> {
+    let command = shell_command(script_path);
+    homes
+        .iter()
+        .map(|home| {
+            ensure_home(home, &command, |existing| {
+                plan_claude_stop_failure_hook(existing, &command)
+            })
+        })
+        .collect()
+}
+
+/// Inspect the pij `StopFailure` idle hook in every named Claude home.
+#[must_use]
+pub fn inspect_claude_stop_failure_hook(
+    homes: &[PathBuf],
+    script_path: &Path,
+) -> Vec<ClaudeHookState> {
+    inspect_claude_hook(homes, script_path, plan_claude_stop_failure_hook)
 }
 
 /// Inspect the pij Stop idle hook in every named Claude home (plan 157).
@@ -2406,6 +2438,48 @@ mod tests {
     }
 
     const STOP_HOOK: &str = "/Users/test/.pij-rs/claude-stop-pij.sh";
+
+    /// Review N1: a turn that ends on an API error fires StopFailure, not Stop,
+    /// so the same idle script is registered there too, in every home, beside
+    /// (not instead of) the Stop hook.
+    #[test]
+    fn stop_failure_runs_the_idle_script_in_every_home_beside_stop() {
+        let root = TestDir::new();
+        let claude = root.path().join(".claude");
+        let alt = root.path().join(".claude-alt");
+        fs::create_dir_all(&claude).expect("home");
+        let homes = [claude.clone(), alt.clone()];
+        assert!(
+            ensure_claude_stop_hook(&homes, Path::new(STOP_HOOK))
+                .iter()
+                .all(|report| report.error.is_none())
+        );
+        let reports = ensure_claude_stop_failure_hook(&homes, Path::new(STOP_HOOK));
+        assert!(
+            reports
+                .iter()
+                .all(|report| report.changed && report.error.is_none())
+        );
+        for home in [&claude, &alt] {
+            let parsed = written_settings(home);
+            assert_eq!(
+                parsed["hooks"]["StopFailure"][0]["hooks"][0]["command"],
+                STOP_HOOK
+            );
+            assert_eq!(parsed["hooks"]["Stop"][0]["hooks"][0]["command"], STOP_HOOK);
+        }
+        assert!(
+            inspect_claude_stop_failure_hook(&homes, Path::new(STOP_HOOK))
+                .iter()
+                .all(|state| state.installed)
+        );
+        assert!(
+            ensure_claude_stop_failure_hook(&homes, Path::new(STOP_HOOK))
+                .iter()
+                .all(|report| !report.changed),
+            "idempotent"
+        );
+    }
 
     #[test]
     fn stop_hook_covers_every_home_reconciling_stale_and_keeping_foreign() {

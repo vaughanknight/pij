@@ -526,7 +526,11 @@ It changes only the seat's mechanical `state` (a targeted write that never rewri
 - The OMP/Pi extension publishes `working` at `turn_start`, and `idle` at `turn_end`, at `agent_end` and on shutdown.
 - The Copilot native extension publishes on `assistant.turn_start`, and on `assistant.turn_end`, `session.idle` or shutdown.
 - Publications are serialized per session, and a failure never breaks a turn. A route-absent 404 from an older daemon stops publishing.
-- Claude seats publish through their managed hooks (plan 157): `UserPromptSubmit` sends `working` and `Stop` sends `idle`. The seat is resolved by pane, via `pij-rs activity`, with the same 3 s bound and silent failure as the FYI claim. Only a prompt submitted to Claude fires `UserPromptSubmit`, so a turn opened another way stays `idle` until the next typed or pasted prompt.
+- Claude seats publish through their managed hooks (plan 157): `UserPromptSubmit` sends `working`, and `Stop` and `StopFailure` send `idle`. `StopFailure` covers a turn that ends on an API error, which does not fire `Stop`. The seat is resolved by pane, via `pij-rs activity`, with the same 3 s bound and silent failure as the FYI claim. Only a prompt submitted to Claude fires `UserPromptSubmit`, so a turn opened another way stays `idle` until the next typed or pasted prompt.
+- The cases these hooks cannot see leave a Claude seat reading `working`:
+  - **An Esc interrupt** fires no Claude hook: neither `Stop`, `StopFailure`, nor the `idle_prompt` notification (verified live). The seat reads `working` until its next prompt or completed turn.
+  - **A killed or exited process** fires nothing. The death sweep's tombstone, or a new incarnation registering the seat, resets it to `idle`.
+  - While a seat reads `working`, the cold-wake guard treats it as busy and allows the send. That is the safe direction for a brake.
 
 ### Cold-wake guard (plan 157 phase 2)
 

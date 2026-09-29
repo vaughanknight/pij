@@ -95,3 +95,17 @@ E-RS-COLD-WAKE: pij-exceptional-bug is cold (idle 34h45m, 520k context). Waking 
 - The cursor warm-up.
 
 It also documents the Claude busy signal and its limit: only a submitted prompt fires `UserPromptSubmit`.
+
+## Review N1 (uther re-review): StopFailure, and the Esc interrupt
+- **Change:** the idle script is also registered under Claude's `StopFailure` event, in every home, beside `Stop`.
+  - Test: `stop_failure_runs_the_idle_script_in_every_home_beside_stop`, which was compile-RED before the installer existed and GREEN after.
+- **Live, on the isolated worktree daemon, with real Claude Code v2.1.284 and hooks logging which event fired:**
+  - **API error:** Claude was run with `ANTHROPIC_BASE_URL=http://127.0.0.1:9` (connection refused), then sent a prompt. The turn ended with `API Error: Connection refused`, and **`StopFailure` fired**. The seat went `working` → `idle` within 5 s (it was `idle` from 22:58:56).
+  - **Real Esc interrupt:** a 3000-word essay was interrupted 7 s in. Claude showed `Interrupted · What should Claude do instead?`. **No hook fired**: not `Stop`, not `StopFailure`, and not a `Notification`/`idle_prompt` hook registered for the test. The seat stayed `working` for the whole 110 s poll:
+```
+22:55:08 mid: working
+22:55:08 ESC
+     22 22:55:13 working
+```
+    (In a separate idle session, the `idle_prompt` notification did fire about 60 s after a completed turn, but never after an interrupt, so it does not cover this case.)
+  - **Consequence:** after an Esc, a Claude seat reads `working` until its next prompt or completed turn. An exit or kill leaves it `working` until the tombstone or a new incarnation. While it reads `working`, the cold-wake guard allows sends to it. That is a false allow, in the brake's safe direction. Both cases are documented in `docs/how/pij-rs-api.md`.

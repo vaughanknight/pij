@@ -24,12 +24,12 @@ use pij_core::model::{Envelope, ErrorKind, Event, Harness, SeatDescriptor, SeatI
 use pij_core::wire;
 use pij_harnesses::{
     claude_homes, copilot_home, ensure_claude_inbound_accept, ensure_claude_session_start_hook,
-    ensure_claude_statusline, ensure_claude_stop_hook, ensure_claude_user_prompt_submit_hook,
-    ensure_copilot_statusline, inspect_claude_inbound, inspect_claude_session_start_hook,
-    inspect_claude_statusline, install_claude_session_start_script,
-    install_claude_statusline_script, install_claude_stop_script,
-    install_claude_user_prompt_submit_script, install_copilot_statusline_script,
-    validate_executable_override,
+    ensure_claude_statusline, ensure_claude_stop_failure_hook, ensure_claude_stop_hook,
+    ensure_claude_user_prompt_submit_hook, ensure_copilot_statusline, inspect_claude_inbound,
+    inspect_claude_session_start_hook, inspect_claude_statusline,
+    install_claude_session_start_script, install_claude_statusline_script,
+    install_claude_stop_script, install_claude_user_prompt_submit_script,
+    install_copilot_statusline_script, validate_executable_override,
 };
 use serde_json::{Value, json};
 
@@ -1810,6 +1810,11 @@ async fn run_daemon(
         .as_ref()
         .map(|script| ensure_claude_stop_hook(&homes, script))
         .unwrap_or_default();
+    // Review N1: a turn ending on an API error fires StopFailure, not Stop.
+    let stop_failure_reports = stop_hook_script
+        .as_ref()
+        .map(|script| ensure_claude_stop_failure_hook(&homes, script))
+        .unwrap_or_default();
     let statusline_script = install_claude_statusline_script(&hook_dir)
         .map_err(|error| format!("could not install Claude statusline script: {error}"));
     let statusline_reports = statusline_script
@@ -1853,6 +1858,11 @@ async fn run_daemon(
                     "config.claude-stop-hook-ensured",
                     "Claude Stop hook",
                     stop_hook_reports.as_slice(),
+                ),
+                (
+                    "config.claude-stop-failure-hook-ensured",
+                    "Claude StopFailure hook",
+                    stop_failure_reports.as_slice(),
                 ),
                 (
                     "config.claude-statusline-ensured",
@@ -1902,6 +1912,7 @@ async fn run_daemon(
                 ("hook", &hook_reports),
                 ("prompt hook", &prompt_hook_reports),
                 ("stop hook", &stop_hook_reports),
+                ("stop-failure hook", &stop_failure_reports),
                 ("statusline", &statusline_reports),
                 ("copilot statusline", &copilot_statusline_reports),
             ] {
