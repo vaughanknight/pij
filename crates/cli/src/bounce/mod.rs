@@ -159,6 +159,8 @@ async fn announce(state_dir: &Path, runtime: &DaemonRuntime) -> Vec<String> {
             in_reply_to: None,
             command: None,
             fyi: false,
+            force: false,
+            reason: None,
         };
         let reply = client.send(&request).await;
         if reply.ok {

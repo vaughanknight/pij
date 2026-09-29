@@ -210,6 +210,12 @@ pub struct SendRequest {
     /// Hold for the recipient's next real turn instead of delivering (plan 158).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub fyi: bool,
+    /// Wake a cold recipient anyway (plan 157 phase 2). Needs `reason`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub force: bool,
+    /// Why a forced cold wake is worth its price; recorded on the spine.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 // `QueuedSend` is GONE. The send route persisted it under `delivery:<seat>` and

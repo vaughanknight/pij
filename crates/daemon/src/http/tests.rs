@@ -2339,6 +2339,8 @@ fn exposure_banner_names_the_address_it_classifies() {
 fn send_request_uses_resolved_destination_object_and_optional_reply_id() {
     let request = SendRequest {
         fyi: false,
+        force: false,
+        reason: None,
         from: "pij-a".into(),
         from_machine: Some("desktop".to_string()),
         to: Destination::local("pij-b"),
@@ -4312,6 +4314,8 @@ async fn send_enqueues_exactly_once_and_refuses_remote_without_federation() {
     let client = reqwest::Client::new();
     let request = SendRequest {
         fyi: false,
+        force: false,
+        reason: None,
         from: "pij-a".into(),
         from_machine: None,
         to: Destination::local("pij-b"),
@@ -4937,6 +4941,8 @@ async fn two_daemons_forward_remote_send_into_destination_queue_and_spine() {
 
     let request = SendRequest {
         fyi: false,
+        force: false,
+        reason: None,
         from: "bob".into(),
         to: Destination {
             seat: "bob".into(),
@@ -5054,6 +5060,8 @@ async fn wrong_peer_key_is_permanent_and_never_hot_loops() {
     federation
         .enqueue_remote(&SendRequest {
             fyi: false,
+            force: false,
+            reason: None,
             from: "alice".into(),
             to: Destination {
                 seat: "bob".into(),
@@ -6216,5 +6224,269 @@ async fn state_tolerates_a_body_field_it_does_not_know() {
         .expect("state request");
     assert_eq!(response.status(), reqwest::StatusCode::OK);
 
+    server.abort();
+}
+
+// --- Plan 157 phase 2: the cold-wake guard -------------------------------
+
+const COLD_SESSION: &str = "claude-cold-session";
+
+fn cold_seat(state: pij_core::model::SystemState) -> SeatDescriptor {
+    // Unbound, so a send that passes the guard queues (pre-bind) and never
+    // touches a transport.
+    let mut seat = SeatDescriptor::new("pij-cold", Harness::Claude, "/abs/tree");
+    seat.harness_session = Some(COLD_SESSION.to_string());
+    seat.state = state;
+    seat
+}
+
+/// 720k tokens on Opus 5.5, last called two hours ago.
+fn cold_status() -> pij_core::session_status::SessionStatusReply {
+    use pij_core::session_status::{Fact, SeatStatus, SessionStatusReply};
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    SessionStatusReply::Status(SeatStatus {
+        model: Fact::native("claude-opus-5-5".to_string()),
+        context_used_tokens: Fact::derived(720_000),
+        last_call_at_ms: Fact::native(now - 2 * 60 * 60 * 1_000),
+        ..SeatStatus::unknown()
+    })
+}
+
+async fn cold_daemon(
+    state: pij_core::model::SystemState,
+    source: pij_testkit::fakes::FakeSessionStatus,
+) -> (
+    SocketAddr,
+    tokio::task::JoinHandle<()>,
+    Arc<FakeQueue>,
+    Arc<FakeSpine>,
+) {
+    let queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
+    let spine = Arc::new(FakeSpine::new());
+    let mut services = test_services(
+        Arc::new(
+            FakeRegistry::new()
+                .with_seat(cold_seat(state))
+                .with_seat(SeatDescriptor::new("pij-sender", Harness::Omp, "/abs/tree")),
+        ),
+        queue.clone(),
+        spine.clone(),
+    )
+    .await;
+    services.session_status = Arc::new(source);
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    (addr, server, queue, spine)
+}
+
+async fn post_json(
+    addr: SocketAddr,
+    path: &str,
+    body: serde_json::Value,
+) -> (u16, serde_json::Value) {
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}{path}"))
+        .bearer_auth("key")
+        .json(&body)
+        .send()
+        .await
+        .expect("request");
+    (
+        response.status().as_u16(),
+        response.json().await.expect("envelope"),
+    )
+}
+
+fn cold_send(msg_id: &str, extra: serde_json::Value) -> serde_json::Value {
+    let mut body = serde_json::json!({
+        "from": "pij-sender", "to": {"seat": "pij-cold"}, "body": "wake up", "msg_id": msg_id,
+    });
+    for (key, value) in extra.as_object().expect("object") {
+        body[key] = value.clone();
+    }
+    body
+}
+
+/// A send to a large seat idle past the cache TTL is refused with its price,
+/// and nothing is queued or delivered.
+#[tokio::test]
+async fn a_send_to_a_cold_seat_is_refused_with_its_price() {
+    let source =
+        pij_testkit::fakes::FakeSessionStatus::new().with_reply(COLD_SESSION, cold_status());
+    let (addr, server, queue, _) = cold_daemon(pij_core::model::SystemState::Idle, source).await;
+    let (status, reply) =
+        post_json(addr, "/v1/send", cold_send("m-cold", serde_json::json!({}))).await;
+    assert_eq!(status, 400, "{reply}");
+    assert_eq!(reply["ok"], false);
+    let message = reply["meta"].as_str().unwrap_or_default();
+    assert!(
+        message.starts_with("E-RS-COLD-WAKE: pij-cold is cold (idle 2h, 720k context)")
+            && message.contains("≈ $5.76 at list price")
+            && message.contains("--fyi")
+            && message.contains("--force --reason"),
+        "{reply}"
+    );
+    assert_eq!(queue.live_len(), 0, "a refusal sends nothing");
+    server.abort();
+}
+
+/// `--force` needs a reason; a forced cold wake is delivered and audited.
+#[tokio::test]
+async fn a_forced_cold_wake_needs_a_reason_and_is_audited() {
+    let source =
+        pij_testkit::fakes::FakeSessionStatus::new().with_reply(COLD_SESSION, cold_status());
+    let (addr, server, queue, spine) =
+        cold_daemon(pij_core::model::SystemState::Idle, source).await;
+    for reason in [serde_json::Value::Null, serde_json::json!("   ")] {
+        let (status, reply) = post_json(
+            addr,
+            "/v1/send",
+            cold_send(
+                "m-force",
+                serde_json::json!({"force": true, "reason": reason}),
+            ),
+        )
+        .await;
+        assert_eq!(status, 400, "{reply}");
+        assert!(
+            reply["meta"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("--reason"),
+            "{reply}"
+        );
+    }
+    assert_eq!(queue.live_len(), 0);
+
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send(
+            "m-force",
+            serde_json::json!({"force": true, "reason": "prod is down, need its context"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["cold_check"], "forced");
+    assert_eq!(queue.live_len(), 1);
+    let audit = spine
+        .tail(None, Seq(0))
+        .await
+        .expect("tail")
+        .into_iter()
+        .find(|event| event.kind == "send.cold-wake-forced")
+        .expect("forced cold wake is audited");
+    let payload: serde_json::Value = serde_json::from_str(&audit.payload).unwrap();
+    assert_eq!(audit.seat, Some("pij-cold".into()));
+    assert_eq!(payload["reason"], "prod is down, need its context");
+    assert_eq!(payload["from"], "pij-sender");
+    assert_eq!(payload["msg_id"], "m-force");
+    assert_eq!(payload["context_tokens"], 720_000);
+    assert_eq!(payload["estimate_usd"], 5.76);
+    server.abort();
+}
+
+/// A busy seat is warm by definition; unknown facts allow and say so.
+#[tokio::test]
+async fn busy_and_unknown_recipients_are_never_refused() {
+    let source =
+        pij_testkit::fakes::FakeSessionStatus::new().with_reply(COLD_SESSION, cold_status());
+    let (addr, server, _, _) = cold_daemon(pij_core::model::SystemState::Working, source).await;
+    let (status, reply) =
+        post_json(addr, "/v1/send", cold_send("m-busy", serde_json::json!({}))).await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["cold_check"], "busy");
+    server.abort();
+
+    // Unscripted fake source: the harness is unsupported.
+    let (addr, server, _, _) = cold_daemon(
+        pij_core::model::SystemState::Idle,
+        pij_testkit::fakes::FakeSessionStatus::new(),
+    )
+    .await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-unknown", serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(
+        reply["data"]["cold_check"],
+        "unknown: claude sessions are not readable"
+    );
+    server.abort();
+}
+
+/// FYIs never wake a seat, so they are never refused; controls are not guarded.
+#[tokio::test]
+async fn fyis_and_controls_are_never_refused() {
+    let source =
+        pij_testkit::fakes::FakeSessionStatus::new().with_reply(COLD_SESSION, cold_status());
+    let (addr, server, _, _) = cold_daemon(pij_core::model::SystemState::Idle, source).await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-fyi", serde_json::json!({"fyi": true})),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["outcome"]["outcome"], "held");
+    let (_, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send(
+            "m-ctl",
+            serde_json::json!({"body": "", "command": "compact"}),
+        ),
+    )
+    .await;
+    assert!(
+        !reply.to_string().contains("E-RS-COLD-WAKE"),
+        "controls are not guarded: {reply}"
+    );
+    server.abort();
+}
+
+/// The shim's positional `pij send` takes the same guard and the same escape.
+#[tokio::test]
+async fn the_shim_send_is_guarded_and_forceable() {
+    let source =
+        pij_testkit::fakes::FakeSessionStatus::new().with_reply(COLD_SESSION, cold_status());
+    let (addr, server, queue, _) = cold_daemon(pij_core::model::SystemState::Idle, source).await;
+    let shim = |argv: &[&str]| serde_json::json!({"argv": argv, "caller": {"PIJ_SESSION_ID": "pij-sender"}});
+    let (status, reply) = post_json(
+        addr,
+        "/v1/shim/send",
+        shim(&["send", "pij-cold", "wake up"]),
+    )
+    .await;
+    assert_eq!(status, 400, "{reply}");
+    assert!(
+        reply["meta"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("E-RS-COLD-WAKE"),
+        "{reply}"
+    );
+    let (status, reply) = post_json(
+        addr,
+        "/v1/shim/send",
+        shim(&[
+            "send",
+            "pij-cold",
+            "--force",
+            "--reason",
+            "needed now",
+            "wake up",
+        ]),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["cold_check"], "forced");
+    assert_eq!(queue.live_len(), 1);
     server.abort();
 }

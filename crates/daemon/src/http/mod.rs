@@ -7,6 +7,7 @@ pub mod anomalies;
 mod auth;
 mod background;
 mod client;
+mod cold_wake;
 pub mod decisions;
 mod exposure;
 mod fyi;
@@ -1521,6 +1522,28 @@ async fn send(State(state): State<AppState>, Json(request): Json<SendBodyRequest
     // payload the inbox reading that same queue could not decode. Two halves of
     // one round trip, each proven against itself. Found by u-extension.
     let forwarded = request.from_machine.is_some();
+    // A forward was sent on another machine, whose sender this daemon cannot
+    // offer the --fyi/--force choice; only local senders are guarded.
+    let cold_check = if forwarded {
+        None
+    } else {
+        match cold_wake::guard(
+            &state,
+            "pij send",
+            &request.from,
+            &request.to.seat,
+            &request.msg_id,
+            cold_wake::Override {
+                force: request.force,
+                reason: request.reason.as_deref(),
+            },
+        )
+        .await
+        {
+            Ok(label) => label,
+            Err(response) => return *response,
+        }
+    };
     let msg = Msg {
         from: request.from,
         // Carried from the wire: a federation worker forwarding A's message to B
@@ -1538,7 +1561,10 @@ async fn send(State(state): State<AppState>, Json(request): Json<SendBodyRequest
         state.services.delivery.accept(msg).await
     };
     match accepted {
-        Ok(receipt) => envelope(StatusCode::OK, &Envelope::ok("pij send", receipt)),
+        Ok(mut receipt) => {
+            receipt.cold_check = cold_check;
+            envelope(StatusCode::OK, &Envelope::ok("pij send", receipt))
+        }
 
         Err(error) => send_failure("pij send", error),
     }
@@ -2425,7 +2451,7 @@ async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequ
 ///
 /// A source failure fills the block and never fails the card, because the rest
 /// of `pij state` stays true without it.
-async fn session_status_block(
+pub(crate) async fn session_status_block(
     source: &dyn pij_core::ports::SessionStatusPort,
     seat: &SeatId,
     harness: Harness,
@@ -2871,7 +2897,7 @@ fn mint_spawn_id() -> Result<String> {
     Ok(id)
 }
 
-fn system_time_ms() -> Result<u64> {
+pub(crate) fn system_time_ms() -> Result<u64> {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| PijError::Adapter {

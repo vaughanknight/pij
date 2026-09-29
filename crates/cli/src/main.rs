@@ -267,7 +267,7 @@ enum Command {
     },
     /// Durably enqueue one message as the acting seat.
     #[command(
-        after_long_help = "Examples:\n  pij-rs send --to <id> --body 'hello'\n  pij-rs send --to <id> --body-file -\n  pij-rs send --to <id> --fyi --body 'build is green' (no action needed: held, opens no turn)"
+        after_long_help = "Examples:\n  pij-rs send --to <id> --body 'hello'\n  pij-rs send --to <id> --body-file -\n  pij-rs send --to <id> --fyi --body 'build is green' (no action needed: held, opens no turn)\n  pij-rs send --to <id> --force --reason 'prod is down' --body '...' (wake a cold seat anyway; audited)"
     )]
     Send {
         /// Assert the derived sending seat. Omit to use PIJ_SESSION_ID or TMUX_PANE.
@@ -296,6 +296,13 @@ enum Command {
         /// instead of opening a turn now. Receipt: `held (fyi)`.
         #[arg(long, conflicts_with = "command")]
         fyi: bool,
+        /// Wake a cold recipient anyway (large context, idle past the cache TTL).
+        /// Requires --reason; the forced wake and its estimated price are audited.
+        #[arg(long, conflicts_with_all = ["command", "fyi"], requires = "reason")]
+        force: bool,
+        /// Why a forced cold wake is worth its price.
+        #[arg(long, requires = "force")]
+        reason: Option<String>,
     },
     /// Claim the FYIs held for a seat, for a typed-turn hook. Prints the block, or
     /// nothing when none are held; `--json` prints the envelope.
@@ -1004,6 +1011,8 @@ async fn run(cli: Cli) -> ExitCode {
             msg_id,
             in_reply_to,
             fyi,
+            force,
+            reason,
         } => {
             let acting = match resolve_command_seat(&client, "pij send", from.as_deref()).await {
                 Ok(seat) => seat,
@@ -1027,6 +1036,8 @@ async fn run(cli: Cli) -> ExitCode {
                 in_reply_to,
                 command,
                 fyi,
+                force,
+                reason,
             };
             let mut response = if request.command.is_some() {
                 client.send_control(&request, &caller_context()).await
@@ -1087,6 +1098,8 @@ async fn run(cli: Cli) -> ExitCode {
                 msg_id: uuid::Uuid::now_v7().to_string(),
                 in_reply_to: None,
                 fyi: false,
+                force: false,
+                reason: None,
             };
             let mut response = client.send_control(&request, &caller_context()).await;
             response.command = "pij compact-self".to_string();

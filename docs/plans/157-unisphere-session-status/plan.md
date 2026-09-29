@@ -38,3 +38,22 @@ The 2026-09-28 usage blowout RCA found that the daemon needs live per-seat conte
 - harness checks is green.
 - A live proof on real seats has been recorded in docs/plans/157-unisphere-session-status/evidence/.
 - The daemon has been bounced: pull main first, then `just bounce-rs`.
+
+## Phase 2 (Jordan, 2026-09-29): the cold-wake guard on `pij send`
+Rulings: #446 (comment of 2026-09-29).
+- **Rule.** Per recipient: context > 300k AND last API call > 60 min ago AND the daemon doesn't see the seat working ⇒ refuse the send, code `E-RS-COLD-WAKE`. Keep the thresholds as named constants in one place.
+- **Refusal message** carries the price, e.g. `pij-x is cold (idle 1h52m, 720k context). Waking it rewrites ~720k tokens ≈ $5.76 at list price. Use --fyi to hold it, or --force --reason "<why>".`
+  - The price table is model → cache-write $/M, labelled an estimate. Opus 5.5 is $8/M for a 1h write.
+- **`--force` requires a non-empty `--reason`.** Record both, with the estimate, as a spine event (the audit of every forced cold wake).
+- **Never refused:** `--fyi` (it doesn't wake), control commands (compact etc.), and a recipient that is busy.
+- **Multi-recipient sends are checked per recipient:** the others are delivered, and the receipt lists who was refused and why.
+- **Unknown data** (harness unsupported, Unisphere error, no transcript) ⇒ ALLOW, and the receipt says `cold-check: unknown`. The guard is a brake: it may only ever refuse; it never changes what's delivered.
+- **Every send surface:** the CLI, the OMP/Pi `pij_send` tool (`force`, `reason`) and the Copilot extension tool. Tool descriptions say to prefer `fyi`.
+- **Skill:** the peer route and prime protocol rule 1 cite the guard.
+- **Proof:**
+  - tests RED first;
+  - live refusal against a real seat that is over 300k and idle over an hour (a refusal sends nothing, so it costs nothing);
+  - the --force path in tests only, or against a small seat. Never wake a big cold seat just to prove it.
+
+## Merge gate
+The Unisphere dependency must be a pinned git rev, which needs the repo public and 029 pushed. Until then, keep the local path dep on the branch and prove it live from the worktree build, NOT the production daemon.

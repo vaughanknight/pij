@@ -13,6 +13,7 @@
 pub mod admission;
 pub mod anomalies;
 pub mod background;
+pub mod cold_wake;
 pub mod config;
 pub mod control;
 pub mod decisions;

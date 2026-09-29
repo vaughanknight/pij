@@ -328,6 +328,7 @@ impl FederationService {
                 draft_sha: None,
             },
             at: (self.clock)().map_err(FederationSendError::Runtime)?,
+            cold_check: None,
         };
         self.publish_outcome(&request.from, alias, &receipt)
             .await
@@ -724,6 +725,8 @@ mod tests {
     fn request(machine: &str) -> SendRequest {
         SendRequest {
             fyi: false,
+            force: false,
+            reason: None,
             from: "alice".into(),
             to: Destination {
                 seat: "bob".into(),
