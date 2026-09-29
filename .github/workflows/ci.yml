@@ -117,7 +117,7 @@ jobs:
     runs-on: ubuntu-latest
     # Backstop only. Hung tests are killed and named by nextest's per-test
     # clock (.config/nextest.toml, profile `ci`) in about a minute each.
-    timeout-minutes: 30
+    timeout-minutes: 15
     permissions:
       contents: read
       issues: write
@@ -157,8 +157,8 @@ jobs:
               echo '```'
               echo "-- running tests"
               ps -eo etimes=,args= | grep -- '--exact' | grep -v grep | sed -E 's#^ *([0-9]+) \S*/deps/([^ ]+)-[0-9a-f]+ (.*)#\1s \2 \3#' | cut -c1-200
-              echo "-- newest runner processes"
-              ps -u runner -o pid=,ppid=,etimes=,args= --sort=start_time | tail -n 15 | cut -c1-200
+              echo "-- fatal signals (sender => target)"
+              grep -E 'sig=(1|2|3|6|9|15) ' /sys/kernel/tracing/trace | tail -n 25 | sed -E 's/^ +//' | cut -c1-200
               echo "-- nextest tail"
               tail -n 8 "$out" | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-200
               echo '```'
@@ -168,6 +168,8 @@ jobs:
             gh api -X PATCH "repos/$repo/issues/comments/$cid" -F body=@/tmp/tele.body >/dev/null 2>&1
           done
           EOF
+          echo 1 | sudo tee /sys/kernel/tracing/events/signal/signal_generate/enable >/dev/null
+          echo 16384 | sudo tee /sys/kernel/tracing/buffer_size_kb >/dev/null
           sudo -E nohup bash telemetry.sh "$cid" "${{ github.repository }}" "$PWD/nextest.out" >/dev/null 2>&1 &
           sudo -E env "PATH=$PATH" systemd-run --scope --quiet \
             -p MemoryMax=11G -p TasksMax=4096 -p CPUQuota=300% \
