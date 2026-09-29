@@ -120,14 +120,16 @@ jobs:
       fail-fast: false
       matrix:
         filter:
-          - "all()"
-          - "package(pij-cli) | package(pij-daemon)"
-          - "package(pij-cli) | package(pij-harnesses)"
-          - "package(pij-daemon) | package(pij-harnesses)"
-          - "not package(pij-cli)"
-          - "not package(pij-daemon)"
-          - "not package(pij-harnesses)"
-          - "not (package(pij-cli) | package(pij-daemon) | package(pij-harnesses))"
+          - "not binary_id(pij-harnesses::claude_heal_scripts)"
+          - "not binary_id(pij-harnesses)"
+          - "not binary_id(pij-daemon::revive_http)"
+          - "not binary_id(pij-daemon::native_runtime_cold_resume)"
+          - "not binary_id(pij-cli::revive)"
+          - "not binary_id(pij-cli::claude_inbound)"
+          - "not binary_id(pij-daemon::store_wedge)"
+          - "not binary_id(pij-daemon)"
+          - "not binary_id(pij-cli)"
+          - "not (binary_id(pij-cli::governance_boot) | binary_id(pij-cli::daemon_log) | binary_id(pij-cli::lifecycle))"
     steps:
       - uses: actions/checkout@v4
 
