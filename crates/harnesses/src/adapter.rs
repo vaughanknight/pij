@@ -184,8 +184,43 @@ fn is_busy(text: &str) -> bool {
         || lower.contains("◎ working")
         || text.lines().any(|line| {
             let trimmed = line.trim();
-            (trimmed.starts_with('↓') && trimmed.contains("token")) || trimmed.contains("⟦esc⟧")
+            (trimmed.starts_with('↓') && trimmed.contains("token"))
+                || trimmed.contains("⟦esc⟧")
+                || is_spinner_row(trimmed)
         })
+}
+
+/// Claude's in-turn spinner row, by shape: a glyph, a word, `…`, then a
+/// parenthesised elapsed time — `✻ Fiddle-faddling… (11s · ↓ 120 tokens)`.
+/// Glyph and verb both rotate, so neither is listed. A finished turn's row
+/// (`✻ Brewed for 11s · done`) has no ellipsis and does not match.
+fn is_spinner_row(line: &str) -> bool {
+    let mut chars = line.chars();
+    let Some(glyph) = chars.next() else {
+        return false;
+    };
+    if glyph.is_alphanumeric() || glyph.is_whitespace() {
+        return false;
+    }
+    let Some((word, tail)) = chars
+        .as_str()
+        .strip_prefix(' ')
+        .and_then(|rest| rest.split_once('…'))
+    else {
+        return false;
+    };
+    if word.is_empty()
+        || !word
+            .chars()
+            .all(|c| c.is_alphabetic() || c == '-' || c == '\'')
+    {
+        return false;
+    }
+    let Some(elapsed) = tail.strip_prefix(" (") else {
+        return false;
+    };
+    let digits = elapsed.chars().take_while(char::is_ascii_digit).count();
+    digits > 0 && matches!(elapsed[digits..].chars().next(), Some('s' | 'm' | 'h'))
 }
 
 fn classify_readiness(kind: Harness, text: &str) -> Readiness {
@@ -563,6 +598,14 @@ mod tests {
     const PI_WORKING: &str = include_str!("../../testkit/fixtures/harnesses/pi-pane-working.txt");
     const OMP: &str = include_str!("../../testkit/fixtures/harnesses/omp-pane-ready.txt");
     const OMP_WORKING: &str = include_str!("../../testkit/fixtures/harnesses/omp-working.txt");
+    const CLAUDE_2_1_284_IDLE: &str =
+        include_str!("../../testkit/fixtures/harnesses/claude-2.1.284-idle.txt");
+    const CLAUDE_2_1_284_AFTER_ESC: &str =
+        include_str!("../../testkit/fixtures/harnesses/claude-2.1.284-after-esc.txt");
+    const CLAUDE_2_1_284_TOOL_RUN: &str =
+        include_str!("../../testkit/fixtures/harnesses/claude-2.1.284-tool-run.txt");
+    const CLAUDE_2_1_284_TOOL_RUN_NARROW: &str =
+        include_str!("../../testkit/fixtures/harnesses/claude-2.1.284-tool-run-narrow.txt");
 
     fn adapter_with_captures(kind: Harness, fixture: &str) -> Arc<dyn HarnessPort> {
         let tmux = Arc::new(
@@ -742,6 +785,50 @@ mod tests {
             block_on(adapter.readiness("%108")).expect("busy classification"),
             Readiness::Busy
         );
+    }
+
+    #[test]
+    fn claude_2_1_284_spinner_row_is_busy_at_any_width() {
+        for (frame, pane) in [
+            ("tool-run", CLAUDE_2_1_284_TOOL_RUN),
+            ("tool-run-narrow", CLAUDE_2_1_284_TOOL_RUN_NARROW),
+        ] {
+            let adapter = adapter_with_captures(Harness::Claude, pane);
+            assert!(
+                block_on(adapter.busy("%108")).expect("busy"),
+                "{frame}: a live spinner row is a turn in progress"
+            );
+            assert_eq!(
+                block_on(adapter.readiness("%108")).expect("readiness"),
+                Readiness::Busy,
+                "{frame}: the spinner wins over the visible ready footer"
+            );
+        }
+    }
+
+    #[test]
+    fn claude_2_1_284_idle_frames_and_finished_rows_are_not_busy() {
+        for (frame, pane) in [
+            ("idle", CLAUDE_2_1_284_IDLE),
+            ("after-esc", CLAUDE_2_1_284_AFTER_ESC),
+        ] {
+            let adapter = adapter_with_captures(Harness::Claude, pane);
+            assert!(!block_on(adapter.busy("%108")).expect("busy"), "{frame}");
+            assert_eq!(
+                block_on(adapter.readiness("%108")).expect("readiness"),
+                Readiness::Ready,
+                "{frame}"
+            );
+        }
+        // Rows from the same live session once turns ended: past tense, no
+        // ellipsis. A tool's own elapsed line has no spinner glyph.
+        for line in [
+            "✻ Brewed for 11s · done 11:32 pm",
+            "✻ Worked for 2s · done 11:34 pm",
+            "⏺ Sleeping for 40 seconds · 9s",
+        ] {
+            assert!(!super::is_busy(line), "{line}");
+        }
     }
 
     #[test]
