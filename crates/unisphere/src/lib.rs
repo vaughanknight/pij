@@ -8,7 +8,9 @@
 //! answer. Handing it back reads only the bytes the harness appended since. When
 //! a transcript rotates or a seat's session changes, the SDK re-reads cold and
 //! says why (`SeatStatus::reset`). On a failed read, the seat keeps its previous
-//! cursor.
+//! cursor. A cursor resumes once, so reads of one seat are serialized: a
+//! concurrent `pij state` for the same seat waits and then uses the latest
+//! cursor, rather than handing the SDK a spent one that would refold cold.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -35,7 +37,7 @@ const CLAUDE_CODE: &str = "claude-code";
 /// Session facts from harness transcripts, read through `unisphere-sdk`.
 pub struct UnisphereSessionStatus {
     service: Arc<StatusService>,
-    cursors: Mutex<HashMap<SeatId, StatusCursor>>,
+    cursors: Mutex<HashMap<SeatId, Arc<tokio::sync::Mutex<Option<StatusCursor>>>>>,
 }
 
 impl UnisphereSessionStatus {
@@ -90,17 +92,22 @@ impl SessionStatusPort for UnisphereSessionStatus {
             session_id: target.session.clone(),
             transcript: None,
         };
-        let cursor = self
-            .cursors
-            .lock()
-            .expect("session-status cursor map")
-            .get(&target.seat)
-            .cloned();
+        let slot = Arc::clone(
+            self.cursors
+                .lock()
+                .expect("session-status cursor map")
+                .entry(target.seat.clone())
+                .or_default(),
+        );
+        // Held across the read: one reader per seat, always the latest cursor.
+        let mut cursor = slot.lock_owned().await;
+        let previous = cursor.take();
         let now_ms = now_ms()?;
         let service = Arc::clone(&self.service);
         // A cold fold reads a whole transcript: keep it off the reactor.
-        let answer = tokio::task::spawn_blocking(move || {
-            service.status_incremental(&request, cursor.as_ref(), now_ms)
+        let (answer, previous) = tokio::task::spawn_blocking(move || {
+            let answer = service.status_incremental(&request, previous.as_ref(), now_ms);
+            (answer, previous)
         })
         .await
         .map_err(|error| PijError::Adapter {
@@ -108,23 +115,24 @@ impl SessionStatusPort for UnisphereSessionStatus {
             message: format!("status read task failed: {error}"),
         })?;
         match answer {
-            Ok((status, cursor)) => {
-                self.cursors
-                    .lock()
-                    .expect("session-status cursor map")
-                    .insert(target.seat.clone(), cursor);
+            Ok((status, next)) => {
+                *cursor = Some(next);
                 Ok(SessionStatusReply::Status(seat_status(&status)))
             }
-            Err(failure) => match failure.kind {
-                StatusFailureKind::UnsupportedHarness => Ok(SessionStatusReply::Unsupported),
-                StatusFailureKind::TranscriptNotFound => Ok(SessionStatusReply::NotFound {
-                    detail: format!("{}: {}", failure.code(), failure.message),
-                }),
-                _ => Err(PijError::Adapter {
-                    adapter: ADAPTER.to_string(),
-                    message: format!("{}: {}", failure.code(), failure.message),
-                }),
-            },
+            Err(failure) => {
+                // The SDK leaves a failed read's cursor valid: keep it.
+                *cursor = previous;
+                match failure.kind {
+                    StatusFailureKind::UnsupportedHarness => Ok(SessionStatusReply::Unsupported),
+                    StatusFailureKind::TranscriptNotFound => Ok(SessionStatusReply::NotFound {
+                        detail: format!("{}: {}", failure.code(), failure.message),
+                    }),
+                    _ => Err(PijError::Adapter {
+                        adapter: ADAPTER.to_string(),
+                        message: format!("{}: {}", failure.code(), failure.message),
+                    }),
+                }
+            }
         }
     }
 }
@@ -301,6 +309,73 @@ mod tests {
         let mapped = seat_status(&status);
         assert_eq!(mapped.context_window_tokens, Fact::Unknown);
         assert_eq!(mapped.cache_ttl, Fact::Unknown);
+    }
+
+    fn record(uuid: &str, parent: &str, kind: &str, at: &str, usage: &str) -> String {
+        let message = if kind == "user" {
+            r#"{"role":"user","content":"x"}"#.to_string()
+        } else {
+            format!(
+                r#"{{"id":"{uuid}-r","role":"assistant","model":"claude-fixture","content":[{{"type":"text","text":"y"}}],"usage":{usage}}}"#
+            )
+        };
+        format!(
+            r#"{{"uuid":"{uuid}","parentUuid":{parent},"sessionId":"s-1","type":"{kind}","timestamp":"{at}","message":{message}}}"#
+        ) + "\n"
+    }
+
+    /// A seat's reads are serialized and always hand the SDK the latest cursor,
+    /// so repeated and concurrent reads stay warm instead of refolding a spent one.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn repeated_and_concurrent_reads_of_one_seat_stay_warm() {
+        let home = std::env::temp_dir().join(format!("pij-unisphere-{}", std::process::id()));
+        let project = home.join("projects").join("proj");
+        std::fs::create_dir_all(&project).unwrap();
+        let transcript = project.join("s-1.jsonl");
+        let usage = r#"{"input_tokens":10,"output_tokens":2,"cache_read_input_tokens":4,"cache_creation_input_tokens":1}"#;
+        std::fs::write(
+            &transcript,
+            record("u1", "null", "user", "2026-09-08T00:00:00Z", "")
+                + &record("a1", "\"u1\"", "assistant", "2026-09-08T00:00:01Z", usage),
+        )
+        .unwrap();
+        let source = Arc::new(UnisphereSessionStatus::new(vec![home.clone()]));
+        let target = SessionTarget {
+            seat: SeatId("pij-cursor".into()),
+            harness: Harness::Claude,
+            session: "s-1".into(),
+        };
+        let read = |source: Arc<UnisphereSessionStatus>, target: SessionTarget| async move {
+            match source.status(&target).await.expect("status") {
+                SessionStatusReply::Status(status) => status,
+                other => panic!("{other:?}"),
+            }
+        };
+        let cold = read(Arc::clone(&source), target.clone()).await;
+        assert_eq!(cold.context_used_tokens.value(), Some(&15));
+        assert_eq!(cold.reset, None);
+
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&transcript)
+            .unwrap();
+        std::io::Write::write_all(
+            &mut file,
+            record("a2", "\"a1\"", "assistant", "2026-09-08T00:00:02Z", usage).as_bytes(),
+        )
+        .unwrap();
+        let (first, second) = tokio::join!(
+            read(Arc::clone(&source), target.clone()),
+            read(Arc::clone(&source), target.clone()),
+        );
+        for status in [&first, &second] {
+            assert_eq!(
+                status.reset, None,
+                "a spent or cloned cursor would refold cold"
+            );
+            assert_eq!(status.context_used_tokens.value(), Some(&15));
+        }
+        std::fs::remove_dir_all(&home).unwrap();
     }
 
     #[tokio::test]

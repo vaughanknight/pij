@@ -68,3 +68,10 @@ One card for reference, `pij-far-jackal`:
 - `state` `idle`: busy/idle is pij's own and is never taken from Unisphere.
 
 The pass wall time, 4–6 s, is the rest of the card under load (liveness probes and the report-card read for 48 seats, run one after another). The session-status share is the sum shown above.
+
+## 6. Re-pin to 029 `b9c86e67` (kiwi's dogfood fixes)
+- The adapter now serializes reads per seat. Each seat has one async-mutexed cursor slot, held across the read, so every read hands the SDK the latest cursor. This follows 029's rule that a cursor resumes once: reusing an older or cloned cursor refolds cold with `reset: "spent"`.
+- Test: `pij_unisphere::tests::repeated_and_concurrent_reads_of_one_seat_stay_warm`.
+  - RED against an unserialized mutant, which cloned the cursor and released the lock before the read: `left: Some("spent") right: None`.
+  - GREEN on the fix.
+- `context.used_tokens` now arrives as `derived` and passes through unchanged. `StatusCursor` losing `PartialEq` needed no change.
