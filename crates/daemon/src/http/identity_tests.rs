@@ -17,7 +17,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use pij_core::model::{Envelope, Pane, PaneProcess, ProcIdentity, SeatDescriptor};
-use pij_core::ports::{Registry, SeatFilter, Spine as _};
+use pij_core::ports::{Registry, SeatFilter};
 use pij_testkit::fakes::{FakeLiveness, FakeQueue, FakeRegistry, FakeSpine, FakeTmux};
 
 use super::tests::{config, spawn, test_services};
