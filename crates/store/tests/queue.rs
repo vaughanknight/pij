@@ -122,6 +122,146 @@ async fn sqlite_and_fake_deferrals_share_sampling_and_completion_contract() {
     .await;
 }
 
+/// Plan 158: hold is idempotent per id, a claim takes every pending FYI oldest
+/// first exactly once with one receipt, and restore returns only what it names.
+async fn fyi_contract(queue: &dyn Queue, spine: &dyn pij_core::ports::Spine) {
+    let seat = SeatId::from("pij-fyi");
+    let other = SeatId::from("pij-other");
+    let fyi = |id: &str, to: &SeatId, at: u64| pij_core::fyi::HeldFyi {
+        id: id.to_string(),
+        recipient: to.clone(),
+        sender: SeatId::from("pij-sender"),
+        body: format!("body {id}"),
+        held_at_ms: at,
+    };
+    assert_eq!(
+        queue
+            .hold_fyi(&fyi("late", &seat, 20), spine)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        queue
+            .hold_fyi(&fyi("early", &seat, 10), spine)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        queue
+            .hold_fyi(&fyi("early", &seat, 10), spine)
+            .await
+            .unwrap()
+            .is_empty(),
+        "a retried hold of the same id is one FYI"
+    );
+    queue
+        .hold_fyi(&fyi("theirs", &other, 5), spine)
+        .await
+        .unwrap();
+    assert_eq!(queue.pending_fyi_count(&seat).await.unwrap(), 2);
+
+    let (claimed, events) = queue
+        .claim_fyis(&seat, "hook:omp", 30, spine)
+        .await
+        .unwrap();
+    let ids: Vec<&str> = claimed.iter().map(|fyi| fyi.id.as_str()).collect();
+    assert_eq!(ids, ["early", "late"], "oldest first, only this seat's");
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].kind, "fyi.delivered");
+    let receipt: serde_json::Value = serde_json::from_str(&events[0].payload).unwrap();
+    assert_eq!(
+        receipt,
+        serde_json::json!({"ids": ["early", "late"], "via": "hook:omp"})
+    );
+    let (again, events) = queue
+        .claim_fyis(&seat, "hook:omp", 31, spine)
+        .await
+        .unwrap();
+    assert!(
+        again.is_empty() && events.is_empty(),
+        "claimed exactly once"
+    );
+    assert_eq!(queue.pending_fyi_count(&other).await.unwrap(), 1);
+
+    // A carrier row claims every pending FYI in its own transaction and carries it.
+    queue
+        .hold_fyi(&fyi("ride", &seat, 40), spine)
+        .await
+        .unwrap();
+    let carrier = |msg_id: &str| {
+        job(
+            &format!("delivery:{}", seat.as_str()),
+            seat.as_str(),
+            msg_id,
+        )
+    };
+    let attach: pij_core::ports::AttachFyis = std::sync::Arc::new(|payload, fyis| {
+        let ids: Vec<&str> = fyis.iter().map(|fyi| fyi.id.as_str()).collect();
+        Ok(format!("{payload}+{}", ids.join(",")))
+    });
+    let (enqueued, events) = queue
+        .enqueue_delivery_carrying_fyis(carrier("m-1"), "message:m-1", 41, attach.clone(), spine)
+        .await
+        .unwrap();
+    assert!(matches!(enqueued, DeliveryEnqueue::Queued { .. }));
+    assert_eq!(events.len(), 1);
+    assert_eq!(queue.pending_fyi_count(&seat).await.unwrap(), 0);
+
+    // A retry of the still-queued message keeps its body and claims nothing new.
+    queue
+        .hold_fyi(&fyi("newer", &seat, 42), spine)
+        .await
+        .unwrap();
+    let (retried, events) = queue
+        .enqueue_delivery_carrying_fyis(carrier("m-1"), "message:m-1", 43, attach.clone(), spine)
+        .await
+        .unwrap();
+    assert!(matches!(retried, DeliveryEnqueue::Queued { .. }));
+    assert!(events.is_empty(), "a queued duplicate claims nothing");
+    assert_eq!(queue.pending_fyi_count(&seat).await.unwrap(), 1);
+    let kinds = [format!("delivery:{}", seat.as_str())];
+    let (job_id, row) = queue
+        .claim(&kinds, "reader")
+        .await
+        .unwrap()
+        .expect("carrier row");
+    assert_eq!(
+        row.payload, "{}+ride",
+        "the carrier carries exactly what it claimed"
+    );
+
+    // A delivered message id creates no row and claims nothing either.
+    queue
+        .ack_delivery(job_id, DeliveryOrigin::ReaderRead)
+        .await
+        .unwrap();
+    let (duplicate, events) = queue
+        .enqueue_delivery_carrying_fyis(carrier("m-1"), "message:m-1", 44, attach, spine)
+        .await
+        .unwrap();
+    assert!(matches!(duplicate, DeliveryEnqueue::AlreadyDelivered(_)));
+    assert!(events.is_empty());
+    assert_eq!(queue.pending_fyi_count(&seat).await.unwrap(), 1);
+}
+
+#[tokio::test]
+async fn sqlite_and_fake_queues_share_the_fyi_contract() {
+    let fresh = FreshStore::new();
+    let pool = pij_store::open(&fresh.path()).await.unwrap();
+    let queue = SqliteQueue::new(pool.clone(), 300, 1_024).unwrap();
+    let spine = pij_store::SqliteSpine::new(pool);
+    fyi_contract(&queue, &spine).await;
+    fyi_contract(
+        &FakeQueue::new(1_024).unwrap(),
+        &pij_testkit::fakes::FakeSpine::new(),
+    )
+    .await;
+}
+
 #[tokio::test]
 async fn alternating_deferrals_emit_at_most_sixty_events_per_hour() {
     let fresh = FreshStore::new();

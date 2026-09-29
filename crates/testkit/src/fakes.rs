@@ -159,6 +159,7 @@ impl Registry for FakeRegistry {
             .expect("presence checked above");
         descriptor.tombstoned_at = Some(seq);
         descriptor.tombstone_reason = Some(reason.to_string());
+        end_turn(descriptor);
         Ok(Seq(seq))
     }
 
@@ -186,7 +187,40 @@ impl Registry for FakeRegistry {
         descriptor.tombstoned_at = Some(seq);
         descriptor.tombstone_reason = Some(reason);
         descriptor.native_extension_delivery = false;
+        end_turn(descriptor);
         Ok(Seq(seq))
+    }
+
+    async fn set_activity(
+        &self,
+        seat: &SeatId,
+        state: pij_core::model::SystemState,
+    ) -> Result<Option<Seq>> {
+        let mut guard = self.state.lock().expect("fake registry mutex");
+        guard
+            .recorder
+            .record(format!("set_activity:{seat}:{}", state.as_str()));
+        let applies = guard.seats.get(seat.as_str()).is_some_and(|descriptor| {
+            descriptor.tombstoned_at.is_none() && descriptor.state != state
+        });
+        if !applies {
+            return Ok(None);
+        }
+        guard.seq += 1;
+        let seq = guard.seq;
+        guard
+            .seats
+            .get_mut(seat.as_str())
+            .expect("presence checked above")
+            .state = state;
+        Ok(Some(Seq(seq)))
+    }
+}
+
+/// A retired seat's turn is over: `working` must not outlive it (plan 158).
+fn end_turn(descriptor: &mut SeatDescriptor) {
+    if descriptor.state == pij_core::model::SystemState::Working {
+        descriptor.state = pij_core::model::SystemState::Idle;
     }
 }
 
@@ -439,6 +473,8 @@ struct QueueState {
     now: Duration,
     next_id: u64,
     delivered: Vec<(String, String, DeliveryOrigin)>,
+    /// Held FYIs with their state: `pending`, `delivered`.
+    fyis: Vec<(pij_core::fyi::HeldFyi, &'static str)>,
 }
 
 impl FakeQueue {
@@ -1191,6 +1227,128 @@ impl Queue for FakeQueue {
         let now = state.now;
         state.not_before.insert(job.0, now);
         Ok(outcome)
+    }
+
+    async fn hold_fyi(
+        &self,
+        fyi: &pij_core::fyi::HeldFyi,
+        spine: &dyn Spine,
+    ) -> Result<Vec<Event>> {
+        if self
+            .state
+            .lock()
+            .expect("fake queue mutex")
+            .fyis
+            .iter()
+            .any(|(held, _)| held.id == fyi.id)
+        {
+            return Ok(Vec::new());
+        }
+        let mut event = pij_core::fyi::held_event(fyi);
+        event.seq = Some(spine.append(event.clone()).await?);
+        self.state
+            .lock()
+            .expect("fake queue mutex")
+            .fyis
+            .push((fyi.clone(), "pending"));
+        Ok(vec![event])
+    }
+
+    async fn claim_fyis(
+        &self,
+        recipient: &SeatId,
+        via: &str,
+        at: u64,
+        spine: &dyn Spine,
+    ) -> Result<(Vec<pij_core::fyi::HeldFyi>, Vec<Event>)> {
+        // Transition under the lock first, so a racing claim cannot see these rows.
+        let mut claimed: Vec<pij_core::fyi::HeldFyi> = {
+            let mut state = self.state.lock().expect("fake queue mutex");
+            state
+                .fyis
+                .iter_mut()
+                .filter(|(held, fyi_state)| held.recipient == *recipient && *fyi_state == "pending")
+                .map(|(held, fyi_state)| {
+                    *fyi_state = "delivered";
+                    held.clone()
+                })
+                .collect()
+        };
+        if claimed.is_empty() {
+            return Ok((claimed, Vec::new()));
+        }
+        claimed.sort_by(|a, b| a.held_at_ms.cmp(&b.held_at_ms).then(a.id.cmp(&b.id)));
+        let ids: Vec<String> = claimed.iter().map(|fyi| fyi.id.clone()).collect();
+        let mut event = pij_core::fyi::delivered_event(recipient, &ids, via, at);
+        match spine.append(event.clone()).await {
+            Ok(seq) => event.seq = Some(seq),
+            Err(error) => {
+                self.set_fyi_state(&ids, "pending");
+                return Err(error);
+            }
+        }
+        Ok((claimed, vec![event]))
+    }
+
+    async fn enqueue_delivery_carrying_fyis(
+        &self,
+        job: Job,
+        via: &str,
+        at: u64,
+        attach: pij_core::ports::AttachFyis,
+        spine: &dyn Spine,
+    ) -> Result<(DeliveryEnqueue, Vec<Event>)> {
+        require_delivery_job(&job)?;
+        // A delivered or still-queued message id creates no row, so it claims nothing.
+        let known = {
+            let state = self.state.lock().expect("fake queue mutex");
+            state.delivered.iter().any(|(recipient, msg_id, _)| {
+                recipient == &job.serial_key && msg_id == &job.dedupe_key
+            }) || state
+                .live
+                .iter()
+                .map(|(_, live)| live)
+                .chain(state.claimed.values().map(|(live, _)| live))
+                .any(|live| live.dedupe_key == job.dedupe_key && live.kind == job.kind)
+        };
+        if known {
+            return Ok((self.enqueue_delivery(job).await?, Vec::new()));
+        }
+        let recipient = SeatId(job.serial_key.clone());
+        let (fyis, events) = self.claim_fyis(&recipient, via, at, spine).await?;
+        let mut job = job;
+        if !fyis.is_empty() {
+            match attach(&job.payload, &fyis) {
+                Ok(payload) => job.payload = payload,
+                Err(error) => {
+                    let ids: Vec<String> = fyis.iter().map(|fyi| fyi.id.clone()).collect();
+                    self.set_fyi_state(&ids, "pending");
+                    return Err(error);
+                }
+            }
+        }
+        Ok((self.enqueue_delivery(job).await?, events))
+    }
+
+    async fn pending_fyi_count(&self, recipient: &SeatId) -> Result<u64> {
+        Ok(self
+            .state
+            .lock()
+            .expect("fake queue mutex")
+            .fyis
+            .iter()
+            .filter(|(held, fyi_state)| held.recipient == *recipient && *fyi_state == "pending")
+            .count() as u64)
+    }
+}
+
+impl FakeQueue {
+    fn set_fyi_state(&self, ids: &[String], to: &'static str) {
+        for (held, fyi_state) in &mut self.state.lock().expect("fake queue mutex").fyis {
+            if ids.contains(&held.id) {
+                *fyi_state = to;
+            }
+        }
     }
 }
 

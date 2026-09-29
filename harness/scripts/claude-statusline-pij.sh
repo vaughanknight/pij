@@ -97,6 +97,14 @@ fi
 PIJ_FMT=""
 if [ -n "$PIJID" ]; then
   PIJ_FMT=" \033[33mrs\033[0m \033[34m⛓ $PIJID\033[0m"
+  # Held FYIs (plan 158): whoami carries the count; show it only while N > 0.
+  case "$RS_OUTPUT" in
+    *'"pending_fyis":'*)
+      FYIS=${RS_OUTPUT#*'"pending_fyis":'}
+      FYIS=${FYIS%%[!0-9]*}
+      [ -n "$FYIS" ] && [ "$FYIS" -gt 0 ] && PIJ_FMT="$PIJ_FMT \033[33m✉$FYIS\033[0m"
+      ;;
+  esac
 elif command -v pij >/dev/null 2>&1; then
   LEGACYID=$(PIJ_DAEMON_GENERATION=legacy pij whoami 2>/dev/null | sed -n 's/^pij session:[[:space:]]*\([^[:space:]]*\).*/\1/p')
   [ -z "$LEGACYID" ] && LEGACYID=$(PIJ_DAEMON_GENERATION=legacy pij whoami --json 2>/dev/null | jq -r '.id // empty' 2>/dev/null)

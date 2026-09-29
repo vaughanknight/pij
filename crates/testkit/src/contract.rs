@@ -150,6 +150,61 @@ pub async fn registry_contract(registry: &dyn Registry) {
         registry.tombstone(&missing, "nope").await.is_err(),
         "tombstoning an absent seat must fail loudly"
     );
+
+    // 8. A seat's own busy/idle observation changes only `state` (plan 158):
+    //    every other field survives, an unchanged state writes nothing, and a
+    //    tombstoned seat is never revived by a late observation.
+    let busy = SeatId::from("pij-contract-busy");
+    let mut descriptor = SeatDescriptor::new(busy.clone(), Harness::Omp, "/tmp/contract");
+    descriptor.role = Some("coder".to_string());
+    descriptor.pane = Some("%9".to_string());
+    registry
+        .put(descriptor.clone())
+        .await
+        .expect("put busy seat");
+    assert!(
+        registry
+            .set_activity(&busy, pij_core::model::SystemState::Working)
+            .await
+            .expect("set_activity")
+            .is_some(),
+        "idle -> working is a change"
+    );
+    let mut expected = descriptor.clone();
+    expected.state = pij_core::model::SystemState::Working;
+    let stored = registry.get(&busy).await.expect("get").expect("present");
+    assert_eq!(
+        (stored.state, stored.role.clone(), stored.pane.clone()),
+        (expected.state, expected.role.clone(), expected.pane.clone()),
+        "only the mechanical state changes"
+    );
+    assert!(
+        registry
+            .set_activity(&busy, pij_core::model::SystemState::Working)
+            .await
+            .expect("set_activity")
+            .is_none(),
+        "an unchanged state writes nothing"
+    );
+    registry
+        .tombstone(&busy, "closed")
+        .await
+        .expect("tombstone");
+    assert!(
+        registry
+            .set_activity(&busy, pij_core::model::SystemState::Working)
+            .await
+            .expect("set_activity")
+            .is_none(),
+        "a tombstoned seat takes no activity"
+    );
+    let retired = registry.get(&busy).await.expect("get").expect("present");
+    assert!(retired.tombstoned_at.is_some(), "never revived");
+    assert_eq!(
+        retired.state,
+        pij_core::model::SystemState::Idle,
+        "a tombstone ends the turn it interrupted"
+    );
 }
 
 /// Every promise the [`Spine`] port makes, in one place.

@@ -269,6 +269,23 @@ fn adapter_error(error: sqlx::Error) -> PijError {
     }
 }
 
+fn sql_ms(ms: u64) -> Result<i64> {
+    i64::try_from(ms).map_err(|_| PijError::Adapter {
+        adapter: "store/queue".into(),
+        message: "timestamp exceeds SQLite's integer range".into(),
+    })
+}
+
+fn decode_fyi(row: &sqlx::sqlite::SqliteRow, recipient: &SeatId) -> Result<pij_core::fyi::HeldFyi> {
+    Ok(pij_core::fyi::HeldFyi {
+        id: row.try_get("id").map_err(adapter_error)?,
+        recipient: recipient.clone(),
+        sender: SeatId(row.try_get("sender").map_err(adapter_error)?),
+        body: row.try_get("body").map_err(adapter_error)?,
+        held_at_ms: row.try_get::<i64, _>("held_at_ms").map_err(adapter_error)? as u64,
+    })
+}
+
 fn decode_job(row: &sqlx::sqlite::SqliteRow) -> Result<Job> {
     Ok(Job {
         kind: row.try_get("kind").map_err(adapter_error)?,
@@ -938,6 +955,200 @@ impl Queue for SqliteQueue {
             })
         })
         .await
+    }
+
+    async fn hold_fyi(
+        &self,
+        fyi: &pij_core::fyi::HeldFyi,
+        _spine: &dyn pij_core::ports::Spine,
+    ) -> Result<Vec<pij_core::model::Event>> {
+        require_current_schema(&self.pool).await?;
+        let pool = self.pool.clone();
+        let fyi = fyi.clone();
+        owned_write(async move {
+            let mut tx = begin_write(&pool).await?;
+            // A retried send with the same msg_id is the same FYI, held once.
+            let inserted = sqlx::query(
+                "INSERT OR IGNORE INTO fyis (id, recipient, sender, body, held_at_ms, state) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'pending')",
+            )
+            .bind(&fyi.id)
+            .bind(fyi.recipient.as_str())
+            .bind(fyi.sender.as_str())
+            .bind(&fyi.body)
+            .bind(sql_ms(fyi.held_at_ms)?)
+            .execute(&mut *tx)
+            .await
+            .map_err(adapter_error)?
+            .rows_affected();
+            let mut events = Vec::new();
+            if inserted == 1 {
+                let mut event = pij_core::fyi::held_event(&fyi);
+                event.seq = Some(crate::spine::append_in_transaction(&mut tx, &event).await?);
+                events.push(event);
+            }
+            tx.commit().await.map_err(adapter_error)?;
+            Ok(events)
+        })
+        .await
+    }
+
+    async fn claim_fyis(
+        &self,
+        recipient: &SeatId,
+        via: &str,
+        at: u64,
+        _spine: &dyn pij_core::ports::Spine,
+    ) -> Result<(Vec<pij_core::fyi::HeldFyi>, Vec<pij_core::model::Event>)> {
+        require_current_schema(&self.pool).await?;
+        let pool = self.pool.clone();
+        let recipient = recipient.clone();
+        let via = via.to_owned();
+        owned_write(async move {
+            // One write transaction: select, transition and receipt together, so
+            // a racing claimer sees these rows already delivered.
+            let mut tx = begin_write(&pool).await?;
+            let rows = sqlx::query(
+                "UPDATE fyis SET state = 'delivered', settled_at_ms = ?2, settled_via = ?3 \
+                 WHERE recipient = ?1 AND state = 'pending' \
+                 RETURNING id, sender, body, held_at_ms",
+            )
+            .bind(recipient.as_str())
+            .bind(sql_ms(at)?)
+            .bind(&via)
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+            let mut fyis = rows
+                .iter()
+                .map(|row| decode_fyi(row, &recipient))
+                .collect::<Result<Vec<_>>>()?;
+            fyis.sort_by(|a, b| a.held_at_ms.cmp(&b.held_at_ms).then(a.id.cmp(&b.id)));
+            let mut events = Vec::new();
+            if !fyis.is_empty() {
+                let ids: Vec<String> = fyis.iter().map(|fyi| fyi.id.clone()).collect();
+                let mut event = pij_core::fyi::delivered_event(&recipient, &ids, &via, at);
+                event.seq = Some(crate::spine::append_in_transaction(&mut tx, &event).await?);
+                events.push(event);
+            }
+            tx.commit().await.map_err(adapter_error)?;
+            Ok((fyis, events))
+        })
+        .await
+    }
+
+    async fn enqueue_delivery_carrying_fyis(
+        &self,
+        job: Job,
+        via: &str,
+        at: u64,
+        attach: pij_core::ports::AttachFyis,
+        _spine: &dyn pij_core::ports::Spine,
+    ) -> Result<(DeliveryEnqueue, Vec<pij_core::model::Event>)> {
+        require_current_schema(&self.pool).await?;
+        require_delivery_job(&job)?;
+        let pool = self.pool.clone();
+        let via = via.to_owned();
+        owned_write(async move {
+            // One transaction: the carrier row, the FYI transition and its receipt
+            // commit together or not at all (plan 158 review HIGH-1).
+            let mut tx = begin_write(&pool).await?;
+            let delivered_origin: Option<String> = sqlx::query_scalar(
+                "SELECT origin FROM delivered_messages WHERE recipient = ?1 AND msg_id = ?2",
+            )
+            .bind(&job.serial_key)
+            .bind(&job.dedupe_key)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+            if let Some(origin) = delivered_origin {
+                let origin = decode_origin(&origin)?;
+                tx.commit().await.map_err(adapter_error)?;
+                return Ok((DeliveryEnqueue::AlreadyDelivered(origin), Vec::new()));
+            }
+            // A retry of a message that is still queued keeps the queued body, so
+            // it must not claim anything that body will never carry.
+            let live: Option<(i64, i64)> = sqlx::query_as(
+                "SELECT id, not_before FROM jobs WHERE kind = ?1 AND dedupe_key = ?2 \
+               AND state IN ('pending', 'running') ORDER BY id LIMIT 1",
+            )
+            .bind(&job.kind)
+            .bind(&job.dedupe_key)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+            if let Some((id, not_before)) = live {
+                tx.commit().await.map_err(adapter_error)?;
+                return Ok((
+                    DeliveryEnqueue::Queued {
+                        job_id: JobId(id as u64),
+                        not_before_ms: (not_before.max(0) as u64).saturating_mul(1_000),
+                    },
+                    Vec::new(),
+                ));
+            }
+            let recipient = SeatId(job.serial_key.clone());
+            let rows = sqlx::query(
+                "UPDATE fyis SET state = 'delivered', settled_at_ms = ?2, settled_via = ?3 \
+                 WHERE recipient = ?1 AND state = 'pending' \
+                 RETURNING id, sender, body, held_at_ms",
+            )
+            .bind(recipient.as_str())
+            .bind(sql_ms(at)?)
+            .bind(&via)
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+            let mut fyis = rows
+                .iter()
+                .map(|row| decode_fyi(row, &recipient))
+                .collect::<Result<Vec<_>>>()?;
+            fyis.sort_by(|a, b| a.held_at_ms.cmp(&b.held_at_ms).then(a.id.cmp(&b.id)));
+            let payload = if fyis.is_empty() {
+                job.payload.clone()
+            } else {
+                attach(&job.payload, &fyis)?
+            };
+            let (id, not_before): (i64, i64) = sqlx::query_as(
+                "INSERT INTO jobs (kind, serial_key, payload, dedupe_key, enqueued_at) \
+                 VALUES (?1, ?2, ?3, ?4, unixepoch()) RETURNING id, not_before",
+            )
+            .bind(&job.kind)
+            .bind(&job.serial_key)
+            .bind(&payload)
+            .bind(&job.dedupe_key)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+            let mut events = Vec::new();
+            if !fyis.is_empty() {
+                let ids: Vec<String> = fyis.iter().map(|fyi| fyi.id.clone()).collect();
+                let mut event = pij_core::fyi::delivered_event(&recipient, &ids, &via, at);
+                event.seq = Some(crate::spine::append_in_transaction(&mut tx, &event).await?);
+                events.push(event);
+            }
+            tx.commit().await.map_err(adapter_error)?;
+            Ok((
+                DeliveryEnqueue::Queued {
+                    job_id: JobId(id as u64),
+                    not_before_ms: (not_before.max(0) as u64).saturating_mul(1_000),
+                },
+                events,
+            ))
+        })
+        .await
+    }
+
+    async fn pending_fyi_count(&self, recipient: &SeatId) -> Result<u64> {
+        require_current_schema(&self.pool).await?;
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM fyis WHERE recipient = ?1 AND state = 'pending'",
+        )
+        .bind(recipient.as_str())
+        .fetch_one(&self.pool)
+        .await
+        .map_err(adapter_error)?;
+        Ok(count as u64)
     }
 
     async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()> {

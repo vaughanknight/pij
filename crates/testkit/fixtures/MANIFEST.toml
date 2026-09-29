@@ -443,3 +443,10 @@ sha256 = "72102f00f8aa590642052db34609666a86dd9509f1d3b29b2da216a2389ac385"
 bytes = 9524
 note = "EXECUTED plan 145 native/shim captures against one private real daemon and private tmux server; binary SHA retained. Two read pairs and two assignment refusal pairs, not production acceptance."
 answer = "Node/state readers expose canonical assignment_id and refs identically in both clients. Assignment ownership and unknown-id refusal stdout is byte-equal; existing native exit 2 and shim exit 4 policies remain distinct."
+
+[[fixture]]
+path = "golden/fyi/block.txt"
+sha256 = "11f4e9a209b67ddbe833258b4629a60db5f18c0edc83ad3d1b691724e2897a1c"
+bytes = 146
+note = "Plan 158: the ONE definition of the held-FYI block. pij_core::fyi::render_block produces it, the daemon appends it after a message body or returns it from /v1/fyi/claim, and the Claude hook, the Pi/OMP extension and the Copilot extension each pass it through byte-for-byte."
+answer = "Two FYIs, oldest first, at UTC offset 0 and held at 14:02 and 14:10 UTC: the header `Also, 2 FYIs were queued for you:`, lines `N. [from <sender>, HH:MM] <body>`, continuation lines of a multi-line body indented 3 spaces, and no trailing newline."

@@ -13,6 +13,7 @@ use pij_core::delivery::{
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
 use pij_core::framing::frame_message;
+use pij_core::fyi::{HeldFyi, VIA_MESSAGE_PREFIX, append_block, render_block};
 use pij_core::model::{
     DeliveryFailure, DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome,
     Receipt, SeatDescriptor, SeatId, SystemState,
@@ -690,6 +691,158 @@ impl DeliveryService {
         self.own_admission(msg, Arrival::Forwarded).await
     }
 
+    /// Hold an FYI (plan 158): stored for the recipient's next real turn and
+    /// never delivered now. No transport, pane, inbox push or turn is touched.
+    ///
+    /// # Errors
+    /// The same admission refusals as a send (missing, self-addressed or
+    /// tombstoned recipient), a queue/spine authority split, or store failures.
+    pub async fn hold_fyi(&self, msg: Msg) -> Result<Receipt> {
+        if msg.to.0 == pij_core::BG_ACTOR {
+            return Err(PijError::Adapter {
+                adapter: "daemon/virtual-sender".into(),
+                message: "pij-bg is a daemon-owned sender, not a recipient".into(),
+            });
+        }
+        pij_core::delivery::require_recovery_authority(self.recovery_authority_shared)?;
+        let at = (self.clock)()?;
+        let recipient =
+            self.registry
+                .get(&msg.to)
+                .await?
+                .ok_or_else(|| PijError::NoRegistryEntry {
+                    seat: msg.to.clone(),
+                    store: "the daemon registry".to_string(),
+                })?;
+        if let DeliveryRoute::Tombstoned { reason } =
+            route(&msg.from, msg.from_machine.as_deref(), &recipient, true)?
+        {
+            return Err(PijError::SeatIsGone {
+                seat: msg.to,
+                tombstone_reason: reason,
+            });
+        }
+        let fyi = HeldFyi {
+            id: msg.msg_id.clone(),
+            recipient: msg.to,
+            sender: msg.from,
+            body: msg.body,
+            held_at_ms: at,
+        };
+        let queue = Arc::clone(&self.queue);
+        let spine = self.event_bus.raw_spine();
+        self.event_bus
+            .publish_committed_batch(async move {
+                let events = queue.hold_fyi(&fyi, spine.as_ref()).await?;
+                Ok((events, ()))
+            })
+            .await?;
+        Ok(Receipt {
+            msg_id: msg.msg_id,
+            outcome: DeliveryOutcome::Held {
+                reason: "fyi".into(),
+            },
+            at,
+        })
+    }
+
+    /// Atomically claim every pending FYI for `recipient`, oldest first,
+    /// recording `via` on the `fyi.delivered` receipt. Exactly once: a racing
+    /// claim receives none of these.
+    ///
+    /// # Errors
+    /// Store or event-publication failures.
+    pub async fn claim_fyis(&self, recipient: &SeatId, via: &str) -> Result<Vec<HeldFyi>> {
+        // Holding refuses a split authority, so nothing can be pending there.
+        if !self.recovery_authority_shared {
+            return Ok(Vec::new());
+        }
+        let at = (self.clock)()?;
+        let queue = Arc::clone(&self.queue);
+        let spine = self.event_bus.raw_spine();
+        let recipient = recipient.clone();
+        let via = via.to_string();
+        self.event_bus
+            .publish_committed_batch(async move {
+                let (fyis, events) = queue
+                    .claim_fyis(&recipient, &via, at, spine.as_ref())
+                    .await?;
+                Ok((events, fyis))
+            })
+            .await
+    }
+
+    /// How many FYIs wait for `seat`.
+    ///
+    /// # Errors
+    /// Store failures.
+    pub async fn pending_fyi_count(&self, seat: &SeatId) -> Result<u64> {
+        self.queue.pending_fyi_count(seat).await
+    }
+
+    /// Does anything wait for `seat`? A cheap read, so a send with nothing to
+    /// carry takes no write and no publication lock. A failed read carries
+    /// nothing: the FYIs stay pending and the send goes out plain.
+    async fn has_pending_fyis(&self, seat: &SeatId) -> bool {
+        if !self.recovery_authority_shared {
+            return false;
+        }
+        match self.queue.pending_fyi_count(seat).await {
+            Ok(count) => count > 0,
+            Err(error) => {
+                eprintln!(
+                    "pij-rs could not read pending FYIs for {seat}; sending without them: {error}"
+                );
+                false
+            }
+        }
+    }
+
+    /// Enqueue `msg` as a durable delivery; when `carry`, the recipient's pending
+    /// FYIs are claimed by the transaction that creates the row and appended to
+    /// its body. A failed carrying enqueue falls back to a plain one, so the FYI
+    /// claim can never fail the send; the FYIs then stay pending.
+    async fn enqueue_carrier(
+        &self,
+        msg: &Msg,
+        recipient: &SeatDescriptor,
+        carry: bool,
+    ) -> Result<DeliveryEnqueue> {
+        let job = delivery_job(msg, Some(recipient))?;
+        if !carry {
+            return self.queue.enqueue_delivery(job).await;
+        }
+        let at = (self.clock)()?;
+        let offset = local_utc_offset();
+        let attach: pij_core::ports::AttachFyis =
+            Arc::new(move |payload: &str, fyis: &[HeldFyi]| {
+                attach_fyi_block(payload, fyis, offset)
+            });
+        let via = format!("{VIA_MESSAGE_PREFIX}{}", msg.msg_id);
+        let queue = Arc::clone(&self.queue);
+        let spine = self.event_bus.raw_spine();
+        let carrier = job.clone();
+        let carried = self
+            .event_bus
+            .publish_committed_batch(async move {
+                let (enqueued, events) = queue
+                    .enqueue_delivery_carrying_fyis(carrier, &via, at, attach, spine.as_ref())
+                    .await?;
+                Ok((events, enqueued))
+            })
+            .await;
+        match carried {
+            Ok(enqueued) => Ok(enqueued),
+            Err(error) => {
+                eprintln!(
+                    "pij-rs could not attach FYIs to {}; sending without them: {error}",
+                    msg.msg_id
+                );
+                self.queue.enqueue_delivery(job).await
+            }
+        }
+    }
+
     // A dedupe reservation and its injection/compensation share one owner.
     // Cancelling a caller only discards its reply, never the continuation that
     // makes a committed reservation truthful.
@@ -820,6 +973,13 @@ impl DeliveryService {
         } else {
             native_guard
         };
+        // Plan 158: held FYIs ride along on this message when a durable carrier
+        // row is created for it, claimed in that same transaction. A queued
+        // route carries them; a pane-bound direct delivery is queued for the
+        // drain worker instead, so no FYI is ever claimed without its carrier.
+        let carry = msg.command.is_none()
+            && !matches!(selected, DeliveryRoute::Tombstoned { .. })
+            && self.has_pending_fyis(&to).await;
         let mut publish_to_recipient = true;
         let mut _delivery_order = None;
         let outcome = match selected {
@@ -839,11 +999,7 @@ impl DeliveryService {
             // A duplicate is a duplicate. Where it entered from does not change
             // whether the recipient has already been given it.
             DeliveryRoute::Queue(reason) => {
-                match self
-                    .queue
-                    .enqueue_delivery(delivery_job(&msg, Some(&recipient))?)
-                    .await?
-                {
+                match self.enqueue_carrier(&msg, &recipient, carry).await? {
                     DeliveryEnqueue::Queued { not_before_ms, .. } => {
                         Self::queued_outcome(Some(reason.as_str()), not_before_ms)
                     }
@@ -873,7 +1029,15 @@ impl DeliveryService {
                     if recipient.pane.is_none() && socket_available {
                         DeliveryRung::Socket
                     } else {
-                        select_rung(&recipient, &msg, socket_available, false, true)
+                        match select_rung(&recipient, &msg, socket_available, false, true) {
+                            // A carrier must be a durable row, so a pane-bound
+                            // direct delivery that carries FYIs goes to the drain
+                            // worker, which delivers it the same two ways.
+                            DeliveryRung::Socket | DeliveryRung::TypedBody if carry => {
+                                DeliveryRung::Queue
+                            }
+                            rung => rung,
+                        }
                     }
                 };
 
@@ -1008,11 +1172,7 @@ impl DeliveryService {
                     | DeliveryRung::Queue
                     | DeliveryRung::Pty
                     | DeliveryRung::ControlBodyPull => {
-                        match self
-                            .queue
-                            .enqueue_delivery(delivery_job(&msg, Some(&recipient))?)
-                            .await?
-                        {
+                        match self.enqueue_carrier(&msg, &recipient, carry).await? {
                             DeliveryEnqueue::Queued { not_before_ms, .. } => {
                                 let reason = if paneless_pull(&recipient) {
                                     None
@@ -1031,6 +1191,7 @@ impl DeliveryService {
                                         DeliveryRung::Observe => Some("unreachable"),
                                         DeliveryRung::ControlBodyPull => Some("terminal-control"),
                                         DeliveryRung::Pty => Some("pty"),
+                                        DeliveryRung::Queue if carry => Some("fyi-ride-along"),
                                         _ => None,
                                     }
                                 };
@@ -2081,6 +2242,27 @@ async fn publish_outcome_with_control(
         })
         .await?;
     Ok(())
+}
+
+/// Append the rendered FYI block to a delivery payload's body.
+fn attach_fyi_block(payload: &str, fyis: &[HeldFyi], utc_offset_minutes: i32) -> Result<String> {
+    let invalid = |error: String| PijError::Adapter {
+        adapter: "daemon/fyi".into(),
+        message: format!("cannot attach FYIs to the delivery payload: {error}"),
+    };
+    let mut payload: serde_json::Value =
+        serde_json::from_str(payload).map_err(|error| invalid(error.to_string()))?;
+    let body = payload["body"]
+        .as_str()
+        .ok_or_else(|| invalid("no body".to_string()))?;
+    payload["body"] =
+        serde_json::Value::String(append_block(body, &render_block(fyis, utc_offset_minutes)));
+    serde_json::to_string(&payload).map_err(|error| invalid(error.to_string()))
+}
+
+/// The daemon's local UTC offset for FYI clock times. UTC when it can't be read.
+fn local_utc_offset() -> i32 {
+    pij_harnesses::proc::local_utc_offset_minutes().unwrap_or(0)
 }
 
 /// Persist every deferred attempt and its sampled held event in one transaction
@@ -4334,6 +4516,127 @@ mod tests {
             "a claim whose delivery failed must NOT suppress the retry of a message nobody got"
         );
         assert_eq!(fixture.transport.delivered().len(), 1);
+    }
+
+    fn fyi_to(recipient: &str, id: &str) -> Msg {
+        Msg {
+            from: "pij-fyi-sender".into(),
+            to: recipient.into(),
+            body: format!("note {id}"),
+            msg_id: id.to_string(),
+            from_machine: None,
+            in_reply_to: None,
+            command: None,
+        }
+    }
+
+    /// Every body queued for `seat`, without claiming.
+    async fn queued_bodies(fixture: &Fixture, seat: &str) -> Vec<String> {
+        let kinds = [delivery_kind(&SeatId::from(seat))];
+        let mut bodies = Vec::new();
+        while let Some((job, row)) = fixture.queue.claim(&kinds, "fyi-reader").await.unwrap() {
+            let payload: serde_json::Value = serde_json::from_str(&row.payload).unwrap();
+            bodies.push(payload["body"].as_str().unwrap().to_string());
+            fixture
+                .queue
+                .ack(job, pij_core::model::Outcome::Done)
+                .await
+                .unwrap();
+        }
+        bodies
+    }
+
+    /// Plan 158 review MEDIUM-1: an FYI claim that fails must never fail the send
+    /// that would have carried it. The send goes out plain; the FYI stays pending.
+    #[tokio::test]
+    async fn a_failing_fyi_claim_never_fails_the_send() {
+        let fixture = fixture(FakeTransport::reachable());
+        let mut seat = bound("pij-fyi-claim-down");
+        seat.pane = Some("%claim-down".into());
+        register(&fixture, seat).await;
+        fixture
+            .service
+            .hold_fyi(fyi_to("pij-fyi-claim-down", "fyi-1"))
+            .await
+            .expect("hold");
+        fixture
+            .spine
+            .script_append_error("FYI claim receipt unavailable");
+
+        let receipt = fixture
+            .service
+            .accept(Msg {
+                body: "real work".to_string(),
+                msg_id: "m-real".to_string(),
+                ..fyi_to("pij-fyi-claim-down", "m-real")
+            })
+            .await
+            .expect("a failed FYI claim must not fail the send");
+        assert!(
+            matches!(receipt.outcome, DeliveryOutcome::Queued { .. }),
+            "{receipt:?}"
+        );
+        assert_eq!(
+            queued_bodies(&fixture, "pij-fyi-claim-down").await,
+            ["real work"],
+            "sent plain, without the FYI"
+        );
+        assert_eq!(
+            fixture
+                .queue
+                .pending_fyi_count(&SeatId::from("pij-fyi-claim-down"))
+                .await
+                .unwrap(),
+            1,
+            "the FYI waits for the next carrier"
+        );
+    }
+
+    /// Plan 158 review HIGH-2: a carrier whose delivery fails must not lose the
+    /// FYIs it would have carried. Each one is still pending, or carried exactly
+    /// once by a durable queued delivery.
+    #[tokio::test]
+    async fn a_failing_carrier_never_loses_its_fyis() {
+        let fixture = fixture(FakeTransport::reachable().script_deliver_error());
+        let mut seat = bound("pij-fyi-flaky");
+        seat.pane = Some("%fyi".into());
+        register(&fixture, seat).await;
+        fixture
+            .service
+            .hold_fyi(fyi_to("pij-fyi-flaky", "fyi-1"))
+            .await
+            .expect("hold");
+
+        let _ = fixture
+            .service
+            .accept(Msg {
+                body: "real work".to_string(),
+                msg_id: "m-real".to_string(),
+                ..fyi_to("pij-fyi-flaky", "m-real")
+            })
+            .await;
+
+        let pending = fixture
+            .queue
+            .pending_fyi_count(&SeatId::from("pij-fyi-flaky"))
+            .await
+            .unwrap();
+        let carried = queued_bodies(&fixture, "pij-fyi-flaky")
+            .await
+            .iter()
+            .filter(|body| body.contains("note fyi-1"))
+            .count() as u64;
+        let delivered = fixture
+            .transport
+            .delivered()
+            .iter()
+            .filter(|msg| msg.body.contains("note fyi-1"))
+            .count() as u64;
+        assert_eq!(
+            pending + carried + delivered,
+            1,
+            "pending {pending}, queued {carried}, delivered {delivered}"
+        );
     }
 
     fn native_seat(pane: Option<&str>) -> SeatDescriptor {

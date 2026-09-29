@@ -101,10 +101,11 @@ export default function (pi: ExtensionAPI): void {
 		name: "pij_send",
 		label: "pij send",
 		description:
-			"Send a message — or run an allow-listed control command (compact/new/reload) — to another pij peer session in this project. Prefer this over shelling out to the `pij` CLI: it resolves your id, delivers, and reports the receipt. Reply to a `[pij-rs from <id>] … [/pij]` message by passing that <id> as `to`.",
+			"Send a message — or run an allow-listed control command (compact/new/reload) — to another pij peer session in this project. Prefer this over shelling out to the `pij` CLI: it resolves your id, delivers, and reports the receipt. Reply to a `[pij-rs from <id>] … [/pij]` message by passing that <id> as `to`. Set `fyi: true` for information that needs no action from the recipient: it waits for their next turn instead of waking them (receipt: held (fyi)).",
 		promptSnippet: "Message or control a peer pij session (reply to [pij-rs from <id>] … [/pij])",
 		promptGuidelines: [
 			"Use pij_send to reply to a `[pij-rs from <id>] … [/pij]` message or to message/control a peer — do not shell out to the `pij` CLI to send.",
+			"Use pij_send with `fyi: true` for information the recipient need not act on (status, heads-ups): it is held until their next turn instead of waking them. Acks needing no action are better not sent at all.",
 		],
 		parameters: Type.Object(
 			{
@@ -124,6 +125,12 @@ export default function (pi: ExtensionAPI): void {
 							"Run an allow-listed control command on the peer instead of text: compact | new | reload. Provide message OR command, not both.",
 					}),
 				),
+				fyi: Type.Optional(
+					Type.Boolean({
+						description:
+							"true = hold this message until the recipient's next turn instead of waking them. Use for information that needs no action. Message only; never with `command`.",
+					}),
+				),
 			},
 			{
 				// s099 / pij#166. The XOR was previously expressed ONLY in execute(),
@@ -136,7 +143,15 @@ export default function (pi: ExtensionAPI): void {
 				// docs/plans/099-send-tool-xor/assets/union-spike.md.
 				oneOf: [
 					{ required: ["message"], not: { required: ["command"] } },
-					{ required: ["command"], not: { required: ["message"] } },
+					{
+						required: ["command"],
+						not: {
+							anyOf: [
+								{ required: ["message"] },
+								{ required: ["fyi"], properties: { fyi: { const: true } } },
+							],
+						},
+					},
 				],
 			},
 		),
@@ -147,12 +162,26 @@ export default function (pi: ExtensionAPI): void {
 			if (message.length > 0 === (command !== undefined)) {
 				throw new Error("pij_send needs exactly one of `message` or `command`.");
 			}
+			const fyi = params.fyi === true;
+			if (fyi && command !== undefined) {
+				throw new Error("pij_send `fyi` cannot be combined with a control `command`.");
+			}
 			if (rustRuntime) {
-				const messageId = await rustRuntime.send(params.to, message, command);
+				const receipt = await rustRuntime.send(params.to, message, command, fyi);
 				return {
-					content: [{ type: "text", text: `queued ${messageId} -> ${params.to}` }],
+					content: [
+						{
+							type: "text",
+							text: `${receipt.held ? "held (fyi)" : "queued"} ${receipt.msgId} -> ${params.to}`,
+						},
+					],
 					details: {},
 				};
+			}
+			if (fyi) {
+				throw new Error(
+					"pij_send `fyi` needs the Rust daemon (pij-rs); legacy delivery cannot hold.",
+				);
 			}
 			const deps: CliDeps = {
 				registry: new FsRegistry(pijHome),
@@ -640,6 +669,17 @@ export default function (pi: ExtensionAPI): void {
 		rustRuntime?.onAgentEnd(willContinue);
 	});
 
+	// Plan 158: a typed turn carries this seat's held FYIs. The daemon owns the
+	// block format; it is passed through verbatim. A claim failure resolves to
+	// undefined inside claimFyi, so it never blocks the human's turn.
+	pi.on("before_agent_start", async (_event, ctx) => {
+		if (isEmbeddedOmpChild(ctx)) return undefined;
+		const block = await rustRuntime?.claimFyi(runtimeBin === "omp" ? "hook:omp" : "hook:pi");
+		return block === undefined
+			? undefined
+			: { message: { customType: "pij-fyi", content: block, display: true } };
+	});
+
 	// Turn activity resets the Rust idle-loss detector, never its consumption proof.
 	// Legacy queued receipts retain their turn-start handling.
 	pi.on("turn_start", (event) => {
@@ -678,7 +718,8 @@ export default function (pi: ExtensionAPI): void {
 		disposeWatch = undefined;
 		// Pi guarantees this closed union (extensions.md, session_shutdown): only
 		// replacement reasons dissolve a predecessor; quit remains observable.
-		session?.shutdown(event.reason);
+		// The Rust runtime settles a seat left working to idle, bounded, first.
+		await session?.shutdown(event.reason);
 		ctx.ui.setStatus(PIJ_STATUS_KEY, undefined);
 	});
 

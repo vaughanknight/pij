@@ -200,6 +200,8 @@ impl Fixture {
         );
         let mut projected = serde_json::to_value(&raw).expect("descriptor JSON");
         projected["role"] = expected.clone();
+        // whoami also carries the held-FYI count the status lines read (plan 158).
+        projected["pending_fyis"] = json!(0);
         let pane = raw.pane.as_deref().expect("worker pane");
         for query in [[("seat", worker.as_str())], [("pane", pane)]] {
             let (status, response) = self.get("/v1/whoami", &query).await;

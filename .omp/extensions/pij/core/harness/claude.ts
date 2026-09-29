@@ -154,6 +154,7 @@ export function buildInitInjection(
 	const body =
 		`${contextReframe}You are now a pij peer (id: ${pijId})${spawnedByClause}. ` +
 		`Message other sessions with \`pij send <id> "<text>"\`${replyHint} and list peers with \`pij list\`. ` +
+		"Add `--fyi` for information needing no action: it waits for their next turn instead of waking them. " +
 		// AC-12: pij's own onboarding used to teach ONLY the quoted form, to every
 		// peer on the box — which is how a fleet that relays log lines and source
 		// excerpts all day learned the one form that lets the caller's shell

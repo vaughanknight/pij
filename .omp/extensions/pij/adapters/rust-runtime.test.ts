@@ -132,6 +132,8 @@ async function bootPushedEvent(
 			sends.push(sent);
 			return envelope("pij send", { msg_id: sent.msg_id, outcome: "accepted", at: 1 });
 		}
+		if (path === "/v1/state") return envelope("pij state", { id: registeredId, pendingFyis: 0 });
+		if (path === "/v1/activity") return envelope("pij activity", { changed: false });
 		throw new Error(`unexpected path ${path}`);
 	});
 	const deps: DaemonHttpDeps = {
@@ -1249,6 +1251,12 @@ class GraceClient extends PijDaemonClient {
 		return () => {
 			this.listener = undefined;
 		};
+	}
+	override async pendingFyis(): Promise<number> {
+		return 0;
+	}
+	override async publishActivity(): Promise<boolean> {
+		return true;
 	}
 	override async claimInbox(): Promise<unknown> {
 		await this.expireLeases();

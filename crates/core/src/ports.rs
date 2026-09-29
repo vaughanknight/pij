@@ -28,10 +28,14 @@ use std::time::Duration;
 use async_trait::async_trait;
 
 use crate::error::Result;
+use crate::fyi::HeldFyi;
 use crate::model::{
     BindHealth, DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, ModelRow, Msg,
     Outcome, Pane, PaneProcess, ProcIdentity, Readiness, SeatDescriptor, SeatId, Seq,
 };
+
+/// Rewrites a carrier's job payload so it carries the claimed FYIs.
+pub type AttachFyis = std::sync::Arc<dyn Fn(&str, &[HeldFyi]) -> Result<String> + Send + Sync>;
 
 /// How to narrow a registry listing. Absent fields mean "do not filter",
 /// distinct from a field set to an empty value.
@@ -92,6 +96,17 @@ pub trait Registry: Send + Sync {
     /// the caller already requested. There is deliberately no read-then-write default.
     async fn tombstone_if_unchanged(&self, expected: SeatDescriptor, reason: String)
     -> Result<Seq>;
+
+    /// Record a live seat's own busy/idle observation (plan 158), changing only
+    /// its mechanical `state` and nothing else on the row. `None` when nothing
+    /// changed: the seat is absent, tombstoned, or already in `state`. A
+    /// read-then-put here would overwrite a concurrent tombstone, role or
+    /// declaration with the stale row it read.
+    async fn set_activity(
+        &self,
+        seat: &SeatId,
+        state: crate::model::SystemState,
+    ) -> Result<Option<Seq>>;
 }
 
 /// The append-only history: reports, events, receipts.
@@ -417,6 +432,46 @@ pub trait Queue: Send + Sync {
     /// Running rows return [`ReleaseOutcome::NotDeferred`] without losing ownership;
     /// absent/terminal rows are named no-ops and non-delivery rows are refused.
     async fn release_deferred(&self, job: JobId) -> Result<ReleaseOutcome>;
+
+    // --- held FYIs (plan 158) ----------------------------------------------
+    //
+    // Queue-owned because an FYI is deferred delivery: its row and its spine
+    // fact commit together, like a deferral. Real queue and spine share one
+    // store; the fake appends through `spine` before its infallible mutation.
+
+    /// Hold one FYI for its recipient: the pending row and its `fyi.held` event
+    /// commit together. Opens no turn and touches no transport.
+    async fn hold_fyi(&self, fyi: &HeldFyi, spine: &dyn Spine) -> Result<Vec<Event>>;
+
+    /// Atomically claim every pending FYI for `recipient`, oldest first:
+    /// pending -> delivered plus one `fyi.delivered` receipt naming `via`. Two
+    /// racing claims never both receive the same FYI. Nothing pending returns
+    /// no FYIs and no event. The typed-turn hooks' claim.
+    async fn claim_fyis(
+        &self,
+        recipient: &SeatId,
+        via: &str,
+        at: u64,
+        spine: &dyn Spine,
+    ) -> Result<(Vec<HeldFyi>, Vec<Event>)>;
+
+    /// [`Self::enqueue_delivery`], with the recipient's pending FYIs claimed by
+    /// the same transaction that creates the carrier row: `attach(payload, fyis)`
+    /// returns the payload that carries them, and the `fyi.delivered` receipt
+    /// names `via`. A message id that is already delivered or already queued
+    /// creates no row and claims nothing, so a retry or duplicate can never
+    /// swallow an FYI, and no failure can leave one claimed without a carrier.
+    async fn enqueue_delivery_carrying_fyis(
+        &self,
+        job: Job,
+        via: &str,
+        at: u64,
+        attach: AttachFyis,
+        spine: &dyn Spine,
+    ) -> Result<(DeliveryEnqueue, Vec<Event>)>;
+
+    /// How many FYIs wait for `recipient`.
+    async fn pending_fyi_count(&self, recipient: &SeatId) -> Result<u64>;
 }
 
 /// A way to get a message to a seat.

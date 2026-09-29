@@ -2,7 +2,9 @@
 //!
 //! The complete vocabulary is shared with the TypeScript status surface. A
 //! vocabulary slot is not a claim that a production observer emits that state:
-//! working, stalled, starting and stopped await native activity publication.
+//! working and idle are published by OMP, Pi and Copilot turn boundaries through
+//! `/v1/activity` (plan 158); Claude seats publish none yet, and stalled, starting
+//! and stopped still have no producer.
 
 use crate::model::{SemanticState, SystemState};
 

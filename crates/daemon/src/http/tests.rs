@@ -165,6 +165,40 @@ impl Queue for CountingQueue {
             message: "the enqueue-only fixture must not release deferrals".to_string(),
         })
     }
+    async fn hold_fyi(
+        &self,
+        _fyi: &pij_core::fyi::HeldFyi,
+        _spine: &dyn Spine,
+    ) -> Result<Vec<Event>> {
+        Err(pij_core::error::PijError::Adapter {
+            adapter: "test/counting-queue".to_string(),
+            message: "the enqueue-only fixture does not hold FYIs".to_string(),
+        })
+    }
+    /// Nothing is ever held here, so a ride-along claim finds nothing.
+    async fn claim_fyis(
+        &self,
+        _recipient: &SeatId,
+        _via: &str,
+        _at: u64,
+        _spine: &dyn Spine,
+    ) -> Result<(Vec<pij_core::fyi::HeldFyi>, Vec<Event>)> {
+        Ok((Vec::new(), Vec::new()))
+    }
+    async fn enqueue_delivery_carrying_fyis(
+        &self,
+        job: Job,
+        _via: &str,
+        _at: u64,
+        _attach: pij_core::ports::AttachFyis,
+        _spine: &dyn Spine,
+    ) -> Result<(DeliveryEnqueue, Vec<Event>)> {
+        // Nothing is ever held here: carrying FYIs is an ordinary enqueue.
+        Ok((self.enqueue_delivery(job).await?, Vec::new()))
+    }
+    async fn pending_fyi_count(&self, _recipient: &SeatId) -> Result<u64> {
+        Ok(0)
+    }
 
     async fn recover_native_delivery(&self, _job: JobId, _recipient: &SeatId) -> Result<bool> {
         Err(PijError::Adapter {
@@ -2304,6 +2338,7 @@ fn exposure_banner_names_the_address_it_classifies() {
 #[test]
 fn send_request_uses_resolved_destination_object_and_optional_reply_id() {
     let request = SendRequest {
+        fyi: false,
         from: "pij-a".into(),
         from_machine: Some("desktop".to_string()),
         to: Destination::local("pij-b"),
@@ -4276,6 +4311,7 @@ async fn send_enqueues_exactly_once_and_refuses_remote_without_federation() {
     let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
     let client = reqwest::Client::new();
     let request = SendRequest {
+        fyi: false,
         from: "pij-a".into(),
         from_machine: None,
         to: Destination::local("pij-b"),
@@ -4900,6 +4936,7 @@ async fn two_daemons_forward_remote_send_into_destination_queue_and_spine() {
     .await;
 
     let request = SendRequest {
+        fyi: false,
         from: "bob".into(),
         to: Destination {
             seat: "bob".into(),
@@ -5016,6 +5053,7 @@ async fn wrong_peer_key_is_permanent_and_never_hot_loops() {
     .expect("federation");
     federation
         .enqueue_remote(&SendRequest {
+            fyi: false,
             from: "alice".into(),
             to: Destination {
                 seat: "bob".into(),
