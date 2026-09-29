@@ -728,6 +728,14 @@ send({ type: "ready", pid: process.pid });
 		expect(roster.data.seats.map((seat) => seat.id)).toEqual([first.id]);
 	});
 
+	it("keeps bare finite inbox waits available to external pull seats", {
+		timeout: 30_000,
+	}, async () => {
+		const host = await startHost("claude", "claude-pull-wait");
+		const descriptor = await register(host);
+		expectClaims(await host.run(["inbox", "--wait", "10", "--json"]), descriptor, []);
+	});
+
 	it("refuses an infinite inbox wait for a paned pushed-delivery compatibility seat", {
 		timeout: 30_000,
 	}, async () => {
