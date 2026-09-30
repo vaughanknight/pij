@@ -34,8 +34,9 @@ pub const DIGEST_NEWEST: usize = 3;
 
 /// The receipt's caution on a held FYI that looks like a question (plan 159).
 /// A warning only: the FYI is still held, never converted or refused.
+/// Shown after the receipt, which already says `held (fyi)`.
 pub const QUESTION_WARNING: &str =
-    "held (fyi), but this looks like a question; if you need an answer, resend without --fyi";
+    "this looks like a question; if you need an answer, resend without --fyi";
 
 /// Does an FYI body look like a question? Any `?` counts: a false warning costs
 /// a glance, a missed question leaves its sender waiting on a held message.

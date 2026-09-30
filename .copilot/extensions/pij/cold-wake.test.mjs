@@ -88,7 +88,7 @@ test("a cold refusal reaches the model verbatim and says nothing was sent", asyn
 
 test("a held fyi's question warning is surfaced on the tool result", async () => {
 	const warning =
-		"held (fyi), but this looks like a question; if you need an answer, resend without --fyi";
+		"this looks like a question; if you need an answer, resend without --fyi";
 	const { bridge, sends } = bridgeOver((body) =>
 		accepted({ msg_id: body.msg_id, outcome: { outcome: "held", reason: "fyi" }, at: 1, warning }),
 	);

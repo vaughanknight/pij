@@ -109,3 +109,6 @@ The new `Queue::enqueue_fyi_flush` contract test was RED as a missing method; ut
 | R6-activity-flushes-again | KILLED a_turn_boundary_never_flushes_even_when_warm |
 
 Finding 6 (the OMP tool text shows "held (fyi)" twice) is LOW and left as is: the warning text is the plan's exact wording.
+
+### Finding 6 (prime ruling a)
+The warning is now `this looks like a question; if you need an answer, resend without --fyi`, shown after the receipt (which already says `held (fyi)`). RED first: `a_question_held_as_an_fyi_warns_but_is_still_held` received the old text. GREEN on Rust (fyi_http 19/19, shim, CLI), OMP vitest 180/180, Copilot node --test 6/6.

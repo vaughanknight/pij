@@ -536,7 +536,7 @@ async fn a_hook_publishes_activity_by_pane_alone() {
 // ---------------------------------------------------------------------------
 
 const QUESTION_WARNING: &str =
-    "held (fyi), but this looks like a question; if you need an answer, resend without --fyi";
+    "this looks like a question; if you need an answer, resend without --fyi";
 
 async fn activity(addr: SocketAddr, state: &str) {
     let (status, reply) = post(addr, "/v1/activity", json!({"pane": PANE, "state": state})).await;

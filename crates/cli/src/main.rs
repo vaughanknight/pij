@@ -2633,7 +2633,7 @@ mod tests {
             super::held_fyi_output(&receipt(Some(pij_core::fyi::QUESTION_WARNING)), "m-1")
                 .as_deref(),
             Some(
-                "pij send: held (fyi) — m-1\nheld (fyi), but this looks like a question; if you need an answer, resend without --fyi"
+                "pij send: held (fyi) — m-1\nthis looks like a question; if you need an answer, resend without --fyi"
             )
         );
         assert_eq!(

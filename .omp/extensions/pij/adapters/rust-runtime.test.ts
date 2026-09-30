@@ -470,7 +470,7 @@ describe("RustRuntimeSession", () => {
 	});
 	it("maps a held fyi receipt's question warning and cold_check into the send result", async () => {
 		const warning =
-			"held (fyi), but this looks like a question; if you need an answer, resend without --fyi";
+			"this looks like a question; if you need an answer, resend without --fyi";
 		const { runtime } = await bootPushedEvent(
 			PUSHED_EVENT_WIRE,
 			new FakePiRuntime(),
