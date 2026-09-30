@@ -164,7 +164,7 @@ pub async fn registry_contract(registry: &dyn Registry) {
         .expect("put busy seat");
     assert!(
         registry
-            .set_activity(&busy, pij_core::model::SystemState::Working)
+            .set_activity(&busy, pij_core::model::SystemState::Working, None)
             .await
             .expect("set_activity")
             .is_some(),
@@ -180,7 +180,7 @@ pub async fn registry_contract(registry: &dyn Registry) {
     );
     assert!(
         registry
-            .set_activity(&busy, pij_core::model::SystemState::Working)
+            .set_activity(&busy, pij_core::model::SystemState::Working, None)
             .await
             .expect("set_activity")
             .is_none(),
@@ -192,7 +192,7 @@ pub async fn registry_contract(registry: &dyn Registry) {
         .expect("tombstone");
     assert!(
         registry
-            .set_activity(&busy, pij_core::model::SystemState::Working)
+            .set_activity(&busy, pij_core::model::SystemState::Working, None)
             .await
             .expect("set_activity")
             .is_none(),

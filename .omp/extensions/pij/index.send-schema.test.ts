@@ -141,4 +141,51 @@ describe("pij_send registration schema — structural XOR (pij#166)", () => {
 			true,
 		);
 	});
+
+	// --- Plan 157 phase 2 · force needs a reason, and only wakes a message ---
+	it("C9: {to, message, force: true, reason} is schema-valid", () => {
+		expect(
+			Value.Check(sendSchema() as never, {
+				to: "pij-x",
+				message: "hi",
+				force: true,
+				reason: "the review blocks the release",
+			}),
+		).toBe(true);
+	});
+
+	it("C10: {to, message, force: true} without a reason is NOT schema-valid", () => {
+		expect(Value.Check(sendSchema() as never, { to: "pij-x", message: "hi", force: true })).toBe(
+			false,
+		);
+	});
+
+	it("C11: a blank reason does not satisfy force", () => {
+		expect(
+			Value.Check(sendSchema() as never, { to: "pij-x", message: "hi", force: true, reason: "  " }),
+		).toBe(false);
+	});
+
+	it("C12: force with fyi is NOT schema-valid", () => {
+		expect(
+			Value.Check(sendSchema() as never, {
+				to: "pij-x",
+				message: "hi",
+				fyi: true,
+				force: true,
+				reason: "why",
+			}),
+		).toBe(false);
+	});
+
+	it("C13: force with a control command is NOT schema-valid", () => {
+		expect(
+			Value.Check(sendSchema() as never, {
+				to: "pij-x",
+				command: "compact",
+				force: true,
+				reason: "why",
+			}),
+		).toBe(false);
+	});
 });

@@ -12,6 +12,8 @@ export const RECEIVER_EMPTY_READ_LIMIT = 3;
 export const RECEIVER_PROBE_INTERVAL_MS = 1000;
 /** A wedged daemon holds neither a typed prompt (held FYIs, plan 158) nor shutdown. */
 export const HOOK_REQUEST_TIMEOUT_MS = 3000;
+/** Opens every cold-wake refusal's meta (crates/core/src/cold_wake.rs, plan 157 phase 2). */
+const COLD_WAKE_CODE = "E-RS-COLD-WAKE";
 const ERROR_BODY_LIMIT = 4096;
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const nonempty = (value) => typeof value === "string" && value.trim().length > 0;
@@ -335,19 +337,31 @@ export class DaemonClient {
 				envelope.command === "pij register" &&
 				envelope.error === "refused" &&
 				envelope.details?.retryable === true;
+			// Plan 157 phase 2: the cold-wake refusal names the price and both ways
+			// forward, so its meta is the model's whole answer, verbatim.
+			const coldWake =
+				path === "/v1/send" &&
+				response.status === 400 &&
+				envelope?.ok === false &&
+				envelope.v === 2 &&
+				envelope.error === "refused" &&
+				typeof envelope.meta === "string" &&
+				envelope.meta.startsWith(`${COLD_WAKE_CODE}:`);
+			const projected = hostRefusal || coldWake ? envelope.meta.replaceAll(key, "[redacted]") : "";
 			const error = new NativeError(
-				`Pij HTTP ${response.status}: ${diagnostic}`,
+				coldWake ? projected : `Pij HTTP ${response.status}: ${diagnostic}`,
 				nativeUnavailable ||
 					registrationRetry ||
 					response.status === 401 ||
 					response.status === 429 ||
 					response.status >= 500,
-				hostRefusal ? envelope.meta.replaceAll(key, "[redacted]") : `Pij HTTP ${response.status}`,
+				hostRefusal || coldWake ? projected : `Pij HTTP ${response.status}`,
 				registrationRetry && envelope.details.hold === "native-session"
 					? "native-session"
 					: undefined,
 			);
 			error.status = response.status;
+			if (coldWake) error.coldWake = true;
 			throw error;
 		}
 		return envelope;
@@ -1448,6 +1462,15 @@ export class NativeBridge {
 			return { ok: false, error: "Pij native session is not registered; no message sent" };
 		if (!nonempty(input?.to) || !nonempty(input?.message))
 			return { ok: false, error: "pij_send requires nonempty to and message strings" };
+		const force = input.force === true;
+		// The daemon refuses these too; refusing here sends nothing at all.
+		if (force && input.fyi === true)
+			return { ok: false, error: `${COLD_WAKE_CODE}: force wakes a message; never with fyi` };
+		if (force && !nonempty(input.reason))
+			return {
+				ok: false,
+				error: `${COLD_WAKE_CODE}: force needs a non-empty reason saying why the wake is worth it`,
+			};
 		const msgId = randomUUID();
 		try {
 			const receipt = await this.client.request(
@@ -1458,6 +1481,7 @@ export class NativeBridge {
 					body: input.message,
 					msg_id: msgId,
 					...(input.fyi === true ? { fyi: true } : {}),
+					...(force ? { force: true, reason: input.reason } : {}),
 				},
 				this.controller.signal,
 			);
@@ -1466,6 +1490,8 @@ export class NativeBridge {
 				throw new NativeError("Daemon send receipt has a different message ID");
 			return { ok: true, receipt, grade: "pij-receipt-not-model-complete" };
 		} catch (error) {
+			if (error?.coldWake === true)
+				return { ok: false, msg_id: msgId, error: error.message, grade: "refused-not-sent" };
 			return { ok: false, msg_id: msgId, error: error.message, grade: "send-outcome-unconfirmed" };
 		}
 	}

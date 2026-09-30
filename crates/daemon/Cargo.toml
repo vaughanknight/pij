@@ -27,6 +27,8 @@ pij-store = { workspace = true }
 pij-tmux = { workspace = true }
 pij-transport = { workspace = true }
 pij-testkit = { workspace = true }
+# Wired for plan 157: the real SessionStatusPort adapter over unisphere-sdk.
+pij-unisphere = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

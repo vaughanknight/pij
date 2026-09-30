@@ -84,7 +84,7 @@ async function startExtension() {
 				{
 					name: "pij_send",
 					description:
-						"Send a message to a Pij peer from this native Copilot seat. A receipt proves queue/native acceptance, not completed model work. Call explicitly; replies are never automatically forwarded. Set fyi for information that needs no action: it is held and rides along on the recipient's next turn instead of opening one.",
+						"Send a message to a Pij peer from this native Copilot seat. A receipt proves queue/native acceptance, not completed model work. Call explicitly; replies are never automatically forwarded. Prefer fyi for anything that needs no action: it is held and rides along on the recipient's next turn instead of opening one. A cold recipient (large context, idle past its prompt-cache TTL, not working) refuses a waking message with E-RS-COLD-WAKE naming the price; resend with fyi, or with force and a reason only when the wake is worth that price (audited).",
 					parameters: {
 						type: "object",
 						properties: {
@@ -93,7 +93,18 @@ async function startExtension() {
 							fyi: {
 								type: "boolean",
 								description:
-									"Hold as an FYI: no-action information delivered with the recipient's next turn, never opening one",
+									"Hold as an FYI: no-action information delivered with the recipient's next turn, never opening one. Never with force",
+							},
+							force: {
+								type: "boolean",
+								description:
+									"Wake a cold recipient anyway (otherwise refused with E-RS-COLD-WAKE and the price). Needs reason; never with fyi",
+							},
+							reason: {
+								type: "string",
+								pattern: "\\S",
+								description:
+									"Why this forced cold wake is worth its price; recorded in the daemon's audit. Required with force",
 							},
 						},
 						required: ["to", "message"],

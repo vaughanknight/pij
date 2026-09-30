@@ -63,6 +63,7 @@ Focus save/list/launch and watch/unwatch are unported; do not silently route the
 pij send <seat> 'literal message text'
 pij send <seat> --body-file <path>
 pij send <seat> --fyi 'no-action note'       # held; opens no turn
+pij send <seat> --force --reason 'why' 'text' # wake a cold seat anyway; audited
 pij send <seat> --command compact            # compact | new | reload; no body
 pij compact-self                             # daemon-resolved self
 pij-rs send --to <seat> --command compact     # same control admission
@@ -72,6 +73,8 @@ pij inbox --json                             # manual claims; not a competing ex
 Double-quoted backticks/`$(...)` execute in the sending shell before pij runs. Use single quotes or a literal body file (`-` = stdin) for code/untrusted text. Pointer delivery: persist large content, then send its path. No attachment or broadcast/fan-out substitute is implied by the shim route; unsupported options refuse. Messages follow § C10; let pushed turns wake you rather than polling state.
 
 **FYI, held until the seat's next turn** ([contract](../../../../docs/how/pij-rs-api.md#fyi-held-delivery-plan-158)): `--fyi` (tool form `pij_send({to, message, fyi:true})`; native `pij-rs send --to <seat> --fyi`) stores the message and opens **no** turn: no tmux, UDS or extension push. The receipt says `held (fyi)`. Pending FYIs ride along, appended after the body of the seat's next real pij message or added to its next typed turn by the host hook, each exactly once; until then the seat shows `✉N`. Refused with `--command`, for a remote `seat@machine`, and for a tombstoned seat (a tombstone drops pending FYIs). Use it for information that needs no action and can wait; anything the seat must act on is a normal send. If it isn't worth an FYI, don't send it (§ C10).
+
+**Cold-wake guard** ([contract](../../../../docs/how/pij-rs-api.md#cold-wake-guard-plan-157-phase-2)): the daemon refuses a waking send to a seat that is cold — context over 300k, last API call over an hour ago, not working — with `E-RS-COLD-WAKE` naming the price, and sends nothing. Hold it with `--fyi`, or add `--force --reason '<why>'` (tool form `force:true, reason`; native `pij-rs send --force --reason`) when the wake is worth it; every forced wake is audited as a `send.cold-wake-forced` spine event. FYIs, controls and busy seats are never guarded. Unknown facts allow the send with receipt `cold_check: unknown: <why>`.
 
 **Remote controls on rs** ([full contract](../../../../docs/how/pij.md#remote-session-control)):
 commands carry no body; OMP and Pi each handle claims in-process and acknowledge `executed` or

@@ -10,15 +10,21 @@ import {
 	RS_ROUTE_TABLE,
 	RS_UNSUPPORTED_STATUS,
 	type RsRouteRow,
+	refusalText,
 	renderRsAnswer,
 	routingRefusalEnvelope,
 } from "./core/generation-routing.js";
 
 const SEND_USAGE = `pij send <id> <text> [--json]
   pij send <id> --body-file <path|-> [--json]
+  pij send <id> --force --reason "<why>" <text> [--json]
   --in-reply-to <msg-id> preserves reply correlation without changing the body.
   --fyi holds a message needing no action until the recipient's next turn instead of
-    waking them; the receipt reads held (fyi). Refused with a control command.
+    waking them; the receipt reads held (fyi). Refused with a control command. Prefer it.
+  A cold recipient (large context, idle past its prompt-cache TTL, not working) refuses a
+    waking send with E-RS-COLD-WAKE and the price; nothing is sent. Resend with --fyi, or
+    add --force --reason "<why>" when the wake is worth that price (audited on the spine).
+  The receipt shows cold-check: clear | busy | forced | unknown: <why> (unknown allows the send).
   --body-file reads literal UTF-8 text from a path or stdin, without shell evaluation.
   Backticks and $(...) substitute in YOUR shell before pij starts: quoted relay text is UNSAFE.
   Use a file or a quoted heredoc: pij send <id> --body-file - <<'PIJ'
@@ -98,7 +104,7 @@ async function emitRefusal(
 ): Promise<void> {
 	process.exitCode = 4;
 	if (argv.includes("--json")) await writeOutput(rawEnvelope);
-	else process.stderr.write(`E-RS: ${describeOutcome(outcome)}\n`);
+	else process.stderr.write(`${refusalText(outcome)}\n`);
 }
 
 async function runGenerationDiagnostic(argv: readonly string[]): Promise<void> {

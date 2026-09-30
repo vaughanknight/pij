@@ -24,11 +24,12 @@ use pij_core::model::{Envelope, ErrorKind, Event, Harness, SeatDescriptor, SeatI
 use pij_core::wire;
 use pij_harnesses::{
     claude_homes, copilot_home, ensure_claude_inbound_accept, ensure_claude_session_start_hook,
-    ensure_claude_statusline, ensure_claude_user_prompt_submit_hook, ensure_copilot_statusline,
-    inspect_claude_inbound, inspect_claude_session_start_hook, inspect_claude_statusline,
+    ensure_claude_statusline, ensure_claude_stop_failure_hook, ensure_claude_stop_hook,
+    ensure_claude_user_prompt_submit_hook, ensure_copilot_statusline, inspect_claude_inbound,
+    inspect_claude_session_start_hook, inspect_claude_statusline,
     install_claude_session_start_script, install_claude_statusline_script,
-    install_claude_user_prompt_submit_script, install_copilot_statusline_script,
-    validate_executable_override,
+    install_claude_stop_script, install_claude_user_prompt_submit_script,
+    install_copilot_statusline_script, validate_executable_override,
 };
 use serde_json::{Value, json};
 
@@ -267,7 +268,7 @@ enum Command {
     },
     /// Durably enqueue one message as the acting seat.
     #[command(
-        after_long_help = "Examples:\n  pij-rs send --to <id> --body 'hello'\n  pij-rs send --to <id> --body-file -\n  pij-rs send --to <id> --fyi --body 'build is green' (no action needed: held, opens no turn)"
+        after_long_help = "Examples:\n  pij-rs send --to <id> --body 'hello'\n  pij-rs send --to <id> --body-file -\n  pij-rs send --to <id> --fyi --body 'build is green' (no action needed: held, opens no turn)\n  pij-rs send --to <id> --force --reason 'prod is down' --body '...' (wake a cold seat anyway; audited)"
     )]
     Send {
         /// Assert the derived sending seat. Omit to use PIJ_SESSION_ID or TMUX_PANE.
@@ -296,6 +297,29 @@ enum Command {
         /// instead of opening a turn now. Receipt: `held (fyi)`.
         #[arg(long, conflicts_with = "command")]
         fyi: bool,
+        /// Wake a cold recipient anyway (large context, idle past the cache TTL).
+        /// Requires --reason; the forced wake and its estimated price are audited.
+        #[arg(long, conflicts_with_all = ["command", "fyi"], requires = "reason")]
+        force: bool,
+        /// Why a forced cold wake is worth its price.
+        #[arg(long, requires = "force")]
+        reason: Option<String>,
+    },
+    /// Publish this seat's busy/idle state, for a turn-boundary hook (Claude's
+    /// UserPromptSubmit and Stop). Prints nothing on success; `--json` prints the envelope.
+    Activity {
+        /// The seat. Defaults to the live seat bound to `--pane`.
+        #[arg(long)]
+        seat: Option<String>,
+        /// The seat's tmux pane, as binding evidence.
+        #[arg(long)]
+        pane: Option<String>,
+        /// The seat's harness-native session id, as binding evidence.
+        #[arg(long)]
+        native_session: Option<String>,
+        /// `working` or `idle`.
+        #[arg(long, value_parser = ["working", "idle"])]
+        state: String,
     },
     /// Claim the FYIs held for a seat, for a typed-turn hook. Prints the block, or
     /// nothing when none are held; `--json` prints the envelope.
@@ -1004,6 +1028,8 @@ async fn run(cli: Cli) -> ExitCode {
             msg_id,
             in_reply_to,
             fyi,
+            force,
+            reason,
         } => {
             let acting = match resolve_command_seat(&client, "pij send", from.as_deref()).await {
                 Ok(seat) => seat,
@@ -1027,6 +1053,8 @@ async fn run(cli: Cli) -> ExitCode {
                 in_reply_to,
                 command,
                 fyi,
+                force,
+                reason,
             };
             let mut response = if request.command.is_some() {
                 client.send_control(&request, &caller_context()).await
@@ -1043,6 +1071,25 @@ async fn run(cli: Cli) -> ExitCode {
                 return ExitCode::SUCCESS;
             }
             emit(&response, cli.json)
+        }
+        Command::Activity {
+            seat,
+            pane,
+            native_session,
+            state,
+        } => {
+            let response = client
+                .activity(&serde_json::json!({
+                    "seat": seat,
+                    "pane": pane,
+                    "native_session": native_session,
+                    "state": state,
+                }))
+                .await;
+            if cli.json || !response.ok {
+                return emit(&response, cli.json);
+            }
+            ExitCode::SUCCESS
         }
         Command::FyiClaim {
             seat,
@@ -1087,6 +1134,8 @@ async fn run(cli: Cli) -> ExitCode {
                 msg_id: uuid::Uuid::now_v7().to_string(),
                 in_reply_to: None,
                 fyi: false,
+                force: false,
+                reason: None,
             };
             let mut response = client.send_control(&request, &caller_context()).await;
             response.command = "pij compact-self".to_string();
@@ -1754,6 +1803,18 @@ async fn run_daemon(
         .as_ref()
         .map(|script| ensure_claude_user_prompt_submit_hook(&homes, script))
         .unwrap_or_default();
+    // Plan 157: Claude's turn ending publishes the seat idle, in every Claude home.
+    let stop_hook_script = install_claude_stop_script(&hook_dir)
+        .map_err(|error| format!("could not install Claude Stop hook script: {error}"));
+    let stop_hook_reports = stop_hook_script
+        .as_ref()
+        .map(|script| ensure_claude_stop_hook(&homes, script))
+        .unwrap_or_default();
+    // Review N1: a turn ending on an API error fires StopFailure, not Stop.
+    let stop_failure_reports = stop_hook_script
+        .as_ref()
+        .map(|script| ensure_claude_stop_failure_hook(&homes, script))
+        .unwrap_or_default();
     let statusline_script = install_claude_statusline_script(&hook_dir)
         .map_err(|error| format!("could not install Claude statusline script: {error}"));
     let statusline_reports = statusline_script
@@ -1792,6 +1853,16 @@ async fn run_daemon(
                     "config.claude-prompt-hook-ensured",
                     "Claude UserPromptSubmit hook",
                     prompt_hook_reports.as_slice(),
+                ),
+                (
+                    "config.claude-stop-hook-ensured",
+                    "Claude Stop hook",
+                    stop_hook_reports.as_slice(),
+                ),
+                (
+                    "config.claude-stop-failure-hook-ensured",
+                    "Claude StopFailure hook",
+                    stop_failure_reports.as_slice(),
                 ),
                 (
                     "config.claude-statusline-ensured",
@@ -1840,6 +1911,8 @@ async fn run_daemon(
                 ("inbound", &inbound_reports),
                 ("hook", &hook_reports),
                 ("prompt hook", &prompt_hook_reports),
+                ("stop hook", &stop_hook_reports),
+                ("stop-failure hook", &stop_failure_reports),
                 ("statusline", &statusline_reports),
                 ("copilot statusline", &copilot_statusline_reports),
             ] {
@@ -1874,6 +1947,9 @@ async fn run_daemon(
             }
             if let Err(error) = prompt_hook_script {
                 eprintln!("pij-rs claude prompt hook: {error}");
+            }
+            if let Err(error) = stop_hook_script {
+                eprintln!("pij-rs claude stop hook: {error}");
             }
             if let Err(error) = statusline_script {
                 eprintln!("pij-rs claude statusline: {error}");
@@ -1973,8 +2049,49 @@ fn render_state(envelope: &Envelope<pij_daemon::http::StateCard>, json: bool) ->
         if card.pending_fyis > 0 {
             let _ = write!(output, "\nFYIs held: {}", card.pending_fyis);
         }
+        if let Some(block) = &card.session_status {
+            let _ = write!(output, "\nsession: {}", render_session_status(block));
+        }
     }
     output
+}
+
+/// One line of session facts: model, context used of window, cache state.
+fn render_session_status(block: &pij_core::session_status::SessionStatusBlock) -> String {
+    use pij_core::session_status::{CacheState, Fact, SessionStatusBlock};
+    fn known<T: std::fmt::Display>(fact: &Fact<T>) -> String {
+        fact.value()
+            .map_or_else(|| "unknown".to_string(), ToString::to_string)
+    }
+    match block {
+        SessionStatusBlock::Known {
+            status,
+            cache_state,
+            elapsed_ms,
+        } => {
+            let cache = match cache_state.value() {
+                Some(CacheState::Warm { expires_in_ms }) => {
+                    format!("warm ({}s left)", expires_in_ms / 1_000)
+                }
+                Some(CacheState::Cold { expired_for_ms }) => {
+                    format!("cold ({}s ago)", expired_for_ms / 1_000)
+                }
+                None => "unknown".to_string(),
+            };
+            format!(
+                "model {} · context {}/{} tokens · cache {cache} · read in {elapsed_ms} ms",
+                known(&status.model),
+                known(&status.context_used_tokens),
+                known(&status.context_window_tokens),
+            )
+        }
+        SessionStatusBlock::Unbound => "no harness session bound".to_string(),
+        SessionStatusBlock::Unsupported { harness } => {
+            format!("{} sessions are not readable yet", harness.as_str())
+        }
+        SessionStatusBlock::NotFound { detail } => format!("transcript not found: {detail}"),
+        SessionStatusBlock::Failed { error } => format!("read failed: {error}"),
+    }
 }
 
 fn parse_machine_cursor(value: &str) -> Result<MachineCursor, String> {
@@ -2302,6 +2419,7 @@ impl Command {
             Command::Adopt { .. } => "pij adopt",
             Command::Whoami { .. } => "pij whoami",
             Command::FyiClaim { .. } => "pij fyi-claim",
+            Command::Activity { .. } => "pij activity",
             Command::CommitTrailers => "pij commit-trailers",
             Command::Phonehome { .. } => "pij phonehome",
             Command::Send { .. } => "pij send",
@@ -2478,6 +2596,7 @@ mod tests {
                 "spawn",
                 "revive",
                 "send",
+                "activity",
                 "fyi-claim",
                 "compact-self",
                 "inbox",

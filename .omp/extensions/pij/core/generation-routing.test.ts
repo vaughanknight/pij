@@ -13,6 +13,7 @@ import {
 	RS_ROUTE_TABLE,
 	type RsHttpRoute,
 	type RsResponseFacts,
+	refusalText,
 	renderRsAnswer,
 	resolveGenerationForce,
 	routingRefusalEnvelope,
@@ -114,6 +115,30 @@ describe("the explicit rs routing inventory", () => {
 		expect(rendered.text).toContain("native-refused");
 		expect(rendered.text).toContain("refused");
 		expect(rendered.text).toContain(reason);
+	});
+
+	it("human send receipts show the cold-wake guard's verdict", () => {
+		const rendered = renderRsAnswer(
+			findRoute("send", undefined),
+			{ msg_id: "m-1", outcome: "queued", at: 1, cold_check: "unknown: no answer within 3s" },
+			["send", "pij-peer", "hello"],
+		);
+		expect(rendered).toEqual({
+			kind: "rendered",
+			text: "sent (rs) — msg m-1 — receipt queued — cold-check: unknown: no answer within 3s",
+		});
+	});
+
+	it("a cold-wake refusal prints its meta alone, naming the price and both ways forward", () => {
+		const meta =
+			'E-RS-COLD-WAKE: pij-peer is cold (idle 1h52m, 720k context). Waking it rewrites ~720k tokens ≈ $5.76 at list price. Use --fyi to hold it, or --force --reason "<why>".';
+		expect(refusalText({ kind: "rs-error", verb: "send", addr: ADDR, detail: meta })).toBe(meta);
+	});
+
+	it("other refusals keep the E-RS prefix and the daemon address", () => {
+		expect(
+			refusalText({ kind: "rs-error", verb: "send", addr: ADDR, detail: "no such seat" }),
+		).toBe(`E-RS: no such seat (rs at ${ADDR})`);
 	});
 
 	it("human state exposes counted delivery deferrals and drops them after completion", () => {

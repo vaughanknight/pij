@@ -21,6 +21,7 @@ pub mod pointer;
 pub mod reaper;
 mod registration;
 mod serve;
+pub mod session_warmup;
 
 // u-orchestration's git-facts gatherer: IO belongs at the runtime root, and a
 // ninth crate would have been a graph change for one module.
@@ -37,12 +38,14 @@ use pij_core::config::{AdapterChoice, Config};
 use pij_core::error::{PijError, Result};
 use pij_core::model::{Event, Harness, ProcIdentity, Seq};
 use pij_core::orchestration::OrchestrationService;
-use pij_core::ports::{HarnessPort, LivenessPort, Queue, Registry, Spine, TmuxPort, Transport};
+use pij_core::ports::{
+    HarnessPort, LivenessPort, Queue, Registry, SessionStatusPort, Spine, TmuxPort, Transport,
+};
 use pij_harnesses::proc::ProcLiveness;
 use pij_harnesses::{HarnessRegistry, InteractionGate};
 use pij_store::{SqliteQueue, SqliteRegistry, SqliteSpine};
 use pij_testkit::fakes::{
-    FakeHarness, FakeLiveness, FakeQueue, FakeRegistry, FakeTmux, FakeTransport,
+    FakeHarness, FakeLiveness, FakeQueue, FakeRegistry, FakeSessionStatus, FakeTmux, FakeTransport,
 };
 use pij_tmux::TmuxAdapter;
 use pij_transport::UdsTransport;
@@ -106,6 +109,8 @@ pub struct Services {
     pub harnesses: Arc<HarnessRegistry>,
     /// Process liveness.
     pub liveness: Arc<dyn LivenessPort>,
+    /// Session facts from harness transcripts, for `pij state`'s `sessionStatus`.
+    pub session_status: Arc<dyn SessionStatusPort>,
     /// The ONE delivery path.
     ///
     /// `/v1/send` used to enqueue a private payload shape of its own and
@@ -181,6 +186,8 @@ pub struct Daemon {
     sidecars: pij_sidecars::SidecarHandles,
     governance_shutdown: tokio::sync::oneshot::Sender<()>,
     governance_observer: tokio::task::JoinHandle<Result<()>>,
+    /// One-shot warming of live seats' session cursors; aborted if still running.
+    session_warmup: tokio::task::JoinHandle<()>,
 }
 
 impl Daemon {
@@ -202,6 +209,7 @@ impl Daemon {
         // HTTP drain can leave queue workers claiming new rows in the meantime.
         let _ = self.shutdown.send(());
         let _ = self.governance_shutdown.send(());
+        self.session_warmup.abort();
         let (served, drained, bound, observed, forwarded, background, deaths, (), governance) = tokio::join!(
             async {
                 self.joined.await.map_err(|error| PijError::Adapter {
@@ -397,6 +405,14 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         AdapterChoice::Fake => Arc::new(FakeLiveness::new()),
         AdapterChoice::Real => Arc::new(ProcLiveness::new()),
     };
+    // Stateful: the real source keeps one transcript read position per seat, so
+    // it is composed once here and shared by every request.
+    let session_status: Arc<dyn SessionStatusPort> = match config.adapters.session_status {
+        AdapterChoice::Fake => Arc::new(FakeSessionStatus::new()),
+        AdapterChoice::Real => Arc::new(pij_unisphere::UnisphereSessionStatus::new(
+            pij_harnesses::claude_homes(),
+        )),
+    };
 
     let orchestration = Arc::new(OrchestrationService::new());
 
@@ -463,6 +479,7 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
         interaction,
         harnesses,
         liveness,
+        session_status,
         delivery,
         roles,
         governance,
@@ -815,6 +832,10 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         }
     });
     let death_sweep_loop = death_sweep::start(Arc::new(services.clone()), death_interval);
+    let session_warmup = session_warmup::start(
+        Arc::clone(&services.registry),
+        Arc::clone(&services.session_status),
+    );
 
     let event_bus = Arc::clone(&services.event_bus);
     let delivery = Arc::clone(&services.delivery);
@@ -853,6 +874,7 @@ pub async fn boot(config: &Config, state_dir: PathBuf) -> Result<Daemon> {
         sidecars,
         governance_shutdown,
         governance_observer,
+        session_warmup,
     })
 }
 

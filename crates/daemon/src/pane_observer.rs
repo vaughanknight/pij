@@ -497,8 +497,9 @@ mod tests {
             &self,
             seat: &SeatId,
             state: pij_core::model::SystemState,
+            reason: Option<&str>,
         ) -> Result<Option<pij_core::model::Seq>> {
-            self.inner.set_activity(seat, state).await
+            self.inner.set_activity(seat, state, reason).await
         }
     }
 

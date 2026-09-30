@@ -328,7 +328,7 @@ pane/session still refuses; paneless readers retain their exact host tuple check
 
 | Row fields | Wire contract |
 |---|---|
-| `id`, `harness`, `folder`, `state` | Stable seat id, harness enum, absolute working folder and stored mechanical state. OMP, Pi and Copilot seats publish `working`/`idle` at their own turn boundaries through `/v1/activity`; Claude seats still default to `idle`, which is not observed inactivity. |
+| `id`, `harness`, `folder`, `state` | Stable seat id, harness enum, absolute working folder and stored mechanical state. OMP, Pi and Copilot seats publish `working`/`idle` at their own turn boundaries through `/v1/activity`, and Claude seats publish them through their managed `UserPromptSubmit` and `Stop` hooks. A seat that has not published since the daemon learned it reads `idle` by default, which is not observed inactivity. |
 | `generation`, `relay`, `native_extension_delivery` | Present `"rs"` and boolean flags. False is an explicit value, not omission. Display role does not grant native delivery attestation. |
 | `session`, `pane`, `proc`, `semantic_state`, `role`, `parent` | Present even when null. `session` is the serialized native harness-session id (not `harness_session`); null is unknown. `pane:null` is paneless; `proc:null` is no bound process identity. Non-null `proc` is `{pid, proc_start}`; never interpret pid alone as identity. Null semantic state/role means no declaration/assertion; null parent means no recorded governing seat. |
 | `extension_build`, `extension_path` | Present string or null on current-daemon whoami, seats and state responses. Build is the loaded runtime extension's `<sha10>`, `<sha10>+dirty`, or `hash:<12 hex>`; path is its resolved real source directory, not the seat's working folder. Null means no build was reported (a pre-144 extension in OMP or Pi, or a harness without this feature), never a retroactive guess from today's checkout. Older daemons omit these keys entirely. |
@@ -408,6 +408,31 @@ original retry/backoff or consent policy.
 Like other atomic queue/spine mutations, counted deferral publication refuses a
 real Queue paired with a fake Spine (`E-RS-INBOX-AUTHORITY-SPLIT`), rather than
 broadcasting a cursor allocated by another store. The body and retry policy remain.
+
+`data.sessionStatus` holds the seat's session facts, read in-process from the harness
+transcript through `SessionStatusPort` (plan 157, adapter `pij-unisphere` over
+`unisphere-sdk`). Its `outcome` is one of:
+- `known`: carries `status`, `cacheState` and `elapsedMs`.
+- `unbound`: no `harness_session`, so the source isn't asked.
+- `unsupported` (`harness`)
+- `not-found` (`detail`)
+- `failed` (`error`): the rest of the card is still served.
+
+Each fact is `{"value":V,"basis":"native|derived|table@vN|mtime-fallback"}` or
+`{"basis":"unknown"}`. There is never a null, and never a 0 standing in for unknown.
+`status` covers:
+- `model`
+- `contextUsedTokens` and `contextWindowTokens`
+- `lastCallAtMs`
+- the last call's input, cache-read, 5-minute and 1-hour cache-write tokens
+- `cacheTtl` (`five-minutes|one-hour`)
+- `compactions`
+- `reset`: why the source re-read from the start. It is absent on the warm path.
+
+`cacheState` is derived on the daemon clock as `warm` (`expiresInMs`) or `cold`
+(`expiredForMs`). It is unknown when the last call time or the TTL is unknown.
+The source keeps one read position per seat, so a warm read folds only appended bytes.
+Busy/idle is `state`, never this block. The human CLI prints one `session:` line.
 
 The one closed severity order is the exported
 [`pij_core::status::BADGE_SEVERITY`](../../crates/core/src/status.rs).
@@ -501,7 +526,35 @@ It changes only the seat's mechanical `state` (a targeted write that never rewri
 - The OMP/Pi extension publishes `working` at `turn_start`, and `idle` at `turn_end`, at `agent_end` and on shutdown.
 - The Copilot native extension publishes on `assistant.turn_start`, and on `assistant.turn_end`, `session.idle` or shutdown.
 - Publications are serialized per session, and a failure never breaks a turn. A route-absent 404 from an older daemon stops publishing.
-- Claude seats don't publish yet.
+- Claude seats publish through their managed hooks (plan 157): `UserPromptSubmit` sends `working`, and `Stop` and `StopFailure` send `idle`. `StopFailure` covers a turn that ends on an API error, which does not fire `Stop`. The seat is resolved by pane, via `pij-rs activity`, with the same 3 s bound and silent failure as the FYI claim. Only a prompt submitted to Claude fires `UserPromptSubmit`, so a turn opened another way stays `idle` until the next typed or pasted prompt.
+- The cases these hooks cannot see leave a Claude seat reading `working`:
+  - **An Esc interrupt** fires no Claude hook: neither `Stop`, `StopFailure`, nor the `idle_prompt` notification (verified live). The seat reads `working` until its next prompt or completed turn. The cold-wake guard repairs the costly case. Three conditions must all hold: the seat is cold by its facts alone, its `working` fact is itself older than the idle threshold, and one probe of its live pane (1 s bound, off the request thread) shows **positive** idle evidence, `HarnessPort::idle`. For Claude, idle evidence means a ready footer, the composer row between its rules, and no spinner row. Then the send is refused, and the seat is corrected to `idle` with `seat.activity` reason `stale working (esc)`. Everything else allows and leaves `working` alone: a younger `working`, no pane, a failed or slow probe, or any other frame (empty, blank, truncated, a permission dialog, a tool run). The `working`-age condition exists because a Claude streaming a reply shows no spinner and looks idle (live 2.1.284 frames).
+  - **A killed or exited process** fires nothing. The death sweep's tombstone, or a new incarnation registering the seat, resets it to `idle`.
+  - While a seat reads `working`, the cold-wake guard treats it as busy and allows the send. That is the safe direction for a brake.
+
+### Cold-wake guard (plan 157 phase 2)
+
+Waking a seat whose prompt cache has expired re-writes its whole context at cache-write prices. The daemon therefore refuses a waking send to a **cold** recipient. The constants, the price table and the pure rule live in [`cold_wake.rs`](../../crates/core/src/cold_wake.rs): context over `COLD_CONTEXT_TOKENS`, last API call older than `COLD_IDLE_MS`, and the daemon does not see the seat working. The guard is a brake: it only ever refuses, and it never changes what is delivered.
+
+```bash
+pij send <seat> --force --reason '<why>' 'text'             # shim → /v1/shim/send argv verbatim
+pij-rs send --to <seat> --force --reason '<why>' --body 'text'   # native form
+```
+
+| Surface | Contract |
+|---|---|
+| Refusal | HTTP 400, `{ok:false, error:"refused", meta:"E-RS-COLD-WAKE: pij-x is cold (idle 1h52m, 720k context). Waking it rewrites ~720k tokens ≈ $5.76 at list price. Use --fyi to hold it, or --force --reason \"<why>\"."}`. Nothing is sent. The price is a list-price estimate; an unpriced model says `(price unknown for this model)`. The shim prints the meta alone on stderr; the OMP/Pi and Copilot `pij_send` tools return it verbatim as the tool error. |
+| POST `/v1/send` `"force": true, "reason": "<why>"` | Wakes a cold recipient anyway. `force` without a non-empty `reason` is refused with a meta starting `E-RS-COLD-WAKE:` that names `--reason`. The tools refuse it too, before any request. |
+| Spine `send.cold-wake-forced` | The audit of every forced cold wake, persisted before the wake. `seat` is the recipient; payload `{from, msg_id, reason, context_tokens, idle_ms, model, estimate_usd}`. |
+| Receipt `data.cold_check` | `clear`, `busy`, `forced` or `unknown: <why>` on every guarded send; absent when the guard did not run. The shim prints `— cold-check: <verdict>`; the OMP/Pi tool appends `(cold-check: <verdict>)`. |
+| Unknown ⇒ allow | Any fact the rule needs but cannot establish (unbound or unsupported harness, no transcript, a source error, unknown context or last-call time) allows the send as `unknown: <why>`. The guard waits 3 s for the recipient's session facts; after that the send is allowed as `unknown: no answer within 3s`. |
+| Never guarded | FYIs (`fyi:true` opens no turn), controls (`command`), and forwarded (federated) sends: a `seat@machine` send is not checked on either daemon, because only the originating sender could choose `--fyi` or `--force`. |
+| One recipient per send | rs has no multi-recipient send, and the shim refuses broadcasts, so the per-recipient rule is met by one recipient per send. |
+| Remote peers | A message forwarded from another machine (`from_machine` set) is delivered unguarded, so a remote peer can still cold-wake a local seat. The receiving daemon cannot offer that sender `--fyi` or `--force`. |
+| `pij bounce` announcement | The bounce announcement is an ordinary send from `pij-daemon`. A cold seat refuses it, so the bounce output lists `announcement failed … E-RS-COLD-WAKE` for each cold seat, and those seats are not woken. |
+| Cursor warm-up | At daemon start every live, bound seat's session is read once in the background, one at a time with a pause between seats. The first send after a bounce is then a warm read. A read the guard stops waiting for still completes and keeps its cursor. |
+
+Sources: [`cold_wake.rs`](../../crates/core/src/cold_wake.rs) (rule), [`http/cold_wake.rs`](../../crates/daemon/src/http/cold_wake.rs) (guard and audit).
 
 ## Governance route inventory
 

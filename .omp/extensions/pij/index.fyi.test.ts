@@ -1,6 +1,7 @@
 // Plan 158 — the Pi/OMP extension's `fyi` and turn-activity behaviour, observed
 // at the daemon wire and the host surfaces: the pij_send tool,
 // before_agent_start, the `✉N` footer, and turn_start/turn_end publication.
+// Plan 157 phase 2 — the pij_send tool's side of the cold-wake guard.
 //
 // The FYI block format belongs to the daemon (the golden fixture). These tests
 // read the fixture and prove byte-for-byte pass-through; they never restate it.
@@ -63,6 +64,8 @@ function fakeDaemon(options: {
 	claim?: Claim;
 	/** Holds the first /v1/activity response until the promise settles. */
 	firstActivityGate?: Promise<void>;
+	/** Answers /v1/send instead of the default accepting receipt. */
+	send?: (body: Record<string, unknown>) => Response;
 }): FakeDaemon {
 	const state: FakeDaemon["state"] = {
 		pendingFyis: options.pendingFyis,
@@ -106,6 +109,7 @@ function fakeDaemon(options: {
 			return envelope("pij state", { id: body.id, pendingFyis: state.pendingFyis });
 		}
 		if (path === "/v1/send") {
+			if (options.send) return options.send(body);
 			return envelope("pij send", {
 				msg_id: body.msg_id,
 				outcome: body.fyi === true ? { outcome: "held", reason: "fyi" } : "accepted",
@@ -272,6 +276,83 @@ describe("pij extension — fyi and turn activity (plan 158)", () => {
 				"fyi",
 			);
 			expect(pathed(daemon, "/v1/send")).toEqual([]);
+		});
+
+		describe("cold-wake guard (plan 157 phase 2)", () => {
+			const COLD_META =
+				'E-RS-COLD-WAKE: pij-peer is cold (idle 1h52m, 720k context). Waking it rewrites ~720k tokens ≈ $5.76 at list price. Use --fyi to hold it, or --force --reason "<why>".';
+
+			it("puts force and reason on the /v1/send wire", async () => {
+				const daemon = fakeDaemon({ pendingFyis: 0 });
+				seat = await bootSeat(daemon);
+				await seat.send({
+					to: "pij-peer",
+					message: "wake",
+					force: true,
+					reason: "release blocker",
+				});
+				expect(pathed(daemon, "/v1/send")[0]?.body).toMatchObject({
+					force: true,
+					reason: "release blocker",
+				});
+			});
+
+			it.each([
+				["no reason", {}],
+				["a blank reason", { reason: "   " }],
+			])("refuses force with %s before any request", async (_label, extra) => {
+				const daemon = fakeDaemon({ pendingFyis: 0 });
+				seat = await bootSeat(daemon);
+				await expect(
+					seat.send({ to: "pij-peer", message: "wake", force: true, ...extra }),
+				).rejects.toThrow(/^E-RS-COLD-WAKE: .*reason/);
+				expect(pathed(daemon, "/v1/send")).toEqual([]);
+			});
+
+			it("surfaces the daemon's cold refusal verbatim as the tool error", async () => {
+				seat = await bootSeat(
+					fakeDaemon({
+						pendingFyis: 0,
+						send: () =>
+							new Response(
+								JSON.stringify({
+									ok: false,
+									command: "pij send",
+									v: 2,
+									error: "refused",
+									meta: COLD_META,
+								}),
+								{ status: 400 },
+							),
+					}),
+				);
+				const refusal = await seat.send({ to: "pij-peer", message: "wake" }).then(
+					() => undefined,
+					(error: unknown) => (error instanceof Error ? error.message : String(error)),
+				);
+				expect(refusal).toBe(COLD_META);
+			});
+
+			it("renders the receipt's cold_check", async () => {
+				seat = await bootSeat(
+					fakeDaemon({
+						pendingFyis: 0,
+						send: (body) =>
+							envelope("pij send", {
+								msg_id: body.msg_id,
+								outcome: "accepted",
+								at: 1,
+								cold_check: "unknown: no answer within 3s",
+							}),
+					}),
+				);
+				const result = (await seat.send({ to: "pij-peer", message: "wake" })) as {
+					content: Array<{ text: string }>;
+				};
+				expect(result.content[0]?.text).toMatch(
+					/ -> pij-peer \(cold-check: unknown: no answer within 3s\)$/,
+				);
+			});
 		});
 	});
 

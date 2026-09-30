@@ -1,6 +1,7 @@
 #!/bin/sh
-# Claude UserPromptSubmit hook (plan 158): claim the seat's held FYIs and hand
-# the daemon's block to Claude verbatim as additional prompt context.
+# Claude UserPromptSubmit hook (plans 157, 158): publish the seat working, then
+# claim its held FYIs and hand the daemon's block to Claude verbatim as
+# additional prompt context.
 # Managed by pij: the daemon installs it at ~/.pij-rs/claude-user-prompt-submit-pij.sh.
 # It must never block the human's prompt: every failure prints nothing, exits 0.
 set -u
@@ -28,19 +29,36 @@ out=$(mktemp "${TMPDIR:-/tmp}/pij-fyi-claim.XXXXXX" 2>/dev/null) || exit 0
 err=$(mktemp "${TMPDIR:-/tmp}/pij-fyi-claim.XXXXXX" 2>/dev/null) || { rm -f "$out"; exit 0; }
 trap 'rm -f "$out" "$err"' EXIT
 
-# Bound the claim: the daemon answers in milliseconds, so a stall means it is
-# wedged, and the prompt must not wait on it. `timeout` is not on stock macOS.
+# Run "$@" with stdout to $out and stderr to $err, bounded by $1 seconds: the
+# daemon answers in milliseconds, so a stall means it is wedged, and the prompt
+# must not wait on it. `timeout` is not on stock macOS. Sets $status.
+bounded() {
+    limit=$1
+    shift
+    "$@" >"$out" 2>"$err" </dev/null &
+    job=$!
+    (sleep "$limit" && kill "$job") >/dev/null 2>&1 </dev/null &
+    watchdog=$!
+    status=0
+    wait "$job" || status=$?
+    kill "$watchdog" 2>/dev/null || :
+}
+
+# Plan 157: the prompt means Claude is working. Publishing is best effort; the
+# claim runs whatever it says.
 if [ -n "$session" ]; then
-    env -u PIJ_SESSION_ID "$pij_rs" fyi-claim --pane "$TMUX_PANE" --native-session "$session" --via hook:claude >"$out" 2>"$err" </dev/null &
+    bounded "${PIJ_RS_ACTIVITY_TIMEOUT:-3}" env -u PIJ_SESSION_ID "$pij_rs" activity --pane "$TMUX_PANE" --native-session "$session" --state working
 else
-    env -u PIJ_SESSION_ID "$pij_rs" fyi-claim --pane "$TMUX_PANE" --via hook:claude >"$out" 2>"$err" </dev/null &
+    bounded "${PIJ_RS_ACTIVITY_TIMEOUT:-3}" env -u PIJ_SESSION_ID "$pij_rs" activity --pane "$TMUX_PANE" --state working
 fi
-claim=$!
-(sleep "${PIJ_RS_FYI_CLAIM_TIMEOUT:-3}" && kill "$claim") >/dev/null 2>&1 </dev/null &
-watchdog=$!
-status=0
-wait "$claim" || status=$?
-kill "$watchdog" 2>/dev/null || :
+[ "$status" -eq 0 ] ||
+    log_line "refused:activity pane=$TMUX_PANE state=working status=$status reason=$(tr '\n' ' ' <"$err")"
+
+if [ -n "$session" ]; then
+    bounded "${PIJ_RS_FYI_CLAIM_TIMEOUT:-3}" env -u PIJ_SESSION_ID "$pij_rs" fyi-claim --pane "$TMUX_PANE" --native-session "$session" --via hook:claude
+else
+    bounded "${PIJ_RS_FYI_CLAIM_TIMEOUT:-3}" env -u PIJ_SESSION_ID "$pij_rs" fyi-claim --pane "$TMUX_PANE" --via hook:claude
+fi
 
 if [ "$status" -ne 0 ]; then
     log_line "refused:fyi-claim pane=$TMUX_PANE status=$status reason=$(tr '\n' ' ' <"$err")"

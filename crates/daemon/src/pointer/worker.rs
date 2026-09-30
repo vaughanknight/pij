@@ -292,6 +292,7 @@ impl DrainWorker {
                             msg_id: msg.msg_id.clone(),
                             outcome,
                             at: (self.clock)()?,
+                            cold_check: None,
                         },
                         self.transport.name(),
                     )
@@ -336,6 +337,7 @@ impl DrainWorker {
                 msg_id: msg.msg_id.clone(),
                 outcome: DeliveryOutcome::Delivered { origin },
                 at,
+                cold_check: None,
             },
             if msg.command.is_some() {
                 "pty"

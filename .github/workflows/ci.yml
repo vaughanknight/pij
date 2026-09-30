@@ -142,3 +142,11 @@ jobs:
 
       - name: test
         run: cargo nextest run --locked --workspace --profile ci
+
+      - name: upload the JUnit list of tests that ran
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-linux
+          path: target/nextest/ci/junit.xml
+

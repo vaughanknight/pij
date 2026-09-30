@@ -1,6 +1,6 @@
 //! `pij-core` — the functional core.
 //!
-//! Domain types, configuration, the error taxonomy, the seven frozen ports, and
+//! Domain types, configuration, the error taxonomy, the eight ports, and
 //! the pure logic over them. **No IO, no tokio, no SQL, no HTTP** — enforced
 //! mechanically by `crates/testkit/arch-allowlist.toml`, not asserted here.
 //!
@@ -13,6 +13,7 @@
 pub mod admission;
 pub mod anomalies;
 pub mod background;
+pub mod cold_wake;
 pub mod config;
 pub mod control;
 pub mod decisions;
@@ -27,6 +28,7 @@ pub mod names;
 pub mod orchestration;
 pub mod ports;
 pub mod report;
+pub mod session_status;
 pub mod status;
 pub mod watchdog;
 pub mod wire;

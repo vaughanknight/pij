@@ -42,6 +42,7 @@ fn send_computed_payload_matches_the_committed_golden() {
                     draft_sha: None,
                 },
                 at: 1_787_999_999_000,
+                cold_check: None,
             },
         ),
         true,

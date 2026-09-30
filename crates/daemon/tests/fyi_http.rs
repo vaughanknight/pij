@@ -510,3 +510,23 @@ async fn a_tombstone_resets_a_working_seat_to_idle() {
     assert_eq!(card["data"]["state"], "idle", "{card}");
     server.abort();
 }
+
+/// Plan 157 review finding 3: Claude's turn hooks know the pane and session
+/// but not the seat id, so the seat resolves from the pane.
+#[tokio::test]
+async fn a_hook_publishes_activity_by_pane_alone() {
+    let store = FreshStore::new();
+    let config = config(&store);
+    let (addr, server) = serve(&config, true).await;
+    let (status, reply) = post(
+        addr,
+        "/v1/activity",
+        json!({"pane": PANE, "native_session": SESSION, "state": "working"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["seat"], RECIPIENT);
+    let (_, card) = post(addr, "/v1/state", json!({"id": RECIPIENT})).await;
+    assert_eq!(card["data"]["state"], "working");
+    server.abort();
+}

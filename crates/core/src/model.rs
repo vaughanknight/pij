@@ -898,6 +898,11 @@ pub struct Receipt {
     pub outcome: DeliveryOutcome,
     /// When, in milliseconds since the Unix epoch, from the caller's clock.
     pub at: u64,
+    /// The cold-wake guard's verdict for this recipient (plan 157 phase 2):
+    /// `clear`, `busy`, `forced` or `unknown: <why>`. Absent where the guard
+    /// does not run (controls, FYIs, forwards).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cold_check: Option<String>,
 }
 
 /// A unit of deferred work.

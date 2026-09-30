@@ -81,12 +81,22 @@ export interface SendRequest {
 	readonly caller?: CallerContext;
 	/** Plan 158: hold until the recipient's next turn; the daemon refuses it with `command`. */
 	readonly fyi?: true;
+	/** Plan 157 phase 2: wake a cold recipient anyway; the daemon refuses it without `reason`. */
+	readonly force?: true;
+	/** Why a forced cold wake is worth its price; recorded on the spine. */
+	readonly reason?: string;
 }
+
+/** The code opening every cold-wake refusal's meta (crates/core/src/cold_wake.rs). */
+export const COLD_WAKE_CODE = "E-RS-COLD-WAKE";
 
 export interface QueueReceipt {
 	readonly msg_id: string;
 	readonly outcome: unknown;
 	readonly at: number;
+	/** The cold-wake guard's verdict: `clear`, `busy`, `forced` or `unknown: <why>`.
+	 *  Absent when the guard did not run (FYIs, controls, forwarded sends). */
+	readonly cold_check?: string;
 }
 
 /** A held FYI receipt carries `outcome: {outcome: "held", reason: "fyi"}`. */

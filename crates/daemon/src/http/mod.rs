@@ -7,6 +7,7 @@ pub mod anomalies;
 mod auth;
 mod background;
 mod client;
+mod cold_wake;
 pub mod decisions;
 mod exposure;
 mod fyi;
@@ -1521,6 +1522,28 @@ async fn send(State(state): State<AppState>, Json(request): Json<SendBodyRequest
     // payload the inbox reading that same queue could not decode. Two halves of
     // one round trip, each proven against itself. Found by u-extension.
     let forwarded = request.from_machine.is_some();
+    // A forward was sent on another machine, whose sender this daemon cannot
+    // offer the --fyi/--force choice; only local senders are guarded.
+    let cold_check = if forwarded {
+        None
+    } else {
+        match cold_wake::guard(
+            &state,
+            "pij send",
+            &request.from,
+            &request.to.seat,
+            &request.msg_id,
+            cold_wake::Override {
+                force: request.force,
+                reason: request.reason.as_deref(),
+            },
+        )
+        .await
+        {
+            Ok(label) => label,
+            Err(response) => return *response,
+        }
+    };
     let msg = Msg {
         from: request.from,
         // Carried from the wire: a federation worker forwarding A's message to B
@@ -1538,7 +1561,10 @@ async fn send(State(state): State<AppState>, Json(request): Json<SendBodyRequest
         state.services.delivery.accept(msg).await
     };
     match accepted {
-        Ok(receipt) => envelope(StatusCode::OK, &Envelope::ok("pij send", receipt)),
+        Ok(mut receipt) => {
+            receipt.cold_check = cold_check;
+            envelope(StatusCode::OK, &Envelope::ok("pij send", receipt))
+        }
 
         Err(error) => send_failure("pij send", error),
     }
@@ -2390,7 +2416,16 @@ async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequ
         Ok(record) => record,
         Err(error) => return internal("pij state", error),
     };
+    let session_status = session_status_block(
+        state.services.session_status.as_ref(),
+        &seat.id,
+        seat.harness,
+        seat.harness_session.clone(),
+        clock,
+    )
+    .await;
     let mut projection = state_card(seat, liveness, &state.machine_alias, card, state_record);
+    projection.card.session_status = Some(session_status);
     projection.card.held = match active_holds(&state, &id).await {
         Ok(holds) => holds,
         Err(error) => return internal("pij state", error),
@@ -2410,6 +2445,43 @@ async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequ
         };
 
     envelope(StatusCode::OK, &Envelope::ok("pij state", projection))
+}
+
+/// Read one seat's session facts into the `sessionStatus` block.
+///
+/// A source failure fills the block and never fails the card, because the rest
+/// of `pij state` stays true without it.
+pub(crate) async fn session_status_block(
+    source: &dyn pij_core::ports::SessionStatusPort,
+    seat: &SeatId,
+    harness: Harness,
+    session: Option<String>,
+    now_ms: u64,
+) -> pij_core::session_status::SessionStatusBlock {
+    use pij_core::session_status::{SessionStatusBlock, SessionStatusReply, SessionTarget};
+    let Some(session) = session else {
+        return SessionStatusBlock::Unbound;
+    };
+    let target = SessionTarget {
+        seat: seat.clone(),
+        harness,
+        session,
+    };
+    let started = std::time::Instant::now();
+    let reply = source.status(&target).await;
+    let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    match reply {
+        Ok(SessionStatusReply::Status(status)) => SessionStatusBlock::Known {
+            cache_state: pij_core::session_status::cache_state(&status, now_ms),
+            status: Box::new(status),
+            elapsed_ms,
+        },
+        Ok(SessionStatusReply::Unsupported) => SessionStatusBlock::Unsupported { harness },
+        Ok(SessionStatusReply::NotFound { detail }) => SessionStatusBlock::NotFound { detail },
+        Err(error) => SessionStatusBlock::Failed {
+            error: error.to_string(),
+        },
+    }
 }
 
 async fn active_holds(state: &AppState, seat: &SeatId) -> Result<Vec<HeldEvent>> {
@@ -2529,6 +2601,7 @@ fn state_card(
             held: Vec::new(),
             delivery_deferrals: Vec::new(),
             pending_fyis: 0,
+            session_status: None,
             unsupported: unsupported_state_fields(),
         },
     }
@@ -2545,7 +2618,7 @@ fn state_card(
 fn unsupported_state_fields() -> Vec<UnsupportedField> {
     [
         ("lifecycle", "rs seats have no pending/bound/dissolved lifecycle field; binding evidence lives in `proc` and is reported through `liveness`"),
-        ("activity", "the TS activity object has no rs counterpart; `state` carries working/idle published at OMP, Pi and Copilot turn boundaries (plan 158). Claude seats publish none yet, so their idle is the default, not evidence of inactivity"),
+        ("activity", "the TS activity object has no rs counterpart; `state` carries working/idle published at OMP, Pi and Copilot turn boundaries (plan 158) and by Claude's turn hooks (plan 157); a seat that has not published reads idle by default, not as evidence of inactivity"),
         ("ageMs", "not emitted; consumers may subtract last_event_at from their epoch-ms clock"),
         ("liveness:stale", "the card reports a live process-identity probe, not activity staleness; activity staleness is not tracked"),
         ("daemonLastTickAt", "no per-seat daemon tick is recorded in the rs store"),
@@ -2824,7 +2897,7 @@ fn mint_spawn_id() -> Result<String> {
     Ok(id)
 }
 
-fn system_time_ms() -> Result<u64> {
+pub(crate) fn system_time_ms() -> Result<u64> {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| PijError::Adapter {

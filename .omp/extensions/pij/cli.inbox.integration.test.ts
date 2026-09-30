@@ -61,6 +61,7 @@ interface Receipt {
 	msg_id: string;
 	outcome: { outcome: string; origin?: string };
 	at: number;
+	cold_check?: string;
 }
 interface Claim {
 	job_id: number;
@@ -579,6 +580,9 @@ send({ type: "ready", pid: process.pid });
 				msg_id: expect.any(String),
 				outcome: expect.objectContaining({ outcome: "queued" }),
 				at: expect.any(Number),
+				// Plan 157: every guarded send says what the cold-wake guard saw.
+				// These recipients have no readable session, so it allows as unknown.
+				cold_check: expect.stringMatching(/^unknown: /),
 			},
 		});
 		return envelope.data;

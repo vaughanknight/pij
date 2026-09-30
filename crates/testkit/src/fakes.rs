@@ -1,4 +1,4 @@
-//! A deterministic, scriptable fake for each of the seven frozen ports.
+//! A deterministic, scriptable fake for each of the eight ports.
 //!
 //! Shipped as a crate, not copied per unit (mining note DL-004: every fs3
 //! adapter re-invented a ~110-line recorder because no shared fake existed).
@@ -30,9 +30,10 @@ use pij_core::model::{
 };
 use pij_core::ports::{
     DeferNoopReason, DeferOutcome, DeliveryAck, DeliveryEnqueue, HarnessPort, LaunchCommand,
-    LivenessPort, Queue, Registry, ReleaseOutcome, STAGED_SUBMIT_RECOVERY, SeatFilter, Spine,
-    StagedSubmit, TmuxPort, Transport,
+    LivenessPort, Queue, Registry, ReleaseOutcome, STAGED_SUBMIT_RECOVERY, SeatFilter,
+    SessionStatusPort, Spine, StagedSubmit, TmuxPort, Transport,
 };
+use pij_core::session_status::{SessionStatusReply, SessionTarget};
 
 /// One recorded interaction, rendered as a stable string so assertions read as
 /// the story of what happened: `["put:pij-seat", "tombstone:pij-seat:dead"]`.
@@ -195,6 +196,7 @@ impl Registry for FakeRegistry {
         &self,
         seat: &SeatId,
         state: pij_core::model::SystemState,
+        _reason: Option<&str>,
     ) -> Result<Option<Seq>> {
         let mut guard = self.state.lock().expect("fake registry mutex");
         guard
@@ -2106,6 +2108,9 @@ struct HarnessState {
     bind: Option<BindHealth>,
     readiness: VecDeque<Readiness>,
     busy: VecDeque<bool>,
+    idle: VecDeque<bool>,
+    idle_errors: usize,
+    idle_probes: usize,
     models: Vec<ModelRow>,
 }
 
@@ -2152,10 +2157,31 @@ impl FakeHarness {
         self
     }
 
+    /// Queue an `idle` answer (positive idle evidence from the pane).
+    pub fn script_idle(self, idle: bool) -> Self {
+        self.state
+            .lock()
+            .expect("fake harness mutex")
+            .idle
+            .push_back(idle);
+        self
+    }
+
+    /// Make the next idle probe fail, as a failed pane capture would.
+    pub fn script_idle_error(self) -> Self {
+        self.state.lock().expect("fake harness mutex").idle_errors += 1;
+        self
+    }
+
     /// Set the catalog this harness reports.
     pub fn with_models(self, models: Vec<ModelRow>) -> Self {
         self.state.lock().expect("fake harness mutex").models = models;
         self
+    }
+
+    /// How many idle probes this harness has answered, failed ones included.
+    pub fn idle_probes(&self) -> usize {
+        self.state.lock().expect("fake harness mutex").idle_probes
     }
 }
 
@@ -2194,6 +2220,20 @@ impl HarnessPort for FakeHarness {
         // it never asked for.
         let mut state = self.state.lock().expect("fake harness mutex");
         Ok(state.busy.pop_front().unwrap_or(false))
+    }
+
+    async fn idle(&self, _pane: &str) -> Result<bool> {
+        // Unscripted means NO idle evidence: idleness is what the caller acts on.
+        let mut state = self.state.lock().expect("fake harness mutex");
+        state.idle_probes += 1;
+        if state.idle_errors > 0 {
+            state.idle_errors -= 1;
+            return Err(PijError::Adapter {
+                adapter: "fake/harness".to_string(),
+                message: "pane capture failed".to_string(),
+            });
+        }
+        Ok(state.idle.pop_front().unwrap_or(false))
     }
 
     async fn models(&self) -> Result<Vec<ModelRow>> {
@@ -2247,5 +2287,97 @@ impl LivenessPort for FakeLiveness {
             .expect("fake liveness mutex")
             .get(&pid)
             .copied())
+    }
+}
+
+/// Session facts, scripted per native session id.
+///
+/// An unscripted session answers [`SessionStatusReply::Unsupported`], the reply a
+/// source gives for a harness it can't read, so an unarranged test never sees facts.
+#[derive(Default)]
+pub struct FakeSessionStatus {
+    replies: Mutex<HashMap<String, std::result::Result<SessionStatusReply, String>>>,
+    hangs: Mutex<Vec<String>>,
+    recorder: Mutex<Recorder>,
+}
+
+impl FakeSessionStatus {
+    /// A source that has read nothing.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Answer `reply` for the session `session`.
+    pub fn with_reply(self, session: &str, reply: SessionStatusReply) -> Self {
+        self.replies
+            .lock()
+            .expect("fake session-status mutex")
+            .insert(session.to_string(), Ok(reply));
+        self
+    }
+
+    /// Fail reads of the session `session` with an adapter error.
+    pub fn with_failure(self, session: &str, message: &str) -> Self {
+        self.replies
+            .lock()
+            .expect("fake session-status mutex")
+            .insert(session.to_string(), Err(message.to_string()));
+        self
+    }
+
+    /// Never answer reads of the session `session`: the read hangs until the
+    /// caller gives up, as a stuck transcript fold would.
+    pub fn with_hang(self, session: &str) -> Self {
+        self.hangs
+            .lock()
+            .expect("fake session-status mutex")
+            .push(session.to_string());
+        self
+    }
+
+    /// Every read, in order: `status:<seat>:<harness>:<session>`.
+    pub fn calls(&self) -> Vec<Call> {
+        self.recorder
+            .lock()
+            .expect("fake session-status recorder")
+            .calls
+            .clone()
+    }
+}
+
+#[async_trait]
+impl SessionStatusPort for FakeSessionStatus {
+    async fn status(&self, target: &SessionTarget) -> Result<SessionStatusReply> {
+        self.recorder
+            .lock()
+            .expect("fake session-status recorder")
+            .record(format!(
+                "status:{}:{}:{}",
+                target.seat.0,
+                target.harness.as_str(),
+                target.session
+            ));
+        let hangs = self
+            .hangs
+            .lock()
+            .expect("fake session-status mutex")
+            .contains(&target.session);
+        if hangs {
+            std::future::pending::<()>().await;
+        }
+        match self
+            .replies
+            .lock()
+            .expect("fake session-status mutex")
+            .get(&target.session)
+            .cloned()
+        {
+            Some(Ok(reply)) => Ok(reply),
+            Some(Err(message)) => Err(PijError::Adapter {
+                adapter: "fake/session-status".to_string(),
+                message,
+            }),
+            None => Ok(SessionStatusReply::Unsupported),
+        }
     }
 }

@@ -209,6 +209,10 @@ pub(crate) struct SendCall {
     pub in_reply_to: Option<String>,
     /// Hold for the recipient's next real turn (plan 158).
     pub fyi: bool,
+    /// Wake a cold recipient anyway (plan 157 phase 2).
+    pub force: bool,
+    /// Why the forced wake is worth it.
+    pub reason: Option<String>,
 }
 
 /// Parse a body send or one allowlisted, bodyless control command.
@@ -219,6 +223,7 @@ pub(crate) struct SendCall {
 /// ```text
 /// pij send <id> "<text>" | <id> --body-file <path|-> | --to <id> --to <id> "<text>"
 ///          | <id> --command <name> [--wait] | <id> --fyi "<text>"
+///          | <id> --force --reason "<why>" "<text>"
 /// ```
 ///
 /// Unsupported broadcast, attachment and wait shapes refuse by name.
@@ -235,6 +240,8 @@ pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<
     let mut command = None;
     let mut in_reply_to = None;
     let mut fyi = false;
+    let mut force = false;
+    let mut reason = None;
     let mut rest = tokens.collect::<Vec<_>>().into_iter().peekable();
     while let Some(token) = rest.next() {
         let flag = token
@@ -259,6 +266,18 @@ pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<
             // `--json` is answered by the shim's own projection layer, not here.
             "json" => {}
             "fyi" => fyi = true,
+            "force" => force = true,
+            "reason" => {
+                if reason.is_some() {
+                    return Err("--reason may be supplied only once".to_string());
+                }
+                let value = token
+                    .split_once('=')
+                    .map(|(_, value)| value)
+                    .or_else(|| rest.next())
+                    .ok_or_else(|| "--reason needs the text saying why".to_string())?;
+                reason = Some(value.to_string());
+            }
             "to" => {
                 return Err(
                     "rs cannot serve a broadcast `pij send --to <id> --to <id>`: it fans one \
@@ -346,6 +365,8 @@ pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<
             command: Some(command),
             in_reply_to,
             fyi: false,
+            force: false,
+            reason: None,
         });
     }
     // The two body channels are exclusive, and BOTH must be refused rather than
@@ -388,6 +409,8 @@ pub(crate) fn parse_send(argv: &[String], body_literal: Option<&str>) -> Result<
         command: None,
         in_reply_to,
         fyi,
+        force,
+        reason,
     })
 }
 
@@ -453,11 +476,33 @@ pub(crate) async fn shim_send(State(state): State<AppState>, body: axum::body::B
         Ok(seat) => seat.id,
         Err(response) => return *response,
     };
+    let msg_id = state.services.delivery.next_message_id();
+    // FYIs never wake a seat, so only a real send meets the cold-wake guard.
+    let cold_check = if call.fyi {
+        None
+    } else {
+        match super::cold_wake::guard(
+            &state,
+            SEND,
+            &from,
+            &call.to,
+            &msg_id,
+            super::cold_wake::Override {
+                force: call.force,
+                reason: call.reason.as_deref(),
+            },
+        )
+        .await
+        {
+            Ok(label) => label,
+            Err(response) => return *response,
+        }
+    };
     let msg = Msg {
         from,
         to: call.to,
         body: call.body,
-        msg_id: state.services.delivery.next_message_id(),
+        msg_id,
         from_machine: None,
         in_reply_to: call.in_reply_to,
         command: None,
@@ -468,10 +513,13 @@ pub(crate) async fn shim_send(State(state): State<AppState>, body: axum::body::B
         state.services.delivery.accept(msg).await
     };
     match accepted {
-        Ok(receipt) => super::envelope(
-            axum::http::StatusCode::OK,
-            &pij_core::model::Envelope::ok(SEND, receipt),
-        ),
+        Ok(mut receipt) => {
+            receipt.cold_check = cold_check;
+            super::envelope(
+                axum::http::StatusCode::OK,
+                &pij_core::model::Envelope::ok(SEND, receipt),
+            )
+        }
         // Every failure below is a REFUSAL with an envelope, never a bare status:
         // the shim classifies an undecodable 404/405 as route absence and falls
         // back to legacy, which would send the message from the other store.

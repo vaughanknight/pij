@@ -2339,6 +2339,8 @@ fn exposure_banner_names_the_address_it_classifies() {
 fn send_request_uses_resolved_destination_object_and_optional_reply_id() {
     let request = SendRequest {
         fyi: false,
+        force: false,
+        reason: None,
         from: "pij-a".into(),
         from_machine: Some("desktop".to_string()),
         to: Destination::local("pij-b"),
@@ -4312,6 +4314,8 @@ async fn send_enqueues_exactly_once_and_refuses_remote_without_federation() {
     let client = reqwest::Client::new();
     let request = SendRequest {
         fyi: false,
+        force: false,
+        reason: None,
         from: "pij-a".into(),
         from_machine: None,
         to: Destination::local("pij-b"),
@@ -4937,6 +4941,8 @@ async fn two_daemons_forward_remote_send_into_destination_queue_and_spine() {
 
     let request = SendRequest {
         fyi: false,
+        force: false,
+        reason: None,
         from: "bob".into(),
         to: Destination {
             seat: "bob".into(),
@@ -5054,6 +5060,8 @@ async fn wrong_peer_key_is_permanent_and_never_hot_loops() {
     federation
         .enqueue_remote(&SendRequest {
             fyi: false,
+            force: false,
+            reason: None,
             from: "alice".into(),
             to: Destination {
                 seat: "bob".into(),
@@ -5988,6 +5996,109 @@ async fn state_reports_a_seat_with_no_process_as_unbound() {
     server.abort();
 }
 
+async fn state_card_with_source(
+    seat: SeatDescriptor,
+    source: Arc<pij_testkit::fakes::FakeSessionStatus>,
+) -> serde_json::Value {
+    let mut services = test_services(
+        Arc::new(FakeRegistry::new().with_seat(seat)),
+        Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy")),
+        Arc::new(FakeSpine::new()),
+    )
+    .await;
+    services.session_status = source;
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}/v1/state"))
+        .bearer_auth("key")
+        .json(&serde_json::json!({ "id": "pij-b" }))
+        .send()
+        .await
+        .expect("state request");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body: Envelope<serde_json::Value> = response.json().await.expect("state envelope");
+    server.abort();
+    body.data.expect("state data")
+}
+
+/// Plan 157: the card carries the bound session's facts, and the daemon derives
+/// cache state on its own clock. An unknown fact stays unknown on the wire.
+#[tokio::test]
+async fn state_reads_the_bound_sessions_facts_and_derives_cache_state() {
+    use pij_core::session_status::{CacheTtl, Fact, SeatStatus, SessionStatusReply};
+    let status = SeatStatus {
+        model: Fact::native("claude-opus-5".to_string()),
+        context_used_tokens: Fact::derived(142_000),
+        // Epoch ms 1 with a 5-minute TTL has long expired at any real clock.
+        last_call_at_ms: Fact::native(1),
+        cache_ttl: Fact::derived(CacheTtl::FiveMinutes),
+        ..SeatStatus::unknown()
+    };
+    let source = Arc::new(
+        pij_testkit::fakes::FakeSessionStatus::new()
+            .with_reply("claude-native-7", SessionStatusReply::Status(status)),
+    );
+    let card = state_card_with_source(readback_seat(), source.clone()).await;
+
+    assert_eq!(source.calls(), ["status:pij-b:claude:claude-native-7"]);
+    let block = &card["sessionStatus"];
+    assert_eq!(block["outcome"], "known");
+    assert_eq!(
+        block["status"]["contextUsedTokens"],
+        serde_json::json!({"value": 142_000, "basis": "derived"})
+    );
+    assert_eq!(
+        block["status"]["contextWindowTokens"],
+        serde_json::json!({"basis": "unknown"})
+    );
+    assert_eq!(block["cacheState"]["basis"], "derived");
+    assert_eq!(block["cacheState"]["value"]["state"], "cold");
+    assert!(
+        block["cacheState"]["value"]["expiredForMs"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+    assert!(block["elapsedMs"].is_u64());
+    // Busy/idle stays the daemon's own observation.
+    assert_eq!(card["state"], "working");
+}
+
+/// A failing source fills the block and leaves the rest of the card intact.
+#[tokio::test]
+async fn state_survives_a_session_status_source_failure() {
+    let source = Arc::new(
+        pij_testkit::fakes::FakeSessionStatus::new()
+            .with_failure("claude-native-7", "transcript unreadable"),
+    );
+    let card = state_card_with_source(readback_seat(), source).await;
+
+    assert_eq!(card["sessionStatus"]["outcome"], "failed");
+    assert!(
+        card["sessionStatus"]["error"]
+            .as_str()
+            .unwrap()
+            .contains("transcript unreadable")
+    );
+    assert_eq!(card["id"], "pij-b");
+    assert_eq!(card["state"], "working");
+}
+
+/// A seat with no harness session is `unbound`, and the source is never asked.
+#[tokio::test]
+async fn state_does_not_read_a_session_for_a_seat_with_none_bound() {
+    let mut seat = readback_seat();
+    seat.harness_session = None;
+    let source = Arc::new(pij_testkit::fakes::FakeSessionStatus::new());
+    let card = state_card_with_source(seat, source.clone()).await;
+
+    assert_eq!(
+        card["sessionStatus"],
+        serde_json::json!({"outcome": "unbound"})
+    );
+    assert!(source.calls().is_empty());
+}
+
 /// A field rs cannot answer is NAMED, never nulled.
 ///
 /// The discriminating arm is the second assertion, and it is the whole point: a
@@ -6113,5 +6224,807 @@ async fn state_tolerates_a_body_field_it_does_not_know() {
         .expect("state request");
     assert_eq!(response.status(), reqwest::StatusCode::OK);
 
+    server.abort();
+}
+
+// --- Plan 157 phase 2: the cold-wake guard -------------------------------
+
+const COLD_SESSION: &str = "claude-cold-session";
+
+fn cold_seat(state: pij_core::model::SystemState) -> SeatDescriptor {
+    // Unbound, so a send that passes the guard queues (pre-bind) and never
+    // touches a transport.
+    let mut seat = SeatDescriptor::new("pij-cold", Harness::Claude, "/abs/tree");
+    seat.harness_session = Some(COLD_SESSION.to_string());
+    seat.state = state;
+    seat
+}
+
+/// 720k tokens on Opus 5.5, last called two hours ago.
+fn cold_status() -> pij_core::session_status::SessionStatusReply {
+    use pij_core::session_status::{Fact, SeatStatus, SessionStatusReply};
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    SessionStatusReply::Status(SeatStatus {
+        model: Fact::native("claude-opus-5-5".to_string()),
+        context_used_tokens: Fact::derived(720_000),
+        last_call_at_ms: Fact::native(now - 2 * 60 * 60 * 1_000),
+        ..SeatStatus::unknown()
+    })
+}
+
+async fn cold_daemon(
+    state: pij_core::model::SystemState,
+    source: pij_testkit::fakes::FakeSessionStatus,
+) -> (
+    SocketAddr,
+    tokio::task::JoinHandle<()>,
+    Arc<FakeQueue>,
+    Arc<FakeSpine>,
+) {
+    let queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
+    let spine = Arc::new(FakeSpine::new());
+    let mut services = test_services(
+        Arc::new(
+            FakeRegistry::new()
+                .with_seat(cold_seat(state))
+                .with_seat(SeatDescriptor::new("pij-sender", Harness::Omp, "/abs/tree")),
+        ),
+        queue.clone(),
+        spine.clone(),
+    )
+    .await;
+    services.session_status = Arc::new(source);
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    (addr, server, queue, spine)
+}
+
+async fn post_json(
+    addr: SocketAddr,
+    path: &str,
+    body: serde_json::Value,
+) -> (u16, serde_json::Value) {
+    let response = reqwest::Client::new()
+        .post(format!("http://{addr}{path}"))
+        .bearer_auth("key")
+        .json(&body)
+        .send()
+        .await
+        .expect("request");
+    (
+        response.status().as_u16(),
+        response.json().await.expect("envelope"),
+    )
+}
+
+fn cold_send(msg_id: &str, extra: serde_json::Value) -> serde_json::Value {
+    let mut body = serde_json::json!({
+        "from": "pij-sender", "to": {"seat": "pij-cold"}, "body": "wake up", "msg_id": msg_id,
+    });
+    for (key, value) in extra.as_object().expect("object") {
+        body[key] = value.clone();
+    }
+    body
+}
+
+/// A send to a large seat idle past the cache TTL is refused with its price,
+/// and nothing is queued or delivered.
+#[tokio::test]
+async fn a_send_to_a_cold_seat_is_refused_with_its_price() {
+    let source =
+        pij_testkit::fakes::FakeSessionStatus::new().with_reply(COLD_SESSION, cold_status());
+    let (addr, server, queue, _) = cold_daemon(pij_core::model::SystemState::Idle, source).await;
+    let (status, reply) =
+        post_json(addr, "/v1/send", cold_send("m-cold", serde_json::json!({}))).await;
+    assert_eq!(status, 400, "{reply}");
+    assert_eq!(reply["ok"], false);
+    let message = reply["meta"].as_str().unwrap_or_default();
+    assert!(
+        message.starts_with("E-RS-COLD-WAKE: pij-cold is cold (idle 2h, 720k context)")
+            && message.contains("≈ $5.76 at list price")
+            && message.contains("--fyi")
+            && message.contains("--force --reason"),
+        "{reply}"
+    );
+    assert_eq!(queue.live_len(), 0, "a refusal sends nothing");
+    server.abort();
+}
+
+/// `--force` needs a reason; a forced cold wake is delivered and audited.
+#[tokio::test]
+async fn a_forced_cold_wake_needs_a_reason_and_is_audited() {
+    let source =
+        pij_testkit::fakes::FakeSessionStatus::new().with_reply(COLD_SESSION, cold_status());
+    let (addr, server, queue, spine) =
+        cold_daemon(pij_core::model::SystemState::Idle, source).await;
+    for reason in [serde_json::Value::Null, serde_json::json!("   ")] {
+        let (status, reply) = post_json(
+            addr,
+            "/v1/send",
+            cold_send(
+                "m-force",
+                serde_json::json!({"force": true, "reason": reason}),
+            ),
+        )
+        .await;
+        assert_eq!(status, 400, "{reply}");
+        assert!(
+            reply["meta"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("--reason"),
+            "{reply}"
+        );
+    }
+    assert_eq!(queue.live_len(), 0);
+
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send(
+            "m-force",
+            serde_json::json!({"force": true, "reason": "prod is down, need its context"}),
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["cold_check"], "forced");
+    assert_eq!(queue.live_len(), 1);
+    let audit = spine
+        .tail(None, Seq(0))
+        .await
+        .expect("tail")
+        .into_iter()
+        .find(|event| event.kind == "send.cold-wake-forced")
+        .expect("forced cold wake is audited");
+    let payload: serde_json::Value = serde_json::from_str(&audit.payload).unwrap();
+    assert_eq!(audit.seat, Some("pij-cold".into()));
+    assert_eq!(payload["reason"], "prod is down, need its context");
+    assert_eq!(payload["from"], "pij-sender");
+    assert_eq!(payload["msg_id"], "m-force");
+    assert_eq!(payload["context_tokens"], 720_000);
+    assert_eq!(payload["estimate_usd"], 5.76);
+    server.abort();
+}
+
+/// A busy seat is warm by definition; unknown facts allow and say so.
+#[tokio::test]
+async fn busy_and_unknown_recipients_are_never_refused() {
+    let source =
+        pij_testkit::fakes::FakeSessionStatus::new().with_reply(COLD_SESSION, cold_status());
+    let (addr, server, _, _) = cold_daemon(pij_core::model::SystemState::Working, source).await;
+    let (status, reply) =
+        post_json(addr, "/v1/send", cold_send("m-busy", serde_json::json!({}))).await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["cold_check"], "busy");
+    server.abort();
+
+    // Unscripted fake source: the harness is unsupported.
+    let (addr, server, _, _) = cold_daemon(
+        pij_core::model::SystemState::Idle,
+        pij_testkit::fakes::FakeSessionStatus::new(),
+    )
+    .await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-unknown", serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(
+        reply["data"]["cold_check"],
+        "unknown: claude sessions are not readable"
+    );
+    server.abort();
+}
+
+/// FYIs never wake a seat, so they are never refused; controls are not guarded.
+#[tokio::test]
+async fn fyis_and_controls_are_never_refused() {
+    let source =
+        pij_testkit::fakes::FakeSessionStatus::new().with_reply(COLD_SESSION, cold_status());
+    let (addr, server, _, _) = cold_daemon(pij_core::model::SystemState::Idle, source).await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-fyi", serde_json::json!({"fyi": true})),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["outcome"]["outcome"], "held");
+    let (_, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send(
+            "m-ctl",
+            serde_json::json!({"body": "", "command": "compact"}),
+        ),
+    )
+    .await;
+    assert!(
+        !reply.to_string().contains("E-RS-COLD-WAKE"),
+        "controls are not guarded: {reply}"
+    );
+    server.abort();
+}
+
+/// The shim's positional `pij send` takes the same guard and the same escape.
+#[tokio::test]
+async fn the_shim_send_is_guarded_and_forceable() {
+    let source =
+        pij_testkit::fakes::FakeSessionStatus::new().with_reply(COLD_SESSION, cold_status());
+    let (addr, server, queue, _) = cold_daemon(pij_core::model::SystemState::Idle, source).await;
+    let shim = |argv: &[&str]| serde_json::json!({"argv": argv, "caller": {"PIJ_SESSION_ID": "pij-sender"}});
+    let (status, reply) = post_json(
+        addr,
+        "/v1/shim/send",
+        shim(&["send", "pij-cold", "wake up"]),
+    )
+    .await;
+    assert_eq!(status, 400, "{reply}");
+    assert!(
+        reply["meta"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("E-RS-COLD-WAKE"),
+        "{reply}"
+    );
+    let (status, reply) = post_json(
+        addr,
+        "/v1/shim/send",
+        shim(&[
+            "send",
+            "pij-cold",
+            "--force",
+            "--reason",
+            "needed now",
+            "wake up",
+        ]),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["cold_check"], "forced");
+    assert_eq!(queue.live_len(), 1);
+    server.abort();
+}
+
+/// Review D8: a session source that fails, or does not answer within the
+/// guard's wait, allows the send and says why. The brake never blocks on it.
+#[tokio::test]
+async fn a_failing_or_silent_session_source_allows_the_send() {
+    let (addr, server, queue, _) = cold_daemon(
+        pij_core::model::SystemState::Idle,
+        pij_testkit::fakes::FakeSessionStatus::new().with_failure(COLD_SESSION, "fold exploded"),
+    )
+    .await;
+    let (status, reply) =
+        post_json(addr, "/v1/send", cold_send("m-err", serde_json::json!({}))).await;
+    assert_eq!(status, 200, "{reply}");
+    assert!(
+        reply["data"]["cold_check"]
+            .as_str()
+            .is_some_and(|label| label.starts_with("unknown: source failed:")
+                && label.contains("fold exploded")),
+        "{reply}"
+    );
+    assert_eq!(queue.live_len(), 1, "the message was sent");
+    server.abort();
+
+    let (addr, server, queue, _) = cold_daemon(
+        pij_core::model::SystemState::Idle,
+        pij_testkit::fakes::FakeSessionStatus::new().with_hang(COLD_SESSION),
+    )
+    .await;
+    let started = std::time::Instant::now();
+    let (status, reply) =
+        post_json(addr, "/v1/send", cold_send("m-hang", serde_json::json!({}))).await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(
+        reply["data"]["cold_check"],
+        "unknown: source failed: no answer within 3s"
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(6),
+        "bounded wait"
+    );
+    assert_eq!(queue.live_len(), 1, "the message was sent");
+    server.abort();
+}
+
+/// Review D1: the shim's own `--fyi` (the surface `pij send --fyi` uses) holds
+/// a message for a cold seat instead of refusing it.
+#[tokio::test]
+async fn a_shim_fyi_to_a_cold_seat_is_held_not_refused() {
+    let source =
+        pij_testkit::fakes::FakeSessionStatus::new().with_reply(COLD_SESSION, cold_status());
+    let (addr, server, _, _) = cold_daemon(pij_core::model::SystemState::Idle, source).await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/shim/send",
+        serde_json::json!({"argv": ["send", "pij-cold", "--fyi", "note"], "caller": {"PIJ_SESSION_ID": "pij-sender"}}),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["outcome"]["outcome"], "held", "{reply}");
+    server.abort();
+}
+
+/// Review D2: a message forwarded from another machine is not guarded here: its
+/// sender cannot be offered --fyi or --force by this daemon. Documented bypass.
+#[tokio::test]
+async fn a_forwarded_send_is_not_guarded() {
+    let source =
+        pij_testkit::fakes::FakeSessionStatus::new().with_reply(COLD_SESSION, cold_status());
+    let (addr, server, queue, _) = cold_daemon(pij_core::model::SystemState::Idle, source).await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-fwd", serde_json::json!({"from_machine": "laptop"})),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert!(reply["data"].get("cold_check").is_none(), "{reply}");
+    assert_eq!(queue.live_len(), 1);
+    server.abort();
+}
+
+/// Review ruling (Esc fires no Claude hook): a seat that SAYS working but is
+/// large and 60+ min past its last call is checked against its live pane.
+async fn stale_working_daemon(
+    claude: Arc<dyn pij_core::ports::HarnessPort>,
+) -> (
+    SocketAddr,
+    tokio::task::JoinHandle<()>,
+    Arc<FakeQueue>,
+    Arc<FakeSpine>,
+) {
+    stale_working_daemon_with(claude, cold_status(), Some(TWO_HOURS_MS)).await
+}
+
+/// `working_for_ms`: how long ago the seat's `working` was published (`None`:
+/// no `seat.activity` fact at all).
+async fn stale_working_daemon_with(
+    claude: Arc<dyn pij_core::ports::HarnessPort>,
+    reply: pij_core::session_status::SessionStatusReply,
+    working_for_ms: Option<u64>,
+) -> (
+    SocketAddr,
+    tokio::task::JoinHandle<()>,
+    Arc<FakeQueue>,
+    Arc<FakeSpine>,
+) {
+    let queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
+    let spine = Arc::new(FakeSpine::new());
+    let mut seat = cold_seat(pij_core::model::SystemState::Working);
+    seat.pane = Some("%stale".to_string());
+    if let Some(working_for_ms) = working_for_ms {
+        let mut working = pij_store::registry::activity_event(
+            &seat.id,
+            pij_core::model::SystemState::Working,
+            None,
+        )
+        .expect("activity event");
+        working.at -= working_for_ms;
+        spine.append(working).await.expect("seed working");
+    }
+    let mut services = test_services(
+        Arc::new(FakeRegistry::new().with_seat(seat)),
+        queue.clone(),
+        spine.clone(),
+    )
+    .await;
+    services.session_status =
+        Arc::new(pij_testkit::fakes::FakeSessionStatus::new().with_reply(COLD_SESSION, reply));
+    services.harnesses = Arc::new(
+        pij_harnesses::HarnessRegistry::new([
+            claude,
+            Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Copilot)),
+            Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Codex)),
+            Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Pi)),
+            Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Omp)),
+        ])
+        .expect("harness registry"),
+    );
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    (addr, server, queue, spine)
+}
+
+/// A real Claude adapter over a real tmux adapter whose `tmux` prints `frame`.
+async fn real_claude_stale_daemon(
+    frame: &str,
+    working_for_ms: u64,
+    tag: &str,
+) -> (
+    SocketAddr,
+    tokio::task::JoinHandle<()>,
+    Arc<FakeQueue>,
+    Arc<FakeSpine>,
+    std::path::PathBuf,
+) {
+    let dir = std::env::temp_dir().join(format!("pij-frame-{tag}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    std::fs::write(dir.join("frame.txt"), frame).expect("frame");
+    let tmux_bin = dir.join("tmux");
+    std::fs::write(
+        &tmux_bin,
+        format!("#!/bin/sh\ncat '{}'\n", dir.join("frame.txt").display()),
+    )
+    .expect("fake tmux");
+    std::fs::set_permissions(
+        &tmux_bin,
+        std::os::unix::fs::PermissionsExt::from_mode(0o755),
+    )
+    .expect("chmod");
+    let tmux: Arc<dyn pij_core::ports::TmuxPort> = Arc::new(pij_tmux::TmuxAdapter::with_binary(
+        tmux_bin.as_os_str(),
+        dir.join("taps"),
+    ));
+    let (addr, server, queue, spine) = stale_working_daemon_with(
+        Arc::new(pij_harnesses::ClaudeHarness::new(tmux)),
+        cold_status(),
+        Some(working_for_ms),
+    )
+    .await;
+    (addr, server, queue, spine, dir)
+}
+
+const TWO_HOURS_MS: u64 = 2 * 60 * 60 * 1_000;
+
+/// Re-review 3: only POSITIVE idle evidence may refuse and correct. Each of
+/// these panes is a working seat whose facts are cold, and none of them shows
+/// an idle Claude, so every one must allow and leave `working` alone.
+#[tokio::test]
+async fn a_pane_without_positive_idle_evidence_allows_and_keeps_working() {
+    let rows: [(&str, &str, u64); 6] = [
+        ("empty", "", TWO_HOURS_MS),
+        ("blank", "\n\n\n\n", TWO_HOURS_MS),
+        (
+            "truncated-spinner",
+            include_str!("../../../testkit/fixtures/harnesses/claude-2.1.284-tool-run-narrow.txt"),
+            TWO_HOURS_MS,
+        ),
+        (
+            "permission-dialog",
+            include_str!(
+                "../../../testkit/fixtures/harnesses/claude-2.1.284-permission-dialog.txt"
+            ),
+            TWO_HOURS_MS,
+        ),
+        (
+            "tool-run",
+            include_str!("../../../testkit/fixtures/harnesses/claude-2.1.284-tool-run.txt"),
+            TWO_HOURS_MS,
+        ),
+        // Live: mid-stream Claude shows no spinner and looks idle. A seat woken
+        // after a long idle is in exactly this frame with cold facts, until its
+        // first reply is written. Its `working` is seconds old, so it is fresh.
+        (
+            "streaming-fresh-wake",
+            include_str!("../../../testkit/fixtures/harnesses/claude-2.1.284-streaming.txt"),
+            10_000,
+        ),
+    ];
+    let mut wrong = Vec::new();
+    for (name, frame, working_for_ms) in rows {
+        let (addr, server, queue, _, dir) =
+            real_claude_stale_daemon(frame, working_for_ms, name).await;
+        let (status, reply) = post_json(
+            addr,
+            "/v1/send",
+            cold_send(&format!("m-{name}"), serde_json::json!({})),
+        )
+        .await;
+        let (_, card) = post_json(addr, "/v1/state", serde_json::json!({"id": "pij-cold"})).await;
+        let outcome = (
+            status,
+            reply["data"]["cold_check"].clone(),
+            queue.live_len(),
+            card["data"]["state"].clone(),
+        );
+        if outcome
+            != (
+                200,
+                serde_json::json!("busy"),
+                1,
+                serde_json::json!("working"),
+            )
+        {
+            wrong.push(format!("{name}: {outcome:?}"));
+        }
+        server.abort();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    assert!(
+        wrong.is_empty(),
+        "refused or corrected without idle evidence: {wrong:#?}"
+    );
+}
+
+/// The positive case end to end: a live Claude frame just after an Esc
+/// interrupt, `working` for two hours, cold facts. Refused and corrected.
+#[tokio::test]
+async fn a_live_idle_claude_frame_under_a_long_stale_working_is_refused() {
+    let (addr, server, queue, _, dir) = real_claude_stale_daemon(
+        include_str!("../../../testkit/fixtures/harnesses/claude-2.1.284-after-esc.txt"),
+        TWO_HOURS_MS,
+        "idle",
+    )
+    .await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-live-idle", serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(status, 400, "{reply}");
+    assert_eq!(queue.live_len(), 0);
+    let (_, card) = post_json(addr, "/v1/state", serde_json::json!({"id": "pij-cold"})).await;
+    assert_eq!(card["data"]["state"], "idle");
+    server.abort();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn a_stale_working_seat_with_an_idle_pane_is_refused_and_corrected() {
+    let claude = Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_idle(true));
+    let (addr, server, queue, spine) = stale_working_daemon(claude.clone()).await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-stale", serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(status, 400, "{reply}");
+    assert!(
+        reply["meta"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("E-RS-COLD-WAKE"),
+        "{reply}"
+    );
+    assert_eq!(queue.live_len(), 0);
+    assert_eq!(claude.idle_probes(), 1, "exactly one pane probe");
+    let (_, card) = post_json(addr, "/v1/state", serde_json::json!({"id": "pij-cold"})).await;
+    assert_eq!(
+        card["data"]["state"], "idle",
+        "the stale state is corrected"
+    );
+    let correction = spine
+        .tail(None, Seq(0))
+        .await
+        .expect("tail")
+        .into_iter()
+        .rev()
+        .find(|event| event.kind == "seat.activity")
+        .expect("the correction is on the spine");
+    let payload: serde_json::Value = serde_json::from_str(&correction.payload).unwrap();
+    assert_eq!(
+        payload,
+        serde_json::json!({"state": "idle", "reason": "stale working (esc)"})
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn a_stale_working_seat_with_a_busy_pane_is_allowed() {
+    let (addr, server, queue, _) = stale_working_daemon(Arc::new(
+        pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_idle(false),
+    ))
+    .await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-busy-pane", serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["cold_check"], "busy");
+    assert_eq!(queue.live_len(), 1);
+    let (_, card) = post_json(addr, "/v1/state", serde_json::json!({"id": "pij-cold"})).await;
+    assert_eq!(card["data"]["state"], "working");
+    server.abort();
+}
+
+#[tokio::test]
+async fn a_failed_pane_capture_trusts_working() {
+    let (addr, server, queue, _) = stale_working_daemon(Arc::new(
+        pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_idle_error(),
+    ))
+    .await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-capture-fail", serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["cold_check"], "busy");
+    assert_eq!(queue.live_len(), 1);
+    server.abort();
+}
+
+/// A wedged tmux (a real child that does not answer) cannot hold the send: the
+/// probe is abandoned at its bound and `working` is trusted.
+/// Multi-threaded, as the daemon runs; the fake-harness tests cover current-thread.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_wedged_pane_capture_is_abandoned_at_its_bound() {
+    let dir = std::env::temp_dir().join(format!("pij-wedged-tmux-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let tmux_bin = dir.join("tmux");
+    std::fs::write(&tmux_bin, "#!/bin/sh\nsleep 4\n").expect("fake tmux");
+    std::fs::set_permissions(
+        &tmux_bin,
+        std::os::unix::fs::PermissionsExt::from_mode(0o755),
+    )
+    .expect("chmod");
+    let tmux: Arc<dyn pij_core::ports::TmuxPort> = Arc::new(pij_tmux::TmuxAdapter::with_binary(
+        tmux_bin.as_os_str(),
+        dir.join("taps"),
+    ));
+    let (addr, server, queue, _) =
+        stale_working_daemon(Arc::new(pij_harnesses::ClaudeHarness::new(tmux))).await;
+    let started = std::time::Instant::now();
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-wedged", serde_json::json!({})),
+    )
+    .await;
+    let elapsed = started.elapsed();
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["cold_check"], "busy");
+    assert_eq!(queue.live_len(), 1);
+    assert!(
+        elapsed < std::time::Duration::from_millis(2_500),
+        "the probe bound held: {elapsed:?}"
+    );
+    server.abort();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The pane is consulted only in the rare case: a working seat whose facts
+/// are NOT cold is trusted as busy without a probe, even if its pane is idle.
+#[tokio::test]
+async fn a_working_seat_that_is_not_cold_by_its_facts_is_not_probed() {
+    use pij_core::session_status::{Fact, SeatStatus, SessionStatusReply};
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    let recent = SessionStatusReply::Status(SeatStatus {
+        context_used_tokens: Fact::derived(720_000),
+        last_call_at_ms: Fact::native(now - 5 * 60 * 1_000),
+        ..SeatStatus::unknown()
+    });
+    let claude = Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_idle(true));
+    let (addr, server, _, _) =
+        stale_working_daemon_with(claude.clone(), recent, Some(TWO_HOURS_MS)).await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-recent", serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["cold_check"], "busy");
+    let (_, card) = post_json(addr, "/v1/state", serde_json::json!({"id": "pij-cold"})).await;
+    assert_eq!(
+        card["data"]["state"], "working",
+        "not corrected outside the rare case"
+    );
+    assert_eq!(
+        claude.idle_probes(),
+        0,
+        "no pane probe outside the rare case"
+    );
+    server.abort();
+}
+
+/// A `working` younger than the idle threshold is a live turn, whatever its
+/// pane shows (mid-stream Claude looks idle). It is trusted without a probe.
+#[tokio::test]
+async fn a_recent_working_is_trusted_without_a_pane_probe() {
+    let claude = Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_idle(true));
+    let (addr, server, queue, _) =
+        stale_working_daemon_with(claude.clone(), cold_status(), Some(30_000)).await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-fresh-wake", serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["cold_check"], "busy");
+    assert_eq!(queue.live_len(), 1);
+    assert_eq!(claude.idle_probes(), 0, "no pane probe for a fresh turn");
+    let (_, card) = post_json(addr, "/v1/state", serde_json::json!({"id": "pij-cold"})).await;
+    assert_eq!(card["data"]["state"], "working");
+    server.abort();
+}
+
+/// The age that counts is that of the latest activity fact, and only if it
+/// says `working`. An old `idle` fact is no evidence of a stale `working`.
+#[tokio::test]
+async fn an_old_activity_fact_that_is_not_working_is_no_evidence() {
+    let claude = Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_idle(true));
+    let (addr, server, queue, spine) =
+        stale_working_daemon_with(claude.clone(), cold_status(), Some(3 * 60 * 60 * 1_000)).await;
+    let mut idle = pij_store::registry::activity_event(
+        &cold_seat(pij_core::model::SystemState::Working).id,
+        pij_core::model::SystemState::Idle,
+        None,
+    )
+    .expect("activity event");
+    idle.at -= TWO_HOURS_MS;
+    spine.append(idle).await.expect("seed idle");
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-old-idle-fact", serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(queue.live_len(), 1);
+    assert_eq!(claude.idle_probes(), 0);
+    server.abort();
+}
+
+/// No `seat.activity` fact, or a spine that cannot answer, is no evidence that
+/// the `working` is stale: allow, without a pane probe.
+#[tokio::test]
+async fn a_missing_or_unreadable_activity_fact_allows_without_a_probe() {
+    for unreadable in [false, true] {
+        let claude =
+            Arc::new(pij_testkit::fakes::FakeHarness::new(Harness::Claude).script_idle(true));
+        let (addr, server, queue, spine) = if unreadable {
+            stale_working_daemon_with(claude.clone(), cold_status(), Some(TWO_HOURS_MS)).await
+        } else {
+            stale_working_daemon_with(claude.clone(), cold_status(), None).await
+        };
+        if unreadable {
+            spine.script_latest_matching_error("spine read failed");
+        }
+        let (status, reply) = post_json(
+            addr,
+            "/v1/send",
+            cold_send("m-no-fact", serde_json::json!({})),
+        )
+        .await;
+        assert_eq!(status, 200, "unreadable={unreadable}: {reply}");
+        assert_eq!(
+            reply["data"]["cold_check"], "busy",
+            "unreadable={unreadable}"
+        );
+        assert_eq!(queue.live_len(), 1, "unreadable={unreadable}");
+        assert_eq!(claude.idle_probes(), 0, "unreadable={unreadable}");
+        server.abort();
+    }
+}
+
+/// A host with no `tmux` binary makes the pane probe fail, and a failed probe
+/// is unknown: the send is allowed and `working` stands.
+#[tokio::test]
+async fn a_missing_tmux_binary_is_unknown_and_allows() {
+    let dir = std::env::temp_dir().join(format!("pij-no-tmux-{}", std::process::id()));
+    let tmux: Arc<dyn pij_core::ports::TmuxPort> = Arc::new(pij_tmux::TmuxAdapter::with_binary(
+        dir.join("no-such-tmux").as_os_str(),
+        dir.join("taps"),
+    ));
+    let (addr, server, queue, _) =
+        stale_working_daemon(Arc::new(pij_harnesses::ClaudeHarness::new(tmux))).await;
+    let (status, reply) = post_json(
+        addr,
+        "/v1/send",
+        cold_send("m-no-tmux", serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["cold_check"], "busy");
+    assert_eq!(queue.live_len(), 1);
+    let (_, card) = post_json(addr, "/v1/state", serde_json::json!({"id": "pij-cold"})).await;
+    assert_eq!(card["data"]["state"], "working");
     server.abort();
 }

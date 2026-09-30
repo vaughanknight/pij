@@ -1,11 +1,12 @@
 //! The ports — the only holes in the functional core.
 //!
-//! # A EIGHTH PORT IS STOP-AND-ASK
+//! # A NINTH PORT IS STOP-AND-ASK
 //!
 //! Workshop 001 R3 froze six; R3-AMEND-1 admitted `LivenessPort` as the seventh
 //! (the PM's stop-and-ask fired exactly as designed: `proc_start` is real IO and
-//! cannot be a free function in a crate that performs none). **Do not add an
-//! eighth.** If a unit believes it needs one, that is a prime ruling, recorded in
+//! cannot be a free function in a crate that performs none). R3-AMEND-10 admitted
+//! `SessionStatusPort` as the eighth by prime ruling (plan 157). **Do not add a
+//! ninth.** If a unit believes it needs one, that is a prime ruling, recorded in
 //! `docs/plans/108-rust-port/assets/workshops/001-architecture.md` — not a trait
 //! someone adds while implementing something else. Ports are the seams the whole
 //! fan-out is parallel across; a seam that moves mid-wave un-freezes every unit
@@ -33,6 +34,7 @@ use crate::model::{
     BindHealth, DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, ModelRow, Msg,
     Outcome, Pane, PaneProcess, ProcIdentity, Readiness, SeatDescriptor, SeatId, Seq,
 };
+use crate::session_status::{SessionStatusReply, SessionTarget};
 
 /// Rewrites a carrier's job payload so it carries the claimed FYIs.
 pub type AttachFyis = std::sync::Arc<dyn Fn(&str, &[HeldFyi]) -> Result<String> + Send + Sync>;
@@ -101,11 +103,14 @@ pub trait Registry: Send + Sync {
     /// its mechanical `state` and nothing else on the row. `None` when nothing
     /// changed: the seat is absent, tombstoned, or already in `state`. A
     /// read-then-put here would overwrite a concurrent tombstone, role or
-    /// declaration with the stale row it read.
+    /// declaration with the stale row it read. `reason` travels on the
+    /// `seat.activity` fact when the daemon corrects a state it did not observe
+    /// from the seat itself (e.g. `stale working (esc)`).
     async fn set_activity(
         &self,
         seat: &SeatId,
         state: crate::model::SystemState,
+        reason: Option<&str>,
     ) -> Result<Option<Seq>>;
 }
 
@@ -643,6 +648,12 @@ pub trait HarnessPort: Send + Sync {
     /// is the entire reason this port exists (BUSY_RE-class drift).
     async fn busy(&self, pane: &str) -> Result<bool>;
 
+    /// Does the pane show POSITIVE evidence of an idle harness at its prompt?
+    /// Unlike `!busy`, an empty, blank, truncated, dialog or unrecognised frame
+    /// is `false`: the caller acts on idleness, so only a vetted idle frame
+    /// counts (plan 157 cold-wake guard).
+    async fn idle(&self, pane: &str) -> Result<bool>;
+
     /// This harness's model catalog.
     async fn models(&self) -> Result<Vec<ModelRow>>;
 }
@@ -661,4 +672,20 @@ pub trait LivenessPort: Send + Sync {
     async fn observed(&self, proc: ProcIdentity) -> Result<Option<u64>> {
         self.proc_start(proc.pid).await
     }
+}
+
+/// Session facts (context size, last call, cache state) read from a seat's
+/// harness-native transcript.
+///
+/// Admitted by prime ruling as the eighth port (R3-AMEND-10, plan 157). The facts
+/// come from files the harness writes, and reading them is IO that core can't do.
+/// A source is stateful. It keeps one read position per seat, so a warm call reads
+/// only what the harness has appended since the last call.
+#[async_trait]
+pub trait SessionStatusPort: Send + Sync {
+    /// Read the session bound to `target`.
+    ///
+    /// `Err` is reserved for a source failure. An unsupported harness or a missing
+    /// transcript is a normal reply.
+    async fn status(&self, target: &SessionTarget) -> Result<SessionStatusReply>;
 }

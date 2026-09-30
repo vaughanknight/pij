@@ -210,6 +210,12 @@ pub struct SendRequest {
     /// Hold for the recipient's next real turn instead of delivering (plan 158).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub fyi: bool,
+    /// Wake a cold recipient anyway (plan 157 phase 2). Needs `reason`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub force: bool,
+    /// Why a forced cold wake is worth its price; recorded on the spine.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 // `QueuedSend` is GONE. The send route persisted it under `delivery:<seat>` and
@@ -543,6 +549,12 @@ pub struct StateCard {
     /// FYIs held for this seat's next real turn (plan 158).
     #[serde(default)]
     pub pending_fyis: u64,
+    /// Session facts read from the seat's transcript (plan 157): context size,
+    /// last call and cache state. Busy/idle is `state`, never this block.
+    ///
+    /// `None` only when decoding a card from a daemon that predates the block.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_status: Option<pij_core::session_status::SessionStatusBlock>,
     /// Every TS field this store cannot answer, named with its reason.
     pub unsupported: Vec<UnsupportedField>,
 }

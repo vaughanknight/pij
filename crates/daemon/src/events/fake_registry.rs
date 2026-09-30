@@ -124,6 +124,7 @@ impl Registry for PublishedFakeRegistry {
         &self,
         seat: &SeatId,
         state: pij_core::model::SystemState,
+        reason: Option<&str>,
     ) -> Result<Option<Seq>> {
         match self.registry.get(seat).await? {
             Some(current) if current.tombstoned_at.is_none() && current.state != state => {}
@@ -132,12 +133,17 @@ impl Registry for PublishedFakeRegistry {
         let registry = self.registry.clone();
         let spine = self.bus.spine.clone();
         let seat = seat.clone();
+        let reason = reason.map(str::to_string);
         let published = self
             .bus
             .publish_registry(Box::pin(async move {
-                let mut event = activity_event(&seat, state)?;
+                let mut event = activity_event(&seat, state, reason.as_deref())?;
                 let seq = spine.append(event.clone()).await?;
-                if registry.set_activity(&seat, state).await?.is_none() {
+                if registry
+                    .set_activity(&seat, state, reason.as_deref())
+                    .await?
+                    .is_none()
+                {
                     return Err(PijError::SeatIsGone {
                         seat,
                         tombstone_reason: None,

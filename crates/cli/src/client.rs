@@ -105,6 +105,12 @@ pub struct SendRequest {
     /// Hold for the recipient's next real turn instead of delivering (plan 158).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub fyi: bool,
+    /// Wake a cold recipient anyway (plan 157 phase 2); needs `reason`.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub force: bool,
+    /// Why a forced cold wake is worth it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 // StreamFrame is owned by the daemon wire module and re-exported here so the
@@ -183,6 +189,11 @@ impl DaemonClient {
     /// Durably enqueue one message.
     pub async fn send(&self, request: &SendRequest) -> Envelope<Receipt> {
         self.post("pij send", "/v1/send", request).await
+    }
+
+    /// Publish a seat's own busy/idle observation (plan 158; Claude hooks, plan 157).
+    pub async fn activity(&self, request: &serde_json::Value) -> Envelope<serde_json::Value> {
+        self.post("pij activity", "/v1/activity", request).await
     }
 
     /// Claim the FYIs held for a seat (plan 158).
@@ -779,6 +790,8 @@ mod tests {
             in_reply_to: Some("m-0".to_string()),
             command: None,
             fyi: false,
+            force: false,
+            reason: None,
         };
 
         assert_eq!(

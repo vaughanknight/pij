@@ -666,6 +666,7 @@ impl DeliveryService {
                     msg_id: msg.msg_id,
                     outcome: recorded.outcome,
                     at: event.at,
+                    cold_check: None,
                 });
             }
         }
@@ -743,6 +744,7 @@ impl DeliveryService {
                 reason: "fyi".into(),
             },
             at,
+            cold_check: None,
         })
     }
 
@@ -944,6 +946,7 @@ impl DeliveryService {
                     reason: COPILOT_CONTROL_REFUSAL.into(),
                 },
                 at,
+                cold_check: None,
             };
             self.publish_outcome(&to, &receipt).await?;
             return Ok(receipt);
@@ -967,6 +970,7 @@ impl DeliveryService {
                     ),
                 },
                 at,
+                cold_check: None,
             };
             self.publish_outcome(&to, &receipt).await?;
             return Ok(receipt);
@@ -1211,6 +1215,7 @@ impl DeliveryService {
             msg_id: msg.msg_id.clone(),
             outcome,
             at,
+            cold_check: None,
         };
         // A suppressed duplicate already published its recipient-facing turn on
         // first admission. Publishing it again would tell the recipient twice
@@ -2063,6 +2068,7 @@ impl DeliveryService {
                         reason: reason.clone(),
                     },
                     at: (self.clock)()?,
+                    cold_check: None,
                 },
                 "extension-stream",
                 Some(outcome),
@@ -2089,6 +2095,7 @@ impl DeliveryService {
                 msg_id: ack.msg_id.clone(),
                 outcome: DeliveryOutcome::Delivered { origin: ack.origin },
                 at,
+                cold_check: None,
             },
             if control.is_some() {
                 "extension-stream"

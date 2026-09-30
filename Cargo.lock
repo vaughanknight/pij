@@ -1248,6 +1248,7 @@ dependencies = [
  "pij-testkit",
  "pij-tmux",
  "pij-transport",
+ "pij-unisphere",
  "reqwest",
  "serde",
  "serde_json",
@@ -1330,6 +1331,18 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "pij-unisphere"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "pij-core",
+ "tokio",
+ "unisphere-adapter-claude",
+ "unisphere-loader-jsonl",
+ "unisphere-sdk",
 ]
 
 [[package]]
@@ -1553,6 +1566,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d678d17679829e73d371e96880897e98fee2ded7acc0a50bdf8af2affa4b2fe5"
 dependencies = [
  "bitflags",
+]
+
+[[package]]
+name = "regex"
+version = "1.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f020237b6c8eed93db2e2cb53c00c60a8e1bc73da7d073199a1180401450218d"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-automata",
+ "regex-syntax",
 ]
 
 [[package]]
@@ -2424,6 +2449,51 @@ name = "unicode-properties"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7df058c713841ad818f1dc5d3fd88063241cc61f49f5fbea4b951e8cf5a8d71d"
+
+[[package]]
+name = "unisphere-adapter-claude"
+version = "0.1.0"
+source = "git+https://github.com/AI-Substrate/Unisphere.git?rev=0d48d80609f6c2b2ff40d52732477a64673535d1#0d48d80609f6c2b2ff40d52732477a64673535d1"
+dependencies = [
+ "serde_json",
+ "time",
+ "unisphere-core",
+]
+
+[[package]]
+name = "unisphere-core"
+version = "0.1.0"
+source = "git+https://github.com/AI-Substrate/Unisphere.git?rev=0d48d80609f6c2b2ff40d52732477a64673535d1#0d48d80609f6c2b2ff40d52732477a64673535d1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+ "time",
+]
+
+[[package]]
+name = "unisphere-loader-jsonl"
+version = "0.1.0"
+source = "git+https://github.com/AI-Substrate/Unisphere.git?rev=0d48d80609f6c2b2ff40d52732477a64673535d1#0d48d80609f6c2b2ff40d52732477a64673535d1"
+dependencies = [
+ "libc",
+ "sha2",
+ "unisphere-core",
+]
+
+[[package]]
+name = "unisphere-sdk"
+version = "0.1.0"
+source = "git+https://github.com/AI-Substrate/Unisphere.git?rev=0d48d80609f6c2b2ff40d52732477a64673535d1#0d48d80609f6c2b2ff40d52732477a64673535d1"
+dependencies = [
+ "globset",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "time",
+ "unisphere-core",
+]
 
 [[package]]
 name = "untrusted"
