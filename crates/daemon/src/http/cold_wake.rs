@@ -68,13 +68,10 @@ async fn pane_is_idle(state: &AppState, seat: &pij_core::model::SeatDescriptor) 
     )
 }
 
-/// Is `seat` known WARM (plan 159's FYI flush, `pij_core::cold_wake::is_warm`)?
-/// Its session facts get the same bounded wait a send gets; no answer in time
-/// is unknown, and unknown is not warm.
-pub(crate) async fn is_known_warm(state: &AppState, seat: &SeatDescriptor) -> bool {
-    let Ok(now_ms) = system_time_ms() else {
-        return false;
-    };
+/// Is `seat`'s prompt cache known warm at `now_ms` (plan 159's FYI flush,
+/// `pij_core::cold_wake::is_warm`)? Its session facts get the same bounded wait
+/// a send gets; no answer in time is unknown, and unknown is not warm.
+pub(crate) async fn is_known_warm(state: &AppState, seat: &SeatDescriptor, now_ms: u64) -> bool {
     let Ok(block) = tokio::time::timeout(
         STATUS_WAIT,
         session_status_block(
@@ -89,7 +86,7 @@ pub(crate) async fn is_known_warm(state: &AppState, seat: &SeatDescriptor) -> bo
     else {
         return false;
     };
-    pij_core::cold_wake::is_warm(seat.state, &block, now_ms)
+    pij_core::cold_wake::is_warm(&block, now_ms)
 }
 
 /// What the sender asked for about a cold recipient.

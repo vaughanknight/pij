@@ -299,6 +299,118 @@ fn decode_job(row: &sqlx::sqlite::SqliteRow) -> Result<Job> {
     })
 }
 
+impl SqliteQueue {
+    /// One transaction: the carrier row, the FYI transition and its receipt
+    /// commit together or not at all (plan 158 review HIGH-1). With
+    /// `require_fyis` (a plan 159 flush), claiming nothing rolls back and
+    /// returns `None`: the carrier exists only for what it carries.
+    async fn carrying_enqueue(
+        &self,
+        job: Job,
+        via: &str,
+        at: u64,
+        attach: pij_core::ports::AttachFyis,
+        require_fyis: bool,
+    ) -> Result<(Option<DeliveryEnqueue>, Vec<pij_core::model::Event>)> {
+        require_current_schema(&self.pool).await?;
+        require_delivery_job(&job)?;
+        let pool = self.pool.clone();
+        let via = via.to_owned();
+        owned_write(async move {
+            // One transaction: the carrier row, the FYI transition and its receipt
+            // commit together or not at all (plan 158 review HIGH-1).
+            let mut tx = begin_write(&pool).await?;
+            let delivered_origin: Option<String> = sqlx::query_scalar(
+                "SELECT origin FROM delivered_messages WHERE recipient = ?1 AND msg_id = ?2",
+            )
+            .bind(&job.serial_key)
+            .bind(&job.dedupe_key)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+            if let Some(origin) = delivered_origin {
+                let origin = decode_origin(&origin)?;
+                tx.commit().await.map_err(adapter_error)?;
+                return Ok((Some(DeliveryEnqueue::AlreadyDelivered(origin)), Vec::new()));
+            }
+            // A retry of a message that is still queued keeps the queued body, so
+            // it must not claim anything that body will never carry.
+            let live: Option<(i64, i64)> = sqlx::query_as(
+                "SELECT id, not_before FROM jobs WHERE kind = ?1 AND dedupe_key = ?2 \
+               AND state IN ('pending', 'running') ORDER BY id LIMIT 1",
+            )
+            .bind(&job.kind)
+            .bind(&job.dedupe_key)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+            if let Some((id, not_before)) = live {
+                tx.commit().await.map_err(adapter_error)?;
+                return Ok((
+                    Some(DeliveryEnqueue::Queued {
+                        job_id: JobId(id as u64),
+                        not_before_ms: (not_before.max(0) as u64).saturating_mul(1_000),
+                    }),
+                    Vec::new(),
+                ));
+            }
+            let recipient = SeatId(job.serial_key.clone());
+            let rows = sqlx::query(
+                "UPDATE fyis SET state = 'delivered', settled_at_ms = ?2, settled_via = ?3 \
+                 WHERE recipient = ?1 AND state = 'pending' \
+                 RETURNING id, sender, body, held_at_ms",
+            )
+            .bind(recipient.as_str())
+            .bind(sql_ms(at)?)
+            .bind(&via)
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+            let mut fyis = rows
+                .iter()
+                .map(|row| decode_fyi(row, &recipient))
+                .collect::<Result<Vec<_>>>()?;
+            fyis.sort_by(|a, b| a.held_at_ms.cmp(&b.held_at_ms).then(a.id.cmp(&b.id)));
+            if require_fyis && fyis.is_empty() {
+                // Dropping the transaction rolls it back: nothing to carry.
+                return Ok((None, Vec::new()));
+            }
+            let payload = if fyis.is_empty() {
+                job.payload.clone()
+            } else {
+                attach(&job.payload, &fyis)?
+            };
+            let (id, not_before): (i64, i64) = sqlx::query_as(
+                "INSERT INTO jobs (kind, serial_key, payload, dedupe_key, enqueued_at) \
+                 VALUES (?1, ?2, ?3, ?4, unixepoch()) RETURNING id, not_before",
+            )
+            .bind(&job.kind)
+            .bind(&job.serial_key)
+            .bind(&payload)
+            .bind(&job.dedupe_key)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(adapter_error)?;
+            let mut events = Vec::new();
+            if !fyis.is_empty() {
+                let ids: Vec<String> = fyis.iter().map(|fyi| fyi.id.clone()).collect();
+                let mut event = pij_core::fyi::delivered_event(&recipient, &ids, &via, at);
+                event.seq = Some(crate::spine::append_in_transaction(&mut tx, &event).await?);
+                events.push(event);
+            }
+            tx.commit().await.map_err(adapter_error)?;
+            Ok((
+                Some(DeliveryEnqueue::Queued {
+                    job_id: JobId(id as u64),
+                    not_before_ms: (not_before.max(0) as u64).saturating_mul(1_000),
+                }),
+                events,
+            ))
+        })
+        .await
+    }
+}
+
 #[async_trait]
 impl Queue for SqliteQueue {
     async fn enqueue(&self, job: Job) -> Result<JobId> {
@@ -1045,98 +1157,24 @@ impl Queue for SqliteQueue {
         attach: pij_core::ports::AttachFyis,
         _spine: &dyn pij_core::ports::Spine,
     ) -> Result<(DeliveryEnqueue, Vec<pij_core::model::Event>)> {
-        require_current_schema(&self.pool).await?;
-        require_delivery_job(&job)?;
-        let pool = self.pool.clone();
-        let via = via.to_owned();
-        owned_write(async move {
-            // One transaction: the carrier row, the FYI transition and its receipt
-            // commit together or not at all (plan 158 review HIGH-1).
-            let mut tx = begin_write(&pool).await?;
-            let delivered_origin: Option<String> = sqlx::query_scalar(
-                "SELECT origin FROM delivered_messages WHERE recipient = ?1 AND msg_id = ?2",
-            )
-            .bind(&job.serial_key)
-            .bind(&job.dedupe_key)
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(adapter_error)?;
-            if let Some(origin) = delivered_origin {
-                let origin = decode_origin(&origin)?;
-                tx.commit().await.map_err(adapter_error)?;
-                return Ok((DeliveryEnqueue::AlreadyDelivered(origin), Vec::new()));
-            }
-            // A retry of a message that is still queued keeps the queued body, so
-            // it must not claim anything that body will never carry.
-            let live: Option<(i64, i64)> = sqlx::query_as(
-                "SELECT id, not_before FROM jobs WHERE kind = ?1 AND dedupe_key = ?2 \
-               AND state IN ('pending', 'running') ORDER BY id LIMIT 1",
-            )
-            .bind(&job.kind)
-            .bind(&job.dedupe_key)
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(adapter_error)?;
-            if let Some((id, not_before)) = live {
-                tx.commit().await.map_err(adapter_error)?;
-                return Ok((
-                    DeliveryEnqueue::Queued {
-                        job_id: JobId(id as u64),
-                        not_before_ms: (not_before.max(0) as u64).saturating_mul(1_000),
-                    },
-                    Vec::new(),
-                ));
-            }
-            let recipient = SeatId(job.serial_key.clone());
-            let rows = sqlx::query(
-                "UPDATE fyis SET state = 'delivered', settled_at_ms = ?2, settled_via = ?3 \
-                 WHERE recipient = ?1 AND state = 'pending' \
-                 RETURNING id, sender, body, held_at_ms",
-            )
-            .bind(recipient.as_str())
-            .bind(sql_ms(at)?)
-            .bind(&via)
-            .fetch_all(&mut *tx)
-            .await
-            .map_err(adapter_error)?;
-            let mut fyis = rows
-                .iter()
-                .map(|row| decode_fyi(row, &recipient))
-                .collect::<Result<Vec<_>>>()?;
-            fyis.sort_by(|a, b| a.held_at_ms.cmp(&b.held_at_ms).then(a.id.cmp(&b.id)));
-            let payload = if fyis.is_empty() {
-                job.payload.clone()
-            } else {
-                attach(&job.payload, &fyis)?
-            };
-            let (id, not_before): (i64, i64) = sqlx::query_as(
-                "INSERT INTO jobs (kind, serial_key, payload, dedupe_key, enqueued_at) \
-                 VALUES (?1, ?2, ?3, ?4, unixepoch()) RETURNING id, not_before",
-            )
-            .bind(&job.kind)
-            .bind(&job.serial_key)
-            .bind(&payload)
-            .bind(&job.dedupe_key)
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(adapter_error)?;
-            let mut events = Vec::new();
-            if !fyis.is_empty() {
-                let ids: Vec<String> = fyis.iter().map(|fyi| fyi.id.clone()).collect();
-                let mut event = pij_core::fyi::delivered_event(&recipient, &ids, &via, at);
-                event.seq = Some(crate::spine::append_in_transaction(&mut tx, &event).await?);
-                events.push(event);
-            }
-            tx.commit().await.map_err(adapter_error)?;
-            Ok((
-                DeliveryEnqueue::Queued {
-                    job_id: JobId(id as u64),
-                    not_before_ms: (not_before.max(0) as u64).saturating_mul(1_000),
-                },
-                events,
-            ))
-        })
-        .await
+        match self.carrying_enqueue(job, via, at, attach, false).await? {
+            (Some(enqueued), events) => Ok((enqueued, events)),
+            (None, _) => Err(PijError::Adapter {
+                adapter: "store/queue".to_string(),
+                message: "an optional carrier always enqueues".to_string(),
+            }),
+        }
+    }
+
+    async fn enqueue_fyi_flush(
+        &self,
+        job: Job,
+        via: &str,
+        at: u64,
+        attach: pij_core::ports::AttachFyis,
+        _spine: &dyn pij_core::ports::Spine,
+    ) -> Result<(Option<DeliveryEnqueue>, Vec<pij_core::model::Event>)> {
+        self.carrying_enqueue(job, via, at, attach, true).await
     }
 
     async fn pending_fyi_count(&self, recipient: &SeatId) -> Result<u64> {

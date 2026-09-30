@@ -170,6 +170,18 @@ impl Queue for FailFirstClaim {
     async fn pending_fyi_count(&self, recipient: &SeatId) -> Result<u64> {
         self.inner.pending_fyi_count(recipient).await
     }
+    async fn enqueue_fyi_flush(
+        &self,
+        job: Job,
+        via: &str,
+        at: u64,
+        attach: pij_core::ports::AttachFyis,
+        spine: &dyn Spine,
+    ) -> Result<(Option<DeliveryEnqueue>, Vec<pij_core::model::Event>)> {
+        self.inner
+            .enqueue_fyi_flush(job, via, at, attach, spine)
+            .await
+    }
     async fn read_claimed_fyis(
         &self,
         recipient: &SeatId,
@@ -753,6 +765,18 @@ impl Queue for RefuseFirstDelivery {
     }
     async fn pending_fyi_count(&self, recipient: &SeatId) -> Result<u64> {
         self.inner.pending_fyi_count(recipient).await
+    }
+    async fn enqueue_fyi_flush(
+        &self,
+        job: Job,
+        via: &str,
+        at: u64,
+        attach: pij_core::ports::AttachFyis,
+        spine: &dyn Spine,
+    ) -> Result<(Option<DeliveryEnqueue>, Vec<pij_core::model::Event>)> {
+        self.inner
+            .enqueue_fyi_flush(job, via, at, attach, spine)
+            .await
     }
     async fn read_claimed_fyis(
         &self,

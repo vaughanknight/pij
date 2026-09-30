@@ -788,26 +788,61 @@ impl DeliveryService {
         self.queue.read_claimed_fyis(recipient, claimed_at_ms).await
     }
 
-    /// Deliver `recipient`'s pending FYIs now, as one message from `pij-bg`
-    /// (plan 159's warm flush). The message has no body of its own, so the
-    /// carrying enqueue renders the block as the whole message; the FYIs are
-    /// claimed in the carrier's own transaction, exactly once. The caller
-    /// decides that the recipient is warm.
+    /// Deliver `recipient`'s pending FYIs now, as one queued message from
+    /// `pij-bg` whose whole body is the block (plan 159's warm flush). The FYIs
+    /// are claimed in the carrier's own transaction, exactly once, and the
+    /// carrier exists only for what it claims: when a hook or another carrier
+    /// took them first, nothing is queued and this returns `None`, never a
+    /// blank message. The caller decides that the recipient is warm.
     ///
     /// # Errors
-    /// The same as [`Self::accept`].
-    pub async fn flush_fyis(self: &Arc<Self>, recipient: &SeatId) -> Result<Receipt> {
+    /// Store, encoding or event-publication failures.
+    pub async fn flush_fyis(&self, recipient: &SeatDescriptor) -> Result<Option<Receipt>> {
+        if !self.recovery_authority_shared {
+            return Ok(None);
+        }
         let at = (self.clock)()?;
-        self.accept(Msg {
+        let msg = Msg {
             from: SeatId::from(pij_core::BG_ACTOR),
-            to: recipient.clone(),
+            to: recipient.id.clone(),
             body: String::new(),
-            msg_id: format!("fyi-flush-{recipient}-{at}"),
+            msg_id: format!("fyi-flush-{}-{at}", recipient.id),
             from_machine: None,
             in_reply_to: None,
             command: None,
-        })
-        .await
+        };
+        let job = delivery_job(&msg, Some(recipient))?;
+        let offset = local_utc_offset();
+        let attach: pij_core::ports::AttachFyis =
+            Arc::new(move |payload: &str, fyis: &[HeldFyi]| {
+                attach_fyi_block(payload, fyis, at, offset)
+            });
+        let via = format!("{VIA_MESSAGE_PREFIX}{}", msg.msg_id);
+        let queue = Arc::clone(&self.queue);
+        let spine = self.event_bus.raw_spine();
+        let enqueued = self
+            .event_bus
+            .publish_committed_batch(async move {
+                let (enqueued, events) = queue
+                    .enqueue_fyi_flush(job, &via, at, attach, spine.as_ref())
+                    .await?;
+                Ok((events, enqueued))
+            })
+            .await?;
+        // A fresh message id is never already delivered.
+        let Some(DeliveryEnqueue::Queued { not_before_ms, .. }) = enqueued else {
+            return Ok(None);
+        };
+        let receipt = Receipt {
+            msg_id: msg.msg_id.clone(),
+            outcome: Self::queued_outcome(Some("fyi-flush"), not_before_ms),
+            at,
+            cold_check: None,
+            warning: None,
+        };
+        self.publish_pushed(&msg, at).await?;
+        publish_delivery_outcome(&self.event_bus, &msg.to, &receipt, self.transport.name()).await?;
+        Ok(Some(receipt))
     }
 
     /// How many FYIs wait for `seat`.

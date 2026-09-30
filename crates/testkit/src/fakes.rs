@@ -504,6 +504,17 @@ impl FakeQueue {
         self.state.lock().expect("fake queue mutex").live.len()
     }
 
+    /// The payloads of the live (unclaimed) rows, oldest first.
+    pub fn live_payloads(&self) -> Vec<String> {
+        self.state
+            .lock()
+            .expect("fake queue mutex")
+            .live
+            .iter()
+            .map(|(_, job)| job.payload.clone())
+            .collect()
+    }
+
     /// Everything acked, in order.
     pub fn acked(&self) -> Vec<(JobId, Outcome)> {
         self.state.lock().expect("fake queue mutex").acked.clone()
@@ -1336,6 +1347,25 @@ impl Queue for FakeQueue {
             }
         }
         Ok((self.enqueue_delivery(job).await?, events))
+    }
+
+    async fn enqueue_fyi_flush(
+        &self,
+        job: Job,
+        via: &str,
+        at: u64,
+        attach: pij_core::ports::AttachFyis,
+        spine: &dyn Spine,
+    ) -> Result<(Option<DeliveryEnqueue>, Vec<Event>)> {
+        require_delivery_job(&job)?;
+        let recipient = SeatId(job.serial_key.clone());
+        if self.pending_fyi_count(&recipient).await? == 0 {
+            return Ok((None, Vec::new()));
+        }
+        let (enqueued, events) = self
+            .enqueue_delivery_carrying_fyis(job, via, at, attach, spine)
+            .await?;
+        Ok((Some(enqueued), events))
     }
 
     async fn pending_fyi_count(&self, recipient: &SeatId) -> Result<u64> {

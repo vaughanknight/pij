@@ -200,6 +200,18 @@ impl Queue for CountingQueue {
         Ok(0)
     }
 
+    async fn enqueue_fyi_flush(
+        &self,
+        _job: Job,
+        _via: &str,
+        _at: u64,
+        _attach: pij_core::ports::AttachFyis,
+        _spine: &dyn Spine,
+    ) -> Result<(Option<DeliveryEnqueue>, Vec<Event>)> {
+        // Nothing is ever held here, so a flush carries nothing.
+        Ok((None, Vec::new()))
+    }
+
     async fn read_claimed_fyis(
         &self,
         _recipient: &SeatId,
@@ -7034,5 +7046,195 @@ async fn a_missing_tmux_binary_is_unknown_and_allows() {
     assert_eq!(queue.live_len(), 1);
     let (_, card) = post_json(addr, "/v1/state", serde_json::json!({"id": "pij-cold"})).await;
     assert_eq!(card["data"]["state"], "working");
+    server.abort();
+}
+
+// ---------------------------------------------------------------------------
+// Plan 159 review: the warm flush needs POSITIVE evidence of a warm cache.
+// ---------------------------------------------------------------------------
+
+/// Facts for `pij-cold`: last call `ago_ms` ago, with an optional cache TTL.
+fn flush_facts(
+    ago_ms: u64,
+    ttl: Option<pij_core::session_status::CacheTtl>,
+) -> pij_testkit::fakes::FakeSessionStatus {
+    use pij_core::session_status::{Fact, SeatStatus, SessionStatusReply};
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+    pij_testkit::fakes::FakeSessionStatus::new().with_reply(
+        COLD_SESSION,
+        SessionStatusReply::Status(SeatStatus {
+            model: Fact::native("claude-opus-5-5".to_string()),
+            context_used_tokens: Fact::derived(720_000),
+            last_call_at_ms: Fact::native(now - ago_ms),
+            cache_ttl: ttl.map_or(Fact::Unknown, Fact::derived),
+            ..SeatStatus::unknown()
+        }),
+    )
+}
+
+/// Hold five FYIs for `pij-cold` over `/v1/send`; how many deliveries queued.
+async fn five_fyis(addr: SocketAddr, queue: &FakeQueue) -> usize {
+    for n in 1..=5 {
+        let (status, reply) = post_json(
+            addr,
+            "/v1/send",
+            cold_send(&format!("f-{n}"), serde_json::json!({"fyi": true})),
+        )
+        .await;
+        assert_eq!(status, 200, "{reply}");
+        assert_eq!(reply["data"]["outcome"]["outcome"], "held", "{reply}");
+    }
+    queue.live_len()
+}
+
+const FIVE_MIN_MS: u64 = 5 * 60 * 1_000;
+
+#[tokio::test]
+async fn five_fyis_flush_only_on_a_last_call_inside_the_cache_lifetime() {
+    use pij_core::model::SystemState::Idle;
+    use pij_core::session_status::CacheTtl::{FiveMinutes, OneHour};
+    let rows = [
+        (
+            "1h cache, called 5 min ago",
+            flush_facts(FIVE_MIN_MS, Some(OneHour)),
+            1,
+        ),
+        (
+            "5m cache, called 1 min ago",
+            flush_facts(60_000, Some(FiveMinutes)),
+            1,
+        ),
+        // Review finding 4: past its real (5-minute) lifetime, inside 60 min.
+        (
+            "5m cache, called 30 min ago",
+            flush_facts(6 * FIVE_MIN_MS, Some(FiveMinutes)),
+            0,
+        ),
+        (
+            "1h cache, called 2 h ago",
+            flush_facts(24 * FIVE_MIN_MS, Some(OneHour)),
+            0,
+        ),
+        ("unknown cache lifetime", flush_facts(60_000, None), 0),
+    ];
+    for (name, source, flushed) in rows {
+        let (addr, server, queue, _) = cold_daemon(Idle, source).await;
+        assert_eq!(five_fyis(addr, &queue).await, flushed, "{name}");
+        for payload in queue.live_payloads() {
+            let payload: serde_json::Value = serde_json::from_str(&payload).expect("payload");
+            let body = payload["body"].as_str().expect("body");
+            assert!(
+                body.starts_with("5 FYIs were queued for you:\n1. [from pij-sender, "),
+                "{name}: the flush is one message whose body is the block: {body}"
+            );
+            assert_eq!(payload["from"], pij_core::BG_ACTOR, "{name}");
+        }
+        server.abort();
+    }
+}
+
+/// Review finding 1 (the reviewer's probe): `working` alone is no evidence of
+/// warmth. A stale `working` (Esc, API error, dead process) on a seat whose
+/// facts say cold must not be flushed, and neither must `working` with no facts.
+#[tokio::test]
+async fn a_working_state_alone_never_flushes() {
+    use pij_core::model::SystemState::Working;
+    use pij_core::session_status::CacheTtl::OneHour;
+    let rows = [
+        (
+            "stale working, cold 2 h",
+            flush_facts(24 * FIVE_MIN_MS, Some(OneHour)),
+        ),
+        (
+            "working, no facts",
+            pij_testkit::fakes::FakeSessionStatus::new(),
+        ),
+    ];
+    for (name, source) in rows {
+        let (addr, server, queue, _) = cold_daemon(Working, source).await;
+        assert_eq!(five_fyis(addr, &queue).await, 0, "{name}");
+        server.abort();
+    }
+}
+
+/// Review W5: session facts that do not arrive in time are unknown, not warm.
+#[tokio::test]
+async fn facts_that_never_arrive_never_flush() {
+    let source = pij_testkit::fakes::FakeSessionStatus::new().with_hang(COLD_SESSION);
+    let (addr, server, queue, _) = cold_daemon(pij_core::model::SystemState::Idle, source).await;
+    assert_eq!(five_fyis(addr, &queue).await, 0);
+    server.abort();
+}
+
+/// Review W9: the shim's `--fyi` (what `pij send --fyi` uses) warns on a
+/// question and flushes a warm pile, like `/v1/send`.
+#[tokio::test]
+async fn the_shim_fyi_path_warns_and_flushes() {
+    let source = flush_facts(
+        FIVE_MIN_MS,
+        Some(pij_core::session_status::CacheTtl::OneHour),
+    );
+    let (addr, server, queue, _) = cold_daemon(pij_core::model::SystemState::Idle, source).await;
+    for n in 1..=5 {
+        let body = if n == 1 {
+            "can you check X?".to_string()
+        } else {
+            format!("note {n}")
+        };
+        let (status, reply) = post_json(
+            addr,
+            "/v1/shim/send",
+            serde_json::json!({"argv": ["send", "pij-cold", "--fyi", body], "caller": {"PIJ_SESSION_ID": "pij-sender"}}),
+        )
+        .await;
+        assert_eq!(status, 200, "{reply}");
+        assert_eq!(reply["data"]["outcome"]["outcome"], "held", "{reply}");
+        assert_eq!(
+            reply["data"].get("warning").and_then(|w| w.as_str()),
+            (n == 1).then_some(pij_core::fyi::QUESTION_WARNING),
+            "{reply}"
+        );
+    }
+    assert_eq!(
+        queue.live_len(),
+        1,
+        "the fifth shim FYI flushes the warm pile"
+    );
+    server.abort();
+}
+
+/// Review finding 2: a turn boundary never flushes, even for a warm seat with a
+/// full pile. The turn that is starting carries the pile for free.
+#[tokio::test]
+async fn a_turn_boundary_never_flushes_even_when_warm() {
+    let source = flush_facts(
+        FIVE_MIN_MS,
+        Some(pij_core::session_status::CacheTtl::OneHour),
+    );
+    let (addr, server, queue, spine) =
+        cold_daemon(pij_core::model::SystemState::Idle, source).await;
+    for n in 1..=5 {
+        let fyi = pij_core::fyi::HeldFyi {
+            id: format!("f-{n}"),
+            recipient: SeatId::from("pij-cold"),
+            sender: SeatId::from("pij-sender"),
+            body: format!("note {n}"),
+            held_at_ms: n,
+        };
+        queue.hold_fyi(&fyi, spine.as_ref()).await.expect("hold");
+    }
+    for state in ["working", "idle"] {
+        let (status, reply) = post_json(
+            addr,
+            "/v1/activity",
+            serde_json::json!({"seat": "pij-cold", "native_session": COLD_SESSION, "state": state}),
+        )
+        .await;
+        assert_eq!(status, 200, "{reply}");
+    }
+    assert_eq!(queue.live_len(), 0, "no flush on a turn boundary");
     server.abort();
 }

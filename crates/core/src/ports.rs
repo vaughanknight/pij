@@ -475,6 +475,20 @@ pub trait Queue: Send + Sync {
         spine: &dyn Spine,
     ) -> Result<(DeliveryEnqueue, Vec<Event>)>;
 
+    /// A warm flush's carrier (plan 159): like
+    /// [`Self::enqueue_delivery_carrying_fyis`], but it exists only for what it
+    /// carries. When the transaction claims no FYI (a hook or another carrier
+    /// took them first) it creates no row and returns `None`, so a flush can
+    /// never queue a blank message.
+    async fn enqueue_fyi_flush(
+        &self,
+        job: Job,
+        via: &str,
+        at: u64,
+        attach: AttachFyis,
+        spine: &dyn Spine,
+    ) -> Result<(Option<DeliveryEnqueue>, Vec<Event>)>;
+
     /// How many FYIs wait for `recipient`.
     async fn pending_fyi_count(&self, recipient: &SeatId) -> Result<u64>;
 

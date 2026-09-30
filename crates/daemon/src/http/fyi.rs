@@ -1,5 +1,5 @@
 //! `POST /v1/fyi/claim`, `POST /v1/fyi/read` and `POST /v1/activity` (plans 158
-//! and 159), and the warm flush of a large pile (plan 159).
+//! and 159), and the warm flush of a held pile (plan 159).
 //!
 //! Both are writes a seat's own harness makes about itself: a typed-turn hook
 //! claiming its held FYIs, and a turn boundary publishing busy/idle. The machine
@@ -142,7 +142,9 @@ pub(crate) async fn read(
 }
 
 /// After an FYI is held (plan 159): warn when it looks like a question, then
-/// flush the recipient's pile if it has reached [`FLUSH_AT`] and it is warm.
+/// flush the recipient's pile if this hold brought it to [`FLUSH_AT`] and its
+/// cache is known warm at the hold's own time. Only here: a seat starting a
+/// turn gets the pile free with that turn, so a turn boundary never flushes.
 pub(crate) async fn after_hold(
     state: &AppState,
     recipient: &SeatId,
@@ -152,14 +154,14 @@ pub(crate) async fn after_hold(
     if question {
         receipt.warning = Some(pij_core::fyi::QUESTION_WARNING.to_string());
     }
-    flush_if_warm(state, recipient).await;
+    flush_if_warm(state, recipient, receipt.at).await;
 }
 
-/// Plan 159's warm flush: once [`FLUSH_AT`] FYIs wait for `recipient` and it is
-/// known warm, deliver them now as one message. Cold or unknown keeps holding,
-/// so a flush can never be a cold wake. Best effort: a failure leaves the FYIs
-/// pending for the next real turn and never fails the caller.
-pub(crate) async fn flush_if_warm(state: &AppState, recipient: &SeatId) {
+/// Plan 159's warm flush: once [`FLUSH_AT`] FYIs wait for `recipient` and its
+/// cache is known warm, deliver them now as one message. Cold or unknown keeps
+/// holding, so a flush can never be a cold wake. Best effort: a failure leaves
+/// the FYIs pending for the next real turn and never fails the caller.
+async fn flush_if_warm(state: &AppState, recipient: &SeatId, now_ms: u64) {
     let delivery = &state.services.delivery;
     match delivery.pending_fyi_count(recipient).await {
         Ok(count) if count >= FLUSH_AT => {}
@@ -177,10 +179,10 @@ pub(crate) async fn flush_if_warm(state: &AppState, recipient: &SeatId) {
             return;
         }
     };
-    if !super::cold_wake::is_known_warm(state, &seat).await {
+    if !super::cold_wake::is_known_warm(state, &seat, now_ms).await {
         return;
     }
-    if let Err(error) = delivery.flush_fyis(recipient).await {
+    if let Err(error) = delivery.flush_fyis(&seat).await {
         eprintln!("pij-rs could not flush FYIs to {recipient}; they stay held: {error}");
     }
 }
@@ -246,8 +248,6 @@ pub(crate) async fn activity(
         Ok(seq) => seq.is_some(),
         Err(error) => return internal(ACTIVITY, error),
     };
-    // A turn boundary is when a held pile can go out cheaply (plan 159).
-    flush_if_warm(&state, &seat.id).await;
     envelope(
         StatusCode::OK,
         &Envelope::ok(

@@ -137,20 +137,21 @@ fn unknown(why: &str) -> ColdCheck {
     }
 }
 
-/// Is the seat known WARM (plan 159's FYI flush)? Working now, or its last API
-/// call is known and within [`COLD_IDLE_MS`]. Anything unknown is not warm, so a
-/// flush can never be the thing that wakes a cold seat.
-pub fn is_warm(state: SystemState, status: &SessionStatusBlock, now_ms: u64) -> bool {
-    if state == SystemState::Working {
-        return true;
-    }
+/// Is the seat's prompt cache known WARM (plan 159's FYI flush)? A flush is a
+/// wake nobody asked for, so this needs POSITIVE evidence: the last API call is
+/// known and within the seat's real cache lifetime, `min(cache TTL, COLD_IDLE_MS)`.
+/// A `working` state is not evidence (it can be stale after an Esc or an API
+/// error), and an unknown last call or unknown TTL is not warm.
+pub fn is_warm(status: &SessionStatusBlock, now_ms: u64) -> bool {
     let SessionStatusBlock::Known { status, .. } = status else {
         return false;
     };
-    status
-        .last_call_at_ms
-        .value()
-        .is_some_and(|&last_call| now_ms.saturating_sub(last_call) <= COLD_IDLE_MS)
+    let (Some(&last_call), Some(&ttl)) = (status.last_call_at_ms.value(), status.cache_ttl.value())
+    else {
+        return false;
+    };
+    let lifetime_ms = ttl.as_ms().min(COLD_IDLE_MS);
+    now_ms < last_call.saturating_add(lifetime_ms)
 }
 
 /// The refusal a sender sees, naming the price and both ways forward.
@@ -242,31 +243,29 @@ mod tests {
     }
 
     #[test]
-    fn warm_means_working_or_a_known_recent_last_call() {
-        let unknown = SessionStatusBlock::Unbound;
-        assert!(is_warm(SystemState::Working, &unknown, NOW));
-        assert!(!is_warm(SystemState::Idle, &unknown, NOW));
-        assert!(is_warm(
-            SystemState::Idle,
-            &known(None, Some(NOW - COLD_IDLE_MS), None),
-            NOW
-        ));
-        assert!(!is_warm(
-            SystemState::Idle,
-            &known(None, Some(NOW - COLD_IDLE_MS - 1), None),
-            NOW
-        ));
-        assert!(!is_warm(
-            SystemState::Idle,
-            &known(Some(10), None, None),
-            NOW
-        ));
-        // Small context changes nothing: warmth is about the cache, not size.
-        assert!(!is_warm(
-            SystemState::Idle,
-            &known(Some(10), Some(NOW - 2 * COLD_IDLE_MS), None),
-            NOW
-        ));
+    fn warm_needs_a_known_last_call_inside_the_real_cache_lifetime() {
+        use crate::session_status::CacheTtl::{FiveMinutes, OneHour};
+        let at = |ago: u64, ttl| SessionStatusBlock::Known {
+            status: Box::new(SeatStatus {
+                last_call_at_ms: Fact::native(NOW - ago),
+                cache_ttl: Fact::derived(ttl),
+                ..SeatStatus::unknown()
+            }),
+            cache_state: Fact::Unknown,
+            elapsed_ms: 0,
+        };
+        let five = FiveMinutes.as_ms();
+        assert!(is_warm(&at(five - 1, FiveMinutes), NOW));
+        assert!(
+            !is_warm(&at(five, FiveMinutes), NOW),
+            "expired at its lifetime"
+        );
+        assert!(is_warm(&at(COLD_IDLE_MS - 1, OneHour), NOW));
+        assert!(!is_warm(&at(COLD_IDLE_MS, OneHour), NOW));
+        // Unknown TTL, unknown last call, or no facts: never warm.
+        assert!(!is_warm(&known(None, Some(NOW - 1), None), NOW));
+        assert!(!is_warm(&known(Some(10), None, None), NOW));
+        assert!(!is_warm(&SessionStatusBlock::Unbound, NOW));
     }
 
     #[test]
