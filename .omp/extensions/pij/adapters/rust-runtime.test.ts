@@ -79,6 +79,7 @@ async function bootPushedEvent(
 	payload: string,
 	pi: FakePiRuntime,
 	claimResponse: unknown | Promise<unknown> = inboxClaimFixture(),
+	sendReceipt: Record<string, unknown> = { outcome: "accepted", at: 1 },
 ) {
 	vi.stubEnv("PIJ_ANNOUNCE_TO", "");
 	vi.stubEnv("PIJ_SPAWN_ID", "");
@@ -130,7 +131,7 @@ async function bootPushedEvent(
 		if (path === "/v1/send") {
 			const sent = JSON.parse(String(init?.body)) as Record<string, unknown>;
 			sends.push(sent);
-			return envelope("pij send", { msg_id: sent.msg_id, outcome: "accepted", at: 1 });
+			return envelope("pij send", { msg_id: sent.msg_id, ...sendReceipt });
 		}
 		if (path === "/v1/state") return envelope("pij state", { id: registeredId, pendingFyis: 0 });
 		if (path === "/v1/activity") return envelope("pij activity", { changed: false });
@@ -463,6 +464,26 @@ describe("RustRuntimeSession", () => {
 				/body|message/i,
 			);
 			expect(sends).toHaveLength(1);
+		} finally {
+			runtime.shutdown("quit");
+		}
+	});
+	it("maps a held fyi receipt's question warning and cold_check into the send result", async () => {
+		const warning = "this looks like a question; if you need an answer, resend without --fyi";
+		const { runtime } = await bootPushedEvent(
+			PUSHED_EVENT_WIRE,
+			new FakePiRuntime(),
+			inboxClaimFixture(),
+			{ outcome: { outcome: "held", reason: "fyi" }, at: 1, cold_check: "clear", warning },
+		);
+		try {
+			const receipt = await runtime.send("pij-target", "can you check X?", { fyi: true });
+			expect(receipt).toEqual({
+				msgId: expect.any(String),
+				held: true,
+				coldCheck: "clear",
+				warning,
+			});
 		} finally {
 			runtime.shutdown("quit");
 		}

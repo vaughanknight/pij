@@ -240,12 +240,55 @@ async fn fyi_contract(queue: &dyn Queue, spine: &dyn pij_core::ports::Spine) {
         .await
         .unwrap();
     let (duplicate, events) = queue
-        .enqueue_delivery_carrying_fyis(carrier("m-1"), "message:m-1", 44, attach, spine)
+        .enqueue_delivery_carrying_fyis(carrier("m-1"), "message:m-1", 44, attach.clone(), spine)
         .await
         .unwrap();
     assert!(matches!(duplicate, DeliveryEnqueue::AlreadyDelivered(_)));
     assert!(events.is_empty());
     assert_eq!(queue.pending_fyi_count(&seat).await.unwrap(), 1);
+
+    // Plan 159 review finding 3: a flush carrier exists only for what it claims.
+    // The hook claims the pile first (the race, made deterministic), so the
+    // flush finds nothing: no row, no event, not a blank message.
+    let (claimed, _) = queue
+        .claim_fyis(&seat, "hook:omp", 45, spine)
+        .await
+        .unwrap();
+    assert_eq!(claimed.len(), 1);
+    let (flushed, events) = queue
+        .enqueue_fyi_flush(
+            carrier("flush-1"),
+            "message:flush-1",
+            46,
+            attach.clone(),
+            spine,
+        )
+        .await
+        .unwrap();
+    assert_eq!(flushed, None, "nothing claimed, nothing queued");
+    assert!(events.is_empty());
+    assert!(
+        queue.claim(&kinds, "reader").await.unwrap().is_none(),
+        "no blank carrier row"
+    );
+    // With something pending, the flush carrier claims it in its own transaction.
+    queue
+        .hold_fyi(&fyi("pile", &seat, 47), spine)
+        .await
+        .unwrap();
+    let (flushed, events) = queue
+        .enqueue_fyi_flush(carrier("flush-2"), "message:flush-2", 48, attach, spine)
+        .await
+        .unwrap();
+    assert!(matches!(flushed, Some(DeliveryEnqueue::Queued { .. })));
+    assert_eq!(events.len(), 1);
+    let (_, row) = queue
+        .claim(&kinds, "reader")
+        .await
+        .unwrap()
+        .expect("flush row");
+    assert_eq!(row.payload, "{}+pile");
+    assert_eq!(queue.pending_fyi_count(&seat).await.unwrap(), 0);
 }
 
 #[tokio::test]

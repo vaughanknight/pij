@@ -379,7 +379,12 @@ export class RustRuntimeSession {
 		to: string,
 		body: string,
 		options: RustSendOptions = {},
-	): Promise<{ readonly msgId: string; readonly held: boolean; readonly coldCheck?: string }> {
+	): Promise<{
+		readonly msgId: string;
+		readonly held: boolean;
+		readonly coldCheck?: string;
+		readonly warning?: string;
+	}> {
 		const { command, fyi = false, force } = options;
 		if (fyi && command !== undefined) {
 			throw new Error("fyi cannot be combined with a control command");
@@ -427,6 +432,7 @@ export class RustRuntimeSession {
 			msgId,
 			held: isHeldFyi(receipt),
 			...(receipt.cold_check === undefined ? {} : { coldCheck: receipt.cold_check }),
+			...(receipt.warning === undefined ? {} : { warning: receipt.warning }),
 		};
 	}
 

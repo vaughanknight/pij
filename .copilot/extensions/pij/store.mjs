@@ -1488,7 +1488,13 @@ export class NativeBridge {
 			throwIfStopped(this.controller.signal);
 			if (receipt?.msg_id !== msgId)
 				throw new NativeError("Daemon send receipt has a different message ID");
-			return { ok: true, receipt, grade: "pij-receipt-not-model-complete" };
+			return {
+				ok: true,
+				receipt,
+				grade: "pij-receipt-not-model-complete",
+				// Plan 159: a held FYI that looks like a question; still held.
+				...(typeof receipt.warning === "string" ? { warning: receipt.warning } : {}),
+			};
 		} catch (error) {
 			if (error?.coldWake === true)
 				return { ok: false, msg_id: msgId, error: error.message, grade: "refused-not-sent" };

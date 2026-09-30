@@ -477,6 +477,8 @@ struct QueueState {
     delivered: Vec<(String, String, DeliveryOrigin)>,
     /// Held FYIs with their state: `pending`, `delivered`.
     fyis: Vec<(pij_core::fyi::HeldFyi, &'static str)>,
+    /// When each delivered FYI was claimed, by id (plan 159's `fyi-read`).
+    fyi_claimed_at: HashMap<String, u64>,
 }
 
 impl FakeQueue {
@@ -500,6 +502,17 @@ impl FakeQueue {
     /// How many live (unclaimed) rows exist — the assertion surface for dedupe.
     pub fn live_len(&self) -> usize {
         self.state.lock().expect("fake queue mutex").live.len()
+    }
+
+    /// The payloads of the live (unclaimed) rows, oldest first.
+    pub fn live_payloads(&self) -> Vec<String> {
+        self.state
+            .lock()
+            .expect("fake queue mutex")
+            .live
+            .iter()
+            .map(|(_, job)| job.payload.clone())
+            .collect()
     }
 
     /// Everything acked, in order.
@@ -1266,7 +1279,7 @@ impl Queue for FakeQueue {
         // Transition under the lock first, so a racing claim cannot see these rows.
         let mut claimed: Vec<pij_core::fyi::HeldFyi> = {
             let mut state = self.state.lock().expect("fake queue mutex");
-            state
+            let claimed: Vec<pij_core::fyi::HeldFyi> = state
                 .fyis
                 .iter_mut()
                 .filter(|(held, fyi_state)| held.recipient == *recipient && *fyi_state == "pending")
@@ -1274,7 +1287,11 @@ impl Queue for FakeQueue {
                     *fyi_state = "delivered";
                     held.clone()
                 })
-                .collect()
+                .collect();
+            for held in &claimed {
+                state.fyi_claimed_at.insert(held.id.clone(), at);
+            }
+            claimed
         };
         if claimed.is_empty() {
             return Ok((claimed, Vec::new()));
@@ -1332,6 +1349,25 @@ impl Queue for FakeQueue {
         Ok((self.enqueue_delivery(job).await?, events))
     }
 
+    async fn enqueue_fyi_flush(
+        &self,
+        job: Job,
+        via: &str,
+        at: u64,
+        attach: pij_core::ports::AttachFyis,
+        spine: &dyn Spine,
+    ) -> Result<(Option<DeliveryEnqueue>, Vec<Event>)> {
+        require_delivery_job(&job)?;
+        let recipient = SeatId(job.serial_key.clone());
+        if self.pending_fyi_count(&recipient).await? == 0 {
+            return Ok((None, Vec::new()));
+        }
+        let (enqueued, events) = self
+            .enqueue_delivery_carrying_fyis(job, via, at, attach, spine)
+            .await?;
+        Ok((Some(enqueued), events))
+    }
+
     async fn pending_fyi_count(&self, recipient: &SeatId) -> Result<u64> {
         Ok(self
             .state
@@ -1341,6 +1377,26 @@ impl Queue for FakeQueue {
             .iter()
             .filter(|(held, fyi_state)| held.recipient == *recipient && *fyi_state == "pending")
             .count() as u64)
+    }
+
+    async fn read_claimed_fyis(
+        &self,
+        recipient: &SeatId,
+        claimed_at_ms: u64,
+    ) -> Result<Vec<pij_core::fyi::HeldFyi>> {
+        let state = self.state.lock().expect("fake queue mutex");
+        let mut read: Vec<pij_core::fyi::HeldFyi> = state
+            .fyis
+            .iter()
+            .filter(|(held, fyi_state)| {
+                held.recipient == *recipient
+                    && *fyi_state == "delivered"
+                    && state.fyi_claimed_at.get(&held.id) == Some(&claimed_at_ms)
+            })
+            .map(|(held, _)| held.clone())
+            .collect();
+        read.sort_by(|a, b| a.held_at_ms.cmp(&b.held_at_ms).then(a.id.cmp(&b.id)));
+        Ok(read)
     }
 }
 

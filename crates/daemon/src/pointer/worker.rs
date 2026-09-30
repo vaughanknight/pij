@@ -293,6 +293,7 @@ impl DrainWorker {
                             outcome,
                             at: (self.clock)()?,
                             cold_check: None,
+                            warning: None,
                         },
                         self.transport.name(),
                     )
@@ -338,6 +339,7 @@ impl DrainWorker {
                 outcome: DeliveryOutcome::Delivered { origin },
                 at,
                 cold_check: None,
+                warning: None,
             },
             if msg.command.is_some() {
                 "pty"
@@ -2252,6 +2254,28 @@ mod tests {
             recipient: &pij_core::model::SeatId,
         ) -> pij_core::error::Result<u64> {
             self.inner.pending_fyi_count(recipient).await
+        }
+        async fn enqueue_fyi_flush(
+            &self,
+            job: Job,
+            via: &str,
+            at: u64,
+            attach: pij_core::ports::AttachFyis,
+            spine: &dyn pij_core::ports::Spine,
+        ) -> pij_core::error::Result<(
+            Option<pij_core::ports::DeliveryEnqueue>,
+            Vec<pij_core::model::Event>,
+        )> {
+            self.inner
+                .enqueue_fyi_flush(job, via, at, attach, spine)
+                .await
+        }
+        async fn read_claimed_fyis(
+            &self,
+            recipient: &pij_core::model::SeatId,
+            claimed_at_ms: u64,
+        ) -> pij_core::error::Result<Vec<pij_core::fyi::HeldFyi>> {
+            self.inner.read_claimed_fyis(recipient, claimed_at_ms).await
         }
         async fn recover_native_delivery(
             &self,

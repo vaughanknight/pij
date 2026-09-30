@@ -329,6 +329,7 @@ impl FederationService {
             },
             at: (self.clock)().map_err(FederationSendError::Runtime)?,
             cold_check: None,
+            warning: None,
         };
         self.publish_outcome(&request.from, alias, &receipt)
             .await

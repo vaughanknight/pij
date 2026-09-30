@@ -530,3 +530,312 @@ async fn a_hook_publishes_activity_by_pane_alone() {
     assert_eq!(card["data"]["state"], "working");
     server.abort();
 }
+
+// ---------------------------------------------------------------------------
+// Plan 159: question warning, warm flush at 5, digest for large piles.
+// ---------------------------------------------------------------------------
+
+const QUESTION_WARNING: &str =
+    "this looks like a question; if you need an answer, resend without --fyi";
+
+async fn activity(addr: SocketAddr, state: &str) {
+    let (status, reply) = post(addr, "/v1/activity", json!({"pane": PANE, "state": state})).await;
+    assert_eq!(status, 200, "{reply}");
+}
+
+#[tokio::test]
+async fn a_question_held_as_an_fyi_warns_but_is_still_held() {
+    let store = FreshStore::new();
+    let config = config(&store);
+    let (addr, server) = serve(&config, true).await;
+
+    let (status, held) = send(addr, "pij-sender", "can you check X?", "fyi-q", true).await;
+    assert_eq!(status, 200, "{held}");
+    assert_eq!(
+        held["data"]["outcome"],
+        json!({"outcome": "held", "reason": "fyi"})
+    );
+    assert_eq!(held["data"]["warning"], QUESTION_WARNING);
+    assert_eq!(
+        pending(addr).await,
+        1,
+        "a warning never converts or refuses"
+    );
+
+    let (_, plain) = send(addr, "pij-sender", "merged #452", "fyi-plain", true).await;
+    assert!(plain["data"].get("warning").is_none(), "{plain}");
+    let (_, normal) = send(addr, "pij-boss", "can you check Y?", "real-q", false).await;
+    assert!(
+        normal["data"].get("warning").is_none(),
+        "only a held FYI is warned: {normal}"
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn fyis_to_a_seat_not_known_to_be_warm_are_never_flushed() {
+    let store = FreshStore::new();
+    let config = config(&store);
+    // Idle, and an OMP session is unreadable: warmth is unknown, so hold.
+    let (addr, server) = serve(&config, true).await;
+    for n in 1..=6 {
+        let (status, _) = send(
+            addr,
+            "pij-sender",
+            &format!("note {n}"),
+            &format!("fyi-{n}"),
+            true,
+        )
+        .await;
+        assert_eq!(status, 200);
+    }
+    assert!(
+        queued_bodies(&config).await.is_empty(),
+        "a flush must never wake a seat that is not known warm"
+    );
+    assert_eq!(pending(addr).await, 6);
+    server.abort();
+}
+
+/// Review finding 2: a turn boundary never flushes. A seat starting a turn
+/// gets the whole pile free with that turn (here its typed-turn hook), rather
+/// than a separate message that opens another turn after it.
+#[tokio::test]
+async fn a_turn_boundary_never_flushes_so_the_turn_carries_the_pile() {
+    let store = FreshStore::new();
+    let config = config(&store);
+    let (addr, server) = serve(&config, true).await;
+    for n in 1..=5 {
+        let (status, _) = send(
+            addr,
+            "pij-sender",
+            &format!("note {n}"),
+            &format!("fyi-{n}"),
+            true,
+        )
+        .await;
+        assert_eq!(status, 200);
+    }
+    activity(addr, "working").await;
+    activity(addr, "idle").await;
+    activity(addr, "working").await;
+    assert!(queued_bodies(&config).await.is_empty(), "no flush message");
+    let (status, claim) = post(
+        addr,
+        "/v1/fyi/claim",
+        json!({"pane": PANE, "via": "hook:claude"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{claim}");
+    assert_eq!(
+        claim["data"]["count"], 5,
+        "the turn carries every one: {claim}"
+    );
+    server.abort();
+}
+
+/// Review W10/W11: a read names one claim. A later claim's FYIs, and FYIs a
+/// tombstone dropped at that same instant, are not part of it.
+#[tokio::test]
+async fn a_read_returns_exactly_the_batch_one_claim_delivered() {
+    let store = FreshStore::new();
+    let config = config(&store);
+    let services = pij_daemon::build_services(
+        &config,
+        std::path::Path::new("/tmp/pij-test-pane-signals-fyi"),
+    )
+    .await
+    .expect("services");
+    let seat = SeatId::from(RECIPIENT);
+    let fyi = |id: &str, held_at_ms: u64| pij_core::fyi::HeldFyi {
+        id: id.to_string(),
+        recipient: seat.clone(),
+        sender: SeatId::from("pij-sender"),
+        body: format!("body {id}"),
+        held_at_ms,
+    };
+    for (id, at) in [("a", 1), ("b", 2)] {
+        services
+            .queue
+            .hold_fyi(&fyi(id, at), services.spine.as_ref())
+            .await
+            .expect("hold");
+    }
+    services
+        .queue
+        .claim_fyis(&seat, "hook:omp", 100, services.spine.as_ref())
+        .await
+        .expect("claim");
+    for (id, at) in [("c", 3), ("d", 4), ("e", 5)] {
+        services
+            .queue
+            .hold_fyi(&fyi(id, at), services.spine.as_ref())
+            .await
+            .expect("hold");
+    }
+    services
+        .queue
+        .claim_fyis(&seat, "hook:omp", 200, services.spine.as_ref())
+        .await
+        .expect("claim");
+
+    let ids =
+        |fyis: Vec<pij_core::fyi::HeldFyi>| fyis.into_iter().map(|fyi| fyi.id).collect::<Vec<_>>();
+    assert_eq!(
+        ids(services
+            .queue
+            .read_claimed_fyis(&seat, 100)
+            .await
+            .expect("read")),
+        ["a", "b"]
+    );
+    assert_eq!(
+        ids(services
+            .queue
+            .read_claimed_fyis(&seat, 200)
+            .await
+            .expect("read")),
+        ["c", "d", "e"]
+    );
+
+    // A tombstone drops pending FYIs with its own timestamp: never a claim.
+    services.registry.put(recipient()).await.expect("seed");
+    services
+        .queue
+        .hold_fyi(&fyi("f", 6), services.spine.as_ref())
+        .await
+        .expect("hold");
+    let seq = services
+        .registry
+        .tombstone(&seat, "closed")
+        .await
+        .expect("tombstone");
+    let dropped_at = services
+        .spine
+        .tail(Some(&seat), pij_core::model::Seq(seq.0 - 1))
+        .await
+        .expect("tail")
+        .into_iter()
+        .find(|event| event.kind == "seat.tombstone")
+        .expect("tombstone event")
+        .at;
+    assert!(
+        services
+            .queue
+            .read_claimed_fyis(&seat, dropped_at)
+            .await
+            .expect("read")
+            .is_empty(),
+        "a dropped FYI was never delivered"
+    );
+}
+
+#[tokio::test]
+async fn a_large_pile_rides_along_as_a_digest_and_stays_readable_in_full() {
+    let store = FreshStore::new();
+    let config = config(&store);
+    let (addr, server) = serve(&config, true).await;
+    for n in 1..=8 {
+        let sender = if n % 3 == 0 {
+            "pij-other"
+        } else {
+            "pij-sender"
+        };
+        let (status, _) = send(
+            addr,
+            sender,
+            &format!("note {n}"),
+            &format!("fyi-{n}"),
+            true,
+        )
+        .await;
+        assert_eq!(status, 200);
+    }
+    let (status, _) = send(addr, "pij-boss", "do X", "real-1", false).await;
+    assert_eq!(status, 200);
+    let bodies = queued_bodies(&config).await;
+    assert_eq!(bodies.len(), 1, "{bodies:?}");
+    let (head, digest) = bodies[0].split_once("\n\n").expect("block after the body");
+    assert_eq!(head, "do X");
+    let lines: Vec<&str> = digest.lines().collect();
+    assert_eq!(
+        lines[0],
+        "Also, 8 FYIs were queued for you: 6 from pij-sender, 2 from pij-other. The newest 3:"
+    );
+    assert!(
+        lines[1].starts_with("6. [from pij-other, ") && lines[1].ends_with("] note 6"),
+        "{digest}"
+    );
+    assert!(lines[2].ends_with("] note 7"), "{digest}");
+    assert!(lines[3].ends_with("] note 8"), "{digest}");
+    assert_eq!(lines.len(), 5, "{digest}");
+    let command = lines[4]
+        .strip_prefix("All 8 were delivered; read them in full with: ")
+        .expect("the block says how to read them all");
+    assert_eq!(pending(addr).await, 0, "every FYI is marked delivered");
+
+    // The command it names reads all eight, in full.
+    let args: Vec<&str> = command.split_whitespace().collect();
+    assert_eq!(
+        &args[..4],
+        ["pij-rs", "fyi-read", "--seat", RECIPIENT],
+        "{command}"
+    );
+    assert_eq!(args[4], "--claimed-at", "{command}");
+    let (status, read) = post(
+        addr,
+        "/v1/fyi/read",
+        json!({"seat": RECIPIENT, "claimed_at_ms": args[5].parse::<u64>().expect("ms")}),
+    )
+    .await;
+    assert_eq!(status, 200, "{read}");
+    assert_eq!(read["data"]["count"], 8);
+    let full = read["data"]["block"].as_str().expect("block");
+    assert!(
+        full.starts_with("8 FYIs were delivered to you:\n1. [from pij-sender, "),
+        "{full}"
+    );
+    for n in 1..=8 {
+        assert_eq!(
+            full.matches(&format!("] note {n}\n")).count()
+                + usize::from(full.ends_with(&format!("] note {n}"))),
+            1,
+            "{full}"
+        );
+    }
+    server.abort();
+}
+
+#[tokio::test]
+async fn a_hook_claim_of_a_large_pile_is_a_digest_too() {
+    let store = FreshStore::new();
+    let config = config(&store);
+    let (addr, server) = serve(&config, true).await;
+    for n in 1..=6 {
+        let (status, _) = send(
+            addr,
+            "pij-sender",
+            &format!("note {n}"),
+            &format!("fyi-{n}"),
+            true,
+        )
+        .await;
+        assert_eq!(status, 200);
+    }
+    let (status, reply) = post(
+        addr,
+        "/v1/fyi/claim",
+        json!({"pane": PANE, "via": "hook:claude"}),
+    )
+    .await;
+    assert_eq!(status, 200, "{reply}");
+    assert_eq!(reply["data"]["count"], 6);
+    let block = reply["data"]["block"].as_str().expect("block");
+    assert!(
+        block
+            .starts_with("Also, 6 FYIs were queued for you: 6 from pij-sender. The newest 3:\n4. "),
+        "{block}"
+    );
+    assert!(block.contains("\nAll 6 were delivered; read them in full with: pij-rs fyi-read --seat pij-fyi-recipient --claimed-at "), "{block}");
+    server.abort();
+}

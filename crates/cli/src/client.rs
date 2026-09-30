@@ -201,6 +201,11 @@ impl DaemonClient {
         self.post("pij fyi-claim", "/v1/fyi/claim", request).await
     }
 
+    /// Read one delivered FYI batch in full (plan 159).
+    pub async fn fyi_read(&self, request: &serde_json::Value) -> Envelope<serde_json::Value> {
+        self.post("pij fyi-read", "/v1/fyi/read", request).await
+    }
+
     /// Submit a control with caller evidence the daemon must independently verify.
     pub async fn send_control(
         &self,

@@ -161,6 +161,8 @@ enum Endpoint {
     State,
     /// Atomic claim of held FYIs by a typed-turn hook (plan 158).
     FyiClaim,
+    /// Read one delivered FYI batch in full, as a digest names it (plan 159).
+    FyiRead,
     /// Busy/idle publication from a harness's own turn events (plan 158, addendum 3).
     Activity,
     Role,
@@ -183,7 +185,7 @@ enum Endpoint {
 }
 
 impl Endpoint {
-    const ALL: [Self; 47] = [
+    const ALL: [Self; 48] = [
         Self::Health,
         Self::Register,
         Self::Spawn,
@@ -208,6 +210,7 @@ impl Endpoint {
         Self::Phonehome,
         Self::State,
         Self::FyiClaim,
+        Self::FyiRead,
         Self::Activity,
         Self::ShimSend,
         Self::ShimCompactSelf,
@@ -259,6 +262,7 @@ impl Endpoint {
             Self::Phonehome => "/v1/phonehome",
             Self::State => "/v1/state",
             Self::FyiClaim => "/v1/fyi/claim",
+            Self::FyiRead => "/v1/fyi/read",
             Self::Activity => "/v1/activity",
             Self::Role => "/v1/role",
             Self::Close => "/v1/close",
@@ -306,7 +310,7 @@ impl Endpoint {
             | Self::Sidecar
             | Self::Report => Method::POST,
             Self::Adopt | Self::Whoami | Self::Phonehome => Method::POST,
-            Self::State | Self::FyiClaim | Self::Activity => Method::POST,
+            Self::State | Self::FyiClaim | Self::FyiRead | Self::Activity => Method::POST,
             Self::Role
             | Self::Close
             | Self::Reap
@@ -443,6 +447,7 @@ fn router_with_optional_federation(
                     | Endpoint::Phonehome
                     | Endpoint::State
                     | Endpoint::FyiClaim
+                    | Endpoint::FyiRead
                     | Endpoint::Activity
                     | Endpoint::ShimSend
                     | Endpoint::ShimCompactSelf
@@ -507,6 +512,7 @@ fn router_with_optional_federation(
             Endpoint::Phonehome => router.route(endpoint.path(), post(identity::phonehome)),
             Endpoint::State => router.route(endpoint.path(), post(seat_state)),
             Endpoint::FyiClaim => router.route(endpoint.path(), post(fyi::claim)),
+            Endpoint::FyiRead => router.route(endpoint.path(), post(fyi::read)),
             Endpoint::Activity => router.route(endpoint.path(), post(fyi::activity)),
             Endpoint::Role => router.route(endpoint.path(), post(role::role)),
             Endpoint::Close => router.route(endpoint.path(), post(lifecycle::close)),
@@ -1596,8 +1602,13 @@ async fn hold_fyi(state: &AppState, request: SendBodyRequest) -> Response {
         in_reply_to: request.in_reply_to,
         command: None,
     };
+    let question = pij_core::fyi::looks_like_a_question(&msg.body);
+    let recipient = msg.to.clone();
     match state.services.delivery.hold_fyi(msg).await {
-        Ok(receipt) => envelope(StatusCode::OK, &Envelope::ok("pij send", receipt)),
+        Ok(mut receipt) => {
+            fyi::after_hold(state, &recipient, question, &mut receipt).await;
+            envelope(StatusCode::OK, &Envelope::ok("pij send", receipt))
+        }
         Err(error) => send_failure("pij send", error),
     }
 }

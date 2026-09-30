@@ -268,7 +268,7 @@ enum Command {
     },
     /// Durably enqueue one message as the acting seat.
     #[command(
-        after_long_help = "Examples:\n  pij-rs send --to <id> --body 'hello'\n  pij-rs send --to <id> --body-file -\n  pij-rs send --to <id> --fyi --body 'build is green' (no action needed: held, opens no turn)\n  pij-rs send --to <id> --force --reason 'prod is down' --body '...' (wake a cold seat anyway; audited)"
+        after_long_help = "Examples:\n  pij-rs send --to <id> --body 'hello'\n  pij-rs send --to <id> --body-file -\n  pij-rs send --to <id> --fyi --body 'merged #452, nothing needed from you' (their next action doesn't depend on it: held, opens no turn)\n  pij-rs send --to <id> --force --reason 'prod is down' --body '...' (wake a cold seat anyway; audited)"
     )]
     Send {
         /// Assert the derived sending seat. Omit to use PIJ_SESSION_ID or TMUX_PANE.
@@ -292,9 +292,15 @@ enum Command {
         /// Message id being answered.
         #[arg(long)]
         in_reply_to: Option<String>,
-        /// Information needing no action: hold it until the recipient's next real
-        /// turn (appended to their next message, or their next typed prompt)
-        /// instead of opening a turn now. Receipt: `held (fyi)`.
+        /// Use only when the recipient's next action doesn't depend on it. If they'd
+        /// be stuck, wrong or waiting without it, it's a normal send. If they'd be
+        /// fine not reading it until their next turn, it's `--fyi`. If they'd be fine
+        /// never reading it, don't send it. Always normal sends: work done or a phase
+        /// complete, review verdicts, hand-offs, blockers, questions, decisions
+        /// needed. Held until the recipient's next real turn (appended to their next
+        /// message or typed prompt); five pending flush as one message once the
+        /// seat is warm. Receipt: `held (fyi)`, with a warning when the body looks
+        /// like a question.
         #[arg(long, conflicts_with = "command")]
         fyi: bool,
         /// Wake a cold recipient anyway (large context, idle past the cache TTL).
@@ -336,6 +342,16 @@ enum Command {
         /// Which hook is claiming: hook:claude, hook:copilot, hook:omp or hook:pi.
         #[arg(long)]
         via: String,
+    },
+    /// Read, in full, the FYIs one claim delivered (plan 159): the command a
+    /// digest names. Read-only.
+    FyiRead {
+        /// The seat the FYIs were delivered to.
+        #[arg(long)]
+        seat: String,
+        /// When they were claimed, in epoch ms, as the digest names it.
+        #[arg(long)]
+        claimed_at: u64,
     },
     /// Compact the current, daemon-derived seat.
     CompactSelf,
@@ -1066,8 +1082,10 @@ async fn run(cli: Cli) -> ExitCode {
                 // This is a CLI-derived receipt, not an unchanged daemon reply.
                 response.raw_json = None;
             }
-            if !cli.json && is_held_fyi(&response) {
-                println!("pij send: held (fyi) — {}", request.msg_id);
+            if !cli.json
+                && let Some(held) = held_fyi_output(&response, &request.msg_id)
+            {
+                println!("{held}");
                 return ExitCode::SUCCESS;
             }
             emit(&response, cli.json)
@@ -1116,6 +1134,24 @@ async fn run(cli: Cli) -> ExitCode {
                 .filter(|block| !block.is_empty())
             {
                 println!("{block}");
+            }
+            ExitCode::SUCCESS
+        }
+        Command::FyiRead { seat, claimed_at } => {
+            let response = client
+                .fyi_read(&serde_json::json!({"seat": seat, "claimed_at_ms": claimed_at}))
+                .await;
+            if cli.json || !response.ok {
+                return emit(&response, cli.json);
+            }
+            match response
+                .data
+                .as_ref()
+                .and_then(|data| data["block"].as_str())
+                .filter(|block| !block.is_empty())
+            {
+                Some(block) => println!("{block}"),
+                None => println!("pij fyi-read: no FYIs were delivered to {seat} at {claimed_at}"),
             }
             ExitCode::SUCCESS
         }
@@ -1992,11 +2028,20 @@ fn system_time_ms() -> Result<u64, PijError> {
 }
 
 /// Is this send receipt an FYI held for the recipient's next turn?
-fn is_held_fyi(response: &Envelope<pij_core::model::Receipt>) -> bool {
-    response.ok
-        && response.data.as_ref().is_some_and(|receipt| {
-            matches!(&receipt.outcome, pij_core::model::DeliveryOutcome::Held { reason } if reason == "fyi")
-        })
+/// The human line for a held FYI, with the receipt's warning (plan 159) on
+/// the next line. `None` when the send was not held as an FYI.
+fn held_fyi_output(response: &Envelope<pij_core::model::Receipt>, msg_id: &str) -> Option<String> {
+    let receipt = response.data.as_ref().filter(|_| response.ok)?;
+    if !matches!(&receipt.outcome, pij_core::model::DeliveryOutcome::Held { reason } if reason == "fyi")
+    {
+        return None;
+    }
+    let mut line = format!("pij send: held (fyi) — {msg_id}");
+    if let Some(warning) = &receipt.warning {
+        line.push('\n');
+        line.push_str(warning);
+    }
+    Some(line)
 }
 
 fn emit<T: serde::Serialize>(envelope: &Envelope<T>, json: bool) -> ExitCode {
@@ -2419,6 +2464,7 @@ impl Command {
             Command::Adopt { .. } => "pij adopt",
             Command::Whoami { .. } => "pij whoami",
             Command::FyiClaim { .. } => "pij fyi-claim",
+            Command::FyiRead { .. } => "pij fyi-read",
             Command::Activity { .. } => "pij activity",
             Command::CommitTrailers => "pij commit-trailers",
             Command::Phonehome { .. } => "pij phonehome",
@@ -2566,6 +2612,37 @@ mod tests {
     }
 
     #[test]
+    fn a_held_fyi_prints_its_question_warning_on_the_next_line() {
+        let receipt = |warning: Option<&str>| {
+            let mut envelope = pij_core::model::Envelope::ok(
+                "pij send",
+                pij_core::model::Receipt {
+                    msg_id: "m-1".to_string(),
+                    outcome: pij_core::model::DeliveryOutcome::Held {
+                        reason: "fyi".to_string(),
+                    },
+                    at: 1,
+                    cold_check: None,
+                    warning: warning.map(str::to_string),
+                },
+            );
+            envelope.ok = true;
+            envelope
+        };
+        assert_eq!(
+            super::held_fyi_output(&receipt(Some(pij_core::fyi::QUESTION_WARNING)), "m-1")
+                .as_deref(),
+            Some(
+                "pij send: held (fyi) — m-1\nthis looks like a question; if you need an answer, resend without --fyi"
+            )
+        );
+        assert_eq!(
+            super::held_fyi_output(&receipt(None), "m-1").as_deref(),
+            Some("pij send: held (fyi) — m-1")
+        );
+    }
+
+    #[test]
     fn clap_exposes_every_ruled_verb() {
         let names: Vec<_> = Cli::command()
             .get_subcommands()
@@ -2598,6 +2675,7 @@ mod tests {
                 "send",
                 "activity",
                 "fyi-claim",
+                "fyi-read",
                 "compact-self",
                 "inbox",
                 "bg",

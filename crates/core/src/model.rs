@@ -903,6 +903,10 @@ pub struct Receipt {
     /// does not run (controls, FYIs, forwards).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cold_check: Option<String>,
+    /// A caution about how the message was sent (plan 159): a held FYI whose
+    /// body looks like a question. Never changes what happened to it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
 }
 
 /// A unit of deferred work.

@@ -13,7 +13,7 @@ use pij_core::delivery::{
 use pij_core::error::{PijError, Result};
 use pij_core::events::EventFilter;
 use pij_core::framing::frame_message;
-use pij_core::fyi::{HeldFyi, VIA_MESSAGE_PREFIX, append_block, render_block};
+use pij_core::fyi::{HeldFyi, Lead, VIA_MESSAGE_PREFIX, append_block, render_block};
 use pij_core::model::{
     DeliveryFailure, DeliveryOrigin, DeliveryOutcome, Event, Harness, Job, JobId, Msg, Outcome,
     Receipt, SeatDescriptor, SeatId, SystemState,
@@ -667,6 +667,7 @@ impl DeliveryService {
                     outcome: recorded.outcome,
                     at: event.at,
                     cold_check: None,
+                    warning: None,
                 });
             }
         }
@@ -745,6 +746,7 @@ impl DeliveryService {
             },
             at,
             cold_check: None,
+            warning: None,
         })
     }
 
@@ -754,10 +756,10 @@ impl DeliveryService {
     ///
     /// # Errors
     /// Store or event-publication failures.
-    pub async fn claim_fyis(&self, recipient: &SeatId, via: &str) -> Result<Vec<HeldFyi>> {
+    pub async fn claim_fyis(&self, recipient: &SeatId, via: &str) -> Result<(Vec<HeldFyi>, u64)> {
         // Holding refuses a split authority, so nothing can be pending there.
         if !self.recovery_authority_shared {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), 0));
         }
         let at = (self.clock)()?;
         let queue = Arc::clone(&self.queue);
@@ -769,9 +771,78 @@ impl DeliveryService {
                 let (fyis, events) = queue
                     .claim_fyis(&recipient, &via, at, spine.as_ref())
                     .await?;
-                Ok((events, fyis))
+                Ok((events, (fyis, at)))
             })
             .await
+    }
+
+    /// The FYIs one claim delivered to `recipient`, in full (plan 159).
+    ///
+    /// # Errors
+    /// Store failures.
+    pub async fn read_claimed_fyis(
+        &self,
+        recipient: &SeatId,
+        claimed_at_ms: u64,
+    ) -> Result<Vec<HeldFyi>> {
+        self.queue.read_claimed_fyis(recipient, claimed_at_ms).await
+    }
+
+    /// Deliver `recipient`'s pending FYIs now, as one queued message from
+    /// `pij-bg` whose whole body is the block (plan 159's warm flush). The FYIs
+    /// are claimed in the carrier's own transaction, exactly once, and the
+    /// carrier exists only for what it claims: when a hook or another carrier
+    /// took them first, nothing is queued and this returns `None`, never a
+    /// blank message. The caller decides that the recipient is warm.
+    ///
+    /// # Errors
+    /// Store, encoding or event-publication failures.
+    pub async fn flush_fyis(&self, recipient: &SeatDescriptor) -> Result<Option<Receipt>> {
+        if !self.recovery_authority_shared {
+            return Ok(None);
+        }
+        let at = (self.clock)()?;
+        let msg = Msg {
+            from: SeatId::from(pij_core::BG_ACTOR),
+            to: recipient.id.clone(),
+            body: String::new(),
+            msg_id: format!("fyi-flush-{}-{at}", recipient.id),
+            from_machine: None,
+            in_reply_to: None,
+            command: None,
+        };
+        let job = delivery_job(&msg, Some(recipient))?;
+        let offset = local_utc_offset();
+        let attach: pij_core::ports::AttachFyis =
+            Arc::new(move |payload: &str, fyis: &[HeldFyi]| {
+                attach_fyi_block(payload, fyis, at, offset)
+            });
+        let via = format!("{VIA_MESSAGE_PREFIX}{}", msg.msg_id);
+        let queue = Arc::clone(&self.queue);
+        let spine = self.event_bus.raw_spine();
+        let enqueued = self
+            .event_bus
+            .publish_committed_batch(async move {
+                let (enqueued, events) = queue
+                    .enqueue_fyi_flush(job, &via, at, attach, spine.as_ref())
+                    .await?;
+                Ok((events, enqueued))
+            })
+            .await?;
+        // A fresh message id is never already delivered.
+        let Some(DeliveryEnqueue::Queued { not_before_ms, .. }) = enqueued else {
+            return Ok(None);
+        };
+        let receipt = Receipt {
+            msg_id: msg.msg_id.clone(),
+            outcome: Self::queued_outcome(Some("fyi-flush"), not_before_ms),
+            at,
+            cold_check: None,
+            warning: None,
+        };
+        self.publish_pushed(&msg, at).await?;
+        publish_delivery_outcome(&self.event_bus, &msg.to, &receipt, self.transport.name()).await?;
+        Ok(Some(receipt))
     }
 
     /// How many FYIs wait for `seat`.
@@ -818,7 +889,7 @@ impl DeliveryService {
         let offset = local_utc_offset();
         let attach: pij_core::ports::AttachFyis =
             Arc::new(move |payload: &str, fyis: &[HeldFyi]| {
-                attach_fyi_block(payload, fyis, offset)
+                attach_fyi_block(payload, fyis, at, offset)
             });
         let via = format!("{VIA_MESSAGE_PREFIX}{}", msg.msg_id);
         let queue = Arc::clone(&self.queue);
@@ -947,6 +1018,7 @@ impl DeliveryService {
                 },
                 at,
                 cold_check: None,
+                warning: None,
             };
             self.publish_outcome(&to, &receipt).await?;
             return Ok(receipt);
@@ -971,6 +1043,7 @@ impl DeliveryService {
                 },
                 at,
                 cold_check: None,
+                warning: None,
             };
             self.publish_outcome(&to, &receipt).await?;
             return Ok(receipt);
@@ -1216,6 +1289,7 @@ impl DeliveryService {
             outcome,
             at,
             cold_check: None,
+            warning: None,
         };
         // A suppressed duplicate already published its recipient-facing turn on
         // first admission. Publishing it again would tell the recipient twice
@@ -2069,6 +2143,7 @@ impl DeliveryService {
                     },
                     at: (self.clock)()?,
                     cold_check: None,
+                    warning: None,
                 },
                 "extension-stream",
                 Some(outcome),
@@ -2096,6 +2171,7 @@ impl DeliveryService {
                 outcome: DeliveryOutcome::Delivered { origin: ack.origin },
                 at,
                 cold_check: None,
+                warning: None,
             },
             if control.is_some() {
                 "extension-stream"
@@ -2251,8 +2327,14 @@ async fn publish_outcome_with_control(
     Ok(())
 }
 
-/// Append the rendered FYI block to a delivery payload's body.
-fn attach_fyi_block(payload: &str, fyis: &[HeldFyi], utc_offset_minutes: i32) -> Result<String> {
+/// Append the rendered FYI block to a delivery payload's body. A body-less
+/// payload is a warm flush (plan 159): the block is the whole message.
+fn attach_fyi_block(
+    payload: &str,
+    fyis: &[HeldFyi],
+    claimed_at_ms: u64,
+    utc_offset_minutes: i32,
+) -> Result<String> {
     let invalid = |error: String| PijError::Adapter {
         adapter: "daemon/fyi".into(),
         message: format!("cannot attach FYIs to the delivery payload: {error}"),
@@ -2262,8 +2344,15 @@ fn attach_fyi_block(payload: &str, fyis: &[HeldFyi], utc_offset_minutes: i32) ->
     let body = payload["body"]
         .as_str()
         .ok_or_else(|| invalid("no body".to_string()))?;
-    payload["body"] =
-        serde_json::Value::String(append_block(body, &render_block(fyis, utc_offset_minutes)));
+    let body = if body.is_empty() {
+        render_block(fyis, Lead::Flush, claimed_at_ms, utc_offset_minutes)
+    } else {
+        append_block(
+            body,
+            &render_block(fyis, Lead::Also, claimed_at_ms, utc_offset_minutes),
+        )
+    };
+    payload["body"] = serde_json::Value::String(body);
     serde_json::to_string(&payload).map_err(|error| invalid(error.to_string()))
 }
 

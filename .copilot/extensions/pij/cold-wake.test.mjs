@@ -1,6 +1,7 @@
 // Plan 157 phase 2 — the Copilot pij_send tool's side of the cold-wake guard:
 // force + reason reach the /v1/send wire, a reasonless force sends nothing,
 // and the daemon's refusal reaches the model verbatim (it names the price).
+// Plan 159 — a held FYI that looks like a question surfaces the daemon's warning.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DaemonClient, NativeBridge } from "./store.mjs";
@@ -83,4 +84,15 @@ test("a cold refusal reaches the model verbatim and says nothing was sent", asyn
 	assert.equal(result.ok, false);
 	assert.equal(result.error, COLD_META);
 	assert.equal(result.grade, "refused-not-sent");
+});
+
+test("a held fyi's question warning is surfaced on the tool result", async () => {
+	const warning = "this looks like a question; if you need an answer, resend without --fyi";
+	const { bridge, sends } = bridgeOver((body) =>
+		accepted({ msg_id: body.msg_id, outcome: { outcome: "held", reason: "fyi" }, at: 1, warning }),
+	);
+	const result = await bridge.send({ to: "pij-peer", message: "can you check X?", fyi: true });
+	assert.equal(sends[0].fyi, true);
+	assert.equal(result.ok, true);
+	assert.equal(result.warning, warning);
 });

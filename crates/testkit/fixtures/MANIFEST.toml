@@ -480,6 +480,13 @@ note = "Plan 158: the ONE definition of the held-FYI block. pij_core::fyi::rende
 answer = "Two FYIs, oldest first, at UTC offset 0 and held at 14:02 and 14:10 UTC: the header `Also, 2 FYIs were queued for you:`, lines `N. [from <sender>, HH:MM] <body>`, continuation lines of a multi-line body indented 3 spaces, and no trailing newline."
 
 [[fixture]]
+path = "golden/fyi/digest.txt"
+sha256 = "9bb52408637fb40d13595174abb61ea0343dacdb3419adcceb4c23700b47c8a5"
+bytes = 282
+note = "Plan 159: the digest form of the held-FYI block, rendered by pij_core::fyi::render_block when more than DIGEST_ABOVE (5) FYIs are delivered at once. Seven FYIs a minute apart from 14:02 UTC, four from pij-x and three from pij-y, claimed at 1790690940000."
+answer = "The header gives the total and a count per sender (most first, then by name) and ends `The newest 3:`. The newest three follow in full, numbered by their place in the pile (5-7), with continuation lines indented 3 spaces. The last line names the command that reads all of them: `pij-rs fyi-read --seat <recipient> --claimed-at <claim ms>`. No trailing newline."
+
+[[fixture]]
 path = "harnesses/claude-2.1.284-idle.txt"
 sha256 = "2aeba82a2d582b23d4fcf80cf4fd86aa926fd0c2ff6f127036ee45130ce8fd58"
 bytes = 1692

@@ -507,6 +507,8 @@ pub(crate) async fn shim_send(State(state): State<AppState>, body: axum::body::B
         in_reply_to: call.in_reply_to,
         command: None,
     };
+    let question = call.fyi && pij_core::fyi::looks_like_a_question(&msg.body);
+    let recipient = msg.to.clone();
     let accepted = if call.fyi {
         state.services.delivery.hold_fyi(msg).await
     } else {
@@ -515,6 +517,9 @@ pub(crate) async fn shim_send(State(state): State<AppState>, body: axum::body::B
     match accepted {
         Ok(mut receipt) => {
             receipt.cold_check = cold_check;
+            if call.fyi {
+                super::fyi::after_hold(&state, &recipient, question, &mut receipt).await;
+            }
             super::envelope(
                 axum::http::StatusCode::OK,
                 &pij_core::model::Envelope::ok(SEND, receipt),
