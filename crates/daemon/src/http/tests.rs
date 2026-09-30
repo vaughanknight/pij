@@ -200,6 +200,14 @@ impl Queue for CountingQueue {
         Ok(0)
     }
 
+    async fn read_claimed_fyis(
+        &self,
+        _recipient: &SeatId,
+        _claimed_at_ms: u64,
+    ) -> Result<Vec<pij_core::fyi::HeldFyi>> {
+        Ok(Vec::new())
+    }
+
     async fn recover_native_delivery(&self, _job: JobId, _recipient: &SeatId) -> Result<bool> {
         Err(PijError::Adapter {
             adapter: "test/counting-queue".into(),

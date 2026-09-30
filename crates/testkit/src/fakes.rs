@@ -477,6 +477,8 @@ struct QueueState {
     delivered: Vec<(String, String, DeliveryOrigin)>,
     /// Held FYIs with their state: `pending`, `delivered`.
     fyis: Vec<(pij_core::fyi::HeldFyi, &'static str)>,
+    /// When each delivered FYI was claimed, by id (plan 159's `fyi-read`).
+    fyi_claimed_at: HashMap<String, u64>,
 }
 
 impl FakeQueue {
@@ -1266,7 +1268,7 @@ impl Queue for FakeQueue {
         // Transition under the lock first, so a racing claim cannot see these rows.
         let mut claimed: Vec<pij_core::fyi::HeldFyi> = {
             let mut state = self.state.lock().expect("fake queue mutex");
-            state
+            let claimed: Vec<pij_core::fyi::HeldFyi> = state
                 .fyis
                 .iter_mut()
                 .filter(|(held, fyi_state)| held.recipient == *recipient && *fyi_state == "pending")
@@ -1274,7 +1276,11 @@ impl Queue for FakeQueue {
                     *fyi_state = "delivered";
                     held.clone()
                 })
-                .collect()
+                .collect();
+            for held in &claimed {
+                state.fyi_claimed_at.insert(held.id.clone(), at);
+            }
+            claimed
         };
         if claimed.is_empty() {
             return Ok((claimed, Vec::new()));
@@ -1341,6 +1347,26 @@ impl Queue for FakeQueue {
             .iter()
             .filter(|(held, fyi_state)| held.recipient == *recipient && *fyi_state == "pending")
             .count() as u64)
+    }
+
+    async fn read_claimed_fyis(
+        &self,
+        recipient: &SeatId,
+        claimed_at_ms: u64,
+    ) -> Result<Vec<pij_core::fyi::HeldFyi>> {
+        let state = self.state.lock().expect("fake queue mutex");
+        let mut read: Vec<pij_core::fyi::HeldFyi> = state
+            .fyis
+            .iter()
+            .filter(|(held, fyi_state)| {
+                held.recipient == *recipient
+                    && *fyi_state == "delivered"
+                    && state.fyi_claimed_at.get(&held.id) == Some(&claimed_at_ms)
+            })
+            .map(|(held, _)| held.clone())
+            .collect();
+        read.sort_by(|a, b| a.held_at_ms.cmp(&b.held_at_ms).then(a.id.cmp(&b.id)));
+        Ok(read)
     }
 }
 

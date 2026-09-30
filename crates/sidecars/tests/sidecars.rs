@@ -170,6 +170,13 @@ impl Queue for FailFirstClaim {
     async fn pending_fyi_count(&self, recipient: &SeatId) -> Result<u64> {
         self.inner.pending_fyi_count(recipient).await
     }
+    async fn read_claimed_fyis(
+        &self,
+        recipient: &SeatId,
+        claimed_at_ms: u64,
+    ) -> Result<Vec<pij_core::fyi::HeldFyi>> {
+        self.inner.read_claimed_fyis(recipient, claimed_at_ms).await
+    }
     async fn recover_native_delivery(&self, job: JobId, recipient: &SeatId) -> Result<bool> {
         self.inner.recover_native_delivery(job, recipient).await
     }
@@ -746,6 +753,13 @@ impl Queue for RefuseFirstDelivery {
     }
     async fn pending_fyi_count(&self, recipient: &SeatId) -> Result<u64> {
         self.inner.pending_fyi_count(recipient).await
+    }
+    async fn read_claimed_fyis(
+        &self,
+        recipient: &SeatId,
+        claimed_at_ms: u64,
+    ) -> Result<Vec<pij_core::fyi::HeldFyi>> {
+        self.inner.read_claimed_fyis(recipient, claimed_at_ms).await
     }
     async fn recover_native_delivery(&self, job: JobId, recipient: &SeatId) -> Result<bool> {
         self.inner.recover_native_delivery(job, recipient).await

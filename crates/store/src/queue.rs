@@ -1151,6 +1151,25 @@ impl Queue for SqliteQueue {
         Ok(count as u64)
     }
 
+    async fn read_claimed_fyis(
+        &self,
+        recipient: &SeatId,
+        claimed_at_ms: u64,
+    ) -> Result<Vec<pij_core::fyi::HeldFyi>> {
+        require_current_schema(&self.pool).await?;
+        let rows = sqlx::query(
+            "SELECT id, sender, body, held_at_ms FROM fyis \
+             WHERE recipient = ?1 AND state = 'delivered' AND settled_at_ms = ?2 \
+             ORDER BY held_at_ms, id",
+        )
+        .bind(recipient.as_str())
+        .bind(sql_ms(claimed_at_ms)?)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(adapter_error)?;
+        rows.iter().map(|row| decode_fyi(row, recipient)).collect()
+    }
+
     async fn ack(&self, job: JobId, outcome: Outcome) -> Result<()> {
         require_current_schema(&self.pool).await?;
         let (state, detail) = match outcome {

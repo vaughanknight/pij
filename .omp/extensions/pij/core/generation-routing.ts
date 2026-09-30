@@ -127,7 +127,10 @@ function renderShimSend(payload: unknown): string {
 			: (outcome ?? "?");
 	const reason = text(outcome, "reason");
 	const msgId = text(payload, "msg_id") ?? "?";
-	if (word === "held" && reason === "fyi") return `pij send: held (fyi) — ${msgId}`;
+	if (word === "held" && reason === "fyi") {
+		const warning = text(payload, "warning");
+		return `pij send: held (fyi) — ${msgId}${warning === undefined ? "" : `\n${warning}`}`;
+	}
 	const coldCheck = text(payload, "cold_check");
 	return `sent (rs) — msg ${msgId} — receipt ${String(word)}${reason === undefined ? "" : ` — ${reason}`}${coldCheck === undefined ? "" : ` — cold-check: ${coldCheck}`}`;
 }

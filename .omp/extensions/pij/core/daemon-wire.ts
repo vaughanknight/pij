@@ -97,6 +97,8 @@ export interface QueueReceipt {
 	/** The cold-wake guard's verdict: `clear`, `busy`, `forced` or `unknown: <why>`.
 	 *  Absent when the guard did not run (FYIs, controls, forwarded sends). */
 	readonly cold_check?: string;
+	/** Plan 159: set only when a held FYI's body contains `?`; the send is still held. */
+	readonly warning?: string;
 }
 
 /** A held FYI receipt carries `outcome: {outcome: "held", reason: "fyi"}`. */

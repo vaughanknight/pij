@@ -12,7 +12,7 @@ use axum::response::Response;
 use pij_core::cold_wake::{
     COLD_IDLE_MS, COLD_WAKE_CODE, COLD_WAKE_FORCED_KIND, ColdCheck, check, refusal,
 };
-use pij_core::model::{Event, SeatId};
+use pij_core::model::{Event, SeatDescriptor, SeatId};
 use pij_core::session_status::SessionStatusBlock;
 
 use super::{AppState, internal, refused, session_status_block, system_time_ms};
@@ -66,6 +66,30 @@ async fn pane_is_idle(state: &AppState, seat: &pij_core::model::SeatDescriptor) 
         tokio::time::timeout(PANE_PROBE_WAIT, probe).await,
         Ok(Ok(Ok(true)))
     )
+}
+
+/// Is `seat` known WARM (plan 159's FYI flush, `pij_core::cold_wake::is_warm`)?
+/// Its session facts get the same bounded wait a send gets; no answer in time
+/// is unknown, and unknown is not warm.
+pub(crate) async fn is_known_warm(state: &AppState, seat: &SeatDescriptor) -> bool {
+    let Ok(now_ms) = system_time_ms() else {
+        return false;
+    };
+    let Ok(block) = tokio::time::timeout(
+        STATUS_WAIT,
+        session_status_block(
+            state.services.session_status.as_ref(),
+            &seat.id,
+            seat.harness,
+            seat.harness_session.clone(),
+            now_ms,
+        ),
+    )
+    .await
+    else {
+        return false;
+    };
+    pij_core::cold_wake::is_warm(seat.state, &block, now_ms)
 }
 
 /// What the sender asked for about a cold recipient.

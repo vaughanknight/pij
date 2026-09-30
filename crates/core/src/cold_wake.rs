@@ -137,6 +137,22 @@ fn unknown(why: &str) -> ColdCheck {
     }
 }
 
+/// Is the seat known WARM (plan 159's FYI flush)? Working now, or its last API
+/// call is known and within [`COLD_IDLE_MS`]. Anything unknown is not warm, so a
+/// flush can never be the thing that wakes a cold seat.
+pub fn is_warm(state: SystemState, status: &SessionStatusBlock, now_ms: u64) -> bool {
+    if state == SystemState::Working {
+        return true;
+    }
+    let SessionStatusBlock::Known { status, .. } = status else {
+        return false;
+    };
+    status
+        .last_call_at_ms
+        .value()
+        .is_some_and(|&last_call| now_ms.saturating_sub(last_call) <= COLD_IDLE_MS)
+}
+
 /// The refusal a sender sees, naming the price and both ways forward.
 pub fn refusal(recipient: &SeatId, check: &ColdCheck) -> Option<String> {
     let ColdCheck::Cold {
@@ -223,6 +239,34 @@ mod tests {
             };
             assert_eq!(estimate_usd, Some(4.0), "{model}");
         }
+    }
+
+    #[test]
+    fn warm_means_working_or_a_known_recent_last_call() {
+        let unknown = SessionStatusBlock::Unbound;
+        assert!(is_warm(SystemState::Working, &unknown, NOW));
+        assert!(!is_warm(SystemState::Idle, &unknown, NOW));
+        assert!(is_warm(
+            SystemState::Idle,
+            &known(None, Some(NOW - COLD_IDLE_MS), None),
+            NOW
+        ));
+        assert!(!is_warm(
+            SystemState::Idle,
+            &known(None, Some(NOW - COLD_IDLE_MS - 1), None),
+            NOW
+        ));
+        assert!(!is_warm(
+            SystemState::Idle,
+            &known(Some(10), None, None),
+            NOW
+        ));
+        // Small context changes nothing: warmth is about the cache, not size.
+        assert!(!is_warm(
+            SystemState::Idle,
+            &known(Some(10), Some(NOW - 2 * COLD_IDLE_MS), None),
+            NOW
+        ));
     }
 
     #[test]

@@ -354,6 +354,32 @@ describe("pij extension — fyi and turn activity (plan 158)", () => {
 				);
 			});
 		});
+
+		it("renders the receipt's question warning on its own line", async () => {
+			const warning =
+				"held (fyi), but this looks like a question; if you need an answer, resend without --fyi";
+			seat = await bootSeat(
+				fakeDaemon({
+					pendingFyis: 0,
+					send: (body) =>
+						envelope("pij send", {
+							msg_id: body.msg_id,
+							outcome: { outcome: "held", reason: "fyi" },
+							at: 1,
+							warning,
+						}),
+				}),
+			);
+			const result = (await seat.send({
+				to: "pij-peer",
+				message: "can you check X?",
+				fyi: true,
+			})) as { content: Array<{ text: string }> };
+			expect(result.content[0]?.text.split("\n")).toEqual([
+				expect.stringMatching(/^held \(fyi\) \S+ -> pij-peer$/),
+				warning,
+			]);
+		});
 	});
 
 	describe("before_agent_start", () => {

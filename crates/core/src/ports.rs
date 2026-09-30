@@ -477,6 +477,15 @@ pub trait Queue: Send + Sync {
 
     /// How many FYIs wait for `recipient`.
     async fn pending_fyi_count(&self, recipient: &SeatId) -> Result<u64>;
+
+    /// The FYIs one claim delivered to `recipient` (plan 159): every row
+    /// settled at `claimed_at_ms`, oldest first, bodies in full. Read-only, so
+    /// a digest's reader can see the whole pile it summarised.
+    async fn read_claimed_fyis(
+        &self,
+        recipient: &SeatId,
+        claimed_at_ms: u64,
+    ) -> Result<Vec<HeldFyi>>;
 }
 
 /// A way to get a message to a seat.
