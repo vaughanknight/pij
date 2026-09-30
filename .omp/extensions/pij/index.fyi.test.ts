@@ -356,8 +356,7 @@ describe("pij extension — fyi and turn activity (plan 158)", () => {
 		});
 
 		it("renders the receipt's question warning on its own line", async () => {
-			const warning =
-				"this looks like a question; if you need an answer, resend without --fyi";
+			const warning = "this looks like a question; if you need an answer, resend without --fyi";
 			seat = await bootSeat(
 				fakeDaemon({
 					pendingFyis: 0,

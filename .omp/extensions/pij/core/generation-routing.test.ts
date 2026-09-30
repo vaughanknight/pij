@@ -130,8 +130,7 @@ describe("the explicit rs routing inventory", () => {
 	});
 
 	it("a held fyi receipt shows the daemon's question warning", () => {
-		const warning =
-			"this looks like a question; if you need an answer, resend without --fyi";
+		const warning = "this looks like a question; if you need an answer, resend without --fyi";
 		const rendered = renderRsAnswer(
 			findRoute("send", undefined),
 			{ msg_id: "m-2", outcome: { outcome: "held", reason: "fyi" }, at: 1, warning },
