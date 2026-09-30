@@ -15,9 +15,9 @@ after 5: pending 0 state idle
 › Message from @pij-bg: [pij-rs from pij-bg] (ctrl+o to expand)
 ⏺ I see 5 FYIs. The first line of the block is "5 FYIs were queued for you:".
 ✻ Cooked for 2s · done 11:50 am
-─────────────────────────────────────────────────────�
+─────────────────────────────────────────────────────
 ❯ 
-─────────────────────────────────────────────────────�
+─────────────────────────────────────────────────────
   5% pij ⎇ main rs ⛓ pij-frantic-cormac • Sonnet 5.5 • medium • 50k/1.0M • 23% ↻13:20
   ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 1 agent
 93787|11:50:02|fyi.delivered|{"ids":["01a0f001-24c5-7742-a64c-95dcf448690e","01a0f001-24f2-7801-b015-8c205d5514f3","01a0f001-2529-7e23-99d7-29d2bd53e836","01a0f001-255e-7d10-8dfc-ad3578d615
@@ -45,19 +45,37 @@ fyi.held|5
 The spine shows only `fyi.held` ×5 in that minute. There was no delivery and no turn; the status line showed `✉5`.
 
 ## 3. Eight pending ⇒ a digest on the next typed turn
-Three more FYIs made 8 pending. A typed prompt then went into the OMP pane, and its `hook:omp` claim delivered the digest:
+Three more FYIs made 8 pending. A typed prompt then went into the OMP pane (`How many FYIs were you given? …`), and its `hook:omp` claim delivered the digest:
 ```
 pij send: held (fyi) — 01a0f007-8790-7931-8966-d11f515c0609
 pij send: held (fyi) — 01a0f007-88b3-7e42-99aa-2bcc34fff8f9
 pij send: held (fyi) — 01a0f007-896a-7a02-825c-8cfdaa0a2244
 pending 8 state idle
 after typed turn: pending 0 state idle
-93836|11:57:01|hook:omp|8|1790733421991
-│ 📦 pij
-│ You are a throwaway seat for a pij FYI live proof (plan 159). Reply with the single word: ready. Use no tools. For every later prompt: reply with one short line saying how many FYIs you were given
-│ of the FYI block, and use no tools.
+spine fyi.delivered: seq 93836, 11:57:01, via hook:omp, 8 ids, at 1790733421991
 ```
-The digest's own command (`pij-rs fyi-read … --claimed-at 1790733421991`) printed all 8 in full, above. The typed turn carried the pile: no separate turn opened.
+What the OMP seat received (the `pij-fyi` custom message on its typed turn):
+```
+Also, 8 FYIs were queued for you: 8 from pij-yelling-trout. The newest 3:
+6. [from pij-yelling-trout, 11:57] cold proof note 6: nothing needed from you
+7. [from pij-yelling-trout, 11:57] cold proof note 7: nothing needed from you
+8. [from pij-yelling-trout, 11:57] cold proof note 8: nothing needed from you
+All 8 were delivered; read them in full with: pij-rs fyi-read --seat pij-convenient-deathwing --claimed-at 1790733421991
+```
+The seat answered: `8 FYIs were queued; the first line of the FYI block reads: "Also, 8 FYIs were queued for you: 8 from pij-yelling-trout. The newest 3:"`.
+The command the digest names printed all 8 in full:
+```
+8 FYIs were delivered to you:
+1. [from pij-yelling-trout, 11:56] cold proof note 1: nothing needed from you
+2. [from pij-yelling-trout, 11:56] cold proof note 2: nothing needed from you
+3. [from pij-yelling-trout, 11:56] cold proof note 3: nothing needed from you
+4. [from pij-yelling-trout, 11:56] cold proof note 4: nothing needed from you
+5. [from pij-yelling-trout, 11:56] cold proof note 5: nothing needed from you
+6. [from pij-yelling-trout, 11:57] cold proof note 6: nothing needed from you
+7. [from pij-yelling-trout, 11:57] cold proof note 7: nothing needed from you
+8. [from pij-yelling-trout, 11:57] cold proof note 8: nothing needed from you
+```
+The typed turn carried the whole pile; no separate turn was opened for it.
 
 ## 4. `--fyi "can you check X?"` ⇒ the warning
 ```
