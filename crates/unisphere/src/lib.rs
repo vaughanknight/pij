@@ -33,6 +33,22 @@ use unisphere_sdk::status::{
 const ADAPTER: &str = "unisphere/session-status";
 /// Unisphere's adapter id for Claude Code transcripts.
 const CLAUDE_CODE: &str = "claude-code";
+/// Unisphere's adapter id for Oh My Pi (pij `omp`) session files.
+const OH_MY_PI: &str = "oh-my-pi";
+/// Unisphere's adapter id for Codex rollouts.
+const CODEX: &str = "codex";
+
+/// Where each readable harness keeps its sessions.
+#[derive(Clone, Debug, Default)]
+pub struct SessionRoots {
+    /// Every Claude configuration home (`~/.claude`, `~/.claude-alt`, …); each
+    /// home's `projects/` directory is one discovery root.
+    pub claude_homes: Vec<PathBuf>,
+    /// OMP's session directory (`~/.omp/agent/sessions`).
+    pub omp_sessions: Option<PathBuf>,
+    /// Codex's session directory (`$CODEX_HOME/sessions`, `~/.codex/sessions`).
+    pub codex_sessions: Option<PathBuf>,
+}
 
 /// Session facts from harness transcripts, read through `unisphere-sdk`.
 pub struct UnisphereSessionStatus {
@@ -44,7 +60,20 @@ impl UnisphereSessionStatus {
     /// A source over every Claude configuration home (`~/.claude`,
     /// `~/.claude-alt`, …). Each home's `projects/` directory is one discovery root.
     pub fn new(claude_homes: Vec<PathBuf>) -> Self {
-        let roots: Vec<PrepSourceSet> = claude_homes
+        Self::with_roots(SessionRoots {
+            claude_homes,
+            ..SessionRoots::default()
+        })
+    }
+
+    /// A source over every readable harness's session directories.
+    pub fn with_roots(roots: SessionRoots) -> Self {
+        let SessionRoots {
+            claude_homes,
+            omp_sessions,
+            codex_sessions,
+        } = roots;
+        let mut roots: Vec<PrepSourceSet> = claude_homes
             .into_iter()
             .enumerate()
             .map(|(index, home)| {
@@ -62,10 +91,22 @@ impl UnisphereSessionStatus {
                 }
             })
             .collect();
-        let bindings = vec![PrepBinding {
-            fold: Arc::new(unisphere_adapter_claude::ClaudePrepFold),
-            loader: Arc::new(unisphere_loader_jsonl::FileSessionLoader),
-        }];
+        roots.extend(omp_sessions.map(|root| default_set(OH_MY_PI, root)));
+        roots.extend(codex_sessions.map(|root| default_set(CODEX, root)));
+        let bindings = vec![
+            PrepBinding {
+                fold: Arc::new(unisphere_adapter_claude::ClaudePrepFold),
+                loader: Arc::new(unisphere_loader_jsonl::FileSessionLoader),
+            },
+            PrepBinding {
+                fold: Arc::new(unisphere_adapter_omp::OmpPrepFold),
+                loader: Arc::new(unisphere_loader_jsonl::FileSessionLoader),
+            },
+            PrepBinding {
+                fold: Arc::new(unisphere_adapter_codex::CodexPrepFold),
+                loader: Arc::new(unisphere_loader_jsonl::FileSessionLoader),
+            },
+        ];
         Self {
             service: Arc::new(StatusService::new(bindings, roots)),
             cursors: Mutex::new(HashMap::new()),
@@ -77,7 +118,10 @@ impl UnisphereSessionStatus {
 fn unisphere_harness(harness: Harness) -> Option<&'static str> {
     match harness {
         Harness::Claude => Some(CLAUDE_CODE),
-        Harness::Copilot | Harness::Codex | Harness::Pi | Harness::Omp => None,
+        Harness::Omp => Some(OH_MY_PI),
+        Harness::Codex => Some(CODEX),
+        // Folds exist upstream but are provisional until Unisphere verifies them.
+        Harness::Copilot | Harness::Pi => None,
     }
 }
 
@@ -459,10 +503,83 @@ mod tests {
         std::fs::remove_dir_all(&home).unwrap();
     }
 
+    /// A seat compacted since its last call has the harness's post-compaction
+    /// context, not the large pre-compaction one: otherwise the cold-wake guard
+    /// would refuse a freshly compacted seat as if it were still large.
+    #[tokio::test]
+    async fn a_compaction_since_the_last_call_sets_the_context_to_its_post_tokens() {
+        let home =
+            std::env::temp_dir().join(format!("pij-unisphere-compact-{}", std::process::id()));
+        let project = home.join("projects").join("proj");
+        std::fs::create_dir_all(&project).unwrap();
+        let usage = r#"{"input_tokens":1,"output_tokens":2,"cache_read_input_tokens":499999,"cache_creation_input_tokens":0}"#;
+        let compaction = r#"{"uuid":"c1","parentUuid":"a1","sessionId":"s-1","type":"system","subtype":"compact_boundary","timestamp":"2026-09-08T00:05:00Z","compactMetadata":{"trigger":"auto","preTokens":500000,"postTokens":8260}}"#;
+        std::fs::write(
+            project.join("s-1.jsonl"),
+            record("u1", "null", "user", "2026-09-08T00:00:00Z", "")
+                + &record("a1", "\"u1\"", "assistant", "2026-09-08T00:00:01Z", usage)
+                + compaction
+                + "\n",
+        )
+        .unwrap();
+        let source = UnisphereSessionStatus::new(vec![home.clone()]);
+        let reply = source
+            .status(&SessionTarget {
+                seat: SeatId("pij-compacted".into()),
+                harness: Harness::Claude,
+                session: "s-1".into(),
+            })
+            .await
+            .expect("status");
+        let SessionStatusReply::Status(status) = reply else {
+            panic!("expected facts, got {reply:?}");
+        };
+        assert_eq!(status.context_used_tokens.value(), Some(&8_260));
+        std::fs::remove_dir_all(&home).unwrap();
+    }
+
+    /// An OMP seat is read from `~/.omp/agent/sessions/<project>/<ts>_<id>.jsonl`,
+    /// located by its session id alone.
+    #[tokio::test]
+    async fn an_omp_seat_is_read_from_its_session_file() {
+        let sessions =
+            std::env::temp_dir().join(format!("pij-unisphere-omp-{}", std::process::id()));
+        let project = sessions.join("--work-demo--");
+        std::fs::create_dir_all(&project).unwrap();
+        let lines = [
+            r#"{"type":"session","version":3,"id":"sess-omp","timestamp":"2026-09-08T00:00:00.000Z","cwd":"/work/demo"}"#,
+            r#"{"type":"message","id":"e1","parentId":null,"timestamp":"2026-09-08T00:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"hi"}],"timestamp":1788825601000}}"#,
+            r#"{"type":"message","id":"e2","parentId":"e1","timestamp":"2026-09-08T00:00:02.000Z","message":{"role":"assistant","api":"anthropic-messages","provider":"anthropic","model":"claude-opus-5-5","stopReason":"stop","usage":{"input":10,"output":5,"cacheRead":400,"cacheWrite":100,"totalTokens":515,"cttl":{"ephemeral5m":100}},"content":[{"type":"text","text":"hello"}],"timestamp":1788825602000}}"#,
+        ];
+        std::fs::write(
+            project.join("2026-09-08T00-00-00-000Z_sess-omp.jsonl"),
+            lines.join("\n") + "\n",
+        )
+        .unwrap();
+        let source = UnisphereSessionStatus::with_roots(SessionRoots {
+            omp_sessions: Some(sessions.clone()),
+            ..SessionRoots::default()
+        });
+        let reply = source
+            .status(&SessionTarget {
+                seat: SeatId("pij-omp".into()),
+                harness: Harness::Omp,
+                session: "sess-omp".into(),
+            })
+            .await
+            .expect("status");
+        let SessionStatusReply::Status(status) = reply else {
+            panic!("expected OMP facts, got {reply:?}");
+        };
+        assert!(status.context_used_tokens.value().is_some(), "{status:?}");
+        assert_eq!(status.last_call_at_ms.value(), Some(&1_788_825_602_000));
+        std::fs::remove_dir_all(&sessions).unwrap();
+    }
+
     #[tokio::test]
     async fn harnesses_the_sdk_cannot_read_are_unsupported() {
         let source = UnisphereSessionStatus::new(Vec::new());
-        for harness in [Harness::Omp, Harness::Pi, Harness::Copilot, Harness::Codex] {
+        for harness in [Harness::Pi, Harness::Copilot] {
             let reply = source
                 .status(&SessionTarget {
                     seat: SeatId("pij-x".into()),
