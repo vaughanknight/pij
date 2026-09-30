@@ -409,9 +409,20 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
     // it is composed once here and shared by every request.
     let session_status: Arc<dyn SessionStatusPort> = match config.adapters.session_status {
         AdapterChoice::Fake => Arc::new(FakeSessionStatus::new()),
-        AdapterChoice::Real => Arc::new(pij_unisphere::UnisphereSessionStatus::new(
-            pij_harnesses::claude_homes(),
-        )),
+        AdapterChoice::Real => {
+            let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+            Arc::new(pij_unisphere::UnisphereSessionStatus::with_roots(
+                pij_unisphere::SessionRoots {
+                    claude_homes: pij_harnesses::claude_homes(),
+                    // OMP keeps every session under its agent dir, keyed by project.
+                    omp_sessions: home.as_ref().map(|home| home.join(".omp/agent/sessions")),
+                    codex_sessions: std::env::var_os("CODEX_HOME")
+                        .map(std::path::PathBuf::from)
+                        .or_else(|| home.as_ref().map(|home| home.join(".codex")))
+                        .map(|codex| codex.join("sessions")),
+                },
+            ))
+        }
     };
 
     let orchestration = Arc::new(OrchestrationService::new());

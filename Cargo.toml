@@ -52,11 +52,13 @@ pij-unisphere = { path = "crates/unisphere" }
 async-trait = "0.1"
 # Session facts for `pij state` (plan 157), linked in-process by pij-unisphere only.
 # Pinned by `rev` to builder/029-session-status on github.com/AI-Substrate/Unisphere
-# (kiwi's pushed rev). Only these three: loader-query/loader-snapshot pull
+# (kiwi's pushed rev). Only these five (Claude, OMP and Codex folds): loader-query/loader-snapshot pull
 # rusqlite, whose libsqlite3-sys `links` would collide with sqlx's.
-unisphere-sdk = { git = "https://github.com/AI-Substrate/Unisphere.git", rev = "0d48d80609f6c2b2ff40d52732477a64673535d1" }
-unisphere-loader-jsonl = { git = "https://github.com/AI-Substrate/Unisphere.git", rev = "0d48d80609f6c2b2ff40d52732477a64673535d1" }
-unisphere-adapter-claude = { git = "https://github.com/AI-Substrate/Unisphere.git", rev = "0d48d80609f6c2b2ff40d52732477a64673535d1" }
+unisphere-sdk = { git = "https://github.com/AI-Substrate/Unisphere.git", rev = "1daadc035af2fa356aa72babaaea0c39760d385e" }
+unisphere-loader-jsonl = { git = "https://github.com/AI-Substrate/Unisphere.git", rev = "1daadc035af2fa356aa72babaaea0c39760d385e" }
+unisphere-adapter-claude = { git = "https://github.com/AI-Substrate/Unisphere.git", rev = "1daadc035af2fa356aa72babaaea0c39760d385e" }
+unisphere-adapter-omp = { git = "https://github.com/AI-Substrate/Unisphere.git", rev = "1daadc035af2fa356aa72babaaea0c39760d385e" }
+unisphere-adapter-codex = { git = "https://github.com/AI-Substrate/Unisphere.git", rev = "1daadc035af2fa356aa72babaaea0c39760d385e" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

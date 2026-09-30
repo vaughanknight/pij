@@ -353,6 +353,14 @@
           "kind": null
         },
         {
+          "name": "unisphere-adapter-codex",
+          "kind": null
+        },
+        {
+          "name": "unisphere-adapter-omp",
+          "kind": null
+        },
+        {
           "name": "unisphere-loader-jsonl",
           "kind": null
         },

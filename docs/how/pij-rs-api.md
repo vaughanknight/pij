@@ -414,7 +414,9 @@ transcript through `SessionStatusPort` (plan 157, adapter `pij-unisphere` over
 `unisphere-sdk`). Its `outcome` is one of:
 - `known`: carries `status`, `cacheState` and `elapsedMs`.
 - `unbound`: no `harness_session`, so the source isn't asked.
-- `unsupported` (`harness`)
+- `unsupported` (`harness`): Claude (`~/.claude*/projects`), OMP
+  (`~/.omp/agent/sessions`) and Codex (`$CODEX_HOME/sessions`, default
+  `~/.codex/sessions`) are readable; Pi and Copilot are not yet.
 - `not-found` (`detail`)
 - `failed` (`error`): the rest of the card is still served.
 

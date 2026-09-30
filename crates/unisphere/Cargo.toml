@@ -19,3 +19,5 @@ tokio = { workspace = true }
 unisphere-sdk = { workspace = true }
 unisphere-loader-jsonl = { workspace = true }
 unisphere-adapter-claude = { workspace = true }
+unisphere-adapter-omp = { workspace = true }
+unisphere-adapter-codex = { workspace = true }

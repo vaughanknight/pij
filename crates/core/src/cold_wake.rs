@@ -29,8 +29,17 @@ pub const COLD_WAKE_CODE: &str = "E-RS-COLD-WAKE";
 pub const COLD_WAKE_FORCED_KIND: &str = "send.cold-wake-forced";
 
 /// List price of a 1-hour prompt-cache write, in US dollars per million tokens.
-/// An ESTIMATE for the refusal message only; it never decides anything.
+/// An ESTIMATE for the refusal message only; it never decides anything. Keys
+/// are [`price_key`] form: no provider prefix, `-` between version numbers.
 pub const CACHE_WRITE_USD_PER_MTOK: &[(&str, f64)] = &[("claude-opus-5-5", 8.0)];
+
+/// The price-table key for a harness's model id. Harnesses name one model
+/// differently: Claude Code says `claude-opus-5-5`, OMP says
+/// `github-copilot/claude-opus-5.5`. Drop any provider prefix and spell the
+/// version with dashes.
+pub fn price_key(model: &str) -> String {
+    model.rsplit('/').next().unwrap_or(model).replace('.', "-")
+}
 
 /// What the guard concluded for one recipient.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -108,9 +117,10 @@ pub fn check(state: SystemState, status: &SessionStatusBlock, now_ms: u64) -> Co
         Fact::Unknown => None,
     };
     let estimate_usd = model.as_deref().and_then(|model| {
+        let key = price_key(model);
         CACHE_WRITE_USD_PER_MTOK
             .iter()
-            .find(|(priced, _)| *priced == model)
+            .find(|(priced, _)| *priced == key)
             .map(|(_, usd)| context_tokens as f64 * usd / 1_000_000.0)
     });
     ColdCheck::Cold {
@@ -190,6 +200,28 @@ mod tests {
             }),
             cache_state: Fact::Unknown,
             elapsed_ms: 0,
+        }
+    }
+
+    /// The same model reported three ways (Claude Code, OMP's provider-qualified
+    /// id, a dotted version) is one price, not "unknown".
+    #[test]
+    fn a_provider_qualified_or_dotted_model_id_finds_its_price() {
+        let idle = 2 * COLD_IDLE_MS;
+        for model in [
+            "claude-opus-5-5",
+            "claude-opus-5.5",
+            "github-copilot/claude-opus-5.5",
+            "anthropic/claude-opus-5-5",
+        ] {
+            let ColdCheck::Cold { estimate_usd, .. } = check(
+                SystemState::Idle,
+                &known(Some(500_000), Some(NOW - idle), Some(model)),
+                NOW,
+            ) else {
+                panic!("{model}: expected cold");
+            };
+            assert_eq!(estimate_usd, Some(4.0), "{model}");
         }
     }
 
