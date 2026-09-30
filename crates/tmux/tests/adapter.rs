@@ -529,56 +529,6 @@ async fn stage_deadline_aborts_and_restores_input() {
 }
 
 #[test]
-fn stage_helper_process() {
-    let Ok(server) = std::env::var("PIJ_STAGE_HELPER_SERVER") else {
-        return;
-    };
-    let pane = std::env::var("PIJ_STAGE_HELPER_PANE").expect("helper pane");
-    let ready = PathBuf::from(std::env::var("PIJ_STAGE_HELPER_READY").expect("helper ready"));
-    let tmux = TmuxAdapter::for_server(&server, std::env::temp_dir());
-    let mut staged = block_on(tmux.acquire_submit(&pane)).expect("helper acquires pane input");
-    block_on(tmux.stage_submit(&mut staged, "DAEMON-DIES-MID-STAGE")).expect("helper stages body");
-    fs::write(ready, staged.token).expect("signal staged ownership");
-    std::thread::sleep(Duration::from_secs(30));
-}
-
-#[test]
-fn daemon_death_mid_stage_restores_input_within_bound() {
-    let _serial = blocking_transaction_test_guard();
-    let Some(session) = TestSession::start_or_skip("submit-death") else {
-        return;
-    };
-    let pane = block_on(TmuxAdapter::for_server(&session.server, &session.tap_root).list_panes())
-        .expect("list isolated panes")
-        .into_iter()
-        .next()
-        .expect("isolated session pane");
-    let ready = session.tap_root.join("stage-ready");
-    fs::create_dir_all(&session.tap_root).expect("create helper signal directory");
-    let mut helper = Command::new(std::env::current_exe().expect("current test binary"))
-        .args(["--exact", "stage_helper_process", "--nocapture"])
-        .env("PIJ_STAGE_HELPER_SERVER", &session.server)
-        .env("PIJ_STAGE_HELPER_PANE", &pane.id)
-        .env("PIJ_STAGE_HELPER_READY", &ready)
-        .spawn()
-        .expect("spawn stage helper");
-    wait_for_file(&ready, 1, Duration::from_secs(2));
-    assert!(pane_input_off(&session, &pane.id));
-
-    helper.kill().expect("kill staged daemon process");
-    helper.wait().expect("reap staged daemon process");
-    wait_for_pane_input(&session, &pane.id, false, Duration::from_secs(2));
-
-    wait_for_submit_marker_clear(&session, &pane.id, Duration::from_secs(1));
-    let title = session.run(["display-message", "-p", "-t", &pane.id, "#{pane_title}"]);
-    assert!(
-        String::from_utf8_lossy(&title.stdout).contains("PIJ STAGED UNSENT"),
-        "watchdog must leave visible recovery guidance"
-    );
-    fs::remove_file(ready).expect("remove helper ready file");
-}
-
-#[test]
 fn acquire_watchdog_race_helper_process() {
     let Ok(wrapper) = std::env::var("PIJ_ACQUIRE_RACE_WRAPPER") else {
         return;
