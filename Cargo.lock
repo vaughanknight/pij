@@ -2455,7 +2455,7 @@ checksum = "7df058c713841ad818f1dc5d3fd88063241cc61f49f5fbea4b951e8cf5a8d71d"
 [[package]]
 name = "unisphere-adapter-claude"
 version = "0.1.0"
-source = "git+https://github.com/AI-Substrate/Unisphere.git?rev=1929c04101f42766ba780c0ae13ca831b3d6c31b#1929c04101f42766ba780c0ae13ca831b3d6c31b"
+source = "git+https://github.com/AI-Substrate/Unisphere.git?rev=1daadc035af2fa356aa72babaaea0c39760d385e#1daadc035af2fa356aa72babaaea0c39760d385e"
 dependencies = [
  "serde_json",
  "time",
@@ -2465,7 +2465,7 @@ dependencies = [
 [[package]]
 name = "unisphere-adapter-codex"
 version = "0.1.0"
-source = "git+https://github.com/AI-Substrate/Unisphere.git?rev=1929c04101f42766ba780c0ae13ca831b3d6c31b#1929c04101f42766ba780c0ae13ca831b3d6c31b"
+source = "git+https://github.com/AI-Substrate/Unisphere.git?rev=1daadc035af2fa356aa72babaaea0c39760d385e#1daadc035af2fa356aa72babaaea0c39760d385e"
 dependencies = [
  "serde_json",
  "time",
@@ -2475,7 +2475,7 @@ dependencies = [
 [[package]]
 name = "unisphere-adapter-omp"
 version = "0.1.0"
-source = "git+https://github.com/AI-Substrate/Unisphere.git?rev=1929c04101f42766ba780c0ae13ca831b3d6c31b#1929c04101f42766ba780c0ae13ca831b3d6c31b"
+source = "git+https://github.com/AI-Substrate/Unisphere.git?rev=1daadc035af2fa356aa72babaaea0c39760d385e#1daadc035af2fa356aa72babaaea0c39760d385e"
 dependencies = [
  "serde_json",
  "time",
@@ -2485,7 +2485,7 @@ dependencies = [
 [[package]]
 name = "unisphere-core"
 version = "0.1.0"
-source = "git+https://github.com/AI-Substrate/Unisphere.git?rev=1929c04101f42766ba780c0ae13ca831b3d6c31b#1929c04101f42766ba780c0ae13ca831b3d6c31b"
+source = "git+https://github.com/AI-Substrate/Unisphere.git?rev=1daadc035af2fa356aa72babaaea0c39760d385e#1daadc035af2fa356aa72babaaea0c39760d385e"
 dependencies = [
  "serde",
  "serde_json",
@@ -2496,7 +2496,7 @@ dependencies = [
 [[package]]
 name = "unisphere-loader-jsonl"
 version = "0.1.0"
-source = "git+https://github.com/AI-Substrate/Unisphere.git?rev=1929c04101f42766ba780c0ae13ca831b3d6c31b#1929c04101f42766ba780c0ae13ca831b3d6c31b"
+source = "git+https://github.com/AI-Substrate/Unisphere.git?rev=1daadc035af2fa356aa72babaaea0c39760d385e#1daadc035af2fa356aa72babaaea0c39760d385e"
 dependencies = [
  "libc",
  "sha2",
@@ -2506,7 +2506,7 @@ dependencies = [
 [[package]]
 name = "unisphere-sdk"
 version = "0.1.0"
-source = "git+https://github.com/AI-Substrate/Unisphere.git?rev=1929c04101f42766ba780c0ae13ca831b3d6c31b#1929c04101f42766ba780c0ae13ca831b3d6c31b"
+source = "git+https://github.com/AI-Substrate/Unisphere.git?rev=1daadc035af2fa356aa72babaaea0c39760d385e#1daadc035af2fa356aa72babaaea0c39760d385e"
 dependencies = [
  "globset",
  "regex",
