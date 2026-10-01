@@ -587,8 +587,13 @@ mod tests {
     fn a_wake_is_priced_as_a_cold_write_plus_five_calls() {
         let opus = wake_estimate_usd("claude-opus-5-5", 600_000).unwrap();
         assert_eq!(format!("{opus:.2}"), "5.39");
+        // Pinned to consult_costs.py (5-call consult) to the micro-dollar.
+        let close = |usd: f64, want: f64| (usd - want).abs() < 1e-6;
+        assert!(close(opus, 5.39289), "{opus}");
         let sonnet = wake_estimate_usd("github-copilot/claude-sonnet-5.5", 600_000).unwrap();
-        assert!(sonnet < opus, "{sonnet} < {opus}");
+        assert!(close(sonnet, 2.93803), "{sonnet}");
+        let haiku = wake_estimate_usd("claude-haiku-4-5", 150_000).unwrap();
+        assert!(close(haiku, 0.389015), "{haiku}");
         assert_eq!(wake_estimate_usd("some-new-model", 600_000), None);
     }
 

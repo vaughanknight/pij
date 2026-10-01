@@ -2561,6 +2561,24 @@ mod tests {
         assert_eq!(json["data"]["held"].as_array().expect("holds").len(), 2);
     }
 
+    /// Plan 160: the daemon renders the size lines; `pij-rs state` prints them.
+    #[test]
+    fn state_prints_the_daemons_size_lines() {
+        let lines = [
+            "context 720k / 1M · last call 2h ago · cache 1h (cold 1h) · 3 compactions",
+            "❄ cold-wake guard: a normal send is refused; waking it costs ~$6.45 (--fyi holds it for $0 now)",
+        ];
+        let card: pij_daemon::http::StateCard = serde_json::from_value(serde_json::json!({
+            "id": "pij-cold", "state": "idle", "liveness": "active", "cwd": "/abs/tree",
+            "harness": "claude", "unsupported": [], "held": [], "sizeLines": lines,
+        }))
+        .expect("typed daemon state");
+        let human = super::render_state(&pij_core::model::Envelope::ok("pij state", card), false);
+        for line in lines {
+            assert!(human.contains(&format!("\n{line}")), "{human}");
+        }
+    }
+
     #[test]
     fn state_exposes_delivery_deferrals_without_calling_them_delivered() {
         let card: pij_daemon::http::StateCard = serde_json::from_value(serde_json::json!({

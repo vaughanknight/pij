@@ -7367,3 +7367,31 @@ async fn a_slow_seat_makes_the_list_wait_a_bounded_time_and_show_unknown() {
     assert_eq!(cold["sessionStatus"]["outcome"], "failed");
     server.abort();
 }
+
+/// Review P7c: the seats are read in PARALLEL. Twenty wedged seats cost the
+/// list about one bound (200 ms), not twenty (4 s serialised).
+#[tokio::test]
+async fn many_slow_seats_cost_the_list_one_bound_not_one_each() {
+    let mut source = pij_testkit::fakes::FakeSessionStatus::new();
+    let mut registry = FakeRegistry::new();
+    for n in 0..20 {
+        let session = format!("hang-{n}");
+        source = source.with_hang(&session);
+        let mut seat = SeatDescriptor::new(format!("pij-slow-{n}"), Harness::Claude, "/abs/tree");
+        seat.harness_session = Some(session);
+        registry = registry.with_seat(seat);
+    }
+    let queue = Arc::new(FakeQueue::new(1_024).expect("valid fake queue policy"));
+    let mut services = test_services(Arc::new(registry), queue, Arc::new(FakeSpine::new())).await;
+    services.session_status = Arc::new(source);
+    let (addr, server) = spawn(router_with_config(services, config("key", &[]))).await;
+    let started = std::time::Instant::now();
+    let sized = get_seats(addr, "?sizes=true").await;
+    let elapsed = started.elapsed();
+    assert_eq!(sized["data"]["seats"].as_array().expect("seats").len(), 20);
+    assert!(
+        elapsed < std::time::Duration::from_millis(1_500),
+        "{elapsed:?}"
+    );
+    server.abort();
+}

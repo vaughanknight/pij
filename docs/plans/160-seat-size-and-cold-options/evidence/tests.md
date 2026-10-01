@@ -27,3 +27,17 @@
 
 ## Shared golden
 `crates/testkit/fixtures/golden/cli/list-sized.{json,txt}` is rendered identically by `pij_cli::roster::render_table` (Rust test `the_sized_roster_table_matches_the_committed_golden`) and `renderRosterTable` (TS).
+
+## Review round 1 (uther: tests only)
+Each new test fails under the survivor it targets:
+
+| mutant | result |
+|---|---|
+| P9-list_sized-plain-path | KILLED list_requests_ask_the_daemon_for_sizes |
+| P9b-list_scoped-plain-path | KILLED list_requests_ask_the_daemon_for_sizes |
+| P10-state-drops-size-lines | KILLED state_prints_the_daemons_size_lines |
+| P7c-reads-serialised | KILLED many_slow_seats_cost_the_list_one_bound_not_one_each |
+| P1f-sonnet-price | KILLED a_wake_is_priced_as_a_cold_write_plus_five_calls |
+| P1g-haiku-price | KILLED a_wake_is_priced_as_a_cold_write_plus_five_calls |
+
+The Sonnet and Haiku prices are pinned to `consult_costs.py` (5-call consult): Opus 600k $5.39289, Sonnet 600k $2.93803, Haiku 150k $0.389015.
