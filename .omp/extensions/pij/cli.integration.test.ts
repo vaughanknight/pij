@@ -344,7 +344,8 @@ describe("closed rs-only CLI", () => {
 		}
 		expect(operationRequests()).toEqual(
 			Array.from({ length: 2 }, () => ({
-				path: verb === "list" ? "/v1/seats" : "/v1/shim/sessions",
+				// Plan 160: the shim always asks for each seat's size.
+				path: verb === "list" ? "/v1/seats?sizes=true" : "/v1/shim/sessions",
 				method: "GET",
 				authorization: `Bearer ${KEY}`,
 				body: "",
@@ -381,6 +382,7 @@ describe("closed rs-only CLI", () => {
 				["folder", folder],
 				["parent", parent],
 				["scope", "local"],
+				["sizes", "true"],
 			].sort(),
 		);
 		expect(legacySnapshot()).toBe(before);
