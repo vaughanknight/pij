@@ -1357,10 +1357,23 @@ async fn run(cli: Cli) -> ExitCode {
         }
         Command::List { args } => {
             let as_json = cli.json || args.iter().any(|arg| arg == "--json");
-            if args.iter().all(|arg| arg == "--json") {
-                return emit(&client.list().await, as_json);
+            let response = if args.iter().all(|arg| arg == "--json") {
+                client.list_sized().await
+            } else {
+                client.list_scoped(&args, &caller_context()).await
+            };
+            if as_json || !response.ok {
+                return emit(&response, as_json);
             }
-            emit(&client.list_scoped(&args, &caller_context()).await, as_json)
+            let data = response
+                .raw_json
+                .as_deref()
+                .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+                .map(|envelope| envelope["data"].clone())
+                .or_else(|| serde_json::to_value(&response.data).ok())
+                .unwrap_or_default();
+            println!("{}", pij_cli::roster::render_table(&data));
+            ExitCode::SUCCESS
         }
         Command::State { id } => {
             let response = client.state(&id).await;
@@ -2097,6 +2110,9 @@ fn render_state(envelope: &Envelope<pij_daemon::http::StateCard>, json: bool) ->
         if let Some(block) = &card.session_status {
             let _ = write!(output, "\nsession: {}", render_session_status(block));
         }
+        for line in &card.size_lines {
+            let _ = write!(output, "\n{line}");
+        }
     }
     output
 }
@@ -2543,6 +2559,24 @@ mod tests {
         let json: serde_json::Value =
             serde_json::from_str(&super::render_state(&response, true)).expect("unadorned JSON");
         assert_eq!(json["data"]["held"].as_array().expect("holds").len(), 2);
+    }
+
+    /// Plan 160: the daemon renders the size lines; `pij-rs state` prints them.
+    #[test]
+    fn state_prints_the_daemons_size_lines() {
+        let lines = [
+            "context 720k / 1M · last call 2h ago · cache 1h (cold 1h) · 3 compactions",
+            "❄ cold-wake guard: a normal send is refused; waking it costs ~$6.45 (--fyi holds it for $0 now)",
+        ];
+        let card: pij_daemon::http::StateCard = serde_json::from_value(serde_json::json!({
+            "id": "pij-cold", "state": "idle", "liveness": "active", "cwd": "/abs/tree",
+            "harness": "claude", "unsupported": [], "held": [], "sizeLines": lines,
+        }))
+        .expect("typed daemon state");
+        let human = super::render_state(&pij_core::model::Envelope::ok("pij state", card), false);
+        for line in lines {
+            assert!(human.contains(&format!("\n{line}")), "{human}");
+        }
     }
 
     #[test]

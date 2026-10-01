@@ -406,7 +406,8 @@ describe("cutover retains shipped rs surfaces without legacy reads", () => {
 	});
 
 	it.each([
-		["list", "/v1/seats"],
+		// Plan 160: the shim always asks for each seat's size.
+		["list", "/v1/seats?sizes=true"],
 		["sessions", "/v1/shim/sessions"],
 	] as const)("bare %s keeps its real GET endpoint and complete envelope", async (verb, path) => {
 		const raw = canonicalBytes({ ok: true, command: `pij ${verb}`, v: 2, data: { rows: [] } });
@@ -454,8 +455,8 @@ describe("cutover retains shipped rs surfaces without legacy reads", () => {
 		const url = new URL(request.path, `http://${ADDR}`);
 		expect(url.pathname).toBe("/v1/seats");
 		expect(url.hash).toBe("");
-		expect([...url.searchParams]).toHaveLength(Object.keys(filters).length);
-		expect(Object.fromEntries(url.searchParams)).toEqual(filters);
+		expect([...url.searchParams]).toHaveLength(Object.keys(filters).length + 1);
+		expect(Object.fromEntries(url.searchParams)).toEqual({ ...filters, sizes: "true" });
 		expect(result.rawEnvelope).toBe(raw);
 		expect(renderRsAnswer(result.row, result.payload, argv, result.rawEnvelope)).toEqual({
 			kind: "json",

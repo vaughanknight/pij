@@ -277,7 +277,13 @@ impl DaemonClient {
         self.get("pij list", "/v1/seats").await
     }
 
-    /// Forward list scope arguments to the daemon's shared boolean/cwd parser.
+    /// [`Self::list`] with each local seat's size and coldness (plan 160).
+    pub async fn list_sized(&self) -> Envelope<FederatedRoster> {
+        self.get("pij list", "/v1/seats?sizes=true").await
+    }
+
+    /// Forward list scope arguments to the daemon's shared boolean/cwd parser,
+    /// with each local seat's size and coldness (plan 160).
     pub async fn list_scoped(
         &self,
         args: &[String],
@@ -288,7 +294,7 @@ impl DaemonClient {
             .collect();
         self.post(
             "pij list",
-            "/v1/seats",
+            "/v1/seats?sizes=true",
             &serde_json::json!({"argv":argv,"caller":caller}),
         )
         .await
@@ -751,6 +757,54 @@ mod tests {
     use serde_json::json;
 
     use super::{DaemonClient, Registration, SendRequest, StreamFrame, decode_response};
+
+    /// Plan 160: `pij-rs list` asks the daemon for sizes on both of its paths
+    /// (plain or `--json`, and with scope arguments such as `--here`).
+    #[tokio::test]
+    async fn list_requests_ask_the_daemon_for_sizes() {
+        for scoped in [false, true] {
+            let state_dir = pij_testkit::fresh_store::fresh_dir("cli-list-sizes");
+            std::fs::write(state_dir.join("daemon.key"), "test-token").expect("write key");
+            let listener = TcpListener::bind("127.0.0.1:0").expect("bind fake daemon");
+            let addr = listener.local_addr().expect("fake daemon address");
+            let (request_tx, request_rx) = mpsc::channel();
+            let body =
+                r#"{"ok":true,"command":"pij list","v":2,"data":{"seats":[],"unavailable":[]}}"#;
+            let server = std::thread::spawn(move || {
+                let (mut socket, _) = listener.accept().expect("accept client");
+                let mut request = [0_u8; 4096];
+                let read = socket.read(&mut request).expect("read request");
+                request_tx
+                    .send(String::from_utf8_lossy(&request[..read]).into_owned())
+                    .expect("send captured request");
+                write!(
+                    socket,
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                )
+                .expect("write response");
+            });
+            let client =
+                DaemonClient::new(&state_dir, &addr.to_string()).expect("construct client");
+            let reply = if scoped {
+                let caller: pij_daemon::http::CallerContext =
+                    serde_json::from_value(json!({})).expect("empty caller");
+                client.list_scoped(&["--here".to_string()], &caller).await
+            } else {
+                client.list_sized().await
+            };
+            assert!(reply.ok, "{scoped}: {:?}", reply.meta);
+            let request = request_rx.recv().expect("captured request");
+            let line = request.lines().next().unwrap_or_default();
+            let method = if scoped { "POST" } else { "GET" };
+            assert!(
+                line.starts_with(&format!("{method} /v1/seats?sizes=true ")),
+                "{scoped}: {line}"
+            );
+            server.join().expect("fake daemon");
+        }
+    }
 
     #[test]
     fn registration_requires_pid_and_start_time_together() {

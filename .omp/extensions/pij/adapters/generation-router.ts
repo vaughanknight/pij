@@ -315,6 +315,7 @@ function readQuery(
 		}
 		query.set(name, value);
 	}
+	for (const [name, value] of Object.entries(row.fixedQuery ?? {})) query.set(name, value);
 	if (query.has("here")) {
 		if (query.get("here") === "false") query.delete("here");
 		else {

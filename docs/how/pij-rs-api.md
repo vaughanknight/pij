@@ -440,6 +440,23 @@ Each fact is `{"value":V,"basis":"native|derived|table@vN|mtime-fallback"}` or
 The source keeps one read position per seat, so a warm read folds only appended bytes.
 Busy/idle is `state`, never this block. The human CLI prints one `session:` line.
 
+**Size and coldness (plan 160).** Next to `sessionStatus`, the card carries fields derived on the daemon clock. Each is absent when its fact is unknown:
+- `contextUsed`: context tokens in use.
+- `idleMs`: milliseconds since the last API call.
+- `cacheState`: `{state: warm|cold, expiresInMs|expiredForMs}`.
+- `coldWake`: `{wouldRefuse, estimateUsd?}`. This is `cold_wake::check` itself, so it is exactly what the guard would do with a normal send now.
+
+`sizeLines` holds the rendered human lines, which every client prints verbatim:
+- `context 720k / 1M · last call 2h ago · cache 1h (cold 1h) · 3 compactions`;
+- when the guard would refuse, `❄ cold-wake guard: a normal send is refused; waking it costs ~$6.45 (--fyi holds it for $0 now)`.
+
+`GET`/`POST /v1/seats?sizes=true` adds the same `sessionStatus` and derived fields to each **local** row, plus `sizeColumns` (`[CTX, IDLE, CACHE, ❄-or-empty]`). It is opt-in, so federation fan-in and extension rosters don't pay for it. The local seats are read in parallel with a 200 ms wait each. A seat that does not answer in time shows `?`, and its read keeps going in the background, so the next list is warm. Both `pij list` (shim) and `pij-rs list` ask for sizes. Their human output is one table (golden [`cli/list-sized.txt`](../../crates/testkit/fixtures/golden/cli/list-sized.txt) from [`cli/list-sized.json`](../../crates/testkit/fixtures/golden/cli/list-sized.json)):
+```
+  SEAT             HARNESS  STATE    CTX   IDLE  CACHE
+❄ pij-cold-claude  claude   idle     720k  2h    cold 1h
+  pij-warm-omp     omp      working  57k   3m    warm
+```
+
 The one closed severity order is the exported
 [`pij_core::status::BADGE_SEVERITY`](../../crates/core/src/status.rs).
 [`badge_of`](../../crates/core/src/status.rs) selects the worst mechanical state
@@ -553,7 +570,7 @@ pij-rs send --to <seat> --force --reason '<why>' --body 'text'   # native form
 
 | Surface | Contract |
 |---|---|
-| Refusal | HTTP 400, `{ok:false, error:"refused", meta:"E-RS-COLD-WAKE: pij-x is cold (idle 1h52m, 720k context). Waking it rewrites ~720k tokens ≈ $5.76 at list price. Use --fyi to hold it, or --force --reason \"<why>\"."}`. Nothing is sent. The price is a list-price estimate; an unpriced model says `(price unknown for this model)`. The shim prints the meta alone on stderr; the OMP/Pi and Copilot `pij_send` tools return it verbatim as the tool error. |
+| Refusal | HTTP 400, `{ok:false, error:"refused", meta:…}`. Nothing is sent. Since plan 160 the meta lists the sender's options, each priced (golden [`cold-wake/refusal.txt`](../../crates/testkit/fixtures/golden/cold-wake/refusal.txt)):<br>`E-RS-COLD-WAKE: ❄ pij-x is cold (720k, idle 1h52m). Options:`<br>`  --fyi                  hold for its next turn          $0 now`<br>`  --force --reason "…"   wake on its current model       ~$6.45`<br>`Estimates at list price: a 1-hour cache write of the whole context, plus about 5 calls.`<br>The wake estimate is `cold_wake::wake_estimate_usd`. The first call writes the whole context to the 1-hour cache. Each of the 4 further calls reads the context so far, writes ~1,585 new tokens and outputs ~590, which are the 2026-09-28 usage study's means. Every call outputs ~590. Prices come from the `PRICES_USD_PER_MTOK` table (Opus 5.5, Sonnet 5.5, Haiku 4.5, list prices checked 2026-10-01). Model ids are normalised first, and an unpriced model says `price unknown`. The shim prints the meta alone on stderr; the OMP/Pi and Copilot `pij_send` tools return it verbatim as the tool error. |
 | POST `/v1/send` `"force": true, "reason": "<why>"` | Wakes a cold recipient anyway. `force` without a non-empty `reason` is refused with a meta starting `E-RS-COLD-WAKE:` that names `--reason`. The tools refuse it too, before any request. |
 | Spine `send.cold-wake-forced` | The audit of every forced cold wake, persisted before the wake. `seat` is the recipient; payload `{from, msg_id, reason, context_tokens, idle_ms, model, estimate_usd}`. |
 | Receipt `data.cold_check` | `clear`, `busy`, `forced` or `unknown: <why>` on every guarded send; absent when the guard did not run. The shim prints `— cold-check: <verdict>`; the OMP/Pi tool appends `(cold-check: <verdict>)`. |

@@ -2435,8 +2435,12 @@ async fn seat_state(State(state): State<AppState>, Json(request): Json<StateRequ
         clock,
     )
     .await;
+    let size = pij_core::cold_wake::seat_size(seat.state, &session_status, clock);
+    let size_lines = pij_core::cold_wake::size_lines(&session_status, &size);
     let mut projection = state_card(seat, liveness, &state.machine_alias, card, state_record);
     projection.card.session_status = Some(session_status);
+    projection.card.size = size;
+    projection.card.size_lines = size_lines;
     projection.card.held = match active_holds(&state, &id).await {
         Ok(holds) => holds,
         Err(error) => return internal("pij state", error),
@@ -2613,6 +2617,8 @@ fn state_card(
             delivery_deferrals: Vec::new(),
             pending_fyis: 0,
             session_status: None,
+            size: pij_core::cold_wake::SeatSize::default(),
+            size_lines: Vec::new(),
             unsupported: unsupported_state_fields(),
         },
     }
@@ -2657,6 +2663,11 @@ struct SeatQuery {
     parent: Option<SeatId>,
     scope: Option<String>,
     here: Option<String>,
+    /// Plan 160: read each local seat's session facts and add its size and
+    /// coldness. Opt-in, because other readers of the roster (federation
+    /// fan-in, extension rosters) poll it and need none of it.
+    #[serde(default)]
+    sizes: bool,
 }
 
 #[derive(Serialize)]
@@ -2667,6 +2678,66 @@ struct SeatProjection<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     badge: Option<&'a str>,
     last_event_at: Option<u64>,
+    #[serde(rename = "sessionStatus", skip_serializing_if = "Option::is_none")]
+    session_status: Option<pij_core::session_status::SessionStatusBlock>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    size: Option<pij_core::cold_wake::SeatSize>,
+    /// CTX, IDLE, CACHE and the ❄ marker, rendered once here so every client
+    /// prints the same columns.
+    #[serde(rename = "sizeColumns", skip_serializing_if = "Option::is_none")]
+    size_columns: Option<[String; 4]>,
+}
+
+/// How long `pij list` waits for one seat's session facts (plan 160). The
+/// reads run in parallel, so this bounds the whole list. A read that runs over
+/// keeps going in the background (the source detaches it and keeps its cursor),
+/// so the next list is warm; this one shows the seat's size as unknown.
+const LIST_STATUS_WAIT: Duration = Duration::from_millis(200);
+
+/// Every local seat's session facts and derived size, read in parallel with a
+/// bounded wait each. Remote seats (another machine's roster) get none.
+async fn list_sizes(
+    state: &AppState,
+    seats: &[SeatDescriptor],
+) -> Vec<
+    Option<(
+        pij_core::session_status::SessionStatusBlock,
+        pij_core::cold_wake::SeatSize,
+    )>,
+> {
+    let now_ms = system_time_ms().unwrap_or_default();
+    let mut reads = tokio::task::JoinSet::new();
+    for (index, seat) in seats.iter().enumerate() {
+        if seat.machine.as_deref() != Some(state.machine_alias.as_str()) {
+            continue;
+        }
+        let source = Arc::clone(&state.services.session_status);
+        let (id, harness, session, seat_state) = (
+            seat.id.clone(),
+            seat.harness,
+            seat.harness_session.clone(),
+            seat.state,
+        );
+        reads.spawn(async move {
+            let block = tokio::time::timeout(
+                LIST_STATUS_WAIT,
+                session_status_block(source.as_ref(), &id, harness, session, now_ms),
+            )
+            .await
+            .unwrap_or_else(|_| pij_core::session_status::SessionStatusBlock::Failed {
+                error: format!("no answer within {} ms", LIST_STATUS_WAIT.as_millis()),
+            });
+            let size = pij_core::cold_wake::seat_size(seat_state, &block, now_ms);
+            (index, block, size)
+        });
+    }
+    let mut sizes = vec![None; seats.len()];
+    while let Some(read) = reads.join_next().await {
+        if let Ok((index, block, size)) = read {
+            sizes[index] = Some((block, size));
+        }
+    }
+    sizes
 }
 
 #[derive(Serialize)]
@@ -2753,15 +2824,27 @@ async fn seats(State(state): State<AppState>, Query(query): Query<SeatQuery>) ->
                 .as_ref()
                 .is_none_or(|parent| seat.parent.as_ref() == Some(parent))
     });
+    let mut sizes = if query.sizes {
+        list_sizes(&state, &roster.seats).await
+    } else {
+        vec![None; roster.seats.len()]
+    };
     let projection = FederatedRosterProjection {
         seats: roster
             .seats
             .iter()
-            .map(|seat| SeatProjection {
-                seat,
-                generation: "rs",
-                badge: seat.badge.as_deref(),
-                last_event_at: seat.last_event_at,
+            .zip(sizes.iter_mut())
+            .map(|(seat, sized)| {
+                let (session_status, size) = sized.take().unzip();
+                SeatProjection {
+                    seat,
+                    generation: "rs",
+                    badge: seat.badge.as_deref(),
+                    last_event_at: seat.last_event_at,
+                    size_columns: size.as_ref().map(pij_core::cold_wake::size_columns),
+                    session_status,
+                    size,
+                }
             })
             .collect(),
         unavailable: &roster.unavailable,

@@ -513,3 +513,24 @@ sha256 = "d7ec1567128c7dac360ab6fa154288edb09f20122cbc36995d8c6df9cfa6a63b"
 bytes = 1213
 note = "The same live tool call after resizing the pane to 36 columns: the spinner row truncates to 'Fiddle-faddling… (12s)' and the footer is cut short. Plan 157 re-review 3."
 answer = "Busy: a truncated spinner row still marks a turn in progress; HarnessPort::busy is true."
+
+[[fixture]]
+path = "golden/cold-wake/refusal.txt"
+sha256 = "726464d75adbfbe2ef295823cfc5480b547e040edd24c15136c4b220316d5445"
+bytes = 280
+note = "Plan 160: the E-RS-COLD-WAKE refusal, rendered by pij_core::cold_wake::refusal for a 720k-token Claude Opus 5.5 seat idle 1h52m."
+answer = "Header `❄ <seat> is cold (<ctx>, idle <dur>). Options:`, then one aligned row per option (`--fyi` hold for its next turn, $0 now; `--force --reason` wake on its current model, ~$ estimate), then the estimate basis line. No trailing newline."
+
+[[fixture]]
+path = "golden/cli/list-sized.json"
+sha256 = "954e25c03e6d92bf7d178ef314977e27d1c43e94f7d1c927379b7fc62f82165b"
+bytes = 782
+note = "Plan 160: a /v1/seats?sizes=true payload. A cold Claude seat, a warm working OMP seat, a Copilot seat with unknown context, a remote seat without size columns, and an unavailable peer."
+answer = "Input for pij list's human table: both the Rust CLI (pij_cli::roster::render_table) and the TS shim (renderRosterTable) must render list-sized.txt from it."
+
+[[fixture]]
+path = "golden/cli/list-sized.txt"
+sha256 = "359b3b78e2eef53919518e737bee61cdde158cc1922cf9d9f933e8cef5c81420"
+bytes = 310
+note = "Plan 160: pij list's human table rendered from list-sized.json."
+answer = "Columns SEAT, HARNESS, STATE, CTX, IDLE, CACHE padded two spaces apart. ❄ marks a row the guard would refuse. A remote seat shows `id@machine` and `-` sizes. Unavailable peers are listed after the rows. No trailing newline."
