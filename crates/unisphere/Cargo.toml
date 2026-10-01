@@ -21,3 +21,4 @@ unisphere-loader-jsonl = { workspace = true }
 unisphere-adapter-claude = { workspace = true }
 unisphere-adapter-omp = { workspace = true }
 unisphere-adapter-codex = { workspace = true }
+unisphere-adapter-copilot-cli = { workspace = true }

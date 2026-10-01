@@ -420,6 +420,9 @@ pub async fn build_services(config: &Config, pane_signal_dir: &Path) -> Result<S
                         .map(std::path::PathBuf::from)
                         .or_else(|| home.as_ref().map(|home| home.join(".codex")))
                         .map(|codex| codex.join("sessions")),
+                    copilot_sessions: home
+                        .as_ref()
+                        .map(|home| home.join(".copilot/session-state")),
                 },
             ))
         }
