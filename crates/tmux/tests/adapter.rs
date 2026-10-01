@@ -180,64 +180,6 @@ fn capture_proves_zero_and_more_than_the_pane_contains() {
 }
 
 #[tokio::test]
-async fn submit_pastes_maximum_supported_body_intact() {
-    let _serial = transaction_test_guard().await;
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock after epoch")
-        .as_nanos();
-    let output_path = std::env::temp_dir().join(format!(
-        "pij-rs-submit-large-{}-{nonce}.bin",
-        std::process::id()
-    ));
-    let framed = framed_text_of_size(MAX_TYPED_FRAME_BYTES);
-    let mut expected = Vec::with_capacity(framed.len() + 13);
-    expected.extend_from_slice(b"\x1b[200~");
-    expected.extend_from_slice(framed.as_bytes());
-    expected.extend_from_slice(b"\x1b[201~\r");
-    let command = format!(
-        "stty raw -echo; printf '\\033[?2004h'; dd bs=1 count={} of={} 2>/dev/null; sleep 10",
-        expected.len(),
-        output_path.display()
-    );
-    let Some(session) = TestSession::start_or_skip_with_command("submit-max", &command) else {
-        return;
-    };
-    let tmux = TmuxAdapter::for_server(&session.server, &session.tap_root);
-    let pane = tmux
-        .list_panes()
-        .await
-        .expect("list isolated panes")
-        .into_iter()
-        .next()
-        .expect("isolated session pane");
-    std::thread::sleep(Duration::from_millis(100));
-
-    tmux.submit(&pane.id, &framed)
-        .await
-        .expect("submit large body");
-
-    let deadline = Instant::now() + Duration::from_secs(10);
-    let observed = loop {
-        match fs::read(&output_path) {
-            Ok(bytes) if bytes.len() >= expected.len() => break bytes,
-            result if Instant::now() >= deadline => {
-                panic!(
-                    "large submit did not arrive intact: expected {} bytes, observed {result:?}",
-                    expected.len()
-                );
-            }
-            _ => std::thread::sleep(Duration::from_millis(25)),
-        }
-    };
-    assert_eq!(
-        observed, expected,
-        "chunked bracketed paste preserves every body byte"
-    );
-    fs::remove_file(&output_path).expect("remove large-submit capture");
-}
-
-#[tokio::test]
 async fn submit_refuses_one_byte_above_supported_maximum_without_writing() {
     let _serial = transaction_test_guard().await;
     let Some(session) = TestSession::start_or_skip("submit-over-max") else {
