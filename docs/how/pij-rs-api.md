@@ -415,8 +415,12 @@ transcript through `SessionStatusPort` (plan 157, adapter `pij-unisphere` over
 - `known`: carries `status`, `cacheState` and `elapsedMs`.
 - `unbound`: no `harness_session`, so the source isn't asked.
 - `unsupported` (`harness`): Claude (`~/.claude*/projects`), OMP
-  (`~/.omp/agent/sessions`) and Codex (`$CODEX_HOME/sessions`, default
-  `~/.codex/sessions`) are readable; Pi and Copilot are not yet.
+  (`~/.omp/agent/sessions`), Codex (`$CODEX_HOME/sessions`, default
+  `~/.codex/sessions`) and Copilot CLI (`~/.copilot/session-state/<id>/events.jsonl`)
+  are readable; Pi is not yet. **Copilot context gap:** Copilot persists no
+  per-call input or cache usage, so a Copilot seat's `contextUsedTokens` is always
+  unknown. The cold-wake guard therefore allows every send to a Copilot seat
+  (`unknown: context size unknown`).
 - `not-found` (`detail`)
 - `failed` (`error`): the rest of the card is still served.
 

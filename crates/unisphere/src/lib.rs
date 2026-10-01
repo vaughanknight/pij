@@ -37,6 +37,8 @@ const CLAUDE_CODE: &str = "claude-code";
 const OH_MY_PI: &str = "oh-my-pi";
 /// Unisphere's adapter id for Codex rollouts.
 const CODEX: &str = "codex";
+/// Unisphere's adapter id for Copilot CLI event logs.
+const COPILOT_CLI: &str = "copilot-cli";
 
 /// Where each readable harness keeps its sessions.
 #[derive(Clone, Debug, Default)]
@@ -48,6 +50,9 @@ pub struct SessionRoots {
     pub omp_sessions: Option<PathBuf>,
     /// Codex's session directory (`$CODEX_HOME/sessions`, `~/.codex/sessions`).
     pub codex_sessions: Option<PathBuf>,
+    /// Copilot CLI's session directory (`~/.copilot/session-state`), one
+    /// `<session>/events.jsonl` per session.
+    pub copilot_sessions: Option<PathBuf>,
 }
 
 /// Session facts from harness transcripts, read through `unisphere-sdk`.
@@ -72,6 +77,7 @@ impl UnisphereSessionStatus {
             claude_homes,
             omp_sessions,
             codex_sessions,
+            copilot_sessions,
         } = roots;
         let mut roots: Vec<PrepSourceSet> = claude_homes
             .into_iter()
@@ -93,6 +99,7 @@ impl UnisphereSessionStatus {
             .collect();
         roots.extend(omp_sessions.map(|root| default_set(OH_MY_PI, root)));
         roots.extend(codex_sessions.map(|root| default_set(CODEX, root)));
+        roots.extend(copilot_sessions.map(|root| default_set(COPILOT_CLI, root)));
         let bindings = vec![
             PrepBinding {
                 fold: Arc::new(unisphere_adapter_claude::ClaudePrepFold),
@@ -104,6 +111,12 @@ impl UnisphereSessionStatus {
             },
             PrepBinding {
                 fold: Arc::new(unisphere_adapter_codex::CodexPrepFold),
+                loader: Arc::new(unisphere_loader_jsonl::FileSessionLoader),
+            },
+            // The events.jsonl fold only: the legacy `<session>.json` fold needs
+            // loader-snapshot, which pulls rusqlite (see the workspace Cargo.toml).
+            PrepBinding {
+                fold: Arc::new(unisphere_adapter_copilot_cli::CopilotCliPrepFold),
                 loader: Arc::new(unisphere_loader_jsonl::FileSessionLoader),
             },
         ];
@@ -120,8 +133,10 @@ fn unisphere_harness(harness: Harness) -> Option<&'static str> {
         Harness::Claude => Some(CLAUDE_CODE),
         Harness::Omp => Some(OH_MY_PI),
         Harness::Codex => Some(CODEX),
-        // Folds exist upstream but are provisional until Unisphere verifies them.
-        Harness::Copilot | Harness::Pi => None,
+        // Copilot persists no per-call usage: its context stays unknown.
+        Harness::Copilot => Some(COPILOT_CLI),
+        // A fold exists upstream but is provisional until Unisphere verifies it.
+        Harness::Pi => None,
     }
 }
 
@@ -576,10 +591,44 @@ mod tests {
         std::fs::remove_dir_all(&sessions).unwrap();
     }
 
+    /// A Copilot seat is read from `~/.copilot/session-state/<id>/events.jsonl`.
+    /// Copilot persists no per-call usage, so its context is unknown, and the
+    /// cold-wake guard allows it.
+    #[tokio::test]
+    async fn a_copilot_seat_is_read_with_its_context_unknown() {
+        let sessions =
+            std::env::temp_dir().join(format!("pij-unisphere-copilot-{}", std::process::id()));
+        let session = sessions.join("sess-cp");
+        std::fs::create_dir_all(&session).unwrap();
+        let lines = [
+            r#"{"type":"session.start","id":"e0","parentId":null,"timestamp":"2026-09-08T00:00:00.000Z","data":{"sessionId":"sess-cp","version":1,"producer":"copilot-agent","copilotVersion":"0.0.0","startTime":"2026-09-08T00:00:00.000Z","selectedModel":"claude-opus-5.5","context":{"cwd":"/work/demo"}}}"#,
+            r#"{"type":"user.message","id":"e1","parentId":"e0","timestamp":"2026-09-08T00:00:01.000Z","data":{"content":"hi","delivery":"idle","interactionId":"int-1"}}"#,
+            r#"{"type":"assistant.message","id":"e2","parentId":"e1","timestamp":"2026-09-08T00:00:02.000Z","data":{"messageId":"m1","apiCallId":"api-1","requestId":"r1","model":"claude-opus-5.5","content":"hello","outputTokens":5,"toolRequests":[]}}"#,
+        ];
+        std::fs::write(session.join("events.jsonl"), lines.join("\n") + "\n").unwrap();
+        let source = UnisphereSessionStatus::with_roots(SessionRoots {
+            copilot_sessions: Some(sessions.clone()),
+            ..SessionRoots::default()
+        });
+        let reply = source
+            .status(&SessionTarget {
+                seat: SeatId("pij-copilot".into()),
+                harness: Harness::Copilot,
+                session: "sess-cp".into(),
+            })
+            .await
+            .expect("status");
+        let SessionStatusReply::Status(status) = reply else {
+            panic!("expected Copilot facts, got {reply:?}");
+        };
+        assert_eq!(status.context_used_tokens, Fact::Unknown, "{status:?}");
+        std::fs::remove_dir_all(&sessions).unwrap();
+    }
+
     #[tokio::test]
     async fn harnesses_the_sdk_cannot_read_are_unsupported() {
         let source = UnisphereSessionStatus::new(Vec::new());
-        for harness in [Harness::Pi, Harness::Copilot] {
+        for harness in [Harness::Pi] {
             let reply = source
                 .status(&SessionTarget {
                     seat: SeatId("pij-x".into()),

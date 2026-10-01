@@ -357,6 +357,10 @@
           "kind": null
         },
         {
+          "name": "unisphere-adapter-copilot-cli",
+          "kind": null
+        },
+        {
           "name": "unisphere-adapter-omp",
           "kind": null
         },
