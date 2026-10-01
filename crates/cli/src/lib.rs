@@ -16,6 +16,7 @@ pub mod decisions;
 pub mod governance;
 pub mod lifecycle;
 pub mod role;
+pub mod roster;
 
 pub use address::{AddressError, parse_destination, render_destination};
 pub use client::{

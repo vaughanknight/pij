@@ -1357,10 +1357,23 @@ async fn run(cli: Cli) -> ExitCode {
         }
         Command::List { args } => {
             let as_json = cli.json || args.iter().any(|arg| arg == "--json");
-            if args.iter().all(|arg| arg == "--json") {
-                return emit(&client.list().await, as_json);
+            let response = if args.iter().all(|arg| arg == "--json") {
+                client.list_sized().await
+            } else {
+                client.list_scoped(&args, &caller_context()).await
+            };
+            if as_json || !response.ok {
+                return emit(&response, as_json);
             }
-            emit(&client.list_scoped(&args, &caller_context()).await, as_json)
+            let data = response
+                .raw_json
+                .as_deref()
+                .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+                .map(|envelope| envelope["data"].clone())
+                .or_else(|| serde_json::to_value(&response.data).ok())
+                .unwrap_or_default();
+            println!("{}", pij_cli::roster::render_table(&data));
+            ExitCode::SUCCESS
         }
         Command::State { id } => {
             let response = client.state(&id).await;
@@ -2096,6 +2109,9 @@ fn render_state(envelope: &Envelope<pij_daemon::http::StateCard>, json: bool) ->
         }
         if let Some(block) = &card.session_status {
             let _ = write!(output, "\nsession: {}", render_session_status(block));
+        }
+        for line in &card.size_lines {
+            let _ = write!(output, "\n{line}");
         }
     }
     output

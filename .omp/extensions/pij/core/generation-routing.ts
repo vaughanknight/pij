@@ -2,6 +2,7 @@
  * Business grammar and caller authorization remain in the daemon. */
 import { COPILOT_CONTROL_REFUSAL, validateCommand } from "./commands.js";
 import { COLD_WAKE_CODE, PIJ_ENVELOPE_VERSION } from "./daemon-wire.js";
+import { renderRosterTable } from "./roster-table.js";
 
 interface RouteIdentity {
 	readonly verb: string;
@@ -14,6 +15,8 @@ export interface RsHttpRoute extends RouteIdentity {
 	readonly method: "GET" | "POST";
 	/** Existing daemon query names; null accepts a literal value, arrays constrain the declared grammar. */
 	readonly query?: Readonly<Record<string, readonly string[] | null>>;
+	/** Query parameters the shim always sends, never taken from argv. */
+	readonly fixedQuery?: Readonly<Record<string, string>>;
 	readonly render?: (payload: unknown) => string;
 	readonly acknowledgePath?: string;
 	readonly readsBodyFile?: boolean;
@@ -116,7 +119,12 @@ function renderState(payload: unknown): string {
 					`delivery deferred: ${text(item, "reason") ?? "?"} ×${String(field(item, "count"))} since ${String(field(item, "since_ms"))} ms`,
 			)
 		: [];
-	return `${head}${detail.length === 0 ? "" : `\n  ${detail.join("  ·  ")}`}${deferred.length === 0 ? "" : `\n${deferred.join("\n")}`}`;
+	// Plan 160: the daemon renders the size lines once; print them verbatim.
+	const sizeLines = field(payload, "sizeLines");
+	const sized = Array.isArray(sizeLines)
+		? sizeLines.filter((line) => typeof line === "string")
+		: [];
+	return `${head}${detail.length === 0 ? "" : `\n  ${detail.join("  ·  ")}`}${deferred.length === 0 ? "" : `\n${deferred.join("\n")}`}${sized.length === 0 ? "" : `\n${sized.join("\n")}`}`;
 }
 
 function renderShimSend(payload: unknown): string {
@@ -182,7 +190,9 @@ export const RS_ROUTE_TABLE: readonly RsRouteRow[] = [
 		rsPath: "/v1/seats",
 		method: "GET",
 		query: { harness: null, folder: null, parent: null, scope: ["local"], here: ["true", "false"] },
-		why: "Read rs seats using the existing server query filters",
+		fixedQuery: { sizes: "true" },
+		render: renderRosterTable,
+		why: "Read rs seats using the existing server query filters, with each seat's size (plan 160)",
 	},
 	{
 		verb: "sessions",

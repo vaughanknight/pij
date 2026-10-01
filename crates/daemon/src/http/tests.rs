@@ -6342,8 +6342,8 @@ async fn a_send_to_a_cold_seat_is_refused_with_its_price() {
     assert_eq!(reply["ok"], false);
     let message = reply["meta"].as_str().unwrap_or_default();
     assert!(
-        message.starts_with("E-RS-COLD-WAKE: pij-cold is cold (idle 2h, 720k context)")
-            && message.contains("≈ $5.76 at list price")
+        message.starts_with("E-RS-COLD-WAKE: ❄ pij-cold is cold (720k, idle 2h). Options:")
+            && message.contains("~$6.45")
             && message.contains("--fyi")
             && message.contains("--force --reason"),
         "{reply}"
@@ -6405,7 +6405,11 @@ async fn a_forced_cold_wake_needs_a_reason_and_is_audited() {
     assert_eq!(payload["from"], "pij-sender");
     assert_eq!(payload["msg_id"], "m-force");
     assert_eq!(payload["context_tokens"], 720_000);
-    assert_eq!(payload["estimate_usd"], 5.76);
+    // The audited estimate is the wake price the refusal shows (plan 160).
+    assert_eq!(
+        format!("{:.2}", payload["estimate_usd"].as_f64().unwrap()),
+        "6.45"
+    );
     server.abort();
 }
 
@@ -7236,5 +7240,130 @@ async fn a_turn_boundary_never_flushes_even_when_warm() {
         assert_eq!(status, 200, "{reply}");
     }
     assert_eq!(queue.live_len(), 0, "no flush on a turn boundary");
+    server.abort();
+}
+
+// ---------------------------------------------------------------------------
+// Plan 160: seat size and coldness on `pij state` and `pij list`.
+// ---------------------------------------------------------------------------
+
+async fn get_seats(addr: SocketAddr, query: &str) -> serde_json::Value {
+    reqwest::Client::new()
+        .get(format!("http://{addr}/v1/seats{query}"))
+        .bearer_auth("key")
+        .send()
+        .await
+        .expect("request")
+        .json()
+        .await
+        .expect("envelope")
+}
+
+fn row<'a>(reply: &'a serde_json::Value, id: &str) -> &'a serde_json::Value {
+    reply["data"]["seats"]
+        .as_array()
+        .expect("seats")
+        .iter()
+        .find(|seat| seat["id"] == id)
+        .expect("seat row")
+}
+
+/// A cold large seat's card says how big and how cold it is, that the guard
+/// would refuse a normal send, and what waking it would cost.
+#[tokio::test]
+async fn the_state_card_shows_size_coldness_and_the_guard() {
+    let source =
+        pij_testkit::fakes::FakeSessionStatus::new().with_reply(COLD_SESSION, cold_status());
+    let (addr, server, _, _) = cold_daemon(pij_core::model::SystemState::Idle, source).await;
+    let (status, card) = post_json(addr, "/v1/state", serde_json::json!({"id": "pij-cold"})).await;
+    assert_eq!(status, 200, "{card}");
+    let data = &card["data"];
+    assert_eq!(data["contextUsed"], 720_000);
+    let idle = data["idleMs"].as_u64().expect("idleMs");
+    assert!(
+        (2 * 60 * 60 * 1_000..2 * 60 * 60 * 1_000 + 60_000).contains(&idle),
+        "{idle}"
+    );
+    assert_eq!(data["coldWake"]["wouldRefuse"], true);
+    assert_eq!(
+        format!("{:.2}", data["coldWake"]["estimateUsd"].as_f64().unwrap()),
+        "6.45"
+    );
+    let lines: Vec<&str> = data["sizeLines"]
+        .as_array()
+        .expect("sizeLines")
+        .iter()
+        .map(|line| line.as_str().unwrap())
+        .collect();
+    assert_eq!(
+        lines[0],
+        "context 720k / ? · last call 2h ago · cache ? · ? compactions"
+    );
+    assert_eq!(
+        lines[1],
+        "❄ cold-wake guard: a normal send is refused; waking it costs ~$6.45 (--fyi holds it for $0 now)"
+    );
+    server.abort();
+}
+
+/// `pij list` asks for sizes: each local seat gets its session facts, the
+/// derived fields and the rendered columns. Without the ask the roster is
+/// unchanged.
+#[tokio::test]
+async fn the_roster_carries_sizes_only_when_asked() {
+    let source =
+        pij_testkit::fakes::FakeSessionStatus::new().with_reply(COLD_SESSION, cold_status());
+    let (addr, server, _, _) = cold_daemon(pij_core::model::SystemState::Idle, source).await;
+
+    let plain = get_seats(addr, "").await;
+    assert!(
+        row(&plain, "pij-cold").get("sizeColumns").is_none(),
+        "{plain}"
+    );
+    assert!(
+        row(&plain, "pij-cold").get("sessionStatus").is_none(),
+        "{plain}"
+    );
+
+    let sized = get_seats(addr, "?sizes=true").await;
+    let cold = row(&sized, "pij-cold");
+    assert_eq!(
+        cold["sizeColumns"],
+        serde_json::json!(["720k", "2h", "?", "❄"]),
+        "{cold}"
+    );
+    assert_eq!(cold["contextUsed"], 720_000);
+    assert_eq!(cold["coldWake"]["wouldRefuse"], true);
+    assert_eq!(cold["sessionStatus"]["outcome"], "known");
+    // An unbound seat is unknown, never refused.
+    let sender = row(&sized, "pij-sender");
+    assert_eq!(
+        sender["sizeColumns"],
+        serde_json::json!(["?", "?", "?", ""]),
+        "{sender}"
+    );
+    assert_eq!(sender["coldWake"]["wouldRefuse"], false);
+    server.abort();
+}
+
+/// A seat whose facts never arrive costs the list a bounded wait, then `?`.
+#[tokio::test]
+async fn a_slow_seat_makes_the_list_wait_a_bounded_time_and_show_unknown() {
+    let source = pij_testkit::fakes::FakeSessionStatus::new().with_hang(COLD_SESSION);
+    let (addr, server, _, _) = cold_daemon(pij_core::model::SystemState::Idle, source).await;
+    let started = std::time::Instant::now();
+    let sized = get_seats(addr, "?sizes=true").await;
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed < std::time::Duration::from_millis(800),
+        "{elapsed:?}"
+    );
+    let cold = row(&sized, "pij-cold");
+    assert_eq!(
+        cold["sizeColumns"],
+        serde_json::json!(["?", "?", "?", ""]),
+        "{cold}"
+    );
+    assert_eq!(cold["sessionStatus"]["outcome"], "failed");
     server.abort();
 }

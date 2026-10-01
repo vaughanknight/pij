@@ -277,7 +277,13 @@ impl DaemonClient {
         self.get("pij list", "/v1/seats").await
     }
 
-    /// Forward list scope arguments to the daemon's shared boolean/cwd parser.
+    /// [`Self::list`] with each local seat's size and coldness (plan 160).
+    pub async fn list_sized(&self) -> Envelope<FederatedRoster> {
+        self.get("pij list", "/v1/seats?sizes=true").await
+    }
+
+    /// Forward list scope arguments to the daemon's shared boolean/cwd parser,
+    /// with each local seat's size and coldness (plan 160).
     pub async fn list_scoped(
         &self,
         args: &[String],
@@ -288,7 +294,7 @@ impl DaemonClient {
             .collect();
         self.post(
             "pij list",
-            "/v1/seats",
+            "/v1/seats?sizes=true",
             &serde_json::json!({"argv":argv,"caller":caller}),
         )
         .await

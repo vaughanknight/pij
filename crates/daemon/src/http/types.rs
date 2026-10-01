@@ -427,7 +427,7 @@ pub struct UnsupportedField {
 /// `.pi/extensions/pij/core/cli.ts:3630-3684` (the `--json` object every caller
 /// parses today), so a consumer that reads the legacy shape reads this one.
 /// What rs cannot honour is listed in [`Self::unsupported`] rather than nulled.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StateCard {
     /// TS `id` (cli.ts:3632).
@@ -555,6 +555,14 @@ pub struct StateCard {
     /// `None` only when decoding a card from a daemon that predates the block.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session_status: Option<pij_core::session_status::SessionStatusBlock>,
+    /// Size and coldness derived from `session_status` (plan 160):
+    /// `contextUsed`, `idleMs`, `cacheState` and `coldWake`.
+    #[serde(flatten)]
+    pub size: pij_core::cold_wake::SeatSize,
+    /// The human lines for size and coldness, rendered once by the daemon so
+    /// every client prints the same text (plan 160).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub size_lines: Vec<String>,
     /// Every TS field this store cannot answer, named with its reason.
     pub unsupported: Vec<UnsupportedField>,
 }

@@ -52,6 +52,20 @@ fn send_computed_payload_matches_the_committed_golden() {
     golden::assert_golden("cli/send-envelope.json", &actual);
 }
 
+/// Plan 160: `pij list`'s human table. The TS shim renders the same golden
+/// from the same JSON (`.omp/extensions/pij/core/roster-table.test.ts`).
+#[test]
+fn the_sized_roster_table_matches_the_committed_golden() {
+    let data: serde_json::Value = serde_json::from_str(include_str!(
+        "../../testkit/fixtures/golden/cli/list-sized.json"
+    ))
+    .expect("fixture");
+    assert_eq!(
+        pij_cli::roster::render_table(&data),
+        include_str!("../../testkit/fixtures/golden/cli/list-sized.txt")
+    );
+}
+
 #[test]
 fn list_computed_payload_matches_the_committed_golden() {
     let first = registered_seat();

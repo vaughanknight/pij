@@ -368,7 +368,8 @@ describe("routeVerb end to end", () => {
 	});
 
 	it.each([
-		["list", "/v1/seats", { seats: [{ id: "pij-rs-only" }] }],
+		// Plan 160: the shim always asks for each seat's size.
+		["list", "/v1/seats?sizes=true", { seats: [{ id: "pij-rs-only" }] }],
 		[
 			"sessions",
 			"/v1/shim/sessions",
